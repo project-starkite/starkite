@@ -1,0 +1,286 @@
+{% extends "main.html" %}
+
+{% block tabs %}
+{{ super() }}
+
+<style>
+  .md-main {
+    flex-grow: 0;
+  }
+
+  .md-main__inner {
+    display: flex;
+    height: 100%;
+  }
+
+  .tx-container {
+    padding-top: 1rem;
+    background: linear-gradient(to bottom, var(--md-primary-fg-color), #6366f1);
+  }
+
+  .tx-hero {
+    margin: 0 .8rem;
+    color: var(--md-primary-bg-color);
+    text-align: center;
+  }
+
+  .tx-hero__content {
+    padding-bottom: 2rem;
+    max-width: 40rem;
+    margin: 0 auto;
+  }
+
+  .tx-hero__content h1 {
+    font-size: 2.5rem;
+    font-weight: 700;
+    margin-bottom: 0.5rem;
+    color: var(--md-primary-bg-color);
+  }
+
+  .tx-hero__content p {
+    font-size: 1.2rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .tx-hero .md-button {
+    margin-top: .5rem;
+    margin-right: .5rem;
+    color: var(--md-primary-bg-color);
+    border-color: var(--md-primary-bg-color);
+  }
+
+  .tx-hero .md-button:focus,
+  .tx-hero .md-button:hover {
+    background-color: var(--md-primary-bg-color);
+    color: var(--md-primary-fg-color);
+    border-color: var(--md-primary-bg-color);
+  }
+
+  .tx-hero .md-button--primary {
+    background-color: var(--md-primary-bg-color);
+    color: var(--md-primary-fg-color);
+    border-color: var(--md-primary-bg-color);
+  }
+
+  .tx-hero .md-button--primary:focus,
+  .tx-hero .md-button--primary:hover {
+    background-color: var(--md-accent-fg-color);
+    color: var(--md-primary-bg-color);
+    border-color: var(--md-accent-fg-color);
+  }
+</style>
+
+<section class="tx-container">
+  <div class="md-grid md-typeset">
+    <div class="tx-hero">
+      <div class="tx-hero__content">
+        <h1>Starkite</h1>
+        <p>Automation, <strong>scripted simply</strong>.<br>
+        Go's standard library as type-safe Starlark modules — for general-purpose, cloud-native, and GenAI agent automation.<br>
+        Scriptable. Testable. Extensible.</p>
+        <a href="getting-started/" class="md-button md-button--primary">
+          Get Started
+        </a>
+        <a href="https://github.com/vladimirvivien/starkite" class="md-button">
+          View on GitHub
+        </a>
+      </div>
+    </div>
+  </div>
+</section>
+
+{% endblock %}
+
+{% block content %}
+<style>
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+  }
+
+  .feature-card {
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    background: var(--md-code-bg-color);
+    border: 1px solid var(--md-typeset-table-color);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .feature-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  }
+
+  .feature-card h3 {
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .feature-card h3 svg {
+    width: 1.2em;
+    height: 1.2em;
+    fill: currentColor;
+    flex-shrink: 0;
+  }
+
+  .feature-card p {
+    margin-bottom: 0;
+    color: var(--md-typeset-color);
+    opacity: 0.8;
+  }
+
+  .install-section {
+    margin: 3rem 0;
+  }
+
+  .install-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--md-typeset-table-color);
+    margin-bottom: 1rem;
+  }
+
+  .install-tabs input[type="radio"] {
+    display: none;
+  }
+
+  .install-tabs label {
+    padding: 0.75rem 1.25rem;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    color: var(--md-typeset-color);
+    opacity: 0.7;
+    transition: opacity 0.2s, border-color 0.2s;
+  }
+
+  .install-tabs label:hover {
+    opacity: 1;
+  }
+
+  .install-tabs input[type="radio"]:checked+label {
+    border-bottom-color: var(--md-accent-fg-color);
+    opacity: 1;
+  }
+
+  .install-content {
+    display: none;
+    padding: 1rem 0;
+  }
+
+  .install-content.active {
+    display: block;
+  }
+
+  .install-content pre {
+    margin: 0;
+    padding: 1rem;
+    background: var(--md-code-bg-color);
+    border-radius: 0.25rem;
+    overflow-x: auto;
+  }
+
+  .install-content code {
+    font-family: var(--md-code-font-family);
+  }
+</style>
+
+<h2>Features</h2>
+<div class="feature-grid">
+  <div class="feature-card">
+    <h3>
+      <svg viewBox="0 0 24 24">
+        <path d="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5Z" />
+      </svg>
+      25+ Built-in Modules
+    </h3>
+    <p>File I/O, HTTP, SSH, JSON, YAML, templates, concurrency, retry, and more — batteries included.</p>
+  </div>
+  <div class="feature-card">
+    <h3>
+      <svg viewBox="0 0 24 24">
+        <path d="M14.31,2L23,11.41V22H12.59L4,13.31V2H14.31M14.31,4H6V12.48L13.52,20H21V11.83L14.31,4M10.56,10.17L12.73,8L17,12.26L14.83,14.43L10.56,10.17Z" />
+      </svg>
+      Kubernetes Native
+    </h3>
+    <p>First-class k8s module in the Cloud edition: deploy, scale, rollout, and apply manifests with zero YAML.</p>
+  </div>
+  <div class="feature-card">
+    <h3>
+      <svg viewBox="0 0 24 24">
+        <path d="M14.6,16.6L19.2,12L14.6,7.4L16,6L22,12L16,18L14.6,16.6M9.4,16.6L4.8,12L9.4,7.4L8,6L2,12L8,18L9.4,16.6Z" />
+      </svg>
+      Python-like Syntax
+    </h3>
+    <p>Starlark is a Python dialect — familiar, deterministic, and safe. No learning curve for Python developers.</p>
+  </div>
+  <div class="feature-card">
+    <h3>
+      <svg viewBox="0 0 24 24">
+        <path d="M7,2V4H8V18A4,4 0 0,0 12,22A4,4 0 0,0 16,18V4H17V2H7M11,16C10.4,16 10,15.6 10,15C10,14.4 10.4,14 11,14C11.6,14 12,14.4 12,15C12,15.6 11.6,16 11,16M13,12C12.4,12 12,11.6 12,11C12,10.4 12.4,10 13,10C13.6,10 14,10.4 14,11C14,11.6 13.6,12 13,12M14,7H10V4H14V7Z" />
+      </svg>
+      Built-in Test Runner
+    </h3>
+    <p>kite test with parallel execution, assertions, filtering, and setup/teardown hooks.</p>
+  </div>
+  <div class="feature-card">
+    <h3>
+      <svg viewBox="0 0 24 24">
+        <path d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z" />
+      </svg>
+      Safe by Default
+    </h3>
+    <p>Sandbox mode restricts dangerous operations. Trust mode allows everything. Fine-grained allow/deny rules.</p>
+  </div>
+  <div class="feature-card">
+    <h3>
+      <svg viewBox="0 0 24 24">
+        <path d="M17,17H7V7H17M21,11V9H19V7C19,5.89 18.1,5 17,5H15V3H13V5H11V3H9V5H7C5.89,5 5,5.89 5,7V9H3V11H5V13H3V15H5V17A2,2 0 0,0 7,19H9V21H11V19H13V21H15V19H17A2,2 0 0,0 19,17V15H21V13H19V11M15,15H9V9H15V15Z" />
+      </svg>
+      Embeddable Runtime
+    </h3>
+    <p>Embed starbase in any Go app to add scripting. 27 modules included, permission sandboxing, custom modules, optional WASM plugins.</p>
+  </div>
+</div>
+
+<h2>Quick Install</h2>
+<div class="install-section">
+  <div class="install-tabs">
+    <input type="radio" name="install-tab" id="tab-go" checked>
+    <label for="tab-go">Go install</label>
+    <input type="radio" name="install-tab" id="tab-binary">
+    <label for="tab-binary">Binary</label>
+    <input type="radio" name="install-tab" id="tab-source">
+    <label for="tab-source">From source</label>
+  </div>
+
+  <div id="content-go" class="install-content active">
+    <pre><code>go install github.com/vladimirvivien/starkite@latest</code></pre>
+  </div>
+
+  <div id="content-binary" class="install-content">
+    <p>Download from <a href="https://github.com/vladimirvivien/starkite/releases/latest">GitHub Releases</a></p>
+  </div>
+
+  <div id="content-source" class="install-content">
+    <pre><code>git clone https://github.com/vladimirvivien/starkite.git
+cd starkite
+go build -o kite .</code></pre>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.install-tabs input[type="radio"]').forEach(radio => {
+    radio.addEventListener('change', function () {
+      document.querySelectorAll('.install-content').forEach(c => c.classList.remove('active'));
+      const contentId = 'content-' + this.id.replace('tab-', '');
+      document.getElementById(contentId).classList.add('active');
+    });
+  });
+</script>
+
+{% endblock %}

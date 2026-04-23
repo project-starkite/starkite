@@ -1,0 +1,24 @@
+name: echo
+version: 0.1.0
+description: Test plugin that echoes input and adds numbers
+wasm: echo.wasm
+functions:
+  - name: echo
+    export: echo
+    params:
+      - name: input
+        type: string
+        required: true
+    returns: string
+  - name: add
+    export: add
+    params:
+      - name: a
+        type: int
+        required: true
+      - name: b
+        type: int
+        required: true
+    returns: int
+permissions:
+  - log

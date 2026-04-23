@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Strip replace directive
+        run: |
+          go mod edit -dropreplace=github.com/vladimirvivien/startype
+          go mod tidy
+
+      - name: Build base
+        run: go build -v ./...
+
+      - name: Build cloud
+        run: go build -v ./cmd/cloud/starkite/
+
+      - name: Test
+        run: go test -v ./...

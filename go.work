@@ -1,0 +1,7 @@
+go 1.26
+
+use ./starbase
+use ./wasm
+use ./core
+use ./cloud
+use ./ai

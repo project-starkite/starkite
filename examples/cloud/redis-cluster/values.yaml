@@ -1,0 +1,6 @@
+# redis-cluster default values — override with --var or a second --var-file
+image: redis:7-alpine
+replicas: 3
+storage: 5Gi
+maxmemory: 256mb
+maxmemory.policy: allkeys-lru

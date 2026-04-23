@@ -1,0 +1,10 @@
+/kite
+/kite-cloud
+/kite-ai
+/starctl
+/starctl-cloud
+/starkite
+/starkite-cloud
+dist/
+site/
+*.exe

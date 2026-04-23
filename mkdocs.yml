@@ -1,0 +1,120 @@
+site_name: Starkite
+site_description: An automation language that exposes Go's standard library as type-safe Starlark modules
+site_author: Vladimir Vivien
+site_url: https://starkite.dev/
+
+repo_name: vladimirvivien/starkite
+repo_url: https://github.com/vladimirvivien/starkite
+
+theme:
+  name: material
+  custom_dir: docs/overrides
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: cyan
+      accent: indigo
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: cyan
+      accent: indigo
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.top
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.tabs.link
+  font:
+    text: Inter
+    code: Fira Code
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.superfences
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - attr_list
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+
+extra_css:
+  - assets/stylesheets/extra.css
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started/index.md
+  - CLI:
+    - Overview: cli/index.md
+    - run: cli/run.md
+    - exec: cli/exec.md
+    - test: cli/test.md
+    - init: cli/init.md
+    - repl: cli/repl.md
+    - watch: cli/watch.md
+  - Modules:
+    - Overview: modules/index.md
+    - os: modules/os.md
+    - fs: modules/fs.md
+    - http: modules/http.md
+    - ssh: modules/ssh.md
+    - json: modules/json.md
+    - yaml: modules/yaml.md
+    - csv: modules/csv.md
+    - gzip: modules/gzip.md
+    - zip: modules/zip.md
+    - base64: modules/base64.md
+    - hash: modules/hash.md
+    - strings: modules/strings.md
+    - regexp: modules/regexp.md
+    - template: modules/template.md
+    - time: modules/time.md
+    - uuid: modules/uuid.md
+    - fmt: modules/fmt.md
+    - log: modules/log.md
+    - table: modules/table.md
+    - concur: modules/concur.md
+    - retry: modules/retry.md
+    - io: modules/io.md
+    - vars: modules/vars.md
+    - runtime: modules/runtime.md
+    - inventory: modules/inventory.md
+    - test: modules/test.md
+    - k8s: modules/k8s.md
+  - Guides:
+    - Overview: guides/index.md
+    - Variables: guides/variables.md
+    - Error Handling: guides/error-handling.md
+    - Permissions: guides/permissions.md
+    - WASM Plugins: guides/wasm-plugins.md
+    - Cloud Edition: guides/cloud-edition.md
+    - Admission Webhooks: guides/webhooks.md
+    - Embedding Starbase: guides/embedding.md
+  - Examples: examples/index.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/vladimirvivien/starkite
