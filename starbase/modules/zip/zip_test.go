@@ -10,7 +10,7 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 func newTestArchive(path string) *Archive {

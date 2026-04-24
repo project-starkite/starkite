@@ -8,7 +8,7 @@ import (
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 )

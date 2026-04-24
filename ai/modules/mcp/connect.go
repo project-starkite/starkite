@@ -11,7 +11,7 @@ import (
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // defaultConnectTimeout caps the initial session handshake (Connect). After

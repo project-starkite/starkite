@@ -11,7 +11,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 func newTestPath(path string) *Path {

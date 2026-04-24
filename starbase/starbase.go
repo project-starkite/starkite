@@ -61,7 +61,7 @@
 //
 // starbase includes 28+ built-in modules. Use the loader package to register all:
 //
-//	import "github.com/vladimirvivien/starkite/starbase/loader"
+//	import "github.com/project-starkite/starkite/starbase/loader"
 //
 //	registry := loader.NewDefaultRegistry(moduleConfig)
 //	config := &starbase.Config{

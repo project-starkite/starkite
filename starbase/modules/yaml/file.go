@@ -12,7 +12,7 @@ import (
 	"go.starlark.net/starlark"
 	goyaml "gopkg.in/yaml.v3"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // YamlFile is a Starlark value representing a file path for YAML reading.

@@ -4,9 +4,9 @@ import (
 	stdlog "log"
 
 	"github.com/spf13/cobra"
-	"github.com/vladimirvivien/starkite/starbase"
-	"github.com/vladimirvivien/starkite/starbase/loader"
-	"github.com/vladimirvivien/starkite/wasm"
+	"github.com/project-starkite/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase/loader"
+	"github.com/project-starkite/starkite/wasm"
 )
 
 // newDefaultRegistryWithWASM creates the default registry with built-in modules + WASM plugins.

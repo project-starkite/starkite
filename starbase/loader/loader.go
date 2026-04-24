@@ -4,33 +4,33 @@
 package loader
 
 import (
-	"github.com/vladimirvivien/starkite/starbase"
-	"github.com/vladimirvivien/starkite/starbase/modules/base64"
-	"github.com/vladimirvivien/starkite/starbase/modules/csv"
-	fmtmod "github.com/vladimirvivien/starkite/starbase/modules/fmt"
-	"github.com/vladimirvivien/starkite/starbase/modules/fs"
-	"github.com/vladimirvivien/starkite/starbase/modules/gzip"
-	"github.com/vladimirvivien/starkite/starbase/modules/hash"
-	"github.com/vladimirvivien/starkite/starbase/modules/http"
-	"github.com/vladimirvivien/starkite/starbase/modules/inventory"
-	iomod "github.com/vladimirvivien/starkite/starbase/modules/io"
-	"github.com/vladimirvivien/starkite/starbase/modules/json"
-	"github.com/vladimirvivien/starkite/starbase/modules/log"
-	osmod "github.com/vladimirvivien/starkite/starbase/modules/os"
-	"github.com/vladimirvivien/starkite/starbase/modules/concur"
-	"github.com/vladimirvivien/starkite/starbase/modules/regexp"
-	"github.com/vladimirvivien/starkite/starbase/modules/retry"
-	"github.com/vladimirvivien/starkite/starbase/modules/runtime"
-	"github.com/vladimirvivien/starkite/starbase/modules/ssh"
-	"github.com/vladimirvivien/starkite/starbase/modules/strings"
-	"github.com/vladimirvivien/starkite/starbase/modules/table"
-	"github.com/vladimirvivien/starkite/starbase/modules/template"
-	"github.com/vladimirvivien/starkite/starbase/modules/test"
-	"github.com/vladimirvivien/starkite/starbase/modules/time"
-	"github.com/vladimirvivien/starkite/starbase/modules/uuid"
-	"github.com/vladimirvivien/starkite/starbase/modules/vars"
-	"github.com/vladimirvivien/starkite/starbase/modules/yaml"
-	"github.com/vladimirvivien/starkite/starbase/modules/zip"
+	"github.com/project-starkite/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase/modules/base64"
+	"github.com/project-starkite/starkite/starbase/modules/csv"
+	fmtmod "github.com/project-starkite/starkite/starbase/modules/fmt"
+	"github.com/project-starkite/starkite/starbase/modules/fs"
+	"github.com/project-starkite/starkite/starbase/modules/gzip"
+	"github.com/project-starkite/starkite/starbase/modules/hash"
+	"github.com/project-starkite/starkite/starbase/modules/http"
+	"github.com/project-starkite/starkite/starbase/modules/inventory"
+	iomod "github.com/project-starkite/starkite/starbase/modules/io"
+	"github.com/project-starkite/starkite/starbase/modules/json"
+	"github.com/project-starkite/starkite/starbase/modules/log"
+	osmod "github.com/project-starkite/starkite/starbase/modules/os"
+	"github.com/project-starkite/starkite/starbase/modules/concur"
+	"github.com/project-starkite/starkite/starbase/modules/regexp"
+	"github.com/project-starkite/starkite/starbase/modules/retry"
+	"github.com/project-starkite/starkite/starbase/modules/runtime"
+	"github.com/project-starkite/starkite/starbase/modules/ssh"
+	"github.com/project-starkite/starkite/starbase/modules/strings"
+	"github.com/project-starkite/starkite/starbase/modules/table"
+	"github.com/project-starkite/starkite/starbase/modules/template"
+	"github.com/project-starkite/starkite/starbase/modules/test"
+	"github.com/project-starkite/starkite/starbase/modules/time"
+	"github.com/project-starkite/starkite/starbase/modules/uuid"
+	"github.com/project-starkite/starkite/starbase/modules/vars"
+	"github.com/project-starkite/starkite/starbase/modules/yaml"
+	"github.com/project-starkite/starkite/starbase/modules/zip"
 )
 
 // RegisterAll registers all built-in modules with the given registry.
@@ -68,7 +68,7 @@ func RegisterAll(r *starbase.Registry) {
 	r.Register(inventory.New())
 
 	// Note: WASM plugins are registered separately by core/cloud editions
-	// via the wasm package (github.com/vladimirvivien/starkite/wasm)
+	// via the wasm package (github.com/project-starkite/starkite/wasm)
 }
 
 // NewDefaultRegistry creates a new registry with all built-in modules registered.

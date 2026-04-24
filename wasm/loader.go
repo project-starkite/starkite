@@ -3,7 +3,7 @@ package wasm
 import (
 	"log"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // RegisterPlugins discovers WASM plugins and registers them with the registry.

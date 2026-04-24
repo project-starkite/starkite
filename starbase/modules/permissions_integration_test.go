@@ -5,11 +5,11 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
-	"github.com/vladimirvivien/starkite/starbase/modules/fs"
-	"github.com/vladimirvivien/starkite/starbase/modules/http"
-	iomod "github.com/vladimirvivien/starkite/starbase/modules/io"
-	osmod "github.com/vladimirvivien/starkite/starbase/modules/os"
+	"github.com/project-starkite/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase/modules/fs"
+	"github.com/project-starkite/starkite/starbase/modules/http"
+	iomod "github.com/project-starkite/starkite/starbase/modules/io"
+	osmod "github.com/project-starkite/starkite/starbase/modules/os"
 )
 
 // TestFSModulePermissions verifies that fs module functions check permissions.

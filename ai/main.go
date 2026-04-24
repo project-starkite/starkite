@@ -3,10 +3,10 @@ package main
 import (
 	"os"
 
-	aicmd "github.com/vladimirvivien/starkite/ai/cmd"
-	"github.com/vladimirvivien/starkite/ai/loader"
-	corecmd "github.com/vladimirvivien/starkite/core/cmd"
-	"github.com/vladimirvivien/starkite/core/version"
+	aicmd "github.com/project-starkite/starkite/ai/cmd"
+	"github.com/project-starkite/starkite/ai/loader"
+	corecmd "github.com/project-starkite/starkite/core/cmd"
+	"github.com/project-starkite/starkite/core/version"
 )
 
 func init() {

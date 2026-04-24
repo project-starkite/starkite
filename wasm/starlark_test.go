@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/vladimirvivien/starkite/starbase"
-	"github.com/vladimirvivien/starkite/starbase/modules/test"
+	"github.com/project-starkite/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase/modules/test"
 )
 
 // TestStarlarkEndToEnd boots a full starbase Runtime with the echo WASM plugin

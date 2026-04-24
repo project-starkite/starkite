@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/vladimirvivien/starkite/core/version"
+	"github.com/project-starkite/starkite/core/version"
 )
 
 const GitHubReleasesAPI = "https://api.github.com/repos/vladimirvivien/starkite/releases/latest"
@@ -197,7 +197,7 @@ func verifyChecksumFromURL(checksumURL, actualHash, binaryName string) error {
 // downloadURLForVersion returns the download URL for a specific version.
 func downloadURLForVersion(editionName, ver string) string {
 	return fmt.Sprintf(
-		"https://github.com/vladimirvivien/starkite/releases/download/v%s/%s",
+		"https://github.com/project-starkite/starkite/releases/download/v%s/%s",
 		ver,
 		binaryFileName(editionName),
 	)
@@ -206,7 +206,7 @@ func downloadURLForVersion(editionName, ver string) string {
 // checksumURLForVersion returns the checksums URL for a specific version.
 func checksumURLForVersion(ver string) string {
 	return fmt.Sprintf(
-		"https://github.com/vladimirvivien/starkite/releases/download/v%s/checksums.txt",
+		"https://github.com/project-starkite/starkite/releases/download/v%s/checksums.txt",
 		ver,
 	)
 }

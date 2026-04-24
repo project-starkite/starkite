@@ -15,8 +15,8 @@ import (
     "context"
     "log"
 
-    "github.com/vladimirvivien/starkite/starbase"
-    "github.com/vladimirvivien/starkite/starbase/loader"
+    "github.com/project-starkite/starkite/starbase"
+    "github.com/project-starkite/starkite/starbase/loader"
 )
 
 func main() {
@@ -46,7 +46,7 @@ func main() {
 ## Installation
 
 ```bash
-go get github.com/vladimirvivien/starkite/starbase
+go get github.com/project-starkite/starkite/starbase
 ```
 
 ## Creating a Runtime
@@ -57,8 +57,8 @@ Import the loader package to get all 27 built-in modules:
 
 ```go
 import (
-    "github.com/vladimirvivien/starkite/starbase"
-    "github.com/vladimirvivien/starkite/starbase/loader"
+    "github.com/project-starkite/starkite/starbase"
+    "github.com/project-starkite/starkite/starbase/loader"
 )
 
 registry := loader.NewDefaultRegistry(nil)
@@ -349,7 +349,7 @@ The starbase modules (http, fs, k8s, ssh, …) provide the action surface the mo
 Register your own modules alongside the built-ins:
 
 ```go
-import "github.com/vladimirvivien/starkite/starbase"
+import "github.com/project-starkite/starkite/starbase"
 
 // Implement the Module interface
 type MyModule struct{}
@@ -429,8 +429,8 @@ WASM plugin support is optional. Import the wasm package to enable it:
 
 ```go
 import (
-    "github.com/vladimirvivien/starkite/starbase/loader"
-    "github.com/vladimirvivien/starkite/wasm"
+    "github.com/project-starkite/starkite/starbase/loader"
+    "github.com/project-starkite/starkite/wasm"
 )
 
 registry := loader.NewDefaultRegistry(nil)
@@ -447,8 +447,8 @@ Import the cloud loader to add Kubernetes support alongside the base modules:
 
 ```go
 import (
-    "github.com/vladimirvivien/starkite/starbase"
-    cloudloader "github.com/vladimirvivien/starkite/cloud/loader"
+    "github.com/project-starkite/starkite/starbase"
+    cloudloader "github.com/project-starkite/starkite/cloud/loader"
 )
 
 // NewCloudRegistry registers all 27 base modules + k8s module
@@ -479,8 +479,8 @@ import (
     "log"
     "os"
 
-    "github.com/vladimirvivien/starkite/starbase"
-    cloudloader "github.com/vladimirvivien/starkite/cloud/loader"
+    "github.com/project-starkite/starkite/starbase"
+    cloudloader "github.com/project-starkite/starkite/cloud/loader"
 )
 
 func main() {
@@ -590,8 +590,8 @@ import (
     "log"
     "os"
 
-    "github.com/vladimirvivien/starkite/starbase"
-    "github.com/vladimirvivien/starkite/starbase/loader"
+    "github.com/project-starkite/starkite/starbase"
+    "github.com/project-starkite/starkite/starbase/loader"
 )
 
 func main() {

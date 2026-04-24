@@ -34,7 +34,6 @@ The starkite CLI binary is called `kite`. It provides commands for running scrip
 | Command | Purpose |
 |---------|---------|
 | [`kite kube`](kube.md) | Kubernetes artifact generation (`gen-controller-artifacts`, `gen-webhook-artifacts`) |
-| [`kite apply`, `deploy`, `drift`](cloud-commands.md) | Infrastructure workflow commands (not yet implemented) |
 
 ## Global Flags
 

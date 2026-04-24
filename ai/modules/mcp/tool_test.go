@@ -9,8 +9,8 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/ai/modules/genai"
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/ai/modules/genai"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // buildToolFromSource compiles a Starlark script defining functions and returns

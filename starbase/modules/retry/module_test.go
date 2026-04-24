@@ -7,13 +7,16 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 func testThread() *starlark.Thread {
 	reg := starbase.NewRegistry(&starbase.ModuleConfig{})
 	reg.Register(New())
-	rt := starbase.NewTrusted(starbase.WithRegistry(reg))
+	rt, err := starbase.NewTrusted(nil, starbase.WithRegistry(reg))
+	if err != nil {
+		panic(err)
+	}
 	return rt.NewThread("test")
 }
 

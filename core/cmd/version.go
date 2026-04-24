@@ -6,7 +6,7 @@ import (
 	"runtime"
 
 	"github.com/spf13/cobra"
-	"github.com/vladimirvivien/starkite/core/version"
+	"github.com/project-starkite/starkite/core/version"
 )
 
 var (

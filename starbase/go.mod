@@ -1,4 +1,4 @@
-module github.com/vladimirvivien/starkite/starbase
+module github.com/project-starkite/starkite/starbase
 
 go 1.26
 

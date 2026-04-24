@@ -11,15 +11,15 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // testRuntime creates a minimal trusted Runtime for testing.
 func testRuntime(t *testing.T) *starbase.Runtime {
 	t.Helper()
-	rt := starbase.NewTrusted()
-	if rt == nil {
-		t.Fatal("failed to create runtime")
+	rt, err := starbase.NewTrusted(nil)
+	if err != nil {
+		t.Fatalf("NewTrusted: %v", err)
 	}
 	return rt
 }

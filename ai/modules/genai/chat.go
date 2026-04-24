@@ -9,7 +9,7 @@ import (
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // Chat is a Starlark-visible multi-turn conversation. Each .send() call

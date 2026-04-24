@@ -11,7 +11,7 @@ import (
 
 	extism "github.com/extism/go-sdk"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 	"go.starlark.net/starlark"
 )
 

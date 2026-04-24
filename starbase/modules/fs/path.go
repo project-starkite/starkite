@@ -17,7 +17,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // Path is a Starlark value representing a filesystem path, inspired by Python's pathlib.Path.

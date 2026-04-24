@@ -3,7 +3,7 @@ package wasm
 import (
 	"testing"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 	"go.starlark.net/starlark"
 )
 

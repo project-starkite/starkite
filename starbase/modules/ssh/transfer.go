@@ -12,7 +12,7 @@ import (
 	"go.starlark.net/starlarkstruct"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // upload uploads a file to remote hosts via SCP.

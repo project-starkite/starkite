@@ -23,7 +23,7 @@ import (
 
 	"github.com/vladimirvivien/startype"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // ============================================================================

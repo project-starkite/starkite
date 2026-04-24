@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 func ExampleRuntime_Call() {

@@ -11,7 +11,7 @@ import (
 	"go.starlark.net/starlark"
 	goyaml "gopkg.in/yaml.v3"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // Writer is a Starlark value wrapping data for YAML file writing.

@@ -9,14 +9,17 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // testThread returns a thread from a trusted Runtime with the concur module registered.
 func testThread() *starlark.Thread {
 	reg := starbase.NewRegistry(&starbase.ModuleConfig{})
 	reg.Register(New())
-	rt := starbase.NewTrusted(starbase.WithRegistry(reg))
+	rt, err := starbase.NewTrusted(nil, starbase.WithRegistry(reg))
+	if err != nil {
+		panic(err)
+	}
 	return rt.NewThread("test")
 }
 
@@ -465,7 +468,8 @@ func TestChildThreadHasPrint(t *testing.T) {
 	var printed string
 	reg := starbase.NewRegistry(&starbase.ModuleConfig{})
 	reg.Register(New())
-	rt := starbase.NewTrusted(
+	rt, err := starbase.NewTrusted(
+		nil,
 		starbase.WithRegistry(reg),
 		func(c *starbase.Config) {
 			c.Print = func(_ *starlark.Thread, msg string) {
@@ -473,6 +477,9 @@ func TestChildThreadHasPrint(t *testing.T) {
 			}
 		},
 	)
+	if err != nil {
+		t.Fatalf("NewTrusted: %v", err)
+	}
 	thread := rt.NewThread("test")
 
 	fn := makeBuiltin("printer", func(childThread *starlark.Thread, args starlark.Tuple) (starlark.Value, error) {
@@ -483,7 +490,7 @@ func TestChildThreadHasPrint(t *testing.T) {
 	})
 
 	items := starlark.NewList([]starlark.Value{starlark.MakeInt(1)})
-	_, err := callBuiltin(thread, "map", starlark.Tuple{items, fn}, nil)
+	_, err = callBuiltin(thread, "map", starlark.Tuple{items, fn}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

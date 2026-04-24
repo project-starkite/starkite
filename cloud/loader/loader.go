@@ -5,10 +5,10 @@ package loader
 import (
 	stdlog "log"
 
-	"github.com/vladimirvivien/starkite/cloud/modules/k8s"
-	"github.com/vladimirvivien/starkite/starbase"
-	baseloader "github.com/vladimirvivien/starkite/starbase/loader"
-	"github.com/vladimirvivien/starkite/wasm"
+	"github.com/project-starkite/starkite/cloud/modules/k8s"
+	"github.com/project-starkite/starkite/starbase"
+	baseloader "github.com/project-starkite/starkite/starbase/loader"
+	"github.com/project-starkite/starkite/wasm"
 )
 
 // RegisterCloudModules registers cloud-specific modules on an existing registry.

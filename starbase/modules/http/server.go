@@ -12,7 +12,7 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // registeredHandler pairs a route pattern with its Starlark handler.

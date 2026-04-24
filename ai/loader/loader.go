@@ -5,11 +5,11 @@ package loader
 import (
 	stdlog "log"
 
-	"github.com/vladimirvivien/starkite/ai/modules/genai"
-	"github.com/vladimirvivien/starkite/ai/modules/mcp"
-	"github.com/vladimirvivien/starkite/starbase"
-	baseloader "github.com/vladimirvivien/starkite/starbase/loader"
-	"github.com/vladimirvivien/starkite/wasm"
+	"github.com/project-starkite/starkite/ai/modules/genai"
+	"github.com/project-starkite/starkite/ai/modules/mcp"
+	"github.com/project-starkite/starkite/starbase"
+	baseloader "github.com/project-starkite/starkite/starbase/loader"
+	"github.com/project-starkite/starkite/wasm"
 )
 
 // RegisterAIModules registers ai-specific modules on an existing registry.

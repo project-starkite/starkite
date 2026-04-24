@@ -13,7 +13,7 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 func TestServe_ToolsMustBeFuncOrTool(t *testing.T) {

@@ -3,9 +3,9 @@
 BINARY_NAME=kite
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME=$(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
-LDFLAGS=-ldflags "-X github.com/vladimirvivien/starkite/core/version.Version=$(VERSION) -X github.com/vladimirvivien/starkite/core/version.BuildTime=$(BUILD_TIME)"
-CLOUD_LDFLAGS=-ldflags "-X github.com/vladimirvivien/starkite/core/version.Version=$(VERSION) -X github.com/vladimirvivien/starkite/core/version.BuildTime=$(BUILD_TIME) -X github.com/vladimirvivien/starkite/core/version.Edition=cloud"
-AI_LDFLAGS=-ldflags "-X github.com/vladimirvivien/starkite/core/version.Version=$(VERSION) -X github.com/vladimirvivien/starkite/core/version.BuildTime=$(BUILD_TIME) -X github.com/vladimirvivien/starkite/core/version.Edition=ai"
+LDFLAGS=-ldflags "-X github.com/project-starkite/starkite/core/version.Version=$(VERSION) -X github.com/project-starkite/starkite/core/version.BuildTime=$(BUILD_TIME)"
+CLOUD_LDFLAGS=-ldflags "-X github.com/project-starkite/starkite/core/version.Version=$(VERSION) -X github.com/project-starkite/starkite/core/version.BuildTime=$(BUILD_TIME) -X github.com/project-starkite/starkite/core/version.Edition=cloud"
+AI_LDFLAGS=-ldflags "-X github.com/project-starkite/starkite/core/version.Version=$(VERSION) -X github.com/project-starkite/starkite/core/version.BuildTime=$(BUILD_TIME) -X github.com/project-starkite/starkite/core/version.Edition=ai"
 
 .PHONY: all build build-core build-cloud build-ai clean test test-starbase test-core test-cloud test-ai install deps lint fmt help
 

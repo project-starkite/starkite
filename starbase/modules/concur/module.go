@@ -10,7 +10,7 @@ import (
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 const ModuleName starbase.ModuleName = "concur"

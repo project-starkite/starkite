@@ -11,7 +11,7 @@ import (
 	"runtime"
 	"strings"
 
-	"github.com/vladimirvivien/starkite/core/version"
+	"github.com/project-starkite/starkite/core/version"
 )
 
 // InstallOptions configures edition installation.
@@ -244,7 +244,7 @@ func ListInstalled() ([]*EditionInfo, error) {
 // DownloadURL returns the GitHub Releases download URL for an edition binary.
 func DownloadURL(editionName string) string {
 	return fmt.Sprintf(
-		"https://github.com/vladimirvivien/starkite/releases/download/v%s/%s",
+		"https://github.com/project-starkite/starkite/releases/download/v%s/%s",
 		version.Version,
 		binaryFileName(editionName),
 	)
@@ -253,7 +253,7 @@ func DownloadURL(editionName string) string {
 // ChecksumURL returns the GitHub Releases URL for the checksums file.
 func ChecksumURL(editionName string) string {
 	return fmt.Sprintf(
-		"https://github.com/vladimirvivien/starkite/releases/download/v%s/checksums.txt",
+		"https://github.com/project-starkite/starkite/releases/download/v%s/checksums.txt",
 		version.Version,
 	)
 }

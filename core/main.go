@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"github.com/vladimirvivien/starkite/core/cmd"
+	"github.com/project-starkite/starkite/core/cmd"
 )
 
 func main() {

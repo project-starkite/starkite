@@ -4,7 +4,7 @@ site_author: Vladimir Vivien
 site_url: https://starkite.dev/
 
 repo_name: vladimirvivien/starkite
-repo_url: https://github.com/vladimirvivien/starkite
+repo_url: https://github.com/project-starkite/starkite
 
 theme:
   name: material
@@ -117,4 +117,4 @@ nav:
 extra:
   social:
     - icon: fontawesome/brands/github
-      link: https://github.com/vladimirvivien/starkite
+      link: https://github.com/project-starkite/starkite

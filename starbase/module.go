@@ -39,7 +39,7 @@ type ModuleConfig struct {
 	// Debug enables debug logging
 	Debug bool
 
-	// TestMode enables test-only module features (e.g. ssh.testserver)
+	// TestMode enables test-only module features (e.g. ssh.test_server)
 	TestMode bool
 
 	// VarStore provides access to the variable store for modules that need it

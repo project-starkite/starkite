@@ -19,7 +19,7 @@ import (
 	"go.starlark.net/starlark"
 	jsonpatch "gomodules.xyz/jsonpatch/v2"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // webhookBuiltin is the k8s.webhook() function that blocks like http.serve().

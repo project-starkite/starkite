@@ -1,11 +1,11 @@
-module github.com/vladimirvivien/starkite/core
+module github.com/project-starkite/starkite/core
 
 go 1.26
 
 require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/spf13/cobra v1.10.2
-	github.com/vladimirvivien/starkite/starbase v0.0.0
+	github.com/project-starkite/starkite/starbase v0.0.0
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -27,8 +27,8 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace github.com/vladimirvivien/starkite/starbase => ../starbase
+replace github.com/project-starkite/starkite/starbase => ../starbase
 
-require github.com/vladimirvivien/starkite/wasm v0.0.0
+require github.com/project-starkite/starkite/wasm v0.0.0
 
-replace github.com/vladimirvivien/starkite/wasm => ../wasm
+replace github.com/project-starkite/starkite/wasm => ../wasm

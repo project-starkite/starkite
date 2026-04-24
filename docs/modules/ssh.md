@@ -161,3 +161,65 @@ results = client.download("/var/log/app.log", "./logs/")
 > **Note:**
 All `SSHClient` methods support `try_` variants. For example, `client.try_exec(cmd)` returns a `Result` wrapping the list of `SSHResult` objects instead of raising on connection errors.
 
+## Testing helpers
+
+Two additional builtins spin up a self-contained SSH server and client key for Starlark integration tests. **They are only registered when the runtime is started with `TestMode=true`** — `kite test` enables this automatically. They are not available in regular `kite run`/`kite exec`/`kite repl` scripts; attempting to call them there raises `undefined: test_server`.
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `ssh.test_server(user="testuser", password="")` | `ssh.test_server` | In-process SSH server on a random localhost port |
+| `ssh.test_key()` | struct with `.path` | Generate an ed25519 key pair on disk; returns a struct whose `.path` is the private-key path |
+
+### `ssh.test_server` methods
+
+| Method | Description |
+|--------|-------------|
+| `.start()` | Begin accepting connections. Call before the first client connects |
+| `.shutdown()` | Stop the server and release the port |
+| `.port()` | Return the dynamically assigned listen port (int) |
+| `.addr()` | Return the `host:port` string |
+| `.add_file(path, content, mode="0644")` | Pre-populate a virtual file on the server for download/exec scenarios |
+| `.uploaded(path)` | Return the file uploaded to `path` as `{"path": ..., "content": ..., "mode": ...}`, or `None` |
+| `.handle_exec(fn)` | Register an exec handler: `fn(cmd) -> (stdout, stderr, exit_code)` |
+
+### Example — validate SCP upload in a test
+
+```python
+def test_upload():
+    srv = ssh.test_server(user="u", password="p")
+    srv.start()
+
+    client = ssh.config(
+        hosts=["127.0.0.1"], user="u", password="p",
+        port=srv.port(), host_key_check=False,
+    )
+
+    path = "/tmp/upload_test"
+    write_text(path, "hello")
+    client.upload(path, "/remote/file.txt")
+
+    uploaded = srv.uploaded("/remote/file.txt")
+    assert(uploaded.content == "hello")
+
+    fs.path(path).remove()
+    srv.shutdown()
+```
+
+### Example — authenticate with a generated key
+
+```python
+def test_pubkey_auth():
+    key = ssh.test_key()
+    srv = ssh.test_server(user="deploy")
+    srv.start()
+
+    client = ssh.config(
+        hosts=["127.0.0.1"], user="deploy",
+        key=key.path,
+        port=srv.port(), host_key_check=False,
+    )
+    results = client.exec("echo ok")
+    assert(results[0].ok)
+    srv.shutdown()
+```
+

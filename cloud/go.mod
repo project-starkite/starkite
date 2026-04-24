@@ -1,11 +1,11 @@
-module github.com/vladimirvivien/starkite/cloud
+module github.com/project-starkite/starkite/cloud
 
 go 1.26
 
 require (
 	github.com/spf13/cobra v1.10.2
-	github.com/vladimirvivien/starkite/core v0.0.0
-	github.com/vladimirvivien/starkite/starbase v0.0.0
+	github.com/project-starkite/starkite/core v0.0.0
+	github.com/project-starkite/starkite/starbase v0.0.0
 	github.com/vladimirvivien/startype v0.7.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	gomodules.xyz/jsonpatch/v2 v2.5.0
@@ -69,10 +69,10 @@ require (
 )
 
 replace (
-	github.com/vladimirvivien/starkite/core => ../core
-	github.com/vladimirvivien/starkite/starbase => ../starbase
+	github.com/project-starkite/starkite/core => ../core
+	github.com/project-starkite/starkite/starbase => ../starbase
 )
 
-require github.com/vladimirvivien/starkite/wasm v0.0.0
+require github.com/project-starkite/starkite/wasm v0.0.0
 
-replace github.com/vladimirvivien/starkite/wasm => ../wasm
+replace github.com/project-starkite/starkite/wasm => ../wasm

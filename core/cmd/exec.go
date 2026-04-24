@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/spf13/cobra"
-	"github.com/vladimirvivien/starkite/core/varstore"
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/core/varstore"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 var execCmd = &cobra.Command{

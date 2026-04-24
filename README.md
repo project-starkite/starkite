@@ -20,14 +20,14 @@
 
 ```bash
 # Install via go
-go install github.com/vladimirvivien/starkite@latest
+go install github.com/project-starkite/starkite@latest
 
 # Or build from source
-git clone https://github.com/vladimirvivien/starkite.git
+git clone https://github.com/project-starkite/starkite.git
 cd starkite && go build -o kite .
 ```
 
-Download pre-built binaries from [GitHub Releases](https://github.com/vladimirvivien/starkite/releases).
+Download pre-built binaries from [GitHub Releases](https://github.com/project-starkite/starkite/releases).
 
 ## Quick Start
 

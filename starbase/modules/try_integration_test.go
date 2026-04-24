@@ -8,16 +8,16 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
-	b64 "github.com/vladimirvivien/starkite/starbase/modules/base64"
-	csvmod "github.com/vladimirvivien/starkite/starbase/modules/csv"
-	"github.com/vladimirvivien/starkite/starbase/modules/fs"
-	"github.com/vladimirvivien/starkite/starbase/modules/http"
-	iomod "github.com/vladimirvivien/starkite/starbase/modules/io"
-	jsonmod "github.com/vladimirvivien/starkite/starbase/modules/json"
-	osmod "github.com/vladimirvivien/starkite/starbase/modules/os"
-	"github.com/vladimirvivien/starkite/starbase/modules/ssh"
-	yamlmod "github.com/vladimirvivien/starkite/starbase/modules/yaml"
+	"github.com/project-starkite/starkite/starbase"
+	b64 "github.com/project-starkite/starkite/starbase/modules/base64"
+	csvmod "github.com/project-starkite/starkite/starbase/modules/csv"
+	"github.com/project-starkite/starkite/starbase/modules/fs"
+	"github.com/project-starkite/starkite/starbase/modules/http"
+	iomod "github.com/project-starkite/starkite/starbase/modules/io"
+	jsonmod "github.com/project-starkite/starkite/starbase/modules/json"
+	osmod "github.com/project-starkite/starkite/starbase/modules/os"
+	"github.com/project-starkite/starkite/starbase/modules/ssh"
+	yamlmod "github.com/project-starkite/starkite/starbase/modules/yaml"
 )
 
 // =============================================================================

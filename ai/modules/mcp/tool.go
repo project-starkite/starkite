@@ -9,8 +9,8 @@ import (
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/ai/modules/genai"
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/ai/modules/genai"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // buildToolHandler returns the callback MCP invokes when a connected client

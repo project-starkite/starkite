@@ -457,28 +457,28 @@ var (
 	_ starlark.HasAttrs = (*StarlarkTestServer)(nil)
 )
 
-func (s *StarlarkTestServer) String() string        { return "<ssh.testserver>" }
-func (s *StarlarkTestServer) Type() string          { return "ssh.testserver" }
+func (s *StarlarkTestServer) String() string        { return "<ssh.test_server>" }
+func (s *StarlarkTestServer) Type() string          { return "ssh.test_server" }
 func (s *StarlarkTestServer) Freeze()               {}
 func (s *StarlarkTestServer) Truth() starlark.Bool  { return starlark.True }
-func (s *StarlarkTestServer) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable: ssh.testserver") }
+func (s *StarlarkTestServer) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable: ssh.test_server") }
 
 func (s *StarlarkTestServer) Attr(name string) (starlark.Value, error) {
 	switch name {
 	case "start":
-		return starlark.NewBuiltin("ssh.testserver.start", s.startMethod), nil
+		return starlark.NewBuiltin("ssh.test_server.start", s.startMethod), nil
 	case "shutdown":
-		return starlark.NewBuiltin("ssh.testserver.shutdown", s.shutdownMethod), nil
+		return starlark.NewBuiltin("ssh.test_server.shutdown", s.shutdownMethod), nil
 	case "port":
-		return starlark.NewBuiltin("ssh.testserver.port", s.portMethod), nil
+		return starlark.NewBuiltin("ssh.test_server.port", s.portMethod), nil
 	case "addr":
-		return starlark.NewBuiltin("ssh.testserver.addr", s.addrMethod), nil
+		return starlark.NewBuiltin("ssh.test_server.addr", s.addrMethod), nil
 	case "add_file":
-		return starlark.NewBuiltin("ssh.testserver.add_file", s.addFileMethod), nil
+		return starlark.NewBuiltin("ssh.test_server.add_file", s.addFileMethod), nil
 	case "uploaded":
-		return starlark.NewBuiltin("ssh.testserver.uploaded", s.uploadedMethod), nil
+		return starlark.NewBuiltin("ssh.test_server.uploaded", s.uploadedMethod), nil
 	case "handle_exec":
-		return starlark.NewBuiltin("ssh.testserver.handle_exec", s.handleExecMethod), nil
+		return starlark.NewBuiltin("ssh.test_server.handle_exec", s.handleExecMethod), nil
 	}
 	return nil, nil
 }
@@ -489,7 +489,7 @@ func (s *StarlarkTestServer) AttrNames() []string {
 
 func (s *StarlarkTestServer) startMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if err := s.server.Start(); err != nil {
-		return nil, fmt.Errorf("ssh.testserver.start: %w", err)
+		return nil, fmt.Errorf("ssh.test_server.start: %w", err)
 	}
 	return starlark.None, nil
 }
@@ -549,7 +549,7 @@ func (s *StarlarkTestServer) addFileMethod(thread *starlark.Thread, fn *starlark
 	}
 
 	if path == "" {
-		return nil, fmt.Errorf("ssh.testserver.add_file: path is required")
+		return nil, fmt.Errorf("ssh.test_server.add_file: path is required")
 	}
 
 	s.server.AddFile(path, []byte(content), mode)
@@ -558,11 +558,11 @@ func (s *StarlarkTestServer) addFileMethod(thread *starlark.Thread, fn *starlark
 
 func (s *StarlarkTestServer) uploadedMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) != 1 {
-		return nil, fmt.Errorf("ssh.testserver.uploaded: expected 1 argument (path)")
+		return nil, fmt.Errorf("ssh.test_server.uploaded: expected 1 argument (path)")
 	}
 	path, ok := starlark.AsString(args[0])
 	if !ok {
-		return nil, fmt.Errorf("ssh.testserver.uploaded: path must be a string")
+		return nil, fmt.Errorf("ssh.test_server.uploaded: path must be a string")
 	}
 
 	f := s.server.Uploaded(path)
@@ -579,11 +579,11 @@ func (s *StarlarkTestServer) uploadedMethod(thread *starlark.Thread, fn *starlar
 
 func (s *StarlarkTestServer) handleExecMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) != 1 {
-		return nil, fmt.Errorf("ssh.testserver.handle_exec: expected 1 argument (callable)")
+		return nil, fmt.Errorf("ssh.test_server.handle_exec: expected 1 argument (callable)")
 	}
 	callable, ok := args[0].(starlark.Callable)
 	if !ok {
-		return nil, fmt.Errorf("ssh.testserver.handle_exec: argument must be callable")
+		return nil, fmt.Errorf("ssh.test_server.handle_exec: argument must be callable")
 	}
 
 	s.server.HandleExec(func(cmd string) (string, string, int) {
@@ -607,7 +607,7 @@ func (s *StarlarkTestServer) handleExecMethod(thread *starlark.Thread, fn *starl
 }
 
 // testserverFactory creates a StarlarkTestServer.
-// Usage: ssh.testserver(user="testuser", password="pass")
+// Usage: ssh.test_server(user="testuser", password="pass")
 func (m *Module) testserverFactory(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var user, password string
 	user = "testuser"
@@ -627,7 +627,7 @@ func (m *Module) testserverFactory(thread *starlark.Thread, fn *starlark.Builtin
 
 	ts, err := NewTestServer()
 	if err != nil {
-		return nil, fmt.Errorf("ssh.testserver: %w", err)
+		return nil, fmt.Errorf("ssh.test_server: %w", err)
 	}
 
 	if password != "" {

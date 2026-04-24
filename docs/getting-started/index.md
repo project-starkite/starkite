@@ -10,7 +10,7 @@ weight: 1
 
 ```bash
 # Clone the repository
-git clone https://github.com/vladimirvivien/starkite.git
+git clone https://github.com/project-starkite/starkite.git
 cd starkite
 
 # Build the base edition
@@ -22,7 +22,7 @@ go build -o kite-cloud ./cmd/cloud/starkite/
 
 ### From GitHub Releases
 
-Download the latest binary for your platform from [GitHub Releases](https://github.com/vladimirvivien/starkite/releases).
+Download the latest binary for your platform from [GitHub Releases](https://github.com/project-starkite/starkite/releases).
 
 Available binaries:
 - `kite-linux-amd64`, `kite-linux-arm64`
@@ -33,7 +33,7 @@ Available binaries:
 ### Via `go install`
 
 ```bash
-go install github.com/vladimirvivien/starkite@latest
+go install github.com/project-starkite/starkite@latest
 ```
 
 ## Verify Installation

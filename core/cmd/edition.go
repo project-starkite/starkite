@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"github.com/vladimirvivien/starkite/core/edition"
-	"github.com/vladimirvivien/starkite/core/version"
+	"github.com/project-starkite/starkite/core/edition"
+	"github.com/project-starkite/starkite/core/version"
 )
 
 var editionCmd = &cobra.Command{

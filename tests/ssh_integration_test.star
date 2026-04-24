@@ -2,7 +2,7 @@
 
 def test_exec_basic():
     """Test basic exec with password auth."""
-    srv = ssh.testserver(user="testuser", password="testpass")
+    srv = ssh.test_server(user="testuser", password="testpass")
     srv.handle_exec(lambda cmd: ("hello\n", "", 0))
     srv.start()
 
@@ -23,7 +23,7 @@ def test_exec_basic():
 
 def test_exec_nonzero_exit():
     """Test exec returning non-zero exit code."""
-    srv = ssh.testserver(user="testuser", password="pass")
+    srv = ssh.test_server(user="testuser", password="pass")
     srv.handle_exec(lambda cmd: ("", "error\n", 1))
     srv.start()
 
@@ -40,7 +40,7 @@ def test_exec_nonzero_exit():
 def test_exec_with_key_auth():
     """Test exec with public key authentication."""
     key = ssh.test_key()
-    srv = ssh.testserver(user="deploy")
+    srv = ssh.test_server(user="deploy")
     srv.handle_exec(lambda cmd: ("ok\n", "", 0))
     srv.start()
 
@@ -55,7 +55,7 @@ def test_exec_with_key_auth():
 
 def test_exec_multi_host():
     """Test exec on multiple hosts (same server)."""
-    srv = ssh.testserver(user="u", password="p")
+    srv = ssh.test_server(user="u", password="p")
     srv.handle_exec(lambda cmd: ("ok\n", "", 0))
     srv.start()
 
@@ -72,7 +72,7 @@ def test_exec_multi_host():
 
 def test_try_exec():
     """Test try_exec returns Result wrapper."""
-    srv = ssh.testserver(user="u", password="p")
+    srv = ssh.test_server(user="u", password="p")
     srv.handle_exec(lambda cmd: ("ok\n", "", 0))
     srv.start()
 
@@ -86,7 +86,7 @@ def test_try_exec():
 
 def test_upload():
     """Test SCP upload."""
-    srv = ssh.testserver(user="u", password="p")
+    srv = ssh.test_server(user="u", password="p")
     srv.start()
 
     # Create a local temp file
@@ -106,12 +106,12 @@ def test_upload():
     assert(uploaded != None, "server should have received file")
     assert(uploaded.content == "upload content", "content should match, got: %s" % uploaded.content)
 
-    remove(path)
+    fs.path(path).remove()
     srv.shutdown()
 
 def test_download():
     """Test SCP download."""
-    srv = ssh.testserver(user="u", password="p")
+    srv = ssh.test_server(user="u", password="p")
     srv.add_file("/remote/data.txt", "download content", "0644")
     srv.start()
 
@@ -127,12 +127,19 @@ def test_download():
     content = read_text(local_path)
     assert(content == "download content", "downloaded content should match, got: %s" % content)
 
-    remove(local_path)
+    fs.path(local_path).remove()
     srv.shutdown()
 
 def test_auth_failure():
     """Test authentication failure with wrong password."""
-    srv = ssh.testserver(user="u", password="correct")
+    # Prevent falling through to SSH-agent auth on dev machines with
+    # SSH_AUTH_SOCK set — the test server accepts any key when no
+    # authorized_keys are configured, so agent auth would succeed and
+    # defeat the point of the test.
+    saved = os.env("SSH_AUTH_SOCK")
+    os.setenv("SSH_AUTH_SOCK", "")
+
+    srv = ssh.test_server(user="u", password="correct")
     srv.start()
 
     client = ssh.config(
@@ -142,3 +149,6 @@ def test_auth_failure():
     r = client.try_exec("test")
     assert(r.ok == False, "should fail with wrong password")
     srv.shutdown()
+
+    # Restore
+    os.setenv("SSH_AUTH_SOCK", saved)

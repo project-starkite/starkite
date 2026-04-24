@@ -11,9 +11,9 @@ import (
 	"github.com/spf13/cobra"
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/cloud/loader"
-	"github.com/vladimirvivien/starkite/core/varstore"
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/cloud/loader"
+	"github.com/project-starkite/starkite/core/varstore"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 //go:embed gen_controller.star

@@ -273,6 +273,12 @@ func TestSCPDownloadNotFound(t *testing.T) {
 }
 
 func TestAuthFailure(t *testing.T) {
+	// Prevent falling through to SSH-agent auth on dev machines with
+	// SSH_AUTH_SOCK set — the test server accepts any key when no
+	// authorized_keys are configured, so agent auth would succeed and
+	// defeat the point of the test.
+	t.Setenv("SSH_AUTH_SOCK", "")
+
 	ts := newTestServerForTest(t)
 	ts.AddPassword("testuser", "correct")
 

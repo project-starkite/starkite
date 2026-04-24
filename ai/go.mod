@@ -1,4 +1,4 @@
-module github.com/vladimirvivien/starkite/ai
+module github.com/project-starkite/starkite/ai
 
 go 1.26
 
@@ -8,9 +8,9 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.5.0
 	github.com/openai/openai-go v1.12.0
 	github.com/spf13/cobra v1.10.2
-	github.com/vladimirvivien/starkite/core v0.0.0
-	github.com/vladimirvivien/starkite/starbase v0.0.0
-	github.com/vladimirvivien/starkite/wasm v0.0.0
+	github.com/project-starkite/starkite/core v0.0.0
+	github.com/project-starkite/starkite/starbase v0.0.0
+	github.com/project-starkite/starkite/wasm v0.0.0
 	github.com/vladimirvivien/startype v0.7.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 )
@@ -77,7 +77,7 @@ require (
 )
 
 replace (
-	github.com/vladimirvivien/starkite/core => ../core
-	github.com/vladimirvivien/starkite/starbase => ../starbase
-	github.com/vladimirvivien/starkite/wasm => ../wasm
+	github.com/project-starkite/starkite/core => ../core
+	github.com/project-starkite/starkite/starbase => ../starbase
+	github.com/project-starkite/starkite/wasm => ../wasm
 )

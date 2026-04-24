@@ -3,10 +3,10 @@ package main
 import (
 	"os"
 
-	cloudcmd "github.com/vladimirvivien/starkite/cloud/cmd"
-	"github.com/vladimirvivien/starkite/cloud/loader"
-	corecmd "github.com/vladimirvivien/starkite/core/cmd"
-	"github.com/vladimirvivien/starkite/core/version"
+	cloudcmd "github.com/project-starkite/starkite/cloud/cmd"
+	"github.com/project-starkite/starkite/cloud/loader"
+	corecmd "github.com/project-starkite/starkite/core/cmd"
+	"github.com/project-starkite/starkite/core/version"
 )
 
 func init() {

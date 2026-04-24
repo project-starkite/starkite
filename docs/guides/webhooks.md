@@ -224,7 +224,7 @@ kubectl create secret tls myapp-webhook-tls \
 
 ## Examples
 
-See [`examples/cloud/webhook/`](https://github.com/vladimirvivien/starkite/tree/main/examples/cloud/webhook) for complete working examples:
+See [`examples/cloud/webhook/`](https://github.com/project-starkite/starkite/tree/main/examples/cloud/webhook) for complete working examples:
 
 - `validate-replicas.star` — reject deployments with too many replicas
 - `mutate-labels.star` — inject default labels into deployments

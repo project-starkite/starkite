@@ -10,9 +10,9 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
-	"github.com/vladimirvivien/starkite/core/edition"
-	"github.com/vladimirvivien/starkite/core/version"
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/core/edition"
+	"github.com/project-starkite/starkite/core/version"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 var (
@@ -23,7 +23,6 @@ var (
 	timeout      int
 	variables    []string
 	varFiles     []string
-	envFile      string
 
 	// Permission flags
 	trustMode   bool
@@ -72,7 +71,6 @@ func init() {
 	rootCmd.PersistentFlags().IntVar(&timeout, "timeout", 300, "Script execution timeout in seconds")
 	rootCmd.PersistentFlags().StringArrayVar(&variables, "var", nil, "Set script variable: --var key=value")
 	rootCmd.PersistentFlags().StringArrayVar(&varFiles, "var-file", nil, "Load variables from YAML file: --var-file=values.yaml")
-	rootCmd.PersistentFlags().StringVar(&envFile, "env", "", "Load environment file")
 
 	// Permission flags
 	rootCmd.PersistentFlags().BoolVar(&trustMode, "trust", false, "Trust mode: allow all operations (default)")

@@ -9,8 +9,8 @@ import (
 
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
-	"github.com/vladimirvivien/starkite/starbase/loader"
+	"github.com/project-starkite/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase/loader"
 )
 
 // newRuntimeWithModules builds a Runtime with the full loader registry.

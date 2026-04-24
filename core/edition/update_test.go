@@ -10,7 +10,7 @@ import (
 	"runtime"
 	"testing"
 
-	"github.com/vladimirvivien/starkite/core/version"
+	"github.com/project-starkite/starkite/core/version"
 )
 
 func TestLatestVersion(t *testing.T) {
@@ -199,7 +199,7 @@ func TestDownloadAndReplaceHTTPError(t *testing.T) {
 func TestDownloadURLForVersion(t *testing.T) {
 	url := downloadURLForVersion("cloud", "0.3.0")
 	expected := fmt.Sprintf(
-		"https://github.com/vladimirvivien/starkite/releases/download/v0.3.0/kite-cloud-%s-%s",
+		"https://github.com/project-starkite/starkite/releases/download/v0.3.0/kite-cloud-%s-%s",
 		runtime.GOOS, runtime.GOARCH,
 	)
 	if url != expected {
@@ -209,7 +209,7 @@ func TestDownloadURLForVersion(t *testing.T) {
 
 func TestChecksumURLForVersion(t *testing.T) {
 	url := checksumURLForVersion("0.3.0")
-	expected := "https://github.com/vladimirvivien/starkite/releases/download/v0.3.0/checksums.txt"
+	expected := "https://github.com/project-starkite/starkite/releases/download/v0.3.0/checksums.txt"
 	if url != expected {
 		t.Errorf("checksumURLForVersion = %q, want %q", url, expected)
 	}

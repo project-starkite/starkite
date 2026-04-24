@@ -102,7 +102,7 @@ var templates = map[string][]TemplateFile{
 		{
 			Name: "config.yaml",
 			Content: `# starkite project configuration
-# See: https://github.com/vladimirvivien/starkite
+# See: https://github.com/project-starkite/starkite
 
 project:
   name: my-project

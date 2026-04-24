@@ -15,17 +15,45 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
+          cache-dependency-path: |
+            starbase/go.sum
+            core/go.sum
+            cloud/go.sum
+            ai/go.sum
+            wasm/go.sum
 
-      - name: Strip replace directive
-        run: |
-          go mod edit -dropreplace=github.com/vladimirvivien/startype
-          go mod tidy
-
-      - name: Build base
+      - name: Build starbase
         run: go build -v ./...
+        working-directory: starbase
+
+      - name: Build core
+        run: go build -v ./...
+        working-directory: core
 
       - name: Build cloud
-        run: go build -v ./cmd/cloud/starkite/
+        run: go build -v ./...
+        working-directory: cloud
 
-      - name: Test
-        run: go test -v ./...
+      - name: Build ai
+        run: go build -v ./...
+        working-directory: ai
+
+      - name: Build wasm
+        run: go build -v ./...
+        working-directory: wasm
+
+      - name: Test starbase
+        run: go test -race ./...
+        working-directory: starbase
+
+      - name: Test core
+        run: go test -race ./...
+        working-directory: core
+
+      - name: Test cloud
+        run: go test -race ./...
+        working-directory: cloud
+
+      - name: Test ai
+        run: go test -race ./...
+        working-directory: ai

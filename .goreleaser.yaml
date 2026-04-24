@@ -17,9 +17,9 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/vladimirvivien/starkite/core/version.Version={{.Version}}
-      - -X github.com/vladimirvivien/starkite/core/version.BuildTime={{.Date}}
-      - -X github.com/vladimirvivien/starkite/core/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/core/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/core/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/core/version.GitCommit={{.Commit}}
 
   - id: kite-cloud
     dir: ./cloud
@@ -37,10 +37,10 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/vladimirvivien/starkite/core/version.Version={{.Version}}
-      - -X github.com/vladimirvivien/starkite/core/version.BuildTime={{.Date}}
-      - -X github.com/vladimirvivien/starkite/core/version.GitCommit={{.Commit}}
-      - -X github.com/vladimirvivien/starkite/core/version.Edition=cloud
+      - -X github.com/project-starkite/starkite/core/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/core/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/core/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/core/version.Edition=cloud
 
   - id: kite-ai
     dir: ./ai
@@ -58,10 +58,10 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/vladimirvivien/starkite/core/version.Version={{.Version}}
-      - -X github.com/vladimirvivien/starkite/core/version.BuildTime={{.Date}}
-      - -X github.com/vladimirvivien/starkite/core/version.GitCommit={{.Commit}}
-      - -X github.com/vladimirvivien/starkite/core/version.Edition=ai
+      - -X github.com/project-starkite/starkite/core/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/core/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/core/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/core/version.Edition=ai
 
 archives:
   - id: kite

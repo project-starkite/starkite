@@ -11,7 +11,7 @@ import (
 	"go.starlark.net/starlarkstruct"
 	"golang.org/x/crypto/ssh"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 // exec executes a command on remote hosts.

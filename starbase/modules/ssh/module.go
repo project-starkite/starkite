@@ -11,7 +11,7 @@ import (
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 
-	"github.com/vladimirvivien/starkite/starbase"
+	"github.com/project-starkite/starkite/starbase"
 )
 
 const ModuleName starbase.ModuleName = "ssh"
@@ -38,7 +38,7 @@ func (m *Module) Load(config *starbase.ModuleConfig) (starlark.StringDict, error
 			"config": starlark.NewBuiltin("ssh.config", m.sshConfig),
 		}
 		if config != nil && config.TestMode {
-			members["testserver"] = starlark.NewBuiltin("ssh.testserver", m.testserverFactory)
+			members["test_server"] = starlark.NewBuiltin("ssh.test_server", m.testserverFactory)
 			members["test_key"] = starlark.NewBuiltin("ssh.test_key", m.testKeyFactory)
 		}
 		m.module = starbase.NewTryModule(string(ModuleName), members)
