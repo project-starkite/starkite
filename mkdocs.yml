@@ -9,6 +9,8 @@ repo_url: https://github.com/project-starkite/starkite
 theme:
   name: material
   custom_dir: docs/overrides
+  logo: assets/images/starkite-logo-bg.png
+  favicon: assets/images/starkite-logo-bg.png
   palette:
     - media: "(prefers-color-scheme: light)"
       scheme: default
