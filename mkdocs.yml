@@ -12,20 +12,9 @@ theme:
   logo: assets/images/starkite-logo-bg.png
   favicon: assets/images/starkite-logo-bg.png
   palette:
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: cyan
-      accent: indigo
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: cyan
-      accent: indigo
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
+    scheme: default
+    primary: cyan
+    accent: indigo
   features:
     - navigation.tabs
     - navigation.sections
@@ -66,7 +55,6 @@ extra_css:
   - assets/stylesheets/extra.css
 
 nav:
-  - Home: index.md
   - Getting Started: getting-started/index.md
   - CLI:
     - Overview: cli/index.md

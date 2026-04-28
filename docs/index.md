@@ -1,6 +1,9 @@
 ---
 title: Home
-description: "Batteries-included scriptable automation for cloud-native and AI workflows with Starlark"
+description: "Secure cloud-native and agentic AI workload automation with Starlark"
 weight: 1
 template: home.html
+hide:
+  - navigation
+  - toc
 ---
