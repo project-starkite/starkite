@@ -93,9 +93,9 @@
   <div class="md-grid md-typeset">
     <div class="tx-hero">
       <div class="tx-hero__content">
-        <img src="assets/images/starkite-2.png" alt="Starkite" style="max-width: 300px; margin: 0.8rem;">
-        <h1>Starkite</h1>
-        <h3><strong>Secure Cloud-Native and Agentic AI<br>Automation with Starlark</strong></h3>
+        <img src="assets/images/starkite-logo.svg" alt="Starkite" style="max-height: 300px; margin: 0.3rem;">
+        
+        <h3><strong>Secure Runtime for Cloud-Native and Agentic AI Automation with Starlark</strong></h3>
         <a href="getting-started/" class="md-button">
           Get Started
         </a>
@@ -117,14 +117,12 @@
 
 {% block content %}
 <style>
-  /* Sidebars are hidden on this page — keep content readable on wide viewports */
   .md-content__inner {
     max-width: 60rem;
     margin: 0 auto;
     padding: 0.25rem 1rem 0;
   }
 
-  /* Pull content snug against the hero — kill md-main padding too */
   .md-main__inner {
     margin-top: 0;
   }
@@ -195,7 +193,6 @@
     opacity: 0.8;
   }
 
-  /* Terminal-style code card — matches the hero's deep navy */
   .terminal {
     border-radius: 0.5rem;
     overflow: hidden;
@@ -277,7 +274,9 @@
 </style>
 
 <h3>Starkite examples</h3>
-<p>Starkite modules can interact with local machines, automate Kubernetes workload, create SSH/HTTP client/servers, and build AI agents.</p>
+<p>See how Starkite can automate local tasks,  
+  work with Kubernetes workloads, create HTTP/SSH clients and servers, 
+  and build agentic AI workflows.</p>
 <section class="examples-section">
   <div class="example-tabs">
     <input type="radio" id="ex-core" name="ex" checked>
@@ -452,6 +451,92 @@ def test_list_length():
   </div>
 </section>
 
+<style>
+  .run-section {
+    margin: 2rem 0;
+  }
+
+  .run-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 1rem;
+  }
+
+  .run-card h4 {
+    margin: 0 0 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  .run-card p {
+    margin: 0 0 0.6rem;
+    font-size: 0.85rem;
+    color: var(--md-typeset-color);
+    opacity: 0.8;
+  }
+
+  .run-card .terminal pre {
+    margin: 0;
+    padding: 0.85rem 1rem;
+    background: #0a1628;
+    color: #e6edf3;
+    font-size: 0.85rem;
+    line-height: 1.55;
+    overflow-x: auto;
+  }
+
+  .run-card .terminal pre code {
+    background: transparent;
+    color: inherit;
+    padding: 0;
+    font-family: var(--md-code-font-family);
+  }
+</style>
+
+<h3>Two ways to run a script</h3>
+<section class="run-section">
+  <div class="run-grid">
+    <div class="run-card">
+      <h4>1. Run via the <code>kite</code> CLI</h4>
+      <p>Pass any <code>.star</code> file to <code>kite run</code> (or use the implicit shorthand). Best for ad-hoc invocation, CI pipelines, and passing variables.</p>
+      <div class="terminal">
+        <div class="terminal__bar">
+          <span class="terminal__dot terminal__dot--red"></span>
+          <span class="terminal__dot terminal__dot--yellow"></span>
+          <span class="terminal__dot terminal__dot--green"></span>
+          <span class="terminal__title">shell</span>
+        </div>
+        <pre><code class="language-bash">$ kite run deploy.star
+
+# shorthand — `run` is implicit
+$ kite deploy.star --var image_tag=v1.0.0
+
+# pipe results to other tools
+$ kite manifest.star | kubectl apply -f -</code></pre>
+      </div>
+    </div>
+
+    <div class="run-card">
+      <h4>2. Execute directly via shebang</h4>
+      <p>Add <code>#!/usr/bin/env kite</code> at the top, mark the file executable, and run it like any other script — no <code>kite</code> prefix needed.</p>
+      <div class="terminal">
+        <div class="terminal__bar">
+          <span class="terminal__dot terminal__dot--red"></span>
+          <span class="terminal__dot terminal__dot--yellow"></span>
+          <span class="terminal__dot terminal__dot--green"></span>
+          <span class="terminal__title">shell</span>
+        </div>
+        <pre><code class="language-bash">$ cat deploy.star
+#!/usr/bin/env kite
+print("rolling out v1.0.0")
+
+$ chmod +x deploy.star
+$ ./deploy.star
+rolling out v1.0.0</code></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
 
 <style>
   .feature-grid {
@@ -559,7 +644,7 @@ def test_list_length():
       </svg>
       25+ Built-in Modules
     </h3>
-    <p>File I/O, HTTP, SSH, JSON, YAML, templates, concurrency, retry, and more — batteries included.</p>
+    <p>File I/O, HTTP, SSH, JSON/YAML, string/text, concurrency, os, time, and more.</p>
   </div>
   <div class="feature-card">
     <h3>
@@ -568,7 +653,7 @@ def test_list_length():
       </svg>
       Kubernetes Native
     </h3>
-    <p>First-class k8s module in the Cloud edition: deploy, scale, rollout, and apply manifests with zero YAML.</p>
+    <p>Kubernetes primitives for first-class programmatic support: apply, deploy, scale, rollout, run, exec, and more.</p>
   </div>
   <div class="feature-card">
     <h3>
@@ -577,7 +662,7 @@ def test_list_length():
       </svg>
       Agentic AI
     </h3>
-    <p>Build agents with MCP servers, multi-provider LLM clients, and tool calling — Anthropic, OpenAI, and Gemini, batteries included.</p>
+    <p>Build agentic workflows with MCP servers, multi-provider LLM clients, and tool calling.</p>
   </div>
   <div class="feature-card">
     <h3>
@@ -586,7 +671,7 @@ def test_list_length():
       </svg>
       Safe by Default
     </h3>
-    <p>Sandbox mode restricts dangerous operations. Trust mode allows everything. Fine-grained allow/deny rules.</p>
+    <p>Scripts can be sandboxed with fine-grained restriction policies or marked as trusted.</p>
   </div>
 </div>
 
@@ -629,8 +714,9 @@ go build -o kite .</code></pre>
 <!-- Syntax highlighting for the Examples terminal blocks (home page only). -->
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/python.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/bash.min.js"></script>
 <script>
-  document.querySelectorAll('.example-pane .terminal pre code').forEach(el => {
+  document.querySelectorAll('.example-pane .terminal pre code, .run-card .terminal pre code').forEach(el => {
     if (typeof hljs !== 'undefined') {
       hljs.highlightElement(el);
     }

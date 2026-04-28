@@ -9,8 +9,8 @@ repo_url: https://github.com/project-starkite/starkite
 theme:
   name: material
   custom_dir: docs/overrides
-  logo: assets/images/starkite-logo-bg.png
-  favicon: assets/images/starkite-logo-bg.png
+  logo: assets/images/starkite-logo-small-bg.png
+  favicon: assets/images/starkite-logo-small-bg.png
   palette:
     scheme: default
     primary: cyan
