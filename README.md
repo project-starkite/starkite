@@ -1,4 +1,7 @@
-# starkite — Automation Language
+<p align="center">
+    <img src="./docs/assets/images/starkite-logo.svg" alt="Starkite" width="500">
+    <h3 align="center"> Secure Runtime for Cloud-Native and Agentic AI Automation with Starlark </h3> 
+</p>
 
 **starkite** is an automation language built on [Starlark](https://github.com/google/starlark-go) (a Python-like language). It exposes Go's standard library as type-safe, scriptable Starlark modules — providing a unified interface for general-purpose, cloud-native, and GenAI agent automation.
 
