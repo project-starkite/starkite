@@ -1,9 +1,9 @@
 site_name: Starkite
-site_description: An automation language that exposes Go's standard library as type-safe Starlark modules
+site_description: A secure runtime for cloud-native and agentic AI automation with Starlark
 site_author: Vladimir Vivien
 site_url: https://starkite.dev/
 
-repo_name: vladimirvivien/starkite
+repo_name: project-starkite/starkite
 repo_url: https://github.com/project-starkite/starkite
 
 theme:

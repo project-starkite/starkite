@@ -76,16 +76,16 @@
   }
 
   .tx-hero .md-button--primary {
-    background-color: var(--md-primary-bg-color);
-    color: var(--md-primary-fg-color);
-    border-color: var(--md-primary-bg-color);
+    background-color: var(--md-accent-fg-color);
+    color: var(--md-primary-bg-color);
+    border-color: var(--md-accent-fg-color);
   }
 
   .tx-hero .md-button--primary:focus,
   .tx-hero .md-button--primary:hover {
-    background-color: var(--md-accent-fg-color);
-    color: var(--md-primary-bg-color);
-    border-color: var(--md-accent-fg-color);
+    background-color: var(--md-primary-bg-color);
+    color: var(--md-primary-fg-color);
+    border-color: var(--md-primary-bg-color);
   }
 </style>
 
@@ -94,8 +94,8 @@
     <div class="tx-hero">
       <div class="tx-hero__content">
         <img src="assets/images/starkite-logo.svg" alt="Starkite" style="max-height: 300px; margin: 0.3rem;">
-        
         <h3><strong>Secure Runtime for Cloud-Native and Agentic AI Automation with Starlark</strong></h3>
+
         <a href="getting-started/" class="md-button">
           Get Started
         </a>
@@ -116,6 +116,144 @@
 {% endblock %}
 
 {% block content %}
+
+<style>
+  .feature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 1.5rem;
+    margin: 2rem 0;
+  }
+
+  .feature-card {
+    padding: 1.5rem;
+    border-radius: 0.5rem;
+    background: var(--md-code-bg-color);
+    border: 1px solid var(--md-typeset-table-color);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .feature-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  }
+
+  .feature-card h3 {
+    margin-top: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .feature-card h3 svg {
+    width: 1.2em;
+    height: 1.2em;
+    fill: currentColor;
+    flex-shrink: 0;
+  }
+
+  .feature-card p {
+    margin-bottom: 0;
+    color: var(--md-typeset-color);
+    opacity: 0.8;
+  }
+
+  .install-section {
+    margin: 3rem 0;
+  }
+
+  .install-tabs {
+    display: flex;
+    gap: 0;
+    border-bottom: 1px solid var(--md-typeset-table-color);
+    margin-bottom: 1rem;
+  }
+
+  .install-tabs input[type="radio"] {
+    display: none;
+  }
+
+  .install-tabs label {
+    padding: 0.75rem 1.25rem;
+    cursor: pointer;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    color: var(--md-typeset-color);
+    opacity: 0.7;
+    transition: opacity 0.2s, border-color 0.2s;
+  }
+
+  .install-tabs label:hover {
+    opacity: 1;
+  }
+
+  .install-tabs input[type="radio"]:checked+label {
+    border-bottom-color: var(--md-accent-fg-color);
+    opacity: 1;
+  }
+
+  .install-content {
+    display: none;
+    padding: 1rem 0;
+  }
+
+  .install-content.active {
+    display: block;
+  }
+
+  .install-content pre {
+    margin: 0;
+    padding: 1rem;
+    background: var(--md-code-bg-color);
+    border-radius: 0.25rem;
+    overflow-x: auto;
+  }
+
+  .install-content code {
+    font-family: var(--md-code-font-family);
+  }
+</style>
+
+<h2>Features</h2>
+<div class="feature-grid">
+  <div class="feature-card">
+    <h3>
+      <svg viewBox="0 0 24 24">
+        <path d="M17,17H7V7H17M21,11V9H19V7C19,5.89 18.1,5 17,5H15V3H13V5H11V3H9V5H7C5.89,5 5,5.89 5,7V9H3V11H5V13H3V15H5V17A2,2 0 0,0 7,19H9V21H11V19H13V21H15V19H17A2,2 0 0,0 19,17V15H21V13H19V11M15,15H9V9H15V15Z" />
+      </svg>
+      25+ Built-in Modules
+    </h3>
+    <p>File I/O, HTTP, SSH, JSON/YAML, string/text, concurrency, os, time, and more.</p>
+  </div>
+  <div class="feature-card">
+    <h3>
+      <svg viewBox="0 0 24 24">
+        <path d="M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,5C10.31,5 8.77,5.61 7.59,6.61L9.5,8.5C10.21,8.04 11.07,7.78 12,7.78C12.93,7.78 13.79,8.04 14.5,8.5L16.41,6.61C15.23,5.61 13.69,5 12,5M5,12C5,13.69 5.61,15.23 6.61,16.41L8.5,14.5C8.04,13.79 7.78,12.93 7.78,12C7.78,11.07 8.04,10.21 8.5,9.5L6.61,7.59C5.61,8.77 5,10.31 5,12M12,19C13.69,19 15.23,18.39 16.41,17.39L14.5,15.5C13.79,15.96 12.93,16.22 12,16.22C11.07,16.22 10.21,15.96 9.5,15.5L7.59,17.39C8.77,18.39 10.31,19 12,19M19,12C19,10.31 18.39,8.77 17.39,7.59L15.5,9.5C15.96,10.21 16.22,11.07 16.22,12C16.22,12.93 15.96,13.79 15.5,14.5L17.39,16.41C18.39,15.23 19,13.69 19,12M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z" />
+      </svg>
+      Kubernetes Native
+    </h3>
+    <p>Kubernetes primitives for first-class programmatic support: apply, deploy, scale, rollout, run, exec, and more.</p>
+  </div>
+  <div class="feature-card">
+    <h3>
+      <svg viewBox="0 0 24 24">
+        <path d="M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7H14A7,7 0 0,1 21,14H22A1,1 0 0,1 23,15V18A1,1 0 0,1 22,19H21V20A2,2 0 0,1 19,22H5A2,2 0 0,1 3,20V19H2A1,1 0 0,1 1,18V15A1,1 0 0,1 2,14H3A7,7 0 0,1 10,7H11V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7.5,13A2.5,2.5 0 0,0 5,15.5A2.5,2.5 0 0,0 7.5,18A2.5,2.5 0 0,0 10,15.5A2.5,2.5 0 0,0 7.5,13M16.5,13A2.5,2.5 0 0,0 14,15.5A2.5,2.5 0 0,0 16.5,18A2.5,2.5 0 0,0 19,15.5A2.5,2.5 0 0,0 16.5,13Z" />
+      </svg>
+      Agentic AI
+    </h3>
+    <p>Build agentic workflows with MCP servers, multi-provider LLM clients, and tool calling.</p>
+  </div>
+  <div class="feature-card">
+    <h3>
+      <svg viewBox="0 0 24 24">
+        <path d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z" />
+      </svg>
+      Safe by Default
+    </h3>
+    <p>Scripts can be sandboxed with sensible defaults or fine-grained restriction policies.</p>
+  </div>
+</div>
+
 <style>
   .md-content__inner {
     max-width: 60rem;
@@ -273,10 +411,11 @@
   }
 </style>
 
-<h3>Starkite examples</h3>
-<p>See how Starkite can automate local tasks,  
-  work with Kubernetes workloads, create HTTP/SSH clients and servers, 
-  and build agentic AI workflows.</p>
+<h2>Starkite examples</h2>
+<p>Starkite can help automate local tasks,  
+  work with Kubernetes workloads, 
+  build agentic AI workflows,
+  and create HTTP/SSH clients and servers.</p>
 <section class="examples-section">
   <div class="example-tabs">
     <input type="radio" id="ex-core" name="ex" checked>
@@ -296,7 +435,7 @@
     </div>
 
     <div class="example-pane" data-for="ex-core">
-      <h3>Aggregate local system info into a JSON report</h3>
+      <h3>Aggregate system info from local machine into a JSON report</h3>
       <div class="terminal">
         <div class="terminal__bar">
           <span class="terminal__dot terminal__dot--red"></span>
@@ -320,7 +459,7 @@ printf("report written for %s\n", report["host"])
     </div>
 
     <div class="example-pane" data-for="ex-cloud">
-      <h3>Programmatic Kubernetes deployment</h3>
+      <h3>Automate Kubernetes cluster operations</h3>
       <div class="terminal">
         <div class="terminal__bar">
           <span class="terminal__dot terminal__dot--red"></span>
@@ -374,7 +513,7 @@ mcp.serve(
     </div>
 
     <div class="example-pane" data-for="ex-ssh">
-      <h3>Run a command across an SSH fleet</h3>
+      <h3>Run commands across an SSH fleet</h3>
       <div class="terminal">
         <div class="terminal__bar">
           <span class="terminal__dot terminal__dot--red"></span>
@@ -400,7 +539,7 @@ for r in results:
     </div>
 
     <div class="example-pane" data-for="ex-http">
-      <h3>Spin up a tiny JSON API server</h3>
+      <h3>Spin up a JSON API server</h3>
       <div class="terminal">
         <div class="terminal__bar">
           <span class="terminal__dot terminal__dot--red"></span>
@@ -492,7 +631,7 @@ def test_list_length():
   }
 </style>
 
-<h3>Two ways to run a script</h3>
+<h2>Running Starkite Scripts</h2>
 <section class="run-section">
   <div class="run-grid">
     <div class="run-card">
@@ -537,143 +676,40 @@ rolling out v1.0.0</code></pre>
   </div>
 </section>
 
+<h2>Script Security</h2>
+<section class="run-section">
+  <div class="run-grid">
+    <div class="run-card">
+      <h4>Trust mode</h4>
+      <p>Trusted scripts have access to all modules and host operations.</p>
+      <div class="terminal">
+        <div class="terminal__bar">
+          <span class="terminal__dot terminal__dot--red"></span>
+          <span class="terminal__dot terminal__dot--yellow"></span>
+          <span class="terminal__dot terminal__dot--green"></span>
+          <span class="terminal__title">shell</span>
+        </div>
+        <pre><code class="language-bash">$ kite run deploy.star            # script is trusted
+$ kite run deploy.star --trust    # explicit</code></pre>
+      </div>
+    </div>
 
-<style>
-  .feature-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-    gap: 1.5rem;
-    margin: 2rem 0;
-  }
-
-  .feature-card {
-    padding: 1.5rem;
-    border-radius: 0.5rem;
-    background: var(--md-code-bg-color);
-    border: 1px solid var(--md-typeset-table-color);
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-
-  .feature-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
-  }
-
-  .feature-card h3 {
-    margin-top: 0;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .feature-card h3 svg {
-    width: 1.2em;
-    height: 1.2em;
-    fill: currentColor;
-    flex-shrink: 0;
-  }
-
-  .feature-card p {
-    margin-bottom: 0;
-    color: var(--md-typeset-color);
-    opacity: 0.8;
-  }
-
-  .install-section {
-    margin: 3rem 0;
-  }
-
-  .install-tabs {
-    display: flex;
-    gap: 0;
-    border-bottom: 1px solid var(--md-typeset-table-color);
-    margin-bottom: 1rem;
-  }
-
-  .install-tabs input[type="radio"] {
-    display: none;
-  }
-
-  .install-tabs label {
-    padding: 0.75rem 1.25rem;
-    cursor: pointer;
-    border-bottom: 2px solid transparent;
-    margin-bottom: -1px;
-    color: var(--md-typeset-color);
-    opacity: 0.7;
-    transition: opacity 0.2s, border-color 0.2s;
-  }
-
-  .install-tabs label:hover {
-    opacity: 1;
-  }
-
-  .install-tabs input[type="radio"]:checked+label {
-    border-bottom-color: var(--md-accent-fg-color);
-    opacity: 1;
-  }
-
-  .install-content {
-    display: none;
-    padding: 1rem 0;
-  }
-
-  .install-content.active {
-    display: block;
-  }
-
-  .install-content pre {
-    margin: 0;
-    padding: 1rem;
-    background: var(--md-code-bg-color);
-    border-radius: 0.25rem;
-    overflow-x: auto;
-  }
-
-  .install-content code {
-    font-family: var(--md-code-font-family);
-  }
-</style>
-
-<h2>Features</h2>
-<div class="feature-grid">
-  <div class="feature-card">
-    <h3>
-      <svg viewBox="0 0 24 24">
-        <path d="M17,17H7V7H17M21,11V9H19V7C19,5.89 18.1,5 17,5H15V3H13V5H11V3H9V5H7C5.89,5 5,5.89 5,7V9H3V11H5V13H3V15H5V17A2,2 0 0,0 7,19H9V21H11V19H13V21H15V19H17A2,2 0 0,0 19,17V15H21V13H19V11M15,15H9V9H15V15Z" />
-      </svg>
-      25+ Built-in Modules
-    </h3>
-    <p>File I/O, HTTP, SSH, JSON/YAML, string/text, concurrency, os, time, and more.</p>
+    <div class="run-card">
+      <h4>Sandbox mode</h4>
+      <p>Script functionslities are restricted with execution policies.</p>
+      <div class="terminal">
+        <div class="terminal__bar">
+          <span class="terminal__dot terminal__dot--red"></span>
+          <span class="terminal__dot terminal__dot--yellow"></span>
+          <span class="terminal__dot terminal__dot--green"></span>
+          <span class="terminal__title">shell</span>
+        </div>
+        <pre><code class="language-bash">$ kite run untrusted.star --sandbox  
+Error: permission denied: os.exec is not allowed</code></pre>
+      </div>
+    </div>
   </div>
-  <div class="feature-card">
-    <h3>
-      <svg viewBox="0 0 24 24">
-        <path d="M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,5C10.31,5 8.77,5.61 7.59,6.61L9.5,8.5C10.21,8.04 11.07,7.78 12,7.78C12.93,7.78 13.79,8.04 14.5,8.5L16.41,6.61C15.23,5.61 13.69,5 12,5M5,12C5,13.69 5.61,15.23 6.61,16.41L8.5,14.5C8.04,13.79 7.78,12.93 7.78,12C7.78,11.07 8.04,10.21 8.5,9.5L6.61,7.59C5.61,8.77 5,10.31 5,12M12,19C13.69,19 15.23,18.39 16.41,17.39L14.5,15.5C13.79,15.96 12.93,16.22 12,16.22C11.07,16.22 10.21,15.96 9.5,15.5L7.59,17.39C8.77,18.39 10.31,19 12,19M19,12C19,10.31 18.39,8.77 17.39,7.59L15.5,9.5C15.96,10.21 16.22,11.07 16.22,12C16.22,12.93 15.96,13.79 15.5,14.5L17.39,16.41C18.39,15.23 19,13.69 19,12M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z" />
-      </svg>
-      Kubernetes Native
-    </h3>
-    <p>Kubernetes primitives for first-class programmatic support: apply, deploy, scale, rollout, run, exec, and more.</p>
-  </div>
-  <div class="feature-card">
-    <h3>
-      <svg viewBox="0 0 24 24">
-        <path d="M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7H14A7,7 0 0,1 21,14H22A1,1 0 0,1 23,15V18A1,1 0 0,1 22,19H21V20A2,2 0 0,1 19,22H5A2,2 0 0,1 3,20V19H2A1,1 0 0,1 1,18V15A1,1 0 0,1 2,14H3A7,7 0 0,1 10,7H11V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7.5,13A2.5,2.5 0 0,0 5,15.5A2.5,2.5 0 0,0 7.5,18A2.5,2.5 0 0,0 10,15.5A2.5,2.5 0 0,0 7.5,13M16.5,13A2.5,2.5 0 0,0 14,15.5A2.5,2.5 0 0,0 16.5,18A2.5,2.5 0 0,0 19,15.5A2.5,2.5 0 0,0 16.5,13Z" />
-      </svg>
-      Agentic AI
-    </h3>
-    <p>Build agentic workflows with MCP servers, multi-provider LLM clients, and tool calling.</p>
-  </div>
-  <div class="feature-card">
-    <h3>
-      <svg viewBox="0 0 24 24">
-        <path d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z" />
-      </svg>
-      Safe by Default
-    </h3>
-    <p>Scripts can be sandboxed with fine-grained restriction policies or marked as trusted.</p>
-  </div>
-</div>
+</section>
 
 <h2>Quick Install</h2>
 <div class="install-section">
