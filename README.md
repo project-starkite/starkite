@@ -1,5 +1,5 @@
 <p align="center">
-    <img src="./docs/assets/images/starkite-logo.svg" alt="Starkite" width="500">
+    <img src="./docs/assets/images/starkite-logo-banner-bg.png" alt="Starkite" width="550">
     <h3 align="center"> Secure Runtime for Cloud-Native and Agentic AI Automation with Starlark </h3> 
 </p>
 
