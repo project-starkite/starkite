@@ -1,8 +1,70 @@
 version: 2
 
 builds:
+  - id: basekite
+    dir: ./basekite
+    main: .
+    binary: basekite
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
+
+  - id: cloudkite
+    dir: ./cloudkite
+    main: .
+    binary: cloudkite
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/basekite/version.Edition=cloud
+
+  - id: aikite
+    dir: ./aikite
+    main: .
+    binary: aikite
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/basekite/version.Edition=ai
+
   - id: kite
-    dir: ./core
+    dir: ./allkite
     main: .
     binary: kite
     goos:
@@ -17,101 +79,39 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/project-starkite/starkite/core/version.Version={{.Version}}
-      - -X github.com/project-starkite/starkite/core/version.BuildTime={{.Date}}
-      - -X github.com/project-starkite/starkite/core/version.GitCommit={{.Commit}}
-
-  - id: kite-cloud
-    dir: ./cloud
-    main: .
-    binary: kite-cloud
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-    ldflags:
-      - -s -w
-      - -X github.com/project-starkite/starkite/core/version.Version={{.Version}}
-      - -X github.com/project-starkite/starkite/core/version.BuildTime={{.Date}}
-      - -X github.com/project-starkite/starkite/core/version.GitCommit={{.Commit}}
-      - -X github.com/project-starkite/starkite/core/version.Edition=cloud
-
-  - id: kite-ai
-    dir: ./ai
-    main: .
-    binary: kite-ai
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-    ldflags:
-      - -s -w
-      - -X github.com/project-starkite/starkite/core/version.Version={{.Version}}
-      - -X github.com/project-starkite/starkite/core/version.BuildTime={{.Date}}
-      - -X github.com/project-starkite/starkite/core/version.GitCommit={{.Commit}}
-      - -X github.com/project-starkite/starkite/core/version.Edition=ai
-
-  - id: kite-all
-    dir: ./all
-    main: .
-    binary: kite-all
-    goos:
-      - linux
-      - darwin
-      - windows
-    goarch:
-      - amd64
-      - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
-    ldflags:
-      - -s -w
-      - -X github.com/project-starkite/starkite/core/version.Version={{.Version}}
-      - -X github.com/project-starkite/starkite/core/version.BuildTime={{.Date}}
-      - -X github.com/project-starkite/starkite/core/version.GitCommit={{.Commit}}
-      - -X github.com/project-starkite/starkite/core/version.Edition=all
+      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/basekite/version.Edition=all
 
 archives:
+  - id: basekite
+    ids:
+      - basekite
+    formats:
+      - binary
+    name_template: "basekite-{{ .Os }}-{{ .Arch }}"
+
+  - id: cloudkite
+    ids:
+      - cloudkite
+    formats:
+      - binary
+    name_template: "cloudkite-{{ .Os }}-{{ .Arch }}"
+
+  - id: aikite
+    ids:
+      - aikite
+    formats:
+      - binary
+    name_template: "aikite-{{ .Os }}-{{ .Arch }}"
+
   - id: kite
     ids:
       - kite
     formats:
       - binary
     name_template: "kite-{{ .Os }}-{{ .Arch }}"
-
-  - id: kite-cloud
-    ids:
-      - kite-cloud
-    formats:
-      - binary
-    name_template: "kite-cloud-{{ .Os }}-{{ .Arch }}"
-
-  - id: kite-ai
-    ids:
-      - kite-ai
-    formats:
-      - binary
-    name_template: "kite-ai-{{ .Os }}-{{ .Arch }}"
-
-  - id: kite-all
-    ids:
-      - kite-all
-    formats:
-      - binary
-    name_template: "kite-all-{{ .Os }}-{{ .Arch }}"
 
 checksum:
   name_template: checksums.txt

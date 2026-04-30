@@ -1,11 +1,5 @@
-/kite
-/kite-cloud
-/kite-ai
-/starctl
-/starctl-cloud
-/starkite
-/starkite-cloud
+/bin/
 dist/
 site/
 *.exe
-kite-all
+starkite
