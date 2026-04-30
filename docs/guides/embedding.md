@@ -106,6 +106,26 @@ rt, err := starbase.New(nil)
 
 This creates a runtime with no modules. Register your own via a custom registry.
 
+### Composing multiple module sets (strict mode)
+
+When you compose module sets that come from independent sources — for example, base modules plus a domain-specific bundle — `Registry` silently overwrites collisions by default: a second module with the same name replaces the first, and a second module that exports the same top-level symbol or global alias wins.
+
+If your composition needs the **invariant that module names, top-level export keys, and global aliases are unique across the whole registry**, opt into strict mode:
+
+```go
+r := starbase.NewRegistry(nil)
+r.SetStrict(true)
+loader.RegisterAll(r)         // base modules
+mybundle.RegisterAll(r)       // your additional modules
+```
+
+In strict mode:
+
+- `Register` **panics** if you register two modules with the same `Name()` — caught at startup, not at script runtime.
+- `LoadAll` returns an error if two modules export the same top-level key or register the same global alias.
+
+This is how the all-edition (`kite-all`) enforces edition-namespace disjointness across base + cloud + ai. The lean editions leave strict mode off.
+
 ## Configuration
 
 The `Config` struct controls all runtime behavior:

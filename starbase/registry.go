@@ -17,6 +17,7 @@ type Registry struct {
 	loadOnce   sync.Once
 	mu         sync.RWMutex
 	loadErrors []error
+	strict     bool
 }
 
 // NewRegistry creates a new module registry with the given configuration.
@@ -32,11 +33,27 @@ func NewRegistry(config *ModuleConfig) *Registry {
 	}
 }
 
+// SetStrict toggles duplicate-detection. When true, Register panics on a
+// duplicate module name and LoadAll surfaces an error if two modules export
+// the same top-level name or global alias. Off by default to preserve the
+// lenient behavior the lean editions rely on. The all-edition opts in.
+func (r *Registry) SetStrict(strict bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.strict = strict
+}
+
 // Register adds a module to the registry.
 // This should be called before LoadAll.
 func (r *Registry) Register(m Module) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if r.strict {
+		if existing, ok := r.modules[m.Name()]; ok {
+			panic(fmt.Errorf("starbase: duplicate module registration: %q (existing: %T, new: %T)",
+				m.Name(), existing, m))
+		}
+	}
 	r.modules[m.Name()] = m
 }
 
@@ -59,12 +76,26 @@ func (r *Registry) LoadAll() (starlark.StringDict, error) {
 
 			// Add module exports to loaded map
 			for k, v := range exports {
+				if r.strict {
+					if _, exists := r.loaded[k]; exists {
+						r.loadErrors = append(r.loadErrors,
+							fmt.Errorf("starbase: duplicate export %q from module %s", k, name))
+						continue
+					}
+				}
 				r.loaded[k] = v
 			}
 
 			// Collect global aliases
 			if aliases := mod.Aliases(); aliases != nil {
 				for k, v := range aliases {
+					if r.strict {
+						if _, exists := r.aliases[k]; exists {
+							r.loadErrors = append(r.loadErrors,
+								fmt.Errorf("starbase: duplicate global alias %q from module %s", k, name))
+							continue
+						}
+					}
 					r.aliases[k] = v
 				}
 			}

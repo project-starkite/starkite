@@ -63,6 +63,27 @@ builds:
       - -X github.com/project-starkite/starkite/core/version.GitCommit={{.Commit}}
       - -X github.com/project-starkite/starkite/core/version.Edition=ai
 
+  - id: kite-all
+    dir: ./all
+    main: .
+    binary: kite-all
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/project-starkite/starkite/core/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/core/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/core/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/core/version.Edition=all
+
 archives:
   - id: kite
     ids:
@@ -84,6 +105,13 @@ archives:
     formats:
       - binary
     name_template: "kite-ai-{{ .Os }}-{{ .Arch }}"
+
+  - id: kite-all
+    ids:
+      - kite-all
+    formats:
+      - binary
+    name_template: "kite-all-{{ .Os }}-{{ .Arch }}"
 
 checksum:
   name_template: checksums.txt

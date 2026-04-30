@@ -5,3 +5,4 @@ use ./wasm
 use ./core
 use ./cloud
 use ./ai
+use ./all

@@ -6,12 +6,13 @@ BUILD_TIME=$(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 LDFLAGS=-ldflags "-X github.com/project-starkite/starkite/core/version.Version=$(VERSION) -X github.com/project-starkite/starkite/core/version.BuildTime=$(BUILD_TIME)"
 CLOUD_LDFLAGS=-ldflags "-X github.com/project-starkite/starkite/core/version.Version=$(VERSION) -X github.com/project-starkite/starkite/core/version.BuildTime=$(BUILD_TIME) -X github.com/project-starkite/starkite/core/version.Edition=cloud"
 AI_LDFLAGS=-ldflags "-X github.com/project-starkite/starkite/core/version.Version=$(VERSION) -X github.com/project-starkite/starkite/core/version.BuildTime=$(BUILD_TIME) -X github.com/project-starkite/starkite/core/version.Edition=ai"
+ALL_LDFLAGS=-ldflags "-X github.com/project-starkite/starkite/core/version.Version=$(VERSION) -X github.com/project-starkite/starkite/core/version.BuildTime=$(BUILD_TIME) -X github.com/project-starkite/starkite/core/version.Edition=all"
 
-.PHONY: all build build-core build-cloud build-ai clean test test-starbase test-core test-cloud test-ai install deps lint fmt help
+.PHONY: all build build-core build-cloud build-ai build-all clean test test-starbase test-core test-cloud test-ai test-all install deps lint fmt help
 
 all: deps build ## Build after fetching dependencies
 
-build: build-core build-cloud build-ai ## Build all editions
+build: build-core build-cloud build-ai build-all ## Build all editions
 
 build-core: ## Build the base edition binary
 	cd core && go build $(LDFLAGS) -o ../$(BINARY_NAME) .
@@ -22,11 +23,14 @@ build-cloud: ## Build the cloud edition binary
 build-ai: ## Build the ai edition binary
 	cd ai && go build $(AI_LDFLAGS) -o ../$(BINARY_NAME)-ai .
 
+build-all: ## Build the all-in-one edition binary
+	cd all && go build $(ALL_LDFLAGS) -o ../$(BINARY_NAME)-all .
+
 clean: ## Remove build artifacts
-	rm -f $(BINARY_NAME) $(BINARY_NAME)-cloud $(BINARY_NAME)-ai
+	rm -f $(BINARY_NAME) $(BINARY_NAME)-cloud $(BINARY_NAME)-ai $(BINARY_NAME)-all
 	rm -rf dist/
 
-test: test-starbase test-core test-cloud test-ai ## Run all tests
+test: test-starbase test-core test-cloud test-ai test-all ## Run all tests
 
 test-starbase: ## Run starbase tests
 	cd starbase && go test ./...
@@ -40,6 +44,9 @@ test-cloud: ## Run cloud tests
 test-ai: ## Run ai tests
 	cd ai && go test ./...
 
+test-all: ## Run all-edition tests (registry composition guard)
+	cd all && go test ./...
+
 install: build-core ## Install base edition to GOPATH/bin
 	cd core && go install $(LDFLAGS) .
 
@@ -48,18 +55,21 @@ deps: ## Download dependencies
 	cd core && go mod tidy
 	cd cloud && go mod tidy
 	cd ai && go mod tidy
+	cd all && go mod tidy
 
 lint: ## Run linter
 	cd starbase && golangci-lint run ./...
 	cd core && golangci-lint run ./...
 	cd cloud && golangci-lint run ./...
 	cd ai && golangci-lint run ./...
+	cd all && golangci-lint run ./...
 
 fmt: ## Format code
 	cd starbase && go fmt ./...
 	cd core && go fmt ./...
 	cd cloud && go fmt ./...
 	cd ai && go fmt ./...
+	cd all && go fmt ./...
 
 run-example: build-core ## Run hello example
 	./$(BINARY_NAME) run examples/core/hello.star
