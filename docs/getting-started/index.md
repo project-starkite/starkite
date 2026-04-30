@@ -4,71 +4,146 @@ description: "Install starkite and write your first script"
 weight: 1
 ---
 
-## Installation
+# Getting Started
 
-### From Source
+This page walks you from a fresh checkout to running your first script in under five minutes.
+
+## Editions
+
+Starkite ships as three independent binaries that share a common runtime. Pick the one that matches what you want to automate — they all share the same script language and core modules:
+
+| Binary | Adds on top of base | Use when |
+|---|---|---|
+| `kite` | base modules only (os, fs, http, ssh, json, yaml, time, log, …) | system scripts, CI tasks, general automation |
+| `kite-cloud` | Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
+| `kite-ai` | LLM clients, MCP server/client | agentic AI tools and orchestration |
+
+A single host can install one, two, or all three. Each is a stand-alone binary.
+
+## Install
+
+### From source (recommended during development)
+
+The repository is a Go workspace with one module per edition. Build the editions you need:
 
 ```bash
-# Clone the repository
 git clone https://github.com/project-starkite/starkite.git
 cd starkite
 
-# Build the base edition
-go build -o kite .
+make build-core    # produces ./kite
+make build-cloud   # produces ./kite-cloud
+make build-ai      # produces ./kite-ai
+# or:
+make build         # builds all three
+```
 
-# Build the cloud edition (includes Kubernetes modules)
-go build -o kite-cloud ./cmd/cloud/starkite/
+Or build a single edition directly:
+
+```bash
+cd core  && go build -o ../kite .
+cd cloud && go build -o ../kite-cloud .
+cd ai    && go build -o ../kite-ai .
+```
+
+Move the binary onto your `PATH`:
+
+```bash
+sudo install -m 0755 ./kite /usr/local/bin/kite
 ```
 
 ### From GitHub Releases
 
-Download the latest binary for your platform from [GitHub Releases](https://github.com/project-starkite/starkite/releases).
+Download a pre-built binary for your platform from [GitHub Releases](https://github.com/project-starkite/starkite/releases).
 
-Available binaries:
-- `kite-linux-amd64`, `kite-linux-arm64`
-- `kite-darwin-amd64`, `kite-darwin-arm64`
-- `kite-windows-amd64.exe`
-- Cloud editions: `kite-cloud-*` (same platforms)
+Release assets follow the `<binary>-<os>-<arch>` pattern:
 
-### Via `go install`
+- `kite-linux-amd64`, `kite-linux-arm64`, `kite-darwin-amd64`, `kite-darwin-arm64`, `kite-windows-amd64.exe`
+- `kite-cloud-*` (same OS/arch matrix)
+- `kite-ai-*` (same OS/arch matrix)
 
-```bash
-go install github.com/project-starkite/starkite@latest
-```
+Rename the downloaded file to `kite` (or `kite-cloud` / `kite-ai`), make it executable, and place it on your `PATH`.
 
-## Verify Installation
+## Verify the install
 
 ```bash
 kite version
-# Output: kite version 0.0.1 (base)
 ```
 
-## Your First Script
+Expected output (your commit and Go version will differ):
 
-Create a file called `hello.star`:
+```
+kite version v0.1.0 (base)
+  edition: base
+  commit:  <git-sha>
+  built:   <timestamp>
+  go:      go1.26.1
+  os/arch: darwin/arm64
+```
+
+`kite-cloud version` reports `(cloud)`; `kite-ai version` reports `(ai)`.
+
+## Your first script
+
+Create `hello.star`:
 
 ```python
 #!/usr/bin/env kite
-# hello.star — Your first starkite script
+# hello.star — your first starkite script
 
 name = var_str("name", "World")
 print("Hello, " + name + "!")
 
-# Use built-in modules
-info = runtime.uname()
-log.info("Running on", platform=runtime.platform(), arch=runtime.arch())
+log.info("Running on", attrs={
+    "platform": runtime.platform(),
+    "arch":     runtime.arch(),
+})
 ```
 
-Run it:
+Run it three different ways — they're all equivalent:
 
 ```bash
-kite hello.star
+kite hello.star                   # path → run
+kite run hello.star               # explicit subcommand
+chmod +x hello.star && ./hello.star   # shebang
+```
+
+Pass a variable:
+
+```bash
 kite hello.star --var name=Alice
 ```
 
-## What's Next?
+You should see:
 
-- [CLI Reference](../cli/index.md) — All available commands
-- [Module Reference](../modules/index.md) — 25+ built-in modules
-- [Variables](../guides/variables.md) — Variable injection system
-- [Error Handling](../guides/error-handling.md) — The `try_` pattern
+```
+Hello, Alice!
+time=... level=INFO msg="Running on" platform=darwin arch=arm64
+```
+
+## Other things to try
+
+| Command | What it does |
+|---|---|
+| `kite repl` | Interactive REPL — explore modules and try expressions |
+| `kite exec 'print(os.exec("hostname"))'` | Run a one-liner without a script file |
+| `kite validate hello.star` | Parse-and-typecheck without executing |
+| `kite test path/to/tests/` | Run all `*_test.star` files under a directory |
+| `kite watch hello.star` | Re-run on every save |
+
+## Run with a sandbox
+
+By default `kite` runs in **trust mode** — scripts can do anything the user can do. The `--sandbox` flag flips the default to deny-all, and every privileged operation (filesystem write, command exec, network call, even `var_str`) must be explicitly granted via a permission rule:
+
+```bash
+kite hello.star --sandbox   # fails: no rules → every op is denied
+```
+
+The `--sandbox` flag is most useful with a profile or a frontmatter block in the script that declares the rules the script needs. See [Permissions](../guides/permissions.md) for the rule syntax and the built-in profiles.
+
+## What's next
+
+- [CLI Reference](../cli/index.md) — all available subcommands and flags
+- [Module Reference](../modules/index.md) — the full builtin module catalog
+- [Variables](../guides/variables.md) — `--var`, `--var-file`, and the `var_*` builtins
+- [Error Handling](../guides/error-handling.md) — the `try_` pattern
+- [Permissions](../guides/permissions.md) — sandbox rules and profiles
