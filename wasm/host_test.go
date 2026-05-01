@@ -3,7 +3,7 @@ package wasm
 import (
 	"testing"
 
-	"github.com/project-starkite/starkite/starbase"
+	"github.com/project-starkite/starkite/libkite"
 	"go.starlark.net/starlark"
 )
 
@@ -58,14 +58,14 @@ func TestHostContext_CheckPermission_NoThread(t *testing.T) {
 func TestHostContext_CheckPermission_WithChecker(t *testing.T) {
 	thread := &starlark.Thread{Name: "test"}
 
-	checker, err := starbase.NewPermissionChecker(&starbase.PermissionConfig{
+	checker, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{
 		Deny:    []string{"testmod.exec"},
-		Default: starbase.DefaultAllow,
+		Default: libkite.DefaultAllow,
 	})
 	if err != nil {
 		t.Fatalf("failed to create checker: %v", err)
 	}
-	starbase.SetPermissions(thread, checker)
+	libkite.SetPermissions(thread, checker)
 
 	ctx := &HostContext{
 		moduleName: "testmod",

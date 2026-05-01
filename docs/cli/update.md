@@ -4,7 +4,7 @@ description: "Update starkite to the latest version"
 weight: 21
 ---
 
-Check for and install the latest version of starkite. Downloads the latest GitHub release and replaces the current binary. Any installed edition binaries (`cloudkite`, `aikite`) are also updated to the same version.
+Check for and install the latest version of starkite. Downloads the latest GitHub release and replaces the current binary. Any installed edition binaries (`kitecloud`, `kiteai`) are also updated to the same version.
 
 ## Usage
 

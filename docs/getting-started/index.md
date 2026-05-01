@@ -15,11 +15,11 @@ Starkite ships as four independent binaries that share the same script language 
 | Binary | Modules | Use when |
 |---|---|---|
 | `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | you want everything in one binary — recommended for new users |
-| `basekite` | base only (os, fs, http, ssh, json, yaml, time, log, …) | system scripts, CI tasks, general automation |
-| `cloudkite` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
-| `aikite` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
+| `kitecmd` | base only (os, fs, http, ssh, json, yaml, time, log, …) | system scripts, CI tasks, general automation |
+| `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
+| `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
 
-A single host can install one, two, or all four. Each is a stand-alone binary. `kite` is a strict superset of `basekite`/`cloudkite`/`aikite`, so most examples on this site work with any edition that includes the modules they touch.
+A single host can install one, two, or all four. Each is a stand-alone binary. `kite` is a strict superset of `kitecmd`/`kitecloud`/`kiteai`, so most examples on this site work with any edition that includes the modules they touch.
 
 ## Install
 
@@ -34,9 +34,9 @@ cd starkite
 make build              # all four binaries → ./bin/
 # or:
 make build-all          # ./bin/kite       (all-in-one)
-make build-base         # ./bin/basekite   (base only)
-make build-cloud        # ./bin/cloudkite  (base + k8s)
-make build-ai           # ./bin/aikite     (base + LLM/MCP)
+make build-base         # ./bin/kitecmd   (base only)
+make build-cloud        # ./bin/kitecloud  (base + k8s)
+make build-ai           # ./bin/kiteai     (base + LLM/MCP)
 ```
 
 Move the binary onto your `PATH`:
@@ -52,9 +52,9 @@ Download a pre-built binary for your platform from [GitHub Releases](https://git
 Release assets follow the `<binary>-<os>-<arch>` pattern:
 
 - `kite-linux-amd64`, `kite-linux-arm64`, `kite-darwin-amd64`, `kite-darwin-arm64`, `kite-windows-amd64.exe`
-- `basekite-*`, `cloudkite-*`, `aikite-*` (same OS/arch matrix)
+- `kitecmd-*`, `kitecloud-*`, `kiteai-*` (same OS/arch matrix)
 
-Rename the downloaded file to `kite` (or `basekite` / `cloudkite` / `aikite`), make it executable, and place it on your `PATH`.
+Rename the downloaded file to `kite` (or `kitecmd` / `kitecloud` / `kiteai`), make it executable, and place it on your `PATH`.
 
 ## Verify the install
 
@@ -73,7 +73,7 @@ kite version v0.1.0 (all)
   os/arch: darwin/arm64
 ```
 
-`basekite version` reports `(base)`, `cloudkite version` reports `(cloud)`, `aikite version` reports `(ai)`.
+`kitecmd version` reports `(base)`, `kitecloud version` reports `(cloud)`, `kiteai version` reports `(ai)`.
 
 ## Your first script
 

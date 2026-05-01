@@ -26,15 +26,17 @@ Starkite ships as four independent binaries that share the same script language 
 | Binary | Adds on top of base | Use when |
 |---|---|---|
 | `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | you want everything in one binary |
-| `basekite` | base modules only (os, fs, http, ssh, json, yaml, time, log, …) | system scripts, CI tasks, general automation |
-| `cloudkite` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
-| `aikite` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
+| `kitecmd` | base modules only (os, fs, http, ssh, json, yaml, time, log, …) | system scripts, CI tasks, general automation |
+| `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
+| `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
 
-`kite` is the recommended starter — it's a strict superset of the lean editions. Install `basekite` if you want a smaller binary or smaller attack surface under `--sandbox`.
+`kite` is the recommended starter — it's a strict superset of the lean editions. Install `kitecmd` if you want a smaller binary or smaller attack surface under `--sandbox`.
+
+> **Naming convention.** Source directories follow two shapes: infrastructure packages (`libkite/`, `allkite/`) use a `<descriptor>kite/` suffix form; domain editions (`base/`, `cloud/`, `ai/`) are bare nouns. Binaries use `kite<edition>` prefix form (`kitecmd`, `kitecloud`, `kiteai`), with the all-in-one as the unadorned `kite`.
 
 ## Installation
 
-Download pre-built binaries from [GitHub Releases](https://github.com/project-starkite/starkite/releases). Release assets follow the `<binary>-<os>-<arch>` pattern: `kite-linux-amd64`, `basekite-darwin-arm64`, `cloudkite-windows-amd64.exe`, etc.
+Download pre-built binaries from [GitHub Releases](https://github.com/project-starkite/starkite/releases). Release assets follow the `<binary>-<os>-<arch>` pattern: `kite-linux-amd64`, `kitecmd-darwin-arm64`, `kitecloud-windows-amd64.exe`, etc.
 
 Or build from source — the repository is a Go workspace with one module per edition:
 
@@ -45,9 +47,9 @@ cd starkite
 make build              # builds all four binaries into ./bin/
 # or:
 make build-all          # ./bin/kite       (all-in-one)
-make build-base         # ./bin/basekite   (base only)
-make build-cloud        # ./bin/cloudkite  (base + k8s)
-make build-ai           # ./bin/aikite     (base + LLM/MCP)
+make build-base         # ./bin/kitecmd   (base only)
+make build-cloud        # ./bin/kitecloud  (base + k8s)
+make build-ai           # ./bin/kiteai     (base + LLM/MCP)
 ```
 
 Move the binary onto your `PATH`:
@@ -137,8 +139,8 @@ yaml.source(data).write_file("output.yaml")
 | Execution | `concur`, `retry` |
 | Utility | `time`, `uuid`, `log`, `table`, `vars`, `path` |
 | Testing | `test` (assert, assert_equal, assert_contains, skip) |
-| Cloud | `k8s` (in `kite` and `cloudkite`) |
-| AI | `ai`, `mcp` (in `kite` and `aikite`) |
+| Cloud | `k8s` (in `kite` and `kitecloud`) |
+| AI | `ai`, `mcp` (in `kite` and `kiteai`) |
 
 See the [module reference](https://starkite.dev/modules/) for full API documentation.
 

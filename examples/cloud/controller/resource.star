@@ -1,4 +1,4 @@
-#!/usr/bin/env cloudkite
+#!/usr/bin/env kitecloud
 # resource.star — Define the MyApp custom resource
 
 crd = k8s.obj.crd(

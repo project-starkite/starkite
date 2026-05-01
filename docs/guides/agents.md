@@ -1,14 +1,14 @@
 ---
 title: "Building Agents"
-description: "Compose ai.chat() with starbase modules to build multi-turn agents"
+description: "Compose ai.chat() with libkite modules to build multi-turn agents"
 weight: 7
 edition: ai
 ---
 
 !!! note "AI edition only"
-    The patterns in this guide use the `ai` module (and sometimes `mcp`), available only in the `aikite` edition. See [AI Edition](ai-edition.md).
+    The patterns in this guide use the `ai` module (and sometimes `mcp`), available only in the `kiteai` edition. See [AI Edition](ai-edition.md).
 
-Starkite-AI does **not** ship a packaged REPL or a blocking `agent.run()` facade. Instead, scripts build agents by composing [`ai.chat()`](../modules/ai.md#aichatkwargs) + [`ai.run_until()`](../modules/ai.md#airun_untilchat-initial-kwargs) with the existing starbase modules for UI, I/O, and side effects (`io.prompt`, `fs`, `http`, `k8s`, `ssh`, …). This keeps the `ai` module small and gives scripts full control over the UX.
+Starkite-AI does **not** ship a packaged REPL or a blocking `agent.run()` facade. Instead, scripts build agents by composing [`ai.chat()`](../modules/ai.md#aichatkwargs) + [`ai.run_until()`](../modules/ai.md#airun_untilchat-initial-kwargs) with the existing libkite modules for UI, I/O, and side effects (`io.prompt`, `fs`, `http`, `k8s`, `ssh`, …). This keeps the `ai` module small and gives scripts full control over the UX.
 
 This guide documents four patterns. Each comes with a complete runnable example in [`ai/examples/agent/`](https://github.com/project-starkite/starkite/tree/main/ai/examples/agent).
 
@@ -187,7 +187,7 @@ Full example: [`ai/examples/agent/mcp_integration.star`](https://github.com/proj
 
 ## Go embedders
 
-If you're driving the LLM loop from Go rather than Starlark, the mirror of these patterns lives in the [embedding guide](embedding.md#calling-starlark-functions-from-go). The Go host owns the LLM client and tool schemas; starbase executes the bodies of tools via `Runtime.Call(ctx, name, args, kwargs)`. Same underlying story — different driver.
+If you're driving the LLM loop from Go rather than Starlark, the mirror of these patterns lives in the [embedding guide](embedding.md#calling-starlark-functions-from-go). The Go host owns the LLM client and tool schemas; libkite executes the bodies of tools via `Runtime.Call(ctx, name, args, kwargs)`. Same underlying story — different driver.
 
 ---
 

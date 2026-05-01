@@ -3,7 +3,7 @@ package loader
 import (
 	"testing"
 
-	"github.com/project-starkite/starkite/starbase"
+	"github.com/project-starkite/starkite/libkite"
 )
 
 // TestNewAllRegistry_NoCollisions is the CI guard for edition-namespace
@@ -23,7 +23,7 @@ func TestNewAllRegistry_NoCollisions(t *testing.T) {
 		}
 	}()
 
-	r := NewAllRegistry(&starbase.ModuleConfig{})
+	r := NewAllRegistry(&libkite.ModuleConfig{})
 
 	if _, err := r.LoadAll(); err != nil {
 		t.Fatalf("LoadAll returned error — export or alias collision detected: %v", err)
@@ -35,9 +35,9 @@ func TestNewAllRegistry_NoCollisions(t *testing.T) {
 // either a loader stopped registering it or strict mode caught a
 // regression that the previous test didn't already surface.
 func TestNewAllRegistry_ContainsAllExpectedModules(t *testing.T) {
-	r := NewAllRegistry(&starbase.ModuleConfig{})
+	r := NewAllRegistry(&libkite.ModuleConfig{})
 
-	expected := []starbase.ModuleName{
+	expected := []libkite.ModuleName{
 		// base (sample — not exhaustive)
 		"os", "fs", "http", "ssh", "json", "yaml", "log", "runtime", "vars", "test",
 		// cloud

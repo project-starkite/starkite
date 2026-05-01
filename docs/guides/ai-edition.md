@@ -1,19 +1,19 @@
 ---
 title: "AI Edition"
-description: "aikite binary: LLM client, MCP, and agent primitives"
+description: "kiteai binary: LLM client, MCP, and agent primitives"
 weight: 6
 ---
 
-The AI edition of starkite adds the [`ai`](../modules/ai.md) module (multi-provider LLM client) and the [`mcp`](../modules/mcp.md) module (Model Context Protocol server + client) to the base edition. Every base module remains available. It ships as the standalone `aikite` binary, and is also bundled into the all-in-one `kite` binary.
+The AI edition of starkite adds the [`ai`](../modules/ai.md) module (multi-provider LLM client) and the [`mcp`](../modules/mcp.md) module (Model Context Protocol server + client) to the base edition. Every base module remains available. It ships as the standalone `kiteai` binary, and is also bundled into the all-in-one `kite` binary.
 
 ## Installation
 
 ```bash
-# Build from source — produces ./bin/aikite
+# Build from source — produces ./bin/kiteai
 make build-ai
 
 # Or install via the edition manager (downloads from GitHub Releases)
-basekite edition use ai
+kitecmd edition use ai
 ```
 
 If you have the all-in-one `kite` binary installed, you already have the ai modules — no separate install needed.
@@ -46,7 +46,7 @@ print(resp.text)
 ```
 
 ```bash
-aikite run hello-ai.star
+kiteai run hello-ai.star
 ```
 
 Or with Anthropic once `ANTHROPIC_API_KEY` is set:
@@ -86,17 +86,17 @@ All 27 modules from the base edition (`os`, `fs`, `http`, `ssh`, `json`, `yaml`,
 ## Editions Management
 
 ```bash
-basekite edition status        # List installed editions
-basekite edition use ai        # Install AI edition (downloads aikite)
-basekite edition use base      # Switch back to base
-basekite edition remove ai     # Uninstall AI edition
+kitecmd edition status        # List installed editions
+kitecmd edition use ai        # Install AI edition (downloads kiteai)
+kitecmd edition use base      # Switch back to base
+kitecmd edition remove ai     # Uninstall AI edition
 ```
 
-When ai is active, `basekite` transparently execs into `aikite` for every command.
+When ai is active, `kitecmd` transparently execs into `kiteai` for every command.
 
 ## Next Steps
 
 - [AI module reference](../modules/ai.md) — full `ai.generate()` / `ai.chat()` / `ai.tool()` / `ai.run_until()` signatures
 - [MCP module reference](../modules/mcp.md) — `mcp.serve()` and `mcp.connect()` with stdio, HTTP, and TLS
 - [Building Agents](agents.md) — four composition patterns for multi-turn agents
-- [Embedding Starbase](embedding.md#calling-starlark-functions-from-go) — drive agents from Go, with Starlark providing tool bodies
+- [Embedding Libkite](embedding.md#calling-starlark-functions-from-go) — drive agents from Go, with Starlark providing tool bodies

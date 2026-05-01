@@ -3,10 +3,10 @@ module github.com/project-starkite/starkite/allkite
 go 1.26
 
 require (
-	github.com/project-starkite/starkite/aikite v0.0.0
-	github.com/project-starkite/starkite/cloudkite v0.0.0
-	github.com/project-starkite/starkite/basekite v0.0.0
-	github.com/project-starkite/starkite/starbase v0.0.0
+	github.com/project-starkite/starkite/ai v0.0.0
+	github.com/project-starkite/starkite/cloud v0.0.0
+	github.com/project-starkite/starkite/base v0.0.0
+	github.com/project-starkite/starkite/libkite v0.0.0
 	github.com/project-starkite/starkite/wasm v0.0.0
 	github.com/spf13/cobra v1.10.2
 )
@@ -111,9 +111,9 @@ require (
 )
 
 replace (
-	github.com/project-starkite/starkite/aikite => ../aikite
-	github.com/project-starkite/starkite/cloudkite => ../cloudkite
-	github.com/project-starkite/starkite/basekite => ../basekite
-	github.com/project-starkite/starkite/starbase => ../starbase
+	github.com/project-starkite/starkite/ai => ../ai
+	github.com/project-starkite/starkite/cloud => ../cloud
+	github.com/project-starkite/starkite/base => ../base
+	github.com/project-starkite/starkite/libkite => ../libkite
 	github.com/project-starkite/starkite/wasm => ../wasm
 )

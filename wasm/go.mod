@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/extism/go-sdk v1.7.1
-	github.com/project-starkite/starkite/starbase v0.0.0
+	github.com/project-starkite/starkite/libkite v0.0.0
 	github.com/vladimirvivien/startype v0.7.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	gopkg.in/yaml.v3 v3.0.1
@@ -21,4 +21,4 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 )
 
-replace github.com/project-starkite/starkite/starbase => ../starbase
+replace github.com/project-starkite/starkite/libkite => ../libkite

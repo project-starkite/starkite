@@ -11,13 +11,13 @@ import (
 
 	extism "github.com/extism/go-sdk"
 
-	"github.com/project-starkite/starkite/starbase"
+	"github.com/project-starkite/starkite/libkite"
 	"go.starlark.net/starlark"
 )
 
 // HostContext provides context for host function calls from WASM guests.
 type HostContext struct {
-	config     *starbase.ModuleConfig
+	config     *libkite.ModuleConfig
 	moduleName string
 	thread     *starlark.Thread
 }
@@ -67,7 +67,7 @@ func (h *HostContext) checkPermission(function, resource string) error {
 	if h.thread == nil {
 		return nil
 	}
-	return starbase.Check(h.thread, h.moduleName, function, resource)
+	return libkite.Check(h.thread, h.moduleName, function, resource)
 }
 
 // hostLog creates the "log" host function. Always allowed.

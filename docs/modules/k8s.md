@@ -5,7 +5,7 @@ weight: 27
 ---
 
 !!! note "Cloud functionality"
-    The `k8s` module is available in `kite` (all-in-one) and `cloudkite`. It is **not** available in `basekite` or `aikite`. See [Cloud Edition](../guides/cloud-edition.md).
+    The `k8s` module is available in `kite` (all-in-one) and `kitecloud`. It is **not** available in `kitecmd` or `kiteai`. See [Cloud Edition](../guides/cloud-edition.md).
 
 The `k8s` module provides full Kubernetes resource management — CRUD, high-level workloads, watches, logs, exec, port-forward, node operations, metrics, controllers, admission webhooks, and typed object constructors.
 

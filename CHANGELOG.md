@@ -2,16 +2,35 @@
 
 ## Unreleased
 
-### Breaking changes
+### Breaking changes — naming refactor
 
-- **Edition rename to `<edition>kite` form.** Source directories renamed: `core/` → `basekite/`, `cloud/` → `cloudkite/`, `ai/` → `aikite/`, plus a new `allkite/` directory for the all-in-one. Go module paths follow the same shape (`github.com/project-starkite/starkite/<edition>kite`).
-- **Binary name changes:** the lean base binary `kite` is now `basekite`; `kite-cloud` is now `cloudkite`; `kite-ai` is now `aikite`. The unadorned `kite` binary now refers to the new **all-in-one edition** (base + Kubernetes + GenAI/MCP). Install `basekite` if you want the lean base experience.
-- **Local builds land in `./bin/`** rather than at the project root, since each edition's source directory now shares its name with the produced binary.
+The repository has been restructured so that every directory and binary name conveys its intent at a glance. Pre-release, no migration aliases.
+
+**Directory layout** — infrastructure packages use a `<descriptor>kite/` form; domain editions are bare nouns:
+
+- `libkite/` — embeddable Starlark runtime (was `starbase/`, briefly `kitecore/`). Import path `github.com/project-starkite/starkite/libkite`; package `libkite`.
+- `allkite/` — composes every edition into one binary; produces `kite`.
+- `base/` — lean base CLI (was `core/`, briefly `basekite/`); produces `kitecmd`.
+- `cloud/` — base + Kubernetes (was `cloud/`, briefly `cloudkite/`); produces `kitecloud`.
+- `ai/` — base + LLM/MCP (was `ai/`, briefly `aikite/`); produces `kiteai`.
+
+**Binaries** use the `kite<edition>` prefix form (with the all-in-one as plain `kite`):
+
+| Binary | Modules | Replaces |
+|---|---|---|
+| `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | (new) |
+| `kitecmd` | base only | `kite` (lean base) |
+| `kitecloud` | base + Kubernetes | `kite-cloud` |
+| `kiteai` | base + LLM/MCP | `kite-ai` |
+
+**Type references** switch from `starbase.Registry`/`starbase.Module`/`starbase.Config` to `libkite.Registry`/`libkite.Module`/`libkite.Config`.
+
+**Local builds land in `./bin/`** rather than at the project root, since each edition's source directory could otherwise collide with the produced binary's name in earlier iterations.
 
 ### Added
 
-- **`kite` (all-in-one edition)** — bundles every module from every edition in one binary. ~92 MB vs. ~26 MB for `basekite`. Use it when you want a single binary that covers every workflow.
-- **Strict-mode registry** in `starbase` — `Registry.SetStrict(true)` causes module-name, top-level export, and global-alias collisions to surface at startup instead of silently overwriting. The all-edition opts in; the lean editions stay lenient.
+- **`kite` (all-in-one edition)** — bundles every module from every edition in one binary. ~92 MB vs. ~26 MB for `kitecmd`. Recommended for new users.
+- **Strict-mode registry** in `libkite` — `Registry.SetStrict(true)` causes module-name, top-level export, and global-alias collisions to surface at startup instead of silently overwriting. The all-edition opts in; the lean editions stay lenient.
 - **Edition-namespace disjointness invariant** — enforced by the all-edition's loader test (`allkite/loader/loader_test.go`). Any future PR that registers a colliding name across editions fails CI.
 
 ## v0.0.1 — Initial Release

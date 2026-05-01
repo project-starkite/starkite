@@ -1,10 +1,10 @@
 ---
-title: "Embedding Starbase"
-description: "Using starbase as a library to add Starlark scripting to your Go application"
+title: "Embedding Libkite"
+description: "Using libkite as a library to add Starlark scripting to your Go application"
 weight: 7
 ---
 
-Starbase is the embeddable Starlark runtime that powers starkite. You can use it as a library to add scriptable automation to any Go application.
+Libkite is the embeddable Starlark runtime that powers starkite. You can use it as a library to add scriptable automation to any Go application.
 
 ## Quick Start
 
@@ -15,8 +15,8 @@ import (
     "context"
     "log"
 
-    "github.com/project-starkite/starkite/starbase"
-    "github.com/project-starkite/starkite/starbase/loader"
+    "github.com/project-starkite/starkite/libkite"
+    "github.com/project-starkite/starkite/libkite/loader"
 )
 
 func main() {
@@ -24,7 +24,7 @@ func main() {
     registry := loader.NewDefaultRegistry(nil)
 
     // Create a trusted runtime (all operations allowed)
-    rt, err := starbase.NewTrusted(&starbase.Config{
+    rt, err := libkite.NewTrusted(&libkite.Config{
         Registry: registry,
     })
     if err != nil {
@@ -46,7 +46,7 @@ func main() {
 ## Installation
 
 ```bash
-go get github.com/project-starkite/starkite/starbase
+go get github.com/project-starkite/starkite/libkite
 ```
 
 ## Creating a Runtime
@@ -57,12 +57,12 @@ Import the loader package to get all 27 built-in modules:
 
 ```go
 import (
-    "github.com/project-starkite/starkite/starbase"
-    "github.com/project-starkite/starkite/starbase/loader"
+    "github.com/project-starkite/starkite/libkite"
+    "github.com/project-starkite/starkite/libkite/loader"
 )
 
 registry := loader.NewDefaultRegistry(nil)
-rt, err := starbase.New(&starbase.Config{
+rt, err := libkite.New(&libkite.Config{
     Registry: registry,
 })
 ```
@@ -71,27 +71,27 @@ rt, err := starbase.New(&starbase.Config{
 
 ```go
 // Trusted — all operations allowed (for CLI tools, internal scripts)
-rt, err := starbase.NewTrusted(&starbase.Config{Registry: registry})
+rt, err := libkite.NewTrusted(&libkite.Config{Registry: registry})
 
 // Sandboxed — only safe operations (for untrusted user scripts)
-rt, err := starbase.NewSandboxed(&starbase.Config{Registry: registry})
+rt, err := libkite.NewSandboxed(&libkite.Config{Registry: registry})
 ```
 
 Both accept a `*Config` struct and optional `ConfigOption` functions:
 
 ```go
 // Config struct only
-rt, err := starbase.NewTrusted(&starbase.Config{
+rt, err := libkite.NewTrusted(&libkite.Config{
     Registry: registry,
 })
 
 // Options only
-rt, err := starbase.NewTrusted(nil,
-    starbase.WithRegistry(registry),
+rt, err := libkite.NewTrusted(nil,
+    libkite.WithRegistry(registry),
 )
 
 // Mix both
-rt, err := starbase.NewTrusted(cfg, starbase.WithDebug(true))
+rt, err := libkite.NewTrusted(cfg, libkite.WithDebug(true))
 ```
 
 Timeouts are set by the caller via `context.WithTimeout` and passed into `rt.Execute(ctx, code)` — see [Cancellation via context](#cancellation-via-context).
@@ -101,7 +101,7 @@ Timeouts are set by the caller via `context.WithTimeout` and passed into `rt.Exe
 If you only need the Starlark engine without built-in modules:
 
 ```go
-rt, err := starbase.New(nil)
+rt, err := libkite.New(nil)
 ```
 
 This creates a runtime with no modules. Register your own via a custom registry.
@@ -113,7 +113,7 @@ When you compose module sets that come from independent sources — for example,
 If your composition needs the **invariant that module names, top-level export keys, and global aliases are unique across the whole registry**, opt into strict mode:
 
 ```go
-r := starbase.NewRegistry(nil)
+r := libkite.NewRegistry(nil)
 r.SetStrict(true)
 loader.RegisterAll(r)         // base modules
 mybundle.RegisterAll(r)       // your additional modules
@@ -131,12 +131,12 @@ This is how the all-edition (`kite`) enforces edition-namespace disjointness acr
 The `Config` struct controls all runtime behavior:
 
 ```go
-config := &starbase.Config{
+config := &libkite.Config{
     // Module registry (nil = empty)
     Registry: registry,
 
     // Permission policy (nil = allow all)
-    Permissions: starbase.SandboxedPermissions(),
+    Permissions: libkite.SandboxedPermissions(),
 
     // Global variables injected into every script
     Globals: map[string]interface{}{
@@ -211,7 +211,7 @@ func handler(w http.ResponseWriter, r *http.Request) {
 
 ### Two-level timeout pitfall
 
-Go-side blocking calls inside starbase modules (e.g., `http.url(...).get(timeout="30s")`, `ssh.connect(timeout="...")`) honor their own kwargs, not the outer `ctx`. If you want guaranteed cancellation, set both: a `context.WithTimeout` on the Runtime call *and* explicit timeouts on module calls that might block.
+Go-side blocking calls inside libkite modules (e.g., `http.url(...).get(timeout="30s")`, `ssh.connect(timeout="...")`) honor their own kwargs, not the outer `ctx`. If you want guaranteed cancellation, set both: a `context.WithTimeout` on the Runtime call *and* explicit timeouts on module calls that might block.
 
 ### Skipping cancellation
 
@@ -223,7 +223,7 @@ rt.Execute(context.Background(), script)
 
 ## Signal handling
 
-Starbase registers OS signal handlers when a Runtime is created. When a SIGINT/SIGTERM/SIGHUP arrives:
+Libkite registers OS signal handlers when a Runtime is created. When a SIGINT/SIGTERM/SIGHUP arrives:
 
 1. If the script registered a handler via `on_signal("SIGINT", fn)`, that callable runs first.
 2. Any `defer(fn)` cleanups run in LIFO order.
@@ -255,14 +255,14 @@ Note: `on_signal` is a top-level Starlark global, not a method on any module. It
 
 ## Calling Starlark functions from Go
 
-Beyond running whole scripts, `Runtime` exposes four methods that let a Go host invoke Starlark from outside a script file. This is the primary API for embedding starbase as a **tool execution engine** — a pattern where Go owns the outer control flow (e.g., an LLM agent loop, an HTTP handler) and Starlark defines the bodies of actions.
+Beyond running whole scripts, `Runtime` exposes four methods that let a Go host invoke Starlark from outside a script file. This is the primary API for embedding libkite as a **tool execution engine** — a pattern where Go owns the outer control flow (e.g., an LLM agent loop, an HTTP handler) and Starlark defines the bodies of actions.
 
 ### `Runtime.Call(ctx, name, args, kwargs)`
 
 Invoke a top-level callable registered in the runtime's globals. `args` is `[]any`, `kwargs` is `map[string]any`. Either can be `nil`. Returns `starlark.Value`.
 
 ```go
-rt, _ := starbase.NewTrusted(&starbase.Config{Registry: registry})
+rt, _ := libkite.NewTrusted(&libkite.Config{Registry: registry})
 defer rt.Close()
 
 // Define a tool via ExecuteRepl, then call it from Go.
@@ -342,7 +342,7 @@ if !ok {
 
 ### Common pattern: Go host, Starlark tools
 
-This layering pairs well with agent loops. The Go host owns the LLM client and tool-schema JSON; starbase runs the body of each tool the model calls:
+This layering pairs well with agent loops. The Go host owns the LLM client and tool-schema JSON; libkite runs the body of each tool the model calls:
 
 ```go
 // 1. Register tool bodies
@@ -362,24 +362,24 @@ for {
 }
 ```
 
-The starbase modules (http, fs, k8s, ssh, …) provide the action surface the model can reach through these tool bodies.
+The libkite modules (http, fs, k8s, ssh, …) provide the action surface the model can reach through these tool bodies.
 
 ## Custom Modules
 
 Register your own modules alongside the built-ins:
 
 ```go
-import "github.com/project-starkite/starkite/starbase"
+import "github.com/project-starkite/starkite/libkite"
 
 // Implement the Module interface
 type MyModule struct{}
 
-func (m *MyModule) Name() starbase.ModuleName { return "mymod" }
+func (m *MyModule) Name() libkite.ModuleName { return "mymod" }
 func (m *MyModule) Description() string        { return "My custom module" }
 func (m *MyModule) Aliases() starlark.StringDict { return nil }
 func (m *MyModule) FactoryMethod() string      { return "" }
 
-func (m *MyModule) Load(config *starbase.ModuleConfig) (starlark.StringDict, error) {
+func (m *MyModule) Load(config *libkite.ModuleConfig) (starlark.StringDict, error) {
     return starlark.StringDict{
         "hello": starlark.NewBuiltin("mymod.hello", func(thread *starlark.Thread,
             fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -392,7 +392,7 @@ func (m *MyModule) Load(config *starbase.ModuleConfig) (starlark.StringDict, err
 registry := loader.NewDefaultRegistry(nil)
 registry.Register(&MyModule{})
 
-rt, err := starbase.NewTrusted(&starbase.Config{Registry: registry})
+rt, err := libkite.NewTrusted(&libkite.Config{Registry: registry})
 ```
 
 Scripts can then use `mymod.hello()`.
@@ -403,13 +403,13 @@ Control what scripts can do:
 
 ```go
 // Allow everything
-config.Permissions = starbase.TrustedPermissions()
+config.Permissions = libkite.TrustedPermissions()
 
 // Block dangerous operations (exec, file writes, network)
-config.Permissions = starbase.SandboxedPermissions()
+config.Permissions = libkite.SandboxedPermissions()
 
 // Fine-grained rules
-config.Permissions = &starbase.PermissionConfig{
+config.Permissions = &libkite.PermissionConfig{
     Allow: []string{
         "fs.read_text(./config/**)",  // read config files only
         "json.*",                      // all JSON operations
@@ -420,7 +420,7 @@ config.Permissions = &starbase.PermissionConfig{
         "os.exec",                    // no command execution
         "fs.write",                   // no file writes
     },
-    Default: starbase.DefaultDeny,    // deny anything not in allow list
+    Default: libkite.DefaultDeny,    // deny anything not in allow list
 }
 ```
 
@@ -431,7 +431,7 @@ Redirect `print()` output:
 ```go
 var output strings.Builder
 
-rt, err := starbase.NewTrusted(&starbase.Config{
+rt, err := libkite.NewTrusted(&libkite.Config{
     Registry: registry,
     Print: func(thread *starlark.Thread, msg string) {
         output.WriteString(msg)
@@ -449,7 +449,7 @@ WASM plugin support is optional. Import the wasm package to enable it:
 
 ```go
 import (
-    "github.com/project-starkite/starkite/starbase/loader"
+    "github.com/project-starkite/starkite/libkite/loader"
     "github.com/project-starkite/starkite/wasm"
 )
 
@@ -467,14 +467,14 @@ Import the cloud loader to add Kubernetes support alongside the base modules:
 
 ```go
 import (
-    "github.com/project-starkite/starkite/starbase"
-    cloudloader "github.com/project-starkite/starkite/cloudkite/loader"
+    "github.com/project-starkite/starkite/libkite"
+    cloudloader "github.com/project-starkite/starkite/kitecloud/loader"
 )
 
 // NewCloudRegistry registers all 27 base modules + k8s module
 registry := cloudloader.NewCloudRegistry(nil)
 
-rt, err := starbase.NewTrusted(&starbase.Config{Registry: registry})
+rt, err := libkite.NewTrusted(&libkite.Config{Registry: registry})
 if err != nil {
     log.Fatal(err)
 }
@@ -499,13 +499,13 @@ import (
     "log"
     "os"
 
-    "github.com/project-starkite/starkite/starbase"
-    cloudloader "github.com/project-starkite/starkite/cloudkite/loader"
+    "github.com/project-starkite/starkite/libkite"
+    cloudloader "github.com/project-starkite/starkite/kitecloud/loader"
 )
 
 func main() {
     registry := cloudloader.NewCloudRegistry(nil)
-    rt, err := starbase.NewTrusted(&starbase.Config{
+    rt, err := libkite.NewTrusted(&libkite.Config{
         Registry:   registry,
         ScriptPath: os.Args[1],
         Globals: map[string]interface{}{
@@ -546,7 +546,7 @@ k8s.apply({
 | `loader.NewDefaultRegistry(nil)` | 27 base modules | ~26MB |
 | `loader.NewDefaultRegistry(nil)` + `wasm.RegisterPlugins()` | 27 + WASM | ~29MB |
 | `cloudloader.NewCloudRegistry(nil)` | 27 + k8s | ~63MB |
-| `starbase.New(nil)` (no registry) | None | ~5MB |
+| `libkite.New(nil)` (no registry) | None | ~5MB |
 
 Choose the registry that matches your tool's needs. Most tools only need the base modules.
 
@@ -580,14 +580,14 @@ for _, r := range results {
 With filter + custom config, use `ExecuteTestsWithConfig`:
 
 ```go
-cfg := starbase.TestConfig{
+cfg := libkite.TestConfig{
     Filter:  "integration",  // run only test_* whose names contain this substring
     Verbose: true,
 }
 results, err := rt.ExecuteTestsWithConfig(ctx, code, cfg)
 ```
 
-An `exit(code)` inside a test function is treated as a visible test failure (the result's `Error` wraps `*starbase.ExitError{Code: code}`) — not a silent process exit. A top-level `exit(code)` in the test script itself returns `*starbase.ExitError` from `ExecuteTestsWithConfig`.
+An `exit(code)` inside a test function is treated as a visible test failure (the result's `Error` wraps `*libkite.ExitError{Code: code}`) — not a silent process exit. A top-level `exit(code)` in the test script itself returns `*libkite.ExitError` from `ExecuteTestsWithConfig`.
 
 ## Other Runtime methods
 
@@ -597,7 +597,7 @@ For custom embedding scenarios:
 |--------|---------|
 | `rt.NewThread(name) *starlark.Thread` | Create a thread pre-configured with the runtime's permissions and print function. Useful when you need to call `starlark.Call` yourself on a callable you hold. |
 | `rt.PrintVariables()` | Print all variables from the runtime's configured `VarStore` to stdout. Debug helper. |
-| `rt.Registry() *starbase.Registry` | Access the module registry — e.g., to register a module after `New` or inspect what's loaded. |
+| `rt.Registry() *libkite.Registry` | Access the module registry — e.g., to register a module after `New` or inspect what's loaded. |
 | `rt.Permissions() *PermissionChecker` | Access the active permission checker — e.g., to run manual checks. |
 
 ## Example: Config File Evaluator
@@ -610,13 +610,13 @@ import (
     "log"
     "os"
 
-    "github.com/project-starkite/starkite/starbase"
-    "github.com/project-starkite/starkite/starbase/loader"
+    "github.com/project-starkite/starkite/libkite"
+    "github.com/project-starkite/starkite/libkite/loader"
 )
 
 func main() {
     registry := loader.NewDefaultRegistry(nil)
-    rt, err := starbase.NewSandboxed(&starbase.Config{
+    rt, err := libkite.NewSandboxed(&libkite.Config{
         Registry:   registry,
         ScriptPath: "config.star",
         Globals: map[string]interface{}{

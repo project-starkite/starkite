@@ -1,8 +1,8 @@
-#!/usr/bin/env cloudkite
+#!/usr/bin/env kitecloud
 # validate-replicas.star — Reject deployments with more than 10 replicas
 #
 # Usage:
-#   cloudkite run validate-replicas.star
+#   kitecloud run validate-replicas.star
 #
 # Requires TLS certificates mounted at /certs/ (or override paths below)
 

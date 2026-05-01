@@ -4,9 +4,9 @@ description: "Starkite command-line interface"
 weight: 10
 ---
 
-Starkite ships as four binaries — `kite` (all-in-one), `basekite` (base only), `cloudkite` (base + Kubernetes), `aikite` (base + LLM/MCP). Every command on this page works in any edition that includes the modules it touches; edition-specific commands are flagged below.
+Starkite ships as four binaries — `kite` (all-in-one), `kitecmd` (base only), `kitecloud` (base + Kubernetes), `kiteai` (base + LLM/MCP). Every command on this page works in any edition that includes the modules it touches; edition-specific commands are flagged below.
 
-The examples below use `kite` for brevity. Substitute `basekite`/`cloudkite`/`aikite` if you've installed a lean edition.
+The examples below use `kite` for brevity. Substitute `kitecmd`/`kitecloud`/`kiteai` if you've installed a lean edition.
 
 ## Commands
 
@@ -37,7 +37,7 @@ Available in **every** edition.
 
 ### Cloud commands
 
-Available in `kite` (all-in-one) and `cloudkite`.
+Available in `kite` (all-in-one) and `kitecloud`.
 
 | Command | Purpose |
 |---------|---------|

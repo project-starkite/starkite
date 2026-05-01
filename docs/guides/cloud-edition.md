@@ -4,16 +4,16 @@ description: "Kubernetes and cloud modules"
 weight: 5
 ---
 
-The cloud edition of starkite adds Kubernetes (`k8s` module) and the `kite kube` artifact-generation subcommand on top of the base edition. It ships as the standalone `cloudkite` binary, and is also bundled into the all-in-one `kite` binary.
+The cloud edition of starkite adds Kubernetes (`k8s` module) and the `kite kube` artifact-generation subcommand on top of the base edition. It ships as the standalone `kitecloud` binary, and is also bundled into the all-in-one `kite` binary.
 
 ## Installation
 
 ```bash
-# Build from source — produces ./bin/cloudkite
+# Build from source — produces ./bin/kitecloud
 make build-cloud
 
 # Or install via the edition manager (downloads from GitHub Releases)
-basekite edition use cloud
+kitecmd edition use cloud
 ```
 
 If you have the all-in-one `kite` binary installed, you already have the cloud module — no separate install needed.
@@ -74,10 +74,10 @@ k8s.rollout("deployment", "nginx", action="restart")
 ## Editions Management
 
 ```bash
-basekite edition status        # List installed editions
-basekite edition use cloud     # Install cloud edition (downloads cloudkite)
-basekite edition use base      # Switch back to base
-basekite edition remove cloud  # Uninstall cloud edition
+kitecmd edition status        # List installed editions
+kitecmd edition use cloud     # Install cloud edition (downloads kitecloud)
+kitecmd edition use base      # Switch back to base
+kitecmd edition remove cloud  # Uninstall cloud edition
 ```
 
-When cloud is active, `basekite` transparently execs into `cloudkite` for every command.
+When cloud is active, `kitecmd` transparently execs into `kitecloud` for every command.

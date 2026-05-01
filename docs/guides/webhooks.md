@@ -13,7 +13,7 @@ Kubernetes admission webhooks intercept API requests before resources are persis
 Reject deployments with too many replicas:
 
 ```python
-#!/usr/bin/env cloudkite
+#!/usr/bin/env kitecloud
 
 def validate(obj):
     if obj.spec.replicas > 10:
@@ -33,7 +33,7 @@ k8s.webhook("/validate",
 Inject labels into every deployment:
 
 ```python
-#!/usr/bin/env cloudkite
+#!/usr/bin/env kitecloud
 
 def mutate(obj):
     obj["metadata"]["labels"]["managed-by"] = "starkite"
@@ -145,7 +145,7 @@ openssl req -x509 -newkey rsa:2048 \
     -keyout /tmp/key.pem -out /tmp/cert.pem \
     -days 1 -nodes -subj '/CN=localhost'
 
-cloudkite run webhook.star \
+kitecloud run webhook.star \
     --var tls_cert=/tmp/cert.pem \
     --var tls_key=/tmp/key.pem
 ```
@@ -156,18 +156,18 @@ For production, use [cert-manager](https://cert-manager.io/) to manage certifica
 
 A webhook deployment requires:
 
-1. **Deployment** — runs `cloudkite run webhook.star` with TLS certs mounted
+1. **Deployment** — runs `kitecloud run webhook.star` with TLS certs mounted
 2. **Service** — exposes the webhook pod (port 443 → 9443)
 3. **TLS Secret** — certificate and private key
 4. **WebhookConfiguration** — tells the API server which resources to intercept
 
 ### Generate Deployment Artifacts
 
-Use `cloudkite kube gen-webhook-artifacts` to generate all manifests:
+Use `kitecloud kube gen-webhook-artifacts` to generate all manifests:
 
 ```bash
 # Generate YAML manifests
-cloudkite kube gen-webhook-artifacts \
+kitecloud kube gen-webhook-artifacts \
     --webhook webhook.star \
     --name myapp-webhook \
     --image myregistry/myapp-webhook:v1 \
@@ -175,7 +175,7 @@ cloudkite kube gen-webhook-artifacts \
     --rule "group=apps resource=deployments operations=CREATE,UPDATE" > deploy.yaml
 
 # Or generate a Starlark deployment script
-cloudkite kube gen-webhook-artifacts \
+kitecloud kube gen-webhook-artifacts \
     --webhook webhook.star \
     --name myapp-webhook \
     --image myregistry/myapp-webhook:v1 \

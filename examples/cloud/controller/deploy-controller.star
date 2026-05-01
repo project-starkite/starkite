@@ -1,4 +1,4 @@
-#!/usr/bin/env cloudkite
+#!/usr/bin/env kitecloud
 # deploy-controller.star — Programmatic deployment of a controller
 # This shows how to deploy everything using Starlark instead of YAML
 

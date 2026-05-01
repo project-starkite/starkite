@@ -6,8 +6,8 @@ package commands
 import (
 	"sync"
 
-	aicmd "github.com/project-starkite/starkite/aikite/cmd"
-	cloudcmd "github.com/project-starkite/starkite/cloudkite/cmd"
+	aicmd "github.com/project-starkite/starkite/ai/cmd"
+	cloudcmd "github.com/project-starkite/starkite/cloud/cmd"
 	"github.com/spf13/cobra"
 )
 

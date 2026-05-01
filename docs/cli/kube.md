@@ -5,7 +5,7 @@ weight: 25
 ---
 
 !!! note "Cloud functionality"
-    `kite kube` is available in `kite` (all-in-one) and `cloudkite`. It is **not** available in `basekite` or `aikite`. Install via `basekite edition use cloud` to fetch `cloudkite`, or use the all-in-one `kite` binary directly.
+    `kite kube` is available in `kite` (all-in-one) and `kitecloud`. It is **not** available in `kitecmd` or `kiteai`. Install via `kitecmd edition use cloud` to fetch `kitecloud`, or use the all-in-one `kite` binary directly.
 
 Generate Kubernetes deployment artifacts for starkite controllers and admission webhooks. Two subcommands: `gen-controller-artifacts` builds manifests for long-running controllers; `gen-webhook-artifacts` builds manifests for validating/mutating webhooks including TLS plumbing.
 
@@ -45,20 +45,20 @@ Output can be YAML (for `kubectl apply`) or a generated Starlark deployment scri
 
 ```bash
 # Generate YAML manifests (default)
-cloudkite kube gen-controller-artifacts \
+kitecloud kube gen-controller-artifacts \
     --controller controller.star \
     --resource resource.star \
     --image myregistry/myapp-controller:v1 \
     --namespace myapp-system > deploy.yaml
 
 # Generate a Starlark deployment script
-cloudkite kube gen-controller-artifacts \
+kitecloud kube gen-controller-artifacts \
     --controller controller.star \
     --image myregistry/myapp-controller:v1 \
     --output script > deploy-controller.star
 
 # Use a custom generator
-cloudkite kube gen-controller-artifacts \
+kitecloud kube gen-controller-artifacts \
     --generator my-generator.star \
     --image myregistry/myapp-controller:v1
 ```
@@ -85,7 +85,7 @@ Produce full admission-webhook manifests: Namespace, ServiceAccount, Deployment 
 ### Examples
 
 ```bash
-cloudkite kube gen-webhook-artifacts \
+kitecloud kube gen-webhook-artifacts \
     --webhook webhook.star \
     --name myapp-webhook \
     --image myregistry/myapp-webhook:v1 \

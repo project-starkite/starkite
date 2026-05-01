@@ -1,8 +1,8 @@
 go 1.26
 
-use ./starbase
+use ./libkite
 use ./wasm
-use ./basekite
-use ./cloudkite
-use ./aikite
+use ./base
+use ./cloud
+use ./ai
 use ./allkite

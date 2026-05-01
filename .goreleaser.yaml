@@ -1,10 +1,10 @@
 version: 2
 
 builds:
-  - id: basekite
-    dir: ./basekite
+  - id: kitecmd
+    dir: ./base
     main: .
-    binary: basekite
+    binary: kitecmd
     goos:
       - linux
       - darwin
@@ -17,14 +17,14 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
-      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
-      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/base/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/base/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/base/version.GitCommit={{.Commit}}
 
-  - id: cloudkite
-    dir: ./cloudkite
+  - id: kitecloud
+    dir: ./cloud
     main: .
-    binary: cloudkite
+    binary: kitecloud
     goos:
       - linux
       - darwin
@@ -37,15 +37,15 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
-      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
-      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
-      - -X github.com/project-starkite/starkite/basekite/version.Edition=cloud
+      - -X github.com/project-starkite/starkite/base/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/base/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/base/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/base/version.Edition=cloud
 
-  - id: aikite
-    dir: ./aikite
+  - id: kiteai
+    dir: ./ai
     main: .
-    binary: aikite
+    binary: kiteai
     goos:
       - linux
       - darwin
@@ -58,10 +58,10 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
-      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
-      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
-      - -X github.com/project-starkite/starkite/basekite/version.Edition=ai
+      - -X github.com/project-starkite/starkite/base/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/base/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/base/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/base/version.Edition=ai
 
   - id: kite
     dir: ./allkite
@@ -79,32 +79,32 @@ builds:
         goarch: arm64
     ldflags:
       - -s -w
-      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
-      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
-      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
-      - -X github.com/project-starkite/starkite/basekite/version.Edition=all
+      - -X github.com/project-starkite/starkite/base/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/base/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/base/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/base/version.Edition=all
 
 archives:
-  - id: basekite
+  - id: kitecmd
     ids:
-      - basekite
+      - kitecmd
     formats:
       - binary
-    name_template: "basekite-{{ .Os }}-{{ .Arch }}"
+    name_template: "kitecmd-{{ .Os }}-{{ .Arch }}"
 
-  - id: cloudkite
+  - id: kitecloud
     ids:
-      - cloudkite
+      - kitecloud
     formats:
       - binary
-    name_template: "cloudkite-{{ .Os }}-{{ .Arch }}"
+    name_template: "kitecloud-{{ .Os }}-{{ .Arch }}"
 
-  - id: aikite
+  - id: kiteai
     ids:
-      - aikite
+      - kiteai
     formats:
       - binary
-    name_template: "aikite-{{ .Os }}-{{ .Arch }}"
+    name_template: "kiteai-{{ .Os }}-{{ .Arch }}"
 
   - id: kite
     ids:

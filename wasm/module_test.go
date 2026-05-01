@@ -9,7 +9,7 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/project-starkite/starkite/starbase"
+	"github.com/project-starkite/starkite/libkite"
 )
 
 func TestWasmModule_Name(t *testing.T) {
@@ -57,7 +57,7 @@ func TestWasmModule_Load_MissingWasm(t *testing.T) {
 		wasmPath: "/nonexistent/path/bad.wasm",
 	}
 
-	_, err := m.Load(&starbase.ModuleConfig{})
+	_, err := m.Load(&libkite.ModuleConfig{})
 	if err == nil {
 		t.Fatal("expected error for missing wasm file")
 	}
@@ -112,7 +112,7 @@ func loadEchoModule(t *testing.T) *WasmModule {
 	}
 
 	m := NewWasmModule(discovered)
-	config := &starbase.ModuleConfig{}
+	config := &libkite.ModuleConfig{}
 	if _, err := m.Load(config); err != nil {
 		t.Fatalf("Load() error: %v", err)
 	}
@@ -124,7 +124,7 @@ func TestWasmModule_Integration(t *testing.T) {
 	m := loadEchoModule(t)
 	defer m.Close()
 
-	exports, _ := m.Load(&starbase.ModuleConfig{})
+	exports, _ := m.Load(&libkite.ModuleConfig{})
 	if _, ok := exports["echo"]; !ok {
 		t.Fatal("expected 'echo' in exports")
 	}

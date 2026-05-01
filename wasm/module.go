@@ -10,10 +10,10 @@ import (
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
-	"github.com/project-starkite/starkite/starbase"
+	"github.com/project-starkite/starkite/libkite"
 )
 
-// WasmModule wraps an Extism plugin behind the standard starbase.Module interface.
+// WasmModule wraps an Extism plugin behind the standard libkite.Module interface.
 // Plugins are loaded lazily on first call to Load().
 type WasmModule struct {
 	manifest *PluginManifest
@@ -24,7 +24,7 @@ type WasmModule struct {
 	compiled *extism.CompiledPlugin
 	module   starlark.Value
 	loadErr  error
-	config   *starbase.ModuleConfig
+	config   *libkite.ModuleConfig
 	mu       sync.Mutex
 }
 
@@ -36,8 +36,8 @@ func NewWasmModule(discovered *DiscoveredPlugin) *WasmModule {
 	}
 }
 
-func (m *WasmModule) Name() starbase.ModuleName {
-	return starbase.ModuleName(m.manifest.Name)
+func (m *WasmModule) Name() libkite.ModuleName {
+	return libkite.ModuleName(m.manifest.Name)
 }
 
 func (m *WasmModule) Description() string {
@@ -54,7 +54,7 @@ func (m *WasmModule) FactoryMethod() string {
 
 // Load initializes the WASM plugin and builds the Starlark module.
 // Uses sync.Once for lazy initialization matching the native module pattern.
-func (m *WasmModule) Load(config *starbase.ModuleConfig) (starlark.StringDict, error) {
+func (m *WasmModule) Load(config *libkite.ModuleConfig) (starlark.StringDict, error) {
 	m.once.Do(func() {
 		m.config = config
 		m.loadErr = m.initialize()
@@ -174,7 +174,7 @@ func (m *WasmModule) makeBuiltin(fn FunctionManifest) *starlark.Builtin {
 		args starlark.Tuple, kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
 		// Check permission
-		if err := starbase.Check(thread, m.manifest.Name, fn.Name, ""); err != nil {
+		if err := libkite.Check(thread, m.manifest.Name, fn.Name, ""); err != nil {
 			return nil, err
 		}
 

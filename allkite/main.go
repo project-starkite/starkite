@@ -1,5 +1,5 @@
 // Binary kite-all is the all-in-one starkite edition: base + cloud + ai modules
-// in one binary. The lean editions (kitecore, kitecloud, kiteai) remain available
+// in one binary. The lean editions (libkite, kitecloud, kiteai) remain available
 // for users who want a smaller binary or smaller attack surface.
 //
 // This main package deliberately imports the cloud and ai *loader* and *cmd*
@@ -12,8 +12,8 @@ import (
 
 	allcmd "github.com/project-starkite/starkite/allkite/cmd"
 	"github.com/project-starkite/starkite/allkite/loader"
-	corecmd "github.com/project-starkite/starkite/basekite/cmd"
-	"github.com/project-starkite/starkite/basekite/version"
+	corecmd "github.com/project-starkite/starkite/base/cmd"
+	"github.com/project-starkite/starkite/base/version"
 )
 
 func init() {

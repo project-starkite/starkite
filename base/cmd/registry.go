@@ -1,0 +1,30 @@
+package cmd
+
+import (
+	stdlog "log"
+
+	"github.com/spf13/cobra"
+	"github.com/project-starkite/starkite/libkite"
+	"github.com/project-starkite/starkite/libkite/loader"
+	"github.com/project-starkite/starkite/wasm"
+)
+
+// newDefaultRegistryWithWASM creates the default registry with built-in modules + WASM plugins.
+func newDefaultRegistryWithWASM(config *libkite.ModuleConfig) *libkite.Registry {
+	r := loader.NewDefaultRegistry(config)
+	if err := wasm.RegisterPlugins(r, ""); err != nil {
+		stdlog.Printf("wasm: plugin discovery error: %v", err)
+	}
+	return r
+}
+
+// NewRegistry is the function used by all script-executing commands to create
+// a module registry. It defaults to the base loader which registers all built-in
+// modules + WASM plugins. Edition binaries (e.g. cloud) override this before
+// calling Execute() to inject additional modules.
+var NewRegistry func(config *libkite.ModuleConfig) *libkite.Registry = newDefaultRegistryWithWASM
+
+// RegisterEditionCommands is called at the start of Execute() to allow edition
+// binaries to register additional cobra commands on the root command.
+// Nil by default (base edition has no extra commands).
+var RegisterEditionCommands func(root *cobra.Command)

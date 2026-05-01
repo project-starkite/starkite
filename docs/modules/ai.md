@@ -6,7 +6,7 @@ edition: ai
 ---
 
 !!! note "AI functionality"
-    The `ai` module is available in `kite` (all-in-one) and `aikite`. It is **not** available in `basekite` or `cloudkite`. Install via `make build-ai` (produces `./bin/aikite`) or download the `aikite-{os}-{arch}` release binary. See [AI Edition](../guides/ai-edition.md) for setup.
+    The `ai` module is available in `kite` (all-in-one) and `kiteai`. It is **not** available in `kitecmd` or `kitecloud`. Install via `make build-ai` (produces `./bin/kiteai`) or download the `kiteai-{os}-{arch}` release binary. See [AI Edition](../guides/ai-edition.md) for setup.
 
 The `ai` module wraps Firebase Genkit to provide one-shot generation, multi-turn chat, tool calling, and autonomous agent loops across Anthropic, OpenAI, Google AI, and Ollama.
 

@@ -6,7 +6,7 @@ edition: ai
 ---
 
 !!! note "AI functionality"
-    The `mcp` module is available in `kite` (all-in-one) and `aikite`. It is **not** available in `basekite` or `cloudkite`. See [AI Edition](../guides/ai-edition.md).
+    The `mcp` module is available in `kite` (all-in-one) and `kiteai`. It is **not** available in `kitecmd` or `kitecloud`. See [AI Edition](../guides/ai-edition.md).
 
 The `mcp` module exposes [Model Context Protocol](https://modelcontextprotocol.io) primitives. Scripts can **serve** their own MCP server (expose Starlark tools, resources, and prompts over stdio or HTTP) and **connect** to remote MCP servers (call tools, read resources, fetch prompts) as a client.
 

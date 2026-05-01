@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/project-starkite/starkite/starbase"
-	"github.com/project-starkite/starkite/starbase/modules/test"
+	"github.com/project-starkite/starkite/libkite"
+	"github.com/project-starkite/starkite/libkite/modules/test"
 )
 
-// TestStarlarkEndToEnd boots a full starbase Runtime with the echo WASM plugin
+// TestStarlarkEndToEnd boots a full libkite Runtime with the echo WASM plugin
 // registered, then runs the echo_test.star Starlark script through ExecuteTests.
 // This exercises every moving part: Runtime -> Registry -> WasmModule -> Extism
 // -> JSON marshaling -> WASM guest -> JSON unmarshaling -> Starlark value.
@@ -30,8 +30,8 @@ func TestStarlarkEndToEnd(t *testing.T) {
 	manifest := mustParseManifest(t, filepath.Join("testdata", "echo", "module.yaml"))
 
 	// Build a registry with just the echo WASM module
-	moduleConfig := &starbase.ModuleConfig{}
-	registry := starbase.NewRegistry(moduleConfig)
+	moduleConfig := &libkite.ModuleConfig{}
+	registry := libkite.NewRegistry(moduleConfig)
 
 	discovered := &DiscoveredPlugin{
 		Manifest: manifest,
@@ -42,15 +42,15 @@ func TestStarlarkEndToEnd(t *testing.T) {
 	registry.Register(test.New())
 
 	// Create a full Runtime with the registry
-	config := &starbase.Config{
+	config := &libkite.Config{
 		ScriptPath:  "echo_test.star",
 		Registry:    registry,
-		Permissions: starbase.TrustedPermissions(),
+		Permissions: libkite.TrustedPermissions(),
 	}
 
-	rt, err := starbase.New(config)
+	rt, err := libkite.New(config)
 	if err != nil {
-		t.Fatalf("starbase.New: %v", err)
+		t.Fatalf("libkite.New: %v", err)
 	}
 	defer rt.Close()
 
