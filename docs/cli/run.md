@@ -39,6 +39,6 @@ kite deploy.star --var-file=prod.yaml
 # Pipe output
 kite manifest.star | kubectl apply -f -
 
-# Sandbox mode
-kite deploy.star --sandbox
+# Strict permissions profile
+kite deploy.star --permissions=strict
 ```

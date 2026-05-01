@@ -53,10 +53,7 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--debug` | Enable debug logging | `false` |
 | `--dry-run` | Preview commands without executing | `false` |
 | `--timeout seconds` | Script execution timeout | `300` |
-| `--trust` | Trust mode: allow all operations | `false` [^1] |
-| `--sandbox` | Sandbox mode: restrict to safe operations | `false` |
-
-[^1]: When neither `--trust` nor `--sandbox` is set, trust mode is the default behavior. The flag itself defaults to `false`; setting it explicitly only matters when overriding an env-var-configured sandbox.
+| `--permissions profile` | Permission profile (e.g. `strict`); empty = trust mode | `""` |
 
 ## Environment Variables
 

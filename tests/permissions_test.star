@@ -3,8 +3,8 @@
 # These tests verify the permission system works correctly when executed
 # with different permission modes. Run with:
 #
-#   kite test ./tests/permissions_test.star           # Default trusted mode - all tests pass
-#   kite test ./tests/permissions_test.star --sandbox # Sandbox mode - I/O tests should fail
+#   kite test ./tests/permissions_test.star                       # Default trusted mode - all tests pass
+#   kite test ./tests/permissions_test.star --permissions=strict  # Strict profile - I/O tests should fail
 
 # Test 1: Pure utility modules should always work
 def test_pure_utilities():
@@ -71,7 +71,7 @@ def test_core_info():
     assert(len(u) > 0, "username() should return non-empty string")
 
 # Test 5: Environment variables (when allowed)
-# Note: In sandbox mode, env() will fail
+# Note: Under --permissions=strict, env() will fail
 def test_env_access():
     """Environment access works in trusted mode"""
     # This test only passes in trusted mode
@@ -83,7 +83,7 @@ def test_env_access():
     assert(len(path) > 0, "PATH should be set")
 
 # Test 6: File read (when allowed)
-# Note: In sandbox mode, read_file will fail
+# Note: Under --permissions=strict, read_file will fail
 def test_file_read():
     """File read works in trusted mode"""
     # Read this test file itself
@@ -91,14 +91,14 @@ def test_file_read():
     assert("Permission System Integration Tests" in content, "should read this file")
 
 # Test 7: Command execution (when allowed)
-# Note: In sandbox mode, exec will fail
+# Note: Under --permissions=strict, exec will fail
 def test_exec():
     """Command execution works in trusted mode"""
     output = exec("echo hello")
     assert("hello" in output, "should capture output")
 
 # Test 8: File existence check (when allowed)
-# Note: In sandbox mode, exists will fail
+# Note: Under --permissions=strict, exists will fail
 def test_file_exists():
     """File existence check works in trusted mode"""
     assert(exists("tests/permissions_test.star"), "this file should exist")

@@ -123,15 +123,15 @@ time=... level=INFO msg="Running on" platform=darwin arch=arm64
 | `kite test path/to/tests/` | Run all `*_test.star` files under a directory |
 | `kite watch hello.star` | Re-run on every save |
 
-## Run with a sandbox
+## Run with restricted permissions
 
-By default `kite` runs in **trust mode** — scripts can do anything the user can do. The `--sandbox` flag flips the default to deny-all, and every privileged operation (filesystem write, command exec, network call, even `var_str`) must be explicitly granted via a permission rule:
+By default `kite` runs in **trust mode** — scripts can do anything the user can do. The `--permissions=strict` flag flips the default to deny-all, and every privileged operation (filesystem write, command exec, network call, even `var_str`) must be explicitly granted via a permission rule:
 
 ```bash
-kite hello.star --sandbox   # fails: no rules → every op is denied
+kite hello.star --permissions=strict   # fails: no rules → every op is denied
 ```
 
-The `--sandbox` flag is most useful with a profile or a frontmatter block in the script that declares the rules the script needs. See [Permissions](../guides/permissions.md) for the rule syntax and the built-in profiles.
+`--permissions` is most useful with a profile or a frontmatter block in the script that declares the rules the script needs. See [Permissions](../guides/permissions.md) for the rule syntax and the built-in profiles.
 
 ## What's next
 
@@ -139,4 +139,4 @@ The `--sandbox` flag is most useful with a profile or a frontmatter block in the
 - [Module Reference](../modules/index.md) — the full builtin module catalog
 - [Variables](../guides/variables.md) — `--var`, `--var-file`, and the `var_*` builtins
 - [Error Handling](../guides/error-handling.md) — the `try_` pattern
-- [Permissions](../guides/permissions.md) — sandbox rules and profiles
+- [Permissions](../guides/permissions.md) — permission rules and profiles

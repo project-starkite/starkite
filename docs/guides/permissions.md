@@ -1,29 +1,28 @@
 ---
 title: "Permissions"
-description: "Trust and sandbox modes"
+description: "Trust mode and permission profiles"
 weight: 2
 ---
 
-Starkite provides two permission modes to control what operations scripts can perform.
+Starkite provides permission profiles to control what operations scripts can perform.
 
 ## Trust Mode (Default)
 
-Trust mode allows all operations. This is the default.
+When `--permissions` is not set, scripts run in trust mode and may perform any operation.
 
 ```bash
 kite script.star          # trust mode (default)
-kite script.star --trust  # explicit trust mode
 ```
 
-## Sandbox Mode
+## Strict Profile
 
-Sandbox mode restricts scripts to safe operations only. Dangerous operations like `exec()`, file writes, and network access are blocked.
+The `strict` profile restricts scripts to safe operations only. Dangerous operations like `exec()`, file writes, and network access are blocked.
 
 ```bash
-kite script.star --sandbox
+kite script.star --permissions=strict
 ```
 
-### Allowed in Sandbox
+### Allowed under `strict`
 
 - String manipulation (`strings.*`)
 - JSON/YAML encoding/decoding (in-memory)
@@ -32,7 +31,7 @@ kite script.star --sandbox
 - UUID generation
 - Template rendering (in-memory)
 
-### Blocked in Sandbox
+### Blocked under `strict`
 
 - Command execution (`exec()`, `os.exec()`)
 - File I/O (`path().write_text()`, `path().remove()`)
@@ -41,10 +40,10 @@ kite script.star --sandbox
 
 ### Permission Errors
 
-When a sandbox-blocked operation is attempted:
+When a blocked operation is attempted under `--permissions=strict`:
 
 ```python
-# In sandbox mode:
+# Under --permissions=strict:
 exec("echo hello")
-# Error: permission denied: os.exec is not allowed in sandbox mode
+# Error: permission denied: os.exec is not allowed
 ```

@@ -193,47 +193,47 @@ else
 fi
 
 # --------------------------------------------
-# Test 10: Sandbox mode blocks exec
+# Test 10: Strict profile blocks exec
 # --------------------------------------------
-info "Test 10: --sandbox mode blocks exec"
+info "Test 10: --permissions=strict blocks exec"
 
-if $KITE exec 'exec("echo test")' --sandbox 2>&1 | grep -q "permission denied"; then
-    pass "--sandbox blocks exec"
+if $KITE exec 'exec("echo test")' --permissions=strict 2>&1 | grep -q "permission denied"; then
+    pass "--permissions=strict blocks exec"
 else
-    fail "--sandbox blocks exec"
+    fail "--permissions=strict blocks exec"
 fi
 
 # --------------------------------------------
-# Test 11: Sandbox mode allows safe modules
+# Test 11: Strict profile allows safe modules
 # --------------------------------------------
-info "Test 11: --sandbox mode allows safe modules"
+info "Test 11: --permissions=strict allows safe modules"
 
-if $KITE exec 'print(strings.upper("hello"))' --sandbox 2>&1 | grep -q "HELLO"; then
-    pass "--sandbox allows strings"
+if $KITE exec 'print(strings.upper("hello"))' --permissions=strict 2>&1 | grep -q "HELLO"; then
+    pass "--permissions=strict allows strings"
 else
-    fail "--sandbox allows strings"
+    fail "--permissions=strict allows strings"
 fi
 
 # --------------------------------------------
-# Test 12: Trust mode allows everything
+# Test 12: Default (no --permissions) allows everything
 # --------------------------------------------
-info "Test 12: --trust mode allows everything"
+info "Test 12: default trust mode allows everything"
 
-if $KITE exec 'r = exec("echo trusted"); print(r.stdout)' --trust 2>&1 | grep -q "trusted"; then
-    pass "--trust allows exec"
+if $KITE exec 'r = exec("echo trusted"); print(r.stdout)' 2>&1 | grep -q "trusted"; then
+    pass "default trust mode allows exec"
 else
-    fail "--trust allows exec"
+    fail "default trust mode allows exec"
 fi
 
 # --------------------------------------------
-# Test 13: Mutual exclusivity of --trust and --sandbox
+# Test 13: Unknown profile warns and falls back to trust
 # --------------------------------------------
-info "Test 13: --trust and --sandbox are mutually exclusive"
+info "Test 13: unknown --permissions value warns and runs"
 
-if $KITE exec 'print("test")' --trust --sandbox 2>&1 | grep -q "none of the others can"; then
-    pass "Mutual exclusivity enforced"
+if $KITE exec 'print("ok")' --permissions=bogus 2>&1 | grep -q "unknown permissions profile"; then
+    pass "unknown profile produces stderr warning"
 else
-    fail "Mutual exclusivity enforced"
+    fail "unknown profile produces stderr warning"
 fi
 
 # --------------------------------------------

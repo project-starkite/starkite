@@ -689,14 +689,13 @@ rolling out v1.0.0</code></pre>
           <span class="terminal__dot terminal__dot--green"></span>
           <span class="terminal__title">shell</span>
         </div>
-        <pre><code class="language-bash">$ kite run deploy.star            # script is trusted
-$ kite run deploy.star --trust    # explicit</code></pre>
+        <pre><code class="language-bash">$ kite run deploy.star            # script is trusted (default)</code></pre>
       </div>
     </div>
 
     <div class="run-card">
-      <h4>Sandbox mode</h4>
-      <p>Script functionslities are restricted with execution policies.</p>
+      <h4>Strict permissions</h4>
+      <p>Script functionalities are restricted with execution policies.</p>
       <div class="terminal">
         <div class="terminal__bar">
           <span class="terminal__dot terminal__dot--red"></span>
@@ -704,7 +703,7 @@ $ kite run deploy.star --trust    # explicit</code></pre>
           <span class="terminal__dot terminal__dot--green"></span>
           <span class="terminal__title">shell</span>
         </div>
-        <pre><code class="language-bash">$ kite run untrusted.star --sandbox  
+        <pre><code class="language-bash">$ kite run untrusted.star --permissions=strict
 Error: permission denied: os.exec is not allowed</code></pre>
       </div>
     </div>

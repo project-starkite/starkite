@@ -30,7 +30,7 @@ Starkite ships as four independent binaries that share the same script language 
 | `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
 | `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
 
-`kite` is the recommended starter — it's a strict superset of the lean editions. Install `kitecmd` if you want a smaller binary or smaller attack surface under `--sandbox`.
+`kite` is the recommended starter — it's a strict superset of the lean editions. Install `kitecmd` if you want a smaller binary or smaller attack surface under `--permissions=strict`.
 
 > **Naming convention.** Source directories follow two shapes: infrastructure packages (`libkite/`, `allkite/`) use a `<descriptor>kite/` suffix form; domain editions (`base/`, `cloud/`, `ai/`) are bare nouns. Binaries use `kite<edition>` prefix form (`kitecmd`, `kitecloud`, `kiteai`), with the all-in-one as the unadorned `kite`.
 
@@ -146,14 +146,14 @@ See the [module reference](https://starkite.dev/modules/) for full API documenta
 
 ## Permission Sandbox
 
-starkite has two permission modes controlled via CLI flags:
+starkite controls script privileges via CLI flags:
 
 ```bash
-kite run script.star --trust     # Allow all operations (default)
-kite run script.star --sandbox   # Restrict to safe operations only
+kite run script.star                        # Trust mode (default): allow all operations
+kite run script.star --permissions=strict   # Restrict to safe operations only
 ```
 
-Sandbox mode blocks command execution, file I/O, and network access — only safe operations like string manipulation, JSON/YAML encoding, and math are allowed.
+The `strict` profile blocks command execution, file I/O, and network access — only safe operations like string manipulation, JSON/YAML encoding, and math are allowed.
 
 For fine-grained control, configure allow/deny rules in `config.yaml`:
 

@@ -9,10 +9,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/project-starkite/starkite/base/edition"
 	"github.com/project-starkite/starkite/base/version"
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/spf13/cobra"
 )
 
 var (
@@ -25,8 +25,7 @@ var (
 	varFiles     []string
 
 	// Permission flags
-	trustMode   bool
-	sandboxMode bool
+	permissionsMode string
 )
 
 var rootCmd = &cobra.Command{
@@ -73,9 +72,7 @@ func init() {
 	rootCmd.PersistentFlags().StringArrayVar(&varFiles, "var-file", nil, "Load variables from YAML file: --var-file=values.yaml")
 
 	// Permission flags
-	rootCmd.PersistentFlags().BoolVar(&trustMode, "trust", false, "Trust mode: allow all operations (default)")
-	rootCmd.PersistentFlags().BoolVar(&sandboxMode, "sandbox", false, "Sandbox mode: restrict to safe operations only")
-	rootCmd.MarkFlagsMutuallyExclusive("trust", "sandbox")
+	rootCmd.PersistentFlags().StringVar(&permissionsMode, "permissions", "", "Permission profile (e.g. \"strict\")")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		applyEnvDefaults()
@@ -241,21 +238,15 @@ func PrintDebug(format string, args ...interface{}) {
 // GetPermissions returns the permission config based on CLI flags.
 // Returns nil for trusted mode (default), which allows all operations.
 func GetPermissions() *libkite.PermissionConfig {
-	if sandboxMode {
+	switch permissionsMode {
+	case "":
+		return nil
+	case "strict":
 		return libkite.SandboxedPermissions()
+	default:
+		fmt.Fprintf(os.Stderr, "warning: unknown permissions profile %q, falling back to trust mode\n", permissionsMode)
+		return nil
 	}
-	// Default and --trust both mean trusted mode (nil = allow all)
-	return nil
-}
-
-// IsSandboxMode returns whether sandbox mode is enabled
-func IsSandboxMode() bool {
-	return sandboxMode
-}
-
-// IsTrustMode returns whether trust mode is explicitly enabled
-func IsTrustMode() bool {
-	return trustMode
 }
 
 // shouldHandoff returns true if this invocation should attempt edition handoff.

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Breaking changes — `--sandbox` and `--trust` removed
+
+- The `--sandbox` flag is replaced by `--permissions=<profile>`. Use `--permissions=strict` for the previous `--sandbox` behavior. No alias is kept (pre-release).
+- The `--trust` flag is removed. Trust mode is the default when `--permissions` is unset; an explicit profile name (`--permissions=trusted`) lands in a follow-up phase.
+
 ### Breaking changes — naming refactor
 
 The repository has been restructured so that every directory and binary name conveys its intent at a glance. Pre-release, no migration aliases.
