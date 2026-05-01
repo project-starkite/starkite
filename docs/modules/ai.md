@@ -5,8 +5,8 @@ weight: 28
 edition: ai
 ---
 
-!!! note "AI edition only"
-    The `ai` module is only available in the `kite-ai` edition. Install it via `go install github.com/project-starkite/starkite/ai/cmd/kite-ai@latest` or from the release binaries. See [AI Edition](../guides/ai-edition.md) for setup.
+!!! note "AI functionality"
+    The `ai` module is available in `kite` (all-in-one) and `aikite`. It is **not** available in `basekite` or `cloudkite`. Install via `make build-ai` (produces `./bin/aikite`) or download the `aikite-{os}-{arch}` release binary. See [AI Edition](../guides/ai-edition.md) for setup.
 
 The `ai` module wraps Firebase Genkit to provide one-shot generation, multi-turn chat, tool calling, and autonomous agent loops across Anthropic, OpenAI, Google AI, and Ollama.
 

@@ -124,7 +124,7 @@ In strict mode:
 - `Register` **panics** if you register two modules with the same `Name()` — caught at startup, not at script runtime.
 - `LoadAll` returns an error if two modules export the same top-level key or register the same global alias.
 
-This is how the all-edition (`kite-all`) enforces edition-namespace disjointness across base + cloud + ai. The lean editions leave strict mode off.
+This is how the all-edition (`kite`) enforces edition-namespace disjointness across base + cloud + ai. The lean editions leave strict mode off.
 
 ## Configuration
 
@@ -468,7 +468,7 @@ Import the cloud loader to add Kubernetes support alongside the base modules:
 ```go
 import (
     "github.com/project-starkite/starkite/starbase"
-    cloudloader "github.com/project-starkite/starkite/cloud/loader"
+    cloudloader "github.com/project-starkite/starkite/cloudkite/loader"
 )
 
 // NewCloudRegistry registers all 27 base modules + k8s module
@@ -500,7 +500,7 @@ import (
     "os"
 
     "github.com/project-starkite/starkite/starbase"
-    cloudloader "github.com/project-starkite/starkite/cloud/loader"
+    cloudloader "github.com/project-starkite/starkite/cloudkite/loader"
 )
 
 func main() {

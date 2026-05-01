@@ -4,11 +4,15 @@ description: "Starkite command-line interface"
 weight: 10
 ---
 
-The starkite CLI binary is called `kite`. It provides commands for running scripts, testing, interactive REPL, and more.
+Starkite ships as four binaries — `kite` (all-in-one), `basekite` (base only), `cloudkite` (base + Kubernetes), `aikite` (base + LLM/MCP). Every command on this page works in any edition that includes the modules it touches; edition-specific commands are flagged below.
+
+The examples below use `kite` for brevity. Substitute `basekite`/`cloudkite`/`aikite` if you've installed a lean edition.
 
 ## Commands
 
 ### Script execution
+
+Available in **every** edition (base, cloud, ai, all).
 
 | Command | Purpose |
 |---------|---------|
@@ -22,6 +26,8 @@ The starkite CLI binary is called `kite`. It provides commands for running scrip
 
 ### Maintenance
 
+Available in **every** edition.
+
 | Command | Purpose |
 |---------|---------|
 | [`kite version`](version.md) | Print version information |
@@ -29,7 +35,9 @@ The starkite CLI binary is called `kite`. It provides commands for running scrip
 | [`kite edition`](edition.md) | Manage starkite editions (base, cloud, ai) |
 | [`kite module`](module.md) | Manage external modules (starlark + WASM) |
 
-### Cloud edition (`kite-cloud`)
+### Cloud commands
+
+Available in `kite` (all-in-one) and `cloudkite`.
 
 | Command | Purpose |
 |---------|---------|

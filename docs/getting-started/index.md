@@ -10,45 +10,39 @@ This page walks you from a fresh checkout to running your first script in under 
 
 ## Editions
 
-Starkite ships as three independent binaries that share a common runtime. Pick the one that matches what you want to automate — they all share the same script language and core modules:
+Starkite ships as four independent binaries that share the same script language and core modules. Pick the one that matches what you want to automate:
 
-| Binary | Adds on top of base | Use when |
+| Binary | Modules | Use when |
 |---|---|---|
-| `kite` | base modules only (os, fs, http, ssh, json, yaml, time, log, …) | system scripts, CI tasks, general automation |
-| `kite-cloud` | Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
-| `kite-ai` | LLM clients, MCP server/client | agentic AI tools and orchestration |
+| `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | you want everything in one binary — recommended for new users |
+| `basekite` | base only (os, fs, http, ssh, json, yaml, time, log, …) | system scripts, CI tasks, general automation |
+| `cloudkite` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
+| `aikite` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
 
-A single host can install one, two, or all three. Each is a stand-alone binary.
+A single host can install one, two, or all four. Each is a stand-alone binary. `kite` is a strict superset of `basekite`/`cloudkite`/`aikite`, so most examples on this site work with any edition that includes the modules they touch.
 
 ## Install
 
 ### From source (recommended during development)
 
-The repository is a Go workspace with one module per edition. Build the editions you need:
+The repository is a Go workspace with one module per edition. Build the editions you need — local builds land in `./bin/`:
 
 ```bash
 git clone https://github.com/project-starkite/starkite.git
 cd starkite
 
-make build-core    # produces ./kite
-make build-cloud   # produces ./kite-cloud
-make build-ai      # produces ./kite-ai
+make build              # all four binaries → ./bin/
 # or:
-make build         # builds all three
-```
-
-Or build a single edition directly:
-
-```bash
-cd core  && go build -o ../kite .
-cd cloud && go build -o ../kite-cloud .
-cd ai    && go build -o ../kite-ai .
+make build-all          # ./bin/kite       (all-in-one)
+make build-base         # ./bin/basekite   (base only)
+make build-cloud        # ./bin/cloudkite  (base + k8s)
+make build-ai           # ./bin/aikite     (base + LLM/MCP)
 ```
 
 Move the binary onto your `PATH`:
 
 ```bash
-sudo install -m 0755 ./kite /usr/local/bin/kite
+sudo install -m 0755 ./bin/kite /usr/local/bin/kite
 ```
 
 ### From GitHub Releases
@@ -58,10 +52,9 @@ Download a pre-built binary for your platform from [GitHub Releases](https://git
 Release assets follow the `<binary>-<os>-<arch>` pattern:
 
 - `kite-linux-amd64`, `kite-linux-arm64`, `kite-darwin-amd64`, `kite-darwin-arm64`, `kite-windows-amd64.exe`
-- `kite-cloud-*` (same OS/arch matrix)
-- `kite-ai-*` (same OS/arch matrix)
+- `basekite-*`, `cloudkite-*`, `aikite-*` (same OS/arch matrix)
 
-Rename the downloaded file to `kite` (or `kite-cloud` / `kite-ai`), make it executable, and place it on your `PATH`.
+Rename the downloaded file to `kite` (or `basekite` / `cloudkite` / `aikite`), make it executable, and place it on your `PATH`.
 
 ## Verify the install
 
@@ -72,15 +65,15 @@ kite version
 Expected output (your commit and Go version will differ):
 
 ```
-kite version v0.1.0 (base)
-  edition: base
+kite version v0.1.0 (all)
+  edition: all
   commit:  <git-sha>
   built:   <timestamp>
   go:      go1.26.1
   os/arch: darwin/arm64
 ```
 
-`kite-cloud version` reports `(cloud)`; `kite-ai version` reports `(ai)`.
+`basekite version` reports `(base)`, `cloudkite version` reports `(cloud)`, `aikite version` reports `(ai)`.
 
 ## Your first script
 

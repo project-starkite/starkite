@@ -1,23 +1,22 @@
 ---
 title: "AI Edition"
-description: "kite-ai binary: LLM client, MCP, and agent primitives"
+description: "aikite binary: LLM client, MCP, and agent primitives"
 weight: 6
 ---
 
-The AI edition of starkite adds the [`ai`](../modules/ai.md) module (multi-provider LLM client) and the [`mcp`](../modules/mcp.md) module (Model Context Protocol server + client) to the base edition. Everything else from core is present.
+The AI edition of starkite adds the [`ai`](../modules/ai.md) module (multi-provider LLM client) and the [`mcp`](../modules/mcp.md) module (Model Context Protocol server + client) to the base edition. Every base module remains available. It ships as the standalone `aikite` binary, and is also bundled into the all-in-one `kite` binary.
 
 ## Installation
 
 ```bash
-# Build from source
-go build -o kite-ai ./cmd/ai/starkite/
+# Build from source — produces ./bin/aikite
+make build-ai
 
-# Or install as an edition
-kite edition install ai
-kite edition activate ai
+# Or install via the edition manager (downloads from GitHub Releases)
+basekite edition use ai
 ```
 
-When the AI edition is active, the base `kite` binary automatically delegates to `kite-ai`.
+If you have the all-in-one `kite` binary installed, you already have the ai modules — no separate install needed.
 
 ## Provider Credentials
 
@@ -47,7 +46,7 @@ print(resp.text)
 ```
 
 ```bash
-kite-ai run hello-ai.star
+aikite run hello-ai.star
 ```
 
 Or with Anthropic once `ANTHROPIC_API_KEY` is set:
@@ -87,11 +86,13 @@ All 27 modules from the base edition (`os`, `fs`, `http`, `ssh`, `json`, `yaml`,
 ## Editions Management
 
 ```bash
-kite edition list              # List installed editions
-kite edition install ai        # Install AI edition
-kite edition activate ai       # Set AI as active
-kite edition activate base     # Switch back to base
+basekite edition status        # List installed editions
+basekite edition use ai        # Install AI edition (downloads aikite)
+basekite edition use base      # Switch back to base
+basekite edition remove ai     # Uninstall AI edition
 ```
+
+When ai is active, `basekite` transparently execs into `aikite` for every command.
 
 ## Next Steps
 

@@ -1,12 +1,12 @@
-#!/usr/bin/env kite-cloud
+#!/usr/bin/env cloudkite
 # deployment-scaler.star — Enforces max replicas on labeled deployments
 #
 # Watches deployments with the label "enforce-max-replicas=true" and
 # scales them down if they exceed the configured maximum.
 #
 # Usage:
-#   kite-cloud run examples/cloud/controller/deployment-scaler.star
-#   kite-cloud run examples/cloud/controller/deployment-scaler.star --var max_replicas=5
+#   cloudkite run examples/cloud/controller/deployment-scaler.star
+#   cloudkite run examples/cloud/controller/deployment-scaler.star --var max_replicas=5
 
 max_replicas = var_int("max_replicas", 3)
 

@@ -5,8 +5,8 @@ weight: 29
 edition: ai
 ---
 
-!!! note "AI edition only"
-    The `mcp` module is only available in the `kite-ai` edition. See [AI Edition](../guides/ai-edition.md).
+!!! note "AI functionality"
+    The `mcp` module is available in `kite` (all-in-one) and `aikite`. It is **not** available in `basekite` or `cloudkite`. See [AI Edition](../guides/ai-edition.md).
 
 The `mcp` module exposes [Model Context Protocol](https://modelcontextprotocol.io) primitives. Scripts can **serve** their own MCP server (expose Starlark tools, resources, and prompts over stdio or HTTP) and **connect** to remote MCP servers (call tools, read resources, fetch prompts) as a client.
 
@@ -201,8 +201,10 @@ See [agents guide — Pattern 4](../guides/agents.md#pattern-4-mcp-integration) 
 
 ### Stdio server exposing a single tool
 
+This example uses the `k8s` module too — run it with `kite` (the all-in-one binary, which has both `k8s` and `mcp`).
+
 ```python
-#!/usr/bin/env kite-ai
+#!/usr/bin/env kite
 
 def pod_logs(namespace, name, lines=50):
     """Fetch the last N log lines from a pod."""
@@ -220,7 +222,7 @@ Register this with an MCP client (e.g., Claude Desktop) by pointing at the scrip
 {
   "mcpServers": {
     "k8s-ops": {
-      "command": "kite-ai",
+      "command": "kite",
       "args": ["run", "/path/to/k8s-ops.star"]
     }
   }
