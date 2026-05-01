@@ -16,19 +16,20 @@ jobs:
         with:
           go-version: stable
           cache-dependency-path: |
-            starbase/go.sum
-            core/go.sum
+            libkite/go.sum
+            base/go.sum
             cloud/go.sum
             ai/go.sum
+            allkite/go.sum
             wasm/go.sum
 
-      - name: Build starbase
+      - name: Build libkite
         run: go build -v ./...
-        working-directory: starbase
+        working-directory: libkite
 
-      - name: Build core
+      - name: Build base
         run: go build -v ./...
-        working-directory: core
+        working-directory: base
 
       - name: Build cloud
         run: go build -v ./...
@@ -38,17 +39,21 @@ jobs:
         run: go build -v ./...
         working-directory: ai
 
+      - name: Build allkite
+        run: go build -v ./...
+        working-directory: allkite
+
       - name: Build wasm
         run: go build -v ./...
         working-directory: wasm
 
-      - name: Test starbase
+      - name: Test libkite
         run: go test -race ./...
-        working-directory: starbase
+        working-directory: libkite
 
-      - name: Test core
+      - name: Test base
         run: go test -race ./...
-        working-directory: core
+        working-directory: base
 
       - name: Test cloud
         run: go test -race ./...
@@ -57,3 +62,7 @@ jobs:
       - name: Test ai
         run: go test -race ./...
         working-directory: ai
+
+      - name: Test allkite
+        run: go test -race ./...
+        working-directory: allkite
