@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -46,6 +47,10 @@ func watchScript(cmd *cobra.Command, args []string) error {
 	// Check if file exists
 	if _, err := os.Stat(absPath); os.IsNotExist(err) {
 		return fmt.Errorf("script file not found: %s", absPath)
+	}
+
+	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+		return err
 	}
 
 	// Create watcher

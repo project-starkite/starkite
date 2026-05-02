@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 
@@ -66,6 +67,12 @@ func runScript(cmd *cobra.Command, args []string) error {
 			Message:  fmt.Sprintf("script file not found: %s", scriptPath),
 			ExitCode: libkite.ExitFileError,
 		}
+	}
+
+	// Sandbox handoff: if --sandbox is set, hand the entire script execution
+	// to the OS-level sandbox backend and return its result.
+	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+		return err
 	}
 
 	// Read script content

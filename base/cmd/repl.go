@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -42,6 +43,10 @@ func init() {
 }
 
 func startRepl(cmd *cobra.Command, args []string) error {
+	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+		return err
+	}
+
 	// Create and populate variable store
 	varStore := varstore.New()
 	varStore.LoadFromEnv()

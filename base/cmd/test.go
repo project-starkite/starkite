@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -91,6 +92,10 @@ func runTests(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Found %d test file(s)\n", len(testFiles))
 	if testFilter != "" {
 		fmt.Printf("Filter: %s\n", testFilter)
+	}
+
+	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+		return err
 	}
 
 	perms, err := GetPermissions()

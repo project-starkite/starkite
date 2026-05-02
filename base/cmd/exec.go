@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/spf13/cobra"
@@ -36,6 +37,10 @@ func init() {
 
 func execCode(cmd *cobra.Command, args []string) error {
 	code := args[0]
+
+	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+		return err
+	}
 
 	// Create and populate variable store
 	varStore := varstore.New()

@@ -7,6 +7,7 @@ require (
 	github.com/project-starkite/starkite/cloud v0.0.0
 	github.com/project-starkite/starkite/base v0.0.0
 	github.com/project-starkite/starkite/libkite v0.0.0
+	github.com/project-starkite/starkite/sandbox/gvisor v0.0.0
 	github.com/project-starkite/starkite/wasm v0.0.0
 	github.com/spf13/cobra v1.10.2
 )
@@ -115,5 +116,6 @@ replace (
 	github.com/project-starkite/starkite/cloud => ../cloud
 	github.com/project-starkite/starkite/base => ../base
 	github.com/project-starkite/starkite/libkite => ../libkite
+	github.com/project-starkite/starkite/sandbox/gvisor => ../sandbox/gvisor
 	github.com/project-starkite/starkite/wasm => ../wasm
 )

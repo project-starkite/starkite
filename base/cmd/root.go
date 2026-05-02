@@ -13,6 +13,7 @@ import (
 	"github.com/project-starkite/starkite/base/version"
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/permissions"
+	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
 )
 
@@ -27,6 +28,9 @@ var (
 
 	// Permission flags
 	permissionsMode string
+
+	// Sandbox flag (Linux: gVisor; other OSes return a friendly error).
+	sandboxMode string
 )
 
 var rootCmd = &cobra.Command{
@@ -74,6 +78,9 @@ func init() {
 
 	// Permission flags
 	rootCmd.PersistentFlags().StringVar(&permissionsMode, "permissions", "", "Permission profile (e.g. \"strict\")")
+
+	// Sandbox flag — Linux only; non-Linux returns a clear error.
+	rootCmd.PersistentFlags().StringVar(&sandboxMode, "sandbox", "", "Sandbox profile for OS-level isolation (Linux: \"strict\")")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		applyEnvDefaults()
@@ -256,6 +263,48 @@ func resolvePermissionsForScript(scriptPath string) (*libkite.PermissionConfig, 
 		return nil, err
 	}
 	return permissions.LoadProfile(value)
+}
+
+// GetSandbox resolves --sandbox to a sandbox.Profile. An empty value means
+// "no sandbox" (the zero Profile, with Name == ""). When --sandbox is set
+// but no backend is registered (typical on macOS/Windows), returns a
+// PlatformError so the caller can surface a clear message.
+func GetSandbox() (sandbox.Profile, error) {
+	if sandboxMode == "" {
+		return sandbox.Profile{}, nil
+	}
+	if !sandbox.Available() {
+		return sandbox.Profile{}, sandbox.PlatformError()
+	}
+	return sandbox.LoadProfile(sandboxMode)
+}
+
+// kiteInsideSandboxEnv signals that this kite process is running inside an
+// already-active sandbox. The sandbox backend sets it before re-executing
+// the kite binary so the inner kite skips its own handoff (otherwise we'd
+// recurse forever).
+const kiteInsideSandboxEnv = "STARKITE_INSIDE_SANDBOX"
+
+// MaybeHandoffToSandbox checks if --sandbox is set and routes execution
+// through sandbox.Backend if so. Returns (true, err) when the backend
+// handled execution (caller must return immediately, propagating err);
+// (false, nil) when the caller should continue running natively;
+// (false, err) when the sandbox config itself was invalid.
+func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
+	if os.Getenv(kiteInsideSandboxEnv) == "1" {
+		return false, nil
+	}
+	profile, err := GetSandbox()
+	if err != nil {
+		return false, err
+	}
+	if profile.Name == "" {
+		return false, nil
+	}
+	// Backend takes responsibility for re-executing kite inside the sandbox
+	// with the appropriate marker. Phase 4a backend is a stub that prints
+	// and returns nil; Phase 4b builds the real OCI spec.
+	return true, sandbox.Backend.Run(ctx, sandbox.ExecSpec{Profile: profile})
 }
 
 // shouldHandoff returns true if this invocation should attempt edition handoff.
