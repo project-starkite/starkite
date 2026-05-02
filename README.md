@@ -58,6 +58,16 @@ Move the binary onto your `PATH`:
 sudo install -m 0755 ./bin/kite /usr/local/bin/kite
 ```
 
+Or run it as a container — the all-in-one `kite` is published as a signed
+distroless image:
+
+```bash
+docker run --rm ghcr.io/project-starkite/kite:latest exec 'print(hostname())'
+```
+
+See [Container Distribution](docs/guides/container-distribution.md) for
+multi-arch details, signature verification, and Kubernetes usage.
+
 ## Quick Start
 
 ```python

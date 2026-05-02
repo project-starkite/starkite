@@ -1,0 +1,29 @@
+# ko configuration for the all-in-one `kite` image.
+# https://ko.build/configuration/
+#
+# Build:
+#   KO_DOCKER_REPO=ghcr.io/project-starkite/kite \
+#     ko build ./allkite --bare --tags=v0.1.0,latest --sbom=spdx
+#
+# The repository is set per-invocation; the resulting image is published as
+# $KO_DOCKER_REPO:<tag> with no extra path suffix (--bare).
+
+defaultBaseImage: cgr.dev/chainguard/static:latest
+
+defaultPlatforms:
+  - linux/amd64
+  - linux/arm64
+
+builds:
+  - id: kite
+    main: ./allkite
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/project-starkite/starkite/base/version.Version={{.Env.VERSION}}
+      - -X github.com/project-starkite/starkite/base/version.BuildTime={{.Env.BUILD_TIME}}
+      - -X github.com/project-starkite/starkite/base/version.GitCommit={{.Env.GIT_COMMIT}}
+      - -X github.com/project-starkite/starkite/base/version.Edition=all
