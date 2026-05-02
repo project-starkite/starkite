@@ -446,10 +446,10 @@ func GenerateClientKey(dir string) (privateKeyPath string, pubKey gossh.PublicKe
 
 // StarlarkTestServer wraps TestServer for Starlark access.
 type StarlarkTestServer struct {
-	server    *TestServer
-	thread    *starlark.Thread
-	keyPaths  []string // track generated keys for this server
-	tempDirs  []string // track temp dirs
+	server   *TestServer
+	thread   *starlark.Thread
+	keyPaths []string // track generated keys for this server
+	tempDirs []string // track temp dirs
 }
 
 var (
@@ -457,11 +457,13 @@ var (
 	_ starlark.HasAttrs = (*StarlarkTestServer)(nil)
 )
 
-func (s *StarlarkTestServer) String() string        { return "<ssh.test_server>" }
-func (s *StarlarkTestServer) Type() string          { return "ssh.test_server" }
-func (s *StarlarkTestServer) Freeze()               {}
-func (s *StarlarkTestServer) Truth() starlark.Bool  { return starlark.True }
-func (s *StarlarkTestServer) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable: ssh.test_server") }
+func (s *StarlarkTestServer) String() string       { return "<ssh.test_server>" }
+func (s *StarlarkTestServer) Type() string         { return "ssh.test_server" }
+func (s *StarlarkTestServer) Freeze()              {}
+func (s *StarlarkTestServer) Truth() starlark.Bool { return starlark.True }
+func (s *StarlarkTestServer) Hash() (uint32, error) {
+	return 0, fmt.Errorf("unhashable: ssh.test_server")
+}
 
 func (s *StarlarkTestServer) Attr(name string) (starlark.Value, error) {
 	switch name {
@@ -661,7 +663,11 @@ func (m *Module) testKeyFactory(thread *starlark.Thread, fn *starlark.Builtin, a
 }
 
 // testserverFactoryForTest creates a TestServer for Go tests with t.Cleanup.
-func newTestServerForTest(t interface{ TempDir() string; Cleanup(func()); Helper() }) *TestServer {
+func newTestServerForTest(t interface {
+	TempDir() string
+	Cleanup(func())
+	Helper()
+}) *TestServer {
 	t.Helper()
 	ts, err := NewTestServer()
 	if err != nil {
@@ -675,7 +681,10 @@ func newTestServerForTest(t interface{ TempDir() string; Cleanup(func()); Helper
 }
 
 // clientKeyForTest generates an ed25519 key pair for Go tests.
-func clientKeyForTest(t interface{ TempDir() string; Helper() }) (privateKeyPath string, pubKey gossh.PublicKey) {
+func clientKeyForTest(t interface {
+	TempDir() string
+	Helper()
+}) (privateKeyPath string, pubKey gossh.PublicKey) {
 	t.Helper()
 	path, pub, err := GenerateClientKey(t.TempDir())
 	if err != nil {

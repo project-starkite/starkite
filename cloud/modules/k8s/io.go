@@ -24,7 +24,7 @@ import (
 // logs retrieves logs from a pod.
 // Signature: k8s.logs(name, namespace="", container="", tail=0, since="", previous=False, timeout="")
 func (c *K8sClient) logs(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 
@@ -94,7 +94,7 @@ func (c *K8sClient) logs(thread *starlark.Thread, fn *starlark.Builtin, args sta
 // logsFollow streams logs from a pod, calling handler for each line.
 // Signature: k8s.logs_follow(name, namespace="", container="", handler=None, tail=0, timeout="")
 func (c *K8sClient) logsFollow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 
@@ -198,7 +198,7 @@ func (c *K8sClient) logsFollow(thread *starlark.Thread, fn *starlark.Builtin, ar
 // Signature: k8s.exec(name, command, namespace="", container="", timeout="")
 // Returns: {"stdout": string, "stderr": string, "code": int}
 func (c *K8sClient) execCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "exec", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "exec", "exec", ""); err != nil {
 		return nil, err
 	}
 
@@ -302,7 +302,7 @@ func (c *K8sClient) execCmd(thread *starlark.Thread, fn *starlark.Builtin, args 
 // No timeout — long-lived by nature, uses stop() to terminate.
 // Returns: PortForwardHandle with local_port and stop()
 func (c *K8sClient) portForward(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "port_forward", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "port_forward", ""); err != nil {
 		return nil, err
 	}
 

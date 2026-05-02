@@ -84,7 +84,7 @@ func (f *HashFile) hashMethod(algo string) func(*starlark.Thread, *starlark.Buil
 		if len(args) > 0 || len(kwargs) > 0 {
 			return nil, fmt.Errorf("hash.file.%s: takes no arguments", algo)
 		}
-		if err := libkite.Check(f.thread, "fs", "read_file", f.path); err != nil {
+		if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
 			return nil, err
 		}
 		if f.isDryRun() {

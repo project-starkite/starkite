@@ -14,9 +14,9 @@ type fakeModule struct {
 	aliases starlark.StringDict
 }
 
-func (f *fakeModule) Name() ModuleName        { return f.name }
-func (f *fakeModule) Description() string     { return "fake module for tests" }
-func (f *fakeModule) FactoryMethod() string   { return "" }
+func (f *fakeModule) Name() ModuleName             { return f.name }
+func (f *fakeModule) Description() string          { return "fake module for tests" }
+func (f *fakeModule) FactoryMethod() string        { return "" }
 func (f *fakeModule) Aliases() starlark.StringDict { return f.aliases }
 func (f *fakeModule) Load(_ *ModuleConfig) (starlark.StringDict, error) {
 	return f.exports, nil

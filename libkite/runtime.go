@@ -169,7 +169,7 @@ func NewSandboxed(config *Config, opts ...ConfigOption) (*Runtime, error) {
 	for _, opt := range opts {
 		opt(config)
 	}
-	config.Permissions = SandboxedPermissions()
+	config.Permissions = StrictPermissions()
 	return New(config)
 }
 

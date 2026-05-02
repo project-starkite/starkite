@@ -86,10 +86,6 @@ func (m *Module) varStr(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "vars", "var_str", p.Name); err != nil {
-		return nil, err
-	}
-
 	// Look up in VarStore if available
 	if m.config != nil && m.config.VarStore != nil {
 		if value, ok := m.config.VarStore.Get(p.Name); ok {
@@ -108,10 +104,6 @@ func (m *Module) varInt(thread *starlark.Thread, fn *starlark.Builtin, args star
 		Default int    `name:"default" position:"1"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
-		return nil, err
-	}
-
-	if err := libkite.Check(thread, "vars", "var_int", p.Name); err != nil {
 		return nil, err
 	}
 
@@ -149,10 +141,6 @@ func (m *Module) varBool(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "vars", "var_bool", p.Name); err != nil {
-		return nil, err
-	}
-
 	if m.config != nil && m.config.VarStore != nil {
 		if value, ok := m.config.VarStore.Get(p.Name); ok {
 			switch v := value.(type) {
@@ -180,10 +168,6 @@ func (m *Module) varFloat(thread *starlark.Thread, fn *starlark.Builtin, args st
 		Default float64 `name:"default" position:"1"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
-		return nil, err
-	}
-
-	if err := libkite.Check(thread, "vars", "var_float", p.Name); err != nil {
 		return nil, err
 	}
 
@@ -215,9 +199,6 @@ func (m *Module) varFloat(thread *starlark.Thread, fn *starlark.Builtin, args st
 
 // varNames returns a sorted list of all available variable names.
 func (m *Module) varNames(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "vars", "var_names", ""); err != nil {
-		return nil, err
-	}
 	if m.config == nil || m.config.VarStore == nil {
 		return starlark.NewList(nil), nil
 	}
@@ -236,10 +217,6 @@ func (m *Module) varList(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		Default starlark.Value `name:"default" position:"1"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
-		return nil, err
-	}
-
-	if err := libkite.Check(thread, "vars", "var_list", p.Name); err != nil {
 		return nil, err
 	}
 
@@ -262,10 +239,6 @@ func (m *Module) varDict(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		Default starlark.Value `name:"default" position:"1"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
-		return nil, err
-	}
-
-	if err := libkite.Check(thread, "vars", "var_dict", p.Name); err != nil {
 		return nil, err
 	}
 

@@ -74,7 +74,7 @@ func (f *JsonFile) decodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		return nil, fmt.Errorf("json.file.decode: takes no arguments")
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read_file", f.path); err != nil {
+	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
 

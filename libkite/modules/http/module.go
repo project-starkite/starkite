@@ -92,7 +92,7 @@ func (m *Module) configFn(thread *starlark.Thread, fn *starlark.Builtin, args st
 		}
 	}
 
-	if err := libkite.Check(thread, "http", "config", ""); err != nil {
+	if err := libkite.Check(thread, "http", "client", "config", ""); err != nil {
 		return nil, err
 	}
 
@@ -125,7 +125,7 @@ func (m *Module) configFn(thread *starlark.Thread, fn *starlark.Builtin, args st
 func (m *Module) serverConstructor(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", ""); err != nil {
+	if err := libkite.Check(thread, "http", "server", "server", ""); err != nil {
 		return nil, err
 	}
 

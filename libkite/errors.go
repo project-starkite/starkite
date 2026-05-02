@@ -19,6 +19,7 @@ const (
 // PermissionError is returned when an operation is denied by the permission system.
 type PermissionError struct {
 	Module   string   // Module name (e.g., "fs", "os", "http")
+	Category string   // Category within the module (e.g., "read", "write", "exec")
 	Function string   // Function name (e.g., "read_file", "exec")
 	Resource string   // Resource if applicable (path, URL, command)
 	Reason   string   // Why it was denied

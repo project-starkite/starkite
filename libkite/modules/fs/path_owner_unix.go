@@ -15,7 +15,7 @@ import (
 )
 
 func (p *Path) ownerMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "owner", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "owner", p.path); err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(p.path)
@@ -34,7 +34,7 @@ func (p *Path) ownerMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.T
 }
 
 func (p *Path) groupMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "group", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "group", p.path); err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(p.path)

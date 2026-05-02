@@ -77,7 +77,7 @@ func (m *Module) fileFactory(thread *starlark.Thread, fn *starlark.Builtin, args
 	if !ok {
 		return nil, fmt.Errorf("template.file: argument must be a string, got %s", args[0].Type())
 	}
-	if err := libkite.Check(thread, "fs", "read_file", path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", path); err != nil {
 		return nil, err
 	}
 	data, err := os.ReadFile(path)

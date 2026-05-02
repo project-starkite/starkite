@@ -57,7 +57,9 @@ type InventoryValue struct {
 	items []map[string]interface{}
 }
 
-func (inv *InventoryValue) String() string        { return fmt.Sprintf("<inventory %d items>", len(inv.items)) }
+func (inv *InventoryValue) String() string {
+	return fmt.Sprintf("<inventory %d items>", len(inv.items))
+}
 func (inv *InventoryValue) Type() string          { return "inventory" }
 func (inv *InventoryValue) Freeze()               {}
 func (inv *InventoryValue) Truth() starlark.Bool  { return starlark.Bool(len(inv.items) > 0) }

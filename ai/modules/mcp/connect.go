@@ -51,7 +51,7 @@ func (m *Module) connectBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		return nil, fmt.Errorf("mcp.connect: %w", err)
 	}
 
-	if err := libkite.Check(thread, "mcp", "connect", describeTransport(args[0])); err != nil {
+	if err := libkite.Check(thread, "mcp", "client", "connect", describeTransport(args[0])); err != nil {
 		return nil, err
 	}
 

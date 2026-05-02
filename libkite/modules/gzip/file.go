@@ -89,10 +89,10 @@ func (f *GzipFile) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 		return nil, fmt.Errorf("gzip.file.compress: invalid compression level %d (must be -2 to 9)", p.Level)
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read_file", p.Source); err != nil {
+	if err := libkite.Check(f.thread, "fs", "read", "read_file", p.Source); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(f.thread, "fs", "write", f.path); err != nil {
+	if err := libkite.Check(f.thread, "fs", "write", "write", f.path); err != nil {
 		return nil, err
 	}
 
@@ -144,10 +144,10 @@ func (f *GzipFile) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, arg
 		dest = strings.TrimSuffix(f.path, ".gz")
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read_file", f.path); err != nil {
+	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(f.thread, "fs", "write", dest); err != nil {
+	if err := libkite.Check(f.thread, "fs", "write", "write", dest); err != nil {
 		return nil, err
 	}
 

@@ -12,7 +12,7 @@ type PluginManifest struct {
 	Name        string             `yaml:"name"`
 	Version     string             `yaml:"version"`
 	Description string             `yaml:"description"`
-	Wasm        string             `yaml:"wasm"`        // filename relative to manifest dir
+	Wasm        string             `yaml:"wasm"`         // filename relative to manifest dir
 	MinStarkite string             `yaml:"min_starkite"` // minimum starkite version
 	Functions   []FunctionManifest `yaml:"functions"`
 	Permissions []string           `yaml:"permissions"` // host fn groups: "log", "exec", etc.
@@ -20,8 +20,8 @@ type PluginManifest struct {
 
 // FunctionManifest describes a single function exported by a WASM plugin.
 type FunctionManifest struct {
-	Name    string          `yaml:"name"`    // Starlark-visible name
-	Export  string          `yaml:"export"`  // WASM export name (defaults to Name)
+	Name    string          `yaml:"name"`   // Starlark-visible name
+	Export  string          `yaml:"export"` // WASM export name (defaults to Name)
 	Params  []ParamManifest `yaml:"params"`
 	Returns string          `yaml:"returns"` // "string", "int", "float", "bool", "dict", "list", "none"
 }

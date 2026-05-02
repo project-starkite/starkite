@@ -89,7 +89,7 @@ func (a *Archive) namelistMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		return nil, err
 	}
 
-	if err := libkite.Check(a.thread, "fs", "read_file", a.path); err != nil {
+	if err := libkite.Check(a.thread, "fs", "read", "read_file", a.path); err != nil {
 		return nil, err
 	}
 
@@ -129,7 +129,7 @@ func (a *Archive) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starl
 		return nil, err
 	}
 
-	if err := libkite.Check(a.thread, "fs", "read_file", a.path); err != nil {
+	if err := libkite.Check(a.thread, "fs", "read", "read_file", a.path); err != nil {
 		return nil, err
 	}
 
@@ -171,7 +171,7 @@ func (a *Archive) readAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		return nil, fmt.Errorf("zip.read_all: match and files are mutually exclusive")
 	}
 
-	if err := libkite.Check(a.thread, "fs", "read_file", a.path); err != nil {
+	if err := libkite.Check(a.thread, "fs", "read", "read_file", a.path); err != nil {
 		return nil, err
 	}
 
@@ -244,10 +244,10 @@ func (a *Archive) writeMethod(_ *starlark.Thread, _ *starlark.Builtin, args star
 		entryName = filepath.Base(sourcePath)
 	}
 
-	if err := libkite.Check(a.thread, "fs", "write", a.path); err != nil {
+	if err := libkite.Check(a.thread, "fs", "write", "write", a.path); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(a.thread, "fs", "read_file", sourcePath); err != nil {
+	if err := libkite.Check(a.thread, "fs", "read", "read_file", sourcePath); err != nil {
 		return nil, err
 	}
 
@@ -303,7 +303,7 @@ func (a *Archive) writeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		return nil, fmt.Errorf("zip.write_all: must specify match or files")
 	}
 
-	if err := libkite.Check(a.thread, "fs", "write", a.path); err != nil {
+	if err := libkite.Check(a.thread, "fs", "write", "write", a.path); err != nil {
 		return nil, err
 	}
 
@@ -321,7 +321,7 @@ func (a *Archive) writeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 
 	// Check read permissions for all source files
 	for _, sp := range sourcePaths {
-		if err := libkite.Check(a.thread, "fs", "read_file", sp); err != nil {
+		if err := libkite.Check(a.thread, "fs", "read", "read_file", sp); err != nil {
 			return nil, err
 		}
 	}

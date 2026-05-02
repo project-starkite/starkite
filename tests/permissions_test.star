@@ -130,3 +130,58 @@ def test_concur():
     results = concur.map([1, 2, 3], identity)
     assert(len(results) == 3, "concur.map should return 3 results")
     assert(1 in results and 2 in results and 3 in results, "should contain all values")
+
+# --- Category coverage tests ---
+#
+# Each test below exercises one gated category. Under --permissions=strict
+# they should all fail with a permission error (proving the category is
+# correctly gated). Under default trusted mode they should all pass.
+
+# Test 11: fs.write category
+# Note: Under --permissions=strict, write_text will fail
+def test_fs_write_category():
+    """fs.write category is gated"""
+    tmp_path = path("/tmp/starkite_perm_write_test")
+    tmp_path.write_text("hello")
+    assert(tmp_path.exists(), "file should have been written")
+    tmp_path.remove()
+
+# Test 12: fs.delete category
+# Note: Under --permissions=strict, remove will fail (separately from write)
+def test_fs_delete_category():
+    """fs.delete category is gated separately from fs.write"""
+    tmp_path = path("/tmp/starkite_perm_delete_test")
+    tmp_path.write_text("temp")
+    tmp_path.remove()
+    assert(not tmp_path.exists(), "file should have been deleted")
+
+# Test 13: os.env category — setenv specifically
+# Note: Under --permissions=strict, setenv will fail
+def test_os_env_setenv():
+    """os.env category covers both env and setenv"""
+    setenv("STARKITE_TEST_VAR", "value")
+    assert(env("STARKITE_TEST_VAR") == "value", "setenv should have stuck")
+
+# Test 14: os.process category — chdir
+# Note: Under --permissions=strict, chdir will fail
+def test_os_process_chdir():
+    """os.process category covers chdir/exit"""
+    original = cwd()
+    chdir("/tmp")
+    assert(cwd() == "/tmp" or cwd() == "/private/tmp", "chdir should have changed cwd")
+    chdir(original)
+
+# Test 15: http.client category — url construction triggers no permission
+# but the .get() method is gated. We can't make a real network call here
+# but we can verify http.config (which is gated under client category).
+# Note: Under --permissions=strict, http.config will fail
+def test_http_client_config():
+    """http.client category gates http.config"""
+    http.config(timeout="5s")  # should not raise under trust
+
+# Test 16: http.server category — server construction
+# Note: Under --permissions=strict, http.server() will fail
+def test_http_server_construct():
+    """http.server category is distinct from http.client"""
+    srv = http.server(port=0)  # port 0 = OS picks a free port; doesn't auto-start
+    assert(srv != None, "server should construct")

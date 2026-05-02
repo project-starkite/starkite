@@ -28,9 +28,11 @@ var (
 func (w *Writer) String() string {
 	return fmt.Sprintf("json.writer(%s)", w.data.Type())
 }
-func (w *Writer) Type() string          { return "json.writer" }
-func (w *Writer) Freeze()               {}
-func (w *Writer) Truth() starlark.Bool  { return starlark.Bool(w.data != nil && w.data != starlark.None) }
+func (w *Writer) Type() string { return "json.writer" }
+func (w *Writer) Freeze()      {}
+func (w *Writer) Truth() starlark.Bool {
+	return starlark.Bool(w.data != nil && w.data != starlark.None)
+}
 func (w *Writer) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: json.writer") }
 
 func (w *Writer) Attr(name string) (starlark.Value, error) {
@@ -142,7 +144,7 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		}
 	}
 
-	if err := libkite.Check(w.thread, "fs", "write", path); err != nil {
+	if err := libkite.Check(w.thread, "fs", "write", "write", path); err != nil {
 		return nil, err
 	}
 

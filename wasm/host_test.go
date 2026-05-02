@@ -59,7 +59,7 @@ func TestHostContext_CheckPermission_WithChecker(t *testing.T) {
 	thread := &starlark.Thread{Name: "test"}
 
 	checker, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{
-		Deny:    []string{"testmod.exec"},
+		Deny:    []string{"testmod.wasm(exec:*)"},
 		Default: libkite.DefaultAllow,
 	})
 	if err != nil {

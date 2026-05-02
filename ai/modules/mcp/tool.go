@@ -23,7 +23,7 @@ func buildToolHandler(t *genai.Tool, rt *libkite.Runtime) func(context.Context, 
 	return func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		toolThread := rt.NewThread("mcp-tool-" + t.Name())
 
-		if err := libkite.Check(toolThread, "mcp", "tool_invoke", t.Name()); err != nil {
+		if err := libkite.Check(toolThread, "mcp", "client", "tool_invoke", t.Name()); err != nil {
 			return errorResult(err), nil
 		}
 

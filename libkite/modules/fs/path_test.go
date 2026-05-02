@@ -1,8 +1,8 @@
 package fs
 
 import (
-	"os"
 	"fmt"
+	"os"
 	"os/user"
 	"path/filepath"
 	"strings"

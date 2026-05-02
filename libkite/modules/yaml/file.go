@@ -78,7 +78,7 @@ func (f *YamlFile) decodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		return nil, fmt.Errorf("yaml.file.decode: takes no arguments")
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read_file", f.path); err != nil {
+	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
 
@@ -110,7 +110,7 @@ func (f *YamlFile) decodeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args
 		return nil, fmt.Errorf("yaml.file.decode_all: takes no arguments")
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read_file", f.path); err != nil {
+	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
 

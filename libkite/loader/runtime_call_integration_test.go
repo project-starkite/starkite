@@ -67,7 +67,7 @@ func TestRuntime_Eval_UsesStarbaseModule(t *testing.T) {
 }
 
 func TestRuntime_Call_RespectsPermissions(t *testing.T) {
-	rt := newRuntimeWithModules(t, libkite.SandboxedPermissions())
+	rt := newRuntimeWithModules(t, libkite.StrictPermissions())
 
 	if err := rt.ExecuteRepl(context.Background(), `
 def hit():

@@ -2,6 +2,7 @@ package libkite
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -42,47 +43,52 @@ type PermissionChecker struct {
 	mu       sync.RWMutex
 }
 
-// NewPermissionChecker creates a checker from the given config.
+// NewPermissionChecker creates a checker from the given config. Path
+// variables ($CWD, $HOME) in resource patterns are expanded once here using
+// the process's current working directory and the user's home directory.
 func NewPermissionChecker(config *PermissionConfig) (*PermissionChecker, error) {
 	if config == nil {
 		return nil, nil
 	}
 
+	cwd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
+
 	checker := &PermissionChecker{
 		default_: config.Default,
 	}
 
-	// Parse allow rules
 	for _, pattern := range config.Allow {
 		rule, err := ParseRule(pattern)
 		if err != nil {
 			return nil, fmt.Errorf("invalid allow rule %q: %w", pattern, err)
 		}
+		rule.Resource = expandPathVariables(rule.Resource, cwd, home)
 		checker.allow = append(checker.allow, *rule)
 	}
 
-	// Parse deny rules
 	for _, pattern := range config.Deny {
 		rule, err := ParseRule(pattern)
 		if err != nil {
 			return nil, fmt.Errorf("invalid deny rule %q: %w", pattern, err)
 		}
+		rule.Resource = expandPathVariables(rule.Resource, cwd, home)
 		checker.deny = append(checker.deny, *rule)
 	}
 
 	return checker, nil
 }
 
-// Check validates if module.function(resource) is permitted.
-func (c *PermissionChecker) Check(module, function, resource string) error {
+// Check validates if module.category.function(resource) is permitted.
+func (c *PermissionChecker) Check(module, category, function, resource string) error {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	// Check deny rules first (deny takes precedence)
 	for _, rule := range c.deny {
-		if rule.Matches(module, function, resource) {
+		if rule.Matches(module, category, function, resource) {
 			return &PermissionError{
 				Module:   module,
+				Category: category,
 				Function: function,
 				Resource: resource,
 				Reason:   fmt.Sprintf("blocked by deny rule: %s", rule.Raw),
@@ -90,20 +96,19 @@ func (c *PermissionChecker) Check(module, function, resource string) error {
 		}
 	}
 
-	// Check allow rules
 	for _, rule := range c.allow {
-		if rule.Matches(module, function, resource) {
-			return nil // Allowed
+		if rule.Matches(module, category, function, resource) {
+			return nil
 		}
 	}
 
-	// No rule matched, use default
 	if c.default_ == DefaultAllow {
 		return nil
 	}
 
 	return &PermissionError{
 		Module:   module,
+		Category: category,
 		Function: function,
 		Resource: resource,
 		Reason:   "no matching allow rule",
@@ -122,67 +127,140 @@ func (c *PermissionChecker) allowedPatterns() []string {
 
 // Rule represents a parsed permission pattern.
 type Rule struct {
-	Module   string // Module name or "*"
-	Function string // Function name or "*"
-	Resource string // Resource glob pattern or ""
-	Raw      string // Original pattern string
+	Module    string   // Module name or "*"
+	Category  string   // Category name or "*"
+	Functions []string // Optional function-name filter; nil = any function in category
+	Resource  string   // Resource glob pattern or ""
+	Raw       string   // Original pattern string
 }
 
 // ParseRule parses a permission pattern string.
 //
-// Pattern formats:
+// Pattern grammar:
 //
-//	"module.*"                  → module=module, function=*, resource=""
-//	"module.function"           → module=module, function=function, resource=""
-//	"module.function(resource)" → module=module, function=function, resource=glob
-//	"*.*"                       → module=*, function=*, resource=""
+//	rule     := module "." category [ "(" [ funclist ":" ] resource ")" ]
+//	funclist := func_name ("," func_name)*    bare names, no wildcards
+//
+// Examples:
+//
+//	"module.*"                                → any category, any function, any resource
+//	"fs.read"                                 → category, any function, any resource
+//	"fs.read(/etc/**)"                        → category, any function, scoped resource
+//	"fs.read(read_file:*)"                    → single function, any resource
+//	"fs.read(read_file,read_bytes:/etc/**)"   → multi-function, scoped resource
+//	"*.*"                                     → catch-all
+//
+// Disambiguation: contents before the first ":" are a function list only if
+// they match `ident(,ident)*`; otherwise the parenthesised content is a
+// resource literal.
 func ParseRule(pattern string) (*Rule, error) {
 	rule := &Rule{Raw: pattern}
 
-	// Check for resource pattern: module.function(resource)
 	if idx := strings.Index(pattern, "("); idx != -1 {
 		if !strings.HasSuffix(pattern, ")") {
 			return nil, fmt.Errorf("unclosed parenthesis in pattern")
 		}
-		rule.Resource = pattern[idx+1 : len(pattern)-1]
+		inner := pattern[idx+1 : len(pattern)-1]
 		pattern = pattern[:idx]
+
+		funcs, resource := splitFuncsAndResource(inner)
+		rule.Functions = funcs
+		rule.Resource = resource
 	}
 
-	// Split module.function
 	parts := strings.SplitN(pattern, ".", 2)
 	if len(parts) != 2 {
-		return nil, fmt.Errorf("pattern must be module.function, got %q", pattern)
+		return nil, fmt.Errorf("pattern must be module.category, got %q", pattern)
 	}
 
 	rule.Module = parts[0]
-	rule.Function = parts[1]
+	rule.Category = parts[1]
 
-	if rule.Module == "" || rule.Function == "" {
-		return nil, fmt.Errorf("module and function cannot be empty")
+	if rule.Module == "" || rule.Category == "" {
+		return nil, fmt.Errorf("module and category cannot be empty")
 	}
 
 	return rule, nil
 }
 
+// splitFuncsAndResource splits paren contents into an optional function list
+// and a resource. The colon is the separator; function lists must consist of
+// bare identifiers separated by commas. Returns (nil, inner) when the contents
+// don't contain a valid function-list prefix.
+func splitFuncsAndResource(inner string) ([]string, string) {
+	colon := strings.Index(inner, ":")
+	if colon < 0 {
+		return nil, inner
+	}
+	prefix := inner[:colon]
+	if !isFuncList(prefix) {
+		return nil, inner
+	}
+	return strings.Split(prefix, ","), inner[colon+1:]
+}
+
+// isFuncList reports whether s matches `ident(,ident)*` with non-empty idents.
+func isFuncList(s string) bool {
+	if s == "" {
+		return false
+	}
+	for _, name := range strings.Split(s, ",") {
+		if !isIdent(name) {
+			return false
+		}
+	}
+	return true
+}
+
+// isIdent reports whether s is a non-empty identifier of letters, digits, and
+// underscore (no leading digit).
+func isIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r == '_':
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9' && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // Matches checks if the rule matches the given operation.
-func (r *Rule) Matches(module, function, resource string) bool {
-	// Match module
+func (r *Rule) Matches(module, category, function, resource string) bool {
 	if r.Module != "*" && r.Module != module {
 		return false
 	}
 
-	// Match function
-	if r.Function != "*" && r.Function != function {
+	if r.Category != "*" && r.Category != category {
 		return false
 	}
 
-	// Match resource (if pattern specified)
-	if r.Resource != "" && resource != "" {
-		// Expand common variables
-		pattern := r.Resource
-		pattern = expandPathVariables(pattern)
+	if r.Functions != nil {
+		found := false
+		for _, fn := range r.Functions {
+			if fn == function {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
 
-		// Use filepath.Match for glob matching
+	if r.Resource != "" && resource != "" {
+		pattern := r.Resource
+		// Bare "*" or "**" matches any non-empty resource (filepath.Match
+		// treats "*" as not crossing path separators, which surprises users).
+		if pattern == "*" || pattern == "**" {
+			return true
+		}
 		matched, err := filepath.Match(pattern, resource)
 		if err != nil {
 			// Try as a prefix match for directory patterns
@@ -206,15 +284,15 @@ func (r *Rule) Matches(module, function, resource string) bool {
 	return true
 }
 
-// expandPathVariables expands common path variables in patterns.
-func expandPathVariables(pattern string) string {
-	// These would be set at runtime based on context
-	// For now, we'll handle common cases
-	if strings.HasPrefix(pattern, "$CWD/") || pattern == "$CWD" {
-		// $CWD is handled at check time
+// expandPathVariables substitutes $CWD and $HOME in a resource pattern. An
+// empty replacement leaves the variable in place (so a misconfigured rule
+// fails closed rather than matching the empty path).
+func expandPathVariables(pattern, cwd, home string) string {
+	if cwd != "" {
+		pattern = strings.ReplaceAll(pattern, "$CWD", cwd)
 	}
-	if strings.HasPrefix(pattern, "$HOME/") || pattern == "$HOME" {
-		// $HOME is handled at check time
+	if home != "" {
+		pattern = strings.ReplaceAll(pattern, "$HOME", home)
 	}
 	return pattern
 }
@@ -241,22 +319,22 @@ func matchDoublestar(pattern, path string) bool {
 	return true
 }
 
-// Check validates module.function(resource) against the permission rules
-// stored in the thread's local storage. Returns nil if no checker is set
-// (trusted mode / backward compatible).
+// Check validates module.category.function(resource) against the permission
+// rules stored in the thread's local storage. Returns nil if no checker is
+// set (trusted mode).
 //
 // This is the main entry point for modules to check permissions.
-func Check(thread *starlark.Thread, module, function, resource string) error {
+func Check(thread *starlark.Thread, module, category, function, resource string) error {
 	if thread == nil {
-		return nil // No thread = trusted mode
+		return nil
 	}
 
 	checker, _ := thread.Local(permissionKey).(*PermissionChecker)
 	if checker == nil {
-		return nil // No checker = trusted mode (backward compatible)
+		return nil
 	}
 
-	return checker.Check(module, function, resource)
+	return checker.Check(module, category, function, resource)
 }
 
 // SetPermissions stores the permission checker in thread.Local.
@@ -284,20 +362,12 @@ func TrustedPermissions() *PermissionConfig {
 	}
 }
 
-// SandboxedPermissions returns a config with only safe modules allowed.
-// This blocks all I/O operations (fs, os, http, ssh).
-func SandboxedPermissions() *PermissionConfig {
+// StrictPermissions returns a config that denies every gated operation. Pure
+// utility modules (strings, json, yaml, …) bypass the permission system, so
+// they remain available; any module that calls Check (fs, os, http, ssh,
+// k8s, ai, mcp, io) is blocked.
+func StrictPermissions() *PermissionConfig {
 	return &PermissionConfig{
-		Allow: []string{
-			// Pure utility modules (no I/O, no side effects)
-			"strings.*", "regexp.*", "json.*", "yaml.*", "csv.*",
-			"base64.*", "hash.*", "uuid.*", "gzip.*", "zip.*",
-			"time.*", "template.*", "table.*", "log.*",
-			"fmt.*", "concur.*", "retry.*",
-			// Safe fs functions (path manipulation only, no I/O)
-			"fs.join", "fs.split", "fs.dir", "fs.base",
-			"fs.ext", "fs.abs", "fs.rel", "fs.clean", "fs.match",
-		},
 		Default: DefaultDeny,
 	}
 }

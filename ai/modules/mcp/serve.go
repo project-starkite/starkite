@@ -116,7 +116,7 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 		prompts = coerced
 	}
 
-	if err := libkite.Check(thread, "mcp", "serve", p.Name); err != nil {
+	if err := libkite.Check(thread, "mcp", "server", "serve", p.Name); err != nil {
 		return nil, err
 	}
 

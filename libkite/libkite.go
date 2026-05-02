@@ -46,7 +46,7 @@
 // The permission system controls which operations scripts can perform:
 //
 //   - TrustedPermissions() - Allow all operations (default for CLI tools)
-//   - SandboxedPermissions() - Allow only safe operations (no I/O)
+//   - StrictPermissions() - Allow only safe operations (no I/O)
 //   - Custom PermissionConfig - Fine-grained control with allow/deny rules
 //
 // Permission rules use the format: "module.function" or "module.function(resource)"

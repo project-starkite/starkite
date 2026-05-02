@@ -53,7 +53,9 @@ type TableValue struct {
 	widths  []int
 }
 
-func (t *TableValue) String() string        { return fmt.Sprintf("<table %d cols, %d rows>", len(t.headers), len(t.rows)) }
+func (t *TableValue) String() string {
+	return fmt.Sprintf("<table %d cols, %d rows>", len(t.headers), len(t.rows))
+}
 func (t *TableValue) Type() string          { return "table" }
 func (t *TableValue) Freeze()               {}
 func (t *TableValue) Truth() starlark.Bool  { return starlark.Bool(len(t.rows) > 0) }

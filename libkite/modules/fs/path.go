@@ -401,7 +401,7 @@ func (p *Path) expanduserMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starl
 // ============================================================================
 
 func (p *Path) existsMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "exists", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "exists", p.path); err != nil {
 		return nil, err
 	}
 	_, err := os.Stat(p.path)
@@ -409,7 +409,7 @@ func (p *Path) existsMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.
 }
 
 func (p *Path) isFileMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "is_file", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "is_file", p.path); err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(p.path)
@@ -420,7 +420,7 @@ func (p *Path) isFileMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.
 }
 
 func (p *Path) isDirMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "is_dir", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "is_dir", p.path); err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(p.path)
@@ -431,7 +431,7 @@ func (p *Path) isDirMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.T
 }
 
 func (p *Path) isSymlinkMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "is_symlink", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "is_symlink", p.path); err != nil {
 		return nil, err
 	}
 	info, err := os.Lstat(p.path)
@@ -442,7 +442,7 @@ func (p *Path) isSymlinkMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starla
 }
 
 func (p *Path) statMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "file_stat", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "file_stat", p.path); err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(p.path)
@@ -466,7 +466,7 @@ func (p *Path) statMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tu
 // ============================================================================
 
 func (p *Path) readTextMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "read_file", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "read_file", p.path); err != nil {
 		return nil, err
 	}
 	data, err := os.ReadFile(p.path)
@@ -477,7 +477,7 @@ func (p *Path) readTextMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlar
 }
 
 func (p *Path) readBytesMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "read_bytes", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "read_bytes", p.path); err != nil {
 		return nil, err
 	}
 	data, err := os.ReadFile(p.path)
@@ -500,7 +500,7 @@ func (p *Path) writeTextMethod(_ *starlark.Thread, _ *starlark.Builtin, args sta
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "write", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "write", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -530,7 +530,7 @@ func (p *Path) writeBytesMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	default:
 		return nil, fmt.Errorf("fs.path.write_bytes: content must be bytes or string, got %s", params.Content.Type())
 	}
-	if err := libkite.Check(p.thread, "fs", "write", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "write", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -549,7 +549,7 @@ func (p *Path) appendTextMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "write", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "write", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -582,7 +582,7 @@ func (p *Path) appendBytesMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 	default:
 		return nil, fmt.Errorf("fs.path.append_bytes: content must be bytes or string, got %s", params.Content.Type())
 	}
-	if err := libkite.Check(p.thread, "fs", "write", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "write", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -611,7 +611,7 @@ func (p *Path) touchMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlar
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "touch", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "touch", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -648,7 +648,7 @@ func (p *Path) mkdirMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlar
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "mkdir", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "mkdir", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -667,7 +667,7 @@ func (p *Path) mkdirMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlar
 }
 
 func (p *Path) removeMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "remove", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "delete", "remove", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -687,7 +687,7 @@ func (p *Path) renameMethod(_ *starlark.Thread, _ *starlark.Builtin, args starla
 		return nil, err
 	}
 	target := params.Target
-	if err := libkite.Check(p.thread, "fs", "rename", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "rename", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -706,7 +706,7 @@ func (p *Path) chmodMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlar
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "chmod", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "chmod", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -725,7 +725,7 @@ func (p *Path) symlinkToMethod(_ *starlark.Thread, _ *starlark.Builtin, args sta
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "symlink", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "symlink", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -738,7 +738,7 @@ func (p *Path) symlinkToMethod(_ *starlark.Thread, _ *starlark.Builtin, args sta
 }
 
 func (p *Path) listdirMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "listdir", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "listdir", p.path); err != nil {
 		return nil, err
 	}
 	entries, err := os.ReadDir(p.path)
@@ -759,7 +759,7 @@ func (p *Path) globMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "glob", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "glob", p.path); err != nil {
 		return nil, err
 	}
 	fullPattern := filepath.Join(p.path, params.Pattern)
@@ -789,10 +789,10 @@ func (p *Path) copyToMethod(_ *starlark.Thread, _ *starlark.Builtin, args starla
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "copy", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "copy", p.path); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "copy", params.Target); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "copy", params.Target); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -821,10 +821,10 @@ func (p *Path) moveToMethod(_ *starlark.Thread, _ *starlark.Builtin, args starla
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "move", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "move", p.path); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "move", params.Target); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "move", params.Target); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -843,7 +843,7 @@ func (p *Path) truncateMethod(_ *starlark.Thread, _ *starlark.Builtin, args star
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "truncate", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "truncate", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -865,7 +865,7 @@ func (p *Path) chownMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlar
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "chown", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "chown", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -878,7 +878,7 @@ func (p *Path) chownMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlar
 }
 
 func (p *Path) readlinkMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "readlink", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "readlink", p.path); err != nil {
 		return nil, err
 	}
 	target, err := os.Readlink(p.path)
@@ -895,7 +895,7 @@ func (p *Path) hardlinkToMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "hardlink", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "write", "hardlink", p.path); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {
@@ -908,7 +908,7 @@ func (p *Path) hardlinkToMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 }
 
 func (p *Path) walkMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "walk", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "walk", p.path); err != nil {
 		return nil, err
 	}
 	var results []starlark.Value
@@ -946,7 +946,7 @@ func (p *Path) walkMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tu
 }
 
 func (p *Path) diskUsageMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "disk_usage", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "disk_usage", p.path); err != nil {
 		return nil, err
 	}
 	return diskUsageInfo(p.path)

@@ -115,7 +115,7 @@ func (s *Source) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	}
 
 	if p.Dest != "" {
-		if err := libkite.Check(s.thread, "fs", "write", p.Dest); err != nil {
+		if err := libkite.Check(s.thread, "fs", "write", "write", p.Dest); err != nil {
 			return nil, err
 		}
 		if s.isDryRun() {
@@ -153,7 +153,7 @@ func (s *Source) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 	}
 
 	if p.Dest != "" {
-		if err := libkite.Check(s.thread, "fs", "write", p.Dest); err != nil {
+		if err := libkite.Check(s.thread, "fs", "write", "write", p.Dest); err != nil {
 			return nil, err
 		}
 		if s.isDryRun() {

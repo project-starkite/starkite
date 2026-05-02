@@ -15,14 +15,14 @@ import (
 // return a clear "unsupported" error and let scripts handle it.
 
 func (p *Path) ownerMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "owner", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "owner", p.path); err != nil {
 		return nil, err
 	}
 	return nil, fmt.Errorf("fs.path.owner: unsupported on windows")
 }
 
 func (p *Path) groupMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "group", p.path); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "group", p.path); err != nil {
 		return nil, err
 	}
 	return nil, fmt.Errorf("fs.path.group: unsupported on windows")

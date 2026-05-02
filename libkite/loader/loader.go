@@ -6,6 +6,7 @@ package loader
 import (
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/modules/base64"
+	"github.com/project-starkite/starkite/libkite/modules/concur"
 	"github.com/project-starkite/starkite/libkite/modules/csv"
 	fmtmod "github.com/project-starkite/starkite/libkite/modules/fmt"
 	"github.com/project-starkite/starkite/libkite/modules/fs"
@@ -17,7 +18,6 @@ import (
 	"github.com/project-starkite/starkite/libkite/modules/json"
 	"github.com/project-starkite/starkite/libkite/modules/log"
 	osmod "github.com/project-starkite/starkite/libkite/modules/os"
-	"github.com/project-starkite/starkite/libkite/modules/concur"
 	"github.com/project-starkite/starkite/libkite/modules/regexp"
 	"github.com/project-starkite/starkite/libkite/modules/retry"
 	"github.com/project-starkite/starkite/libkite/modules/runtime"
@@ -36,13 +36,13 @@ import (
 // RegisterAll registers all built-in modules with the given registry.
 func RegisterAll(r *libkite.Registry) {
 	// Core modules with global aliases
-	r.Register(osmod.New())    // os.* + global aliases (env, exec, etc.)
-	r.Register(fs.New())       // fs.* + global aliases (read_file, exists, etc.)
-	r.Register(fmtmod.New())   // fmt.* + global aliases (printf, sprintf, errorf)
-	r.Register(runtime.New())  // runtime.* (platform, arch, cpu_count, uname)
-	r.Register(iomod.New())    // io.* (confirm, prompt)
-	r.Register(test.New())     // test.* + global aliases (skip, fail)
-	r.Register(vars.New())     // vars.* + global alias (var)
+	r.Register(osmod.New())   // os.* + global aliases (env, exec, etc.)
+	r.Register(fs.New())      // fs.* + global aliases (read_file, exists, etc.)
+	r.Register(fmtmod.New())  // fmt.* + global aliases (printf, sprintf, errorf)
+	r.Register(runtime.New()) // runtime.* (platform, arch, cpu_count, uname)
+	r.Register(iomod.New())   // io.* (confirm, prompt)
+	r.Register(test.New())    // test.* + global aliases (skip, fail)
+	r.Register(vars.New())    // vars.* + global alias (var)
 
 	// Stateless utility modules
 	r.Register(strings.New())

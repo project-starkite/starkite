@@ -51,8 +51,8 @@ func (m *middlewareStep) String() string {
 }
 func (m *middlewareStep) Type() string          { return "middleware_step" }
 func (m *middlewareStep) Freeze()               {}
-func (m *middlewareStep) Truth() starlark.Bool   { return starlark.True }
-func (m *middlewareStep) Hash() (uint32, error)  { return 0, nil }
+func (m *middlewareStep) Truth() starlark.Bool  { return starlark.True }
+func (m *middlewareStep) Hash() (uint32, error) { return 0, nil }
 
 func (m *middlewareStep) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	return m.call(thread, args)

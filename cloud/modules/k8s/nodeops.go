@@ -23,7 +23,7 @@ import (
 // drain cordons a node and evicts its pods.
 // Signature: k8s.drain(node, force=False, ignore_daemonsets=True, timeout="3m")
 func (c *K8sClient) drain(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -109,7 +109,7 @@ func (c *K8sClient) drain(thread *starlark.Thread, fn *starlark.Builtin, args st
 // cordon marks a node as unschedulable.
 // Signature: k8s.cordon(node, timeout="")
 func (c *K8sClient) cordon(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -144,7 +144,7 @@ func (c *K8sClient) cordon(thread *starlark.Thread, fn *starlark.Builtin, args s
 // uncordon marks a node as schedulable.
 // Signature: k8s.uncordon(node, timeout="")
 func (c *K8sClient) uncordon(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -179,7 +179,7 @@ func (c *K8sClient) uncordon(thread *starlark.Thread, fn *starlark.Builtin, args
 // taint adds a taint to a node.
 // Signature: k8s.taint(node, key, value="", effect="NoSchedule", timeout="")
 func (c *K8sClient) taint(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -236,7 +236,7 @@ func (c *K8sClient) taint(thread *starlark.Thread, fn *starlark.Builtin, args st
 // untaint removes a taint from a node.
 // Signature: k8s.untaint(node, key, timeout="")
 func (c *K8sClient) untaint(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -288,7 +288,7 @@ func (c *K8sClient) untaint(thread *starlark.Thread, fn *starlark.Builtin, args 
 // topNodes returns resource usage for nodes using the metrics API.
 // Signature: k8s.top_nodes(timeout="")
 func (c *K8sClient) topNodes(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 
@@ -346,7 +346,7 @@ func (c *K8sClient) topNodes(thread *starlark.Thread, fn *starlark.Builtin, args
 // topPods returns resource usage for pods using the metrics API.
 // Signature: k8s.top_pods(namespace="", sort_by="", timeout="")
 func (c *K8sClient) topPods(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 
@@ -415,7 +415,7 @@ func (c *K8sClient) topPods(thread *starlark.Thread, fn *starlark.Builtin, args 
 // cp copies files between a pod and the local filesystem.
 // Signature: k8s.cp(pod, src, dst, namespace="", container="", timeout="")
 func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "exec", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "exec", "exec", ""); err != nil {
 		return nil, err
 	}
 
@@ -554,7 +554,7 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 // describe returns a detailed description of a resource.
 // Signature: k8s.describe(kind, name, namespace="", timeout="")
 func (c *K8sClient) describe(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 

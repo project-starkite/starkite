@@ -42,7 +42,7 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 
 	// Permission check for SSH exec - check each host
 	for _, host := range c.hosts {
-		if err := libkite.Check(thread, "ssh", "exec", host+":"+p.Cmd); err != nil {
+		if err := libkite.Check(thread, "ssh", "connect", "exec", host+":"+p.Cmd); err != nil {
 			return nil, err
 		}
 	}

@@ -32,7 +32,7 @@ func (c *SSHClient) upload(thread *starlark.Thread, fn *starlark.Builtin, args s
 
 	// Permission check for SSH upload - check each host
 	for _, host := range c.hosts {
-		if err := libkite.Check(thread, "ssh", "upload", host+":"+p.Src+"->"+p.Dst); err != nil {
+		if err := libkite.Check(thread, "ssh", "transfer", "upload", host+":"+p.Src+"->"+p.Dst); err != nil {
 			return nil, err
 		}
 	}
@@ -63,7 +63,7 @@ func (c *SSHClient) download(thread *starlark.Thread, fn *starlark.Builtin, args
 
 	// Permission check for SSH download - check each host
 	for _, host := range c.hosts {
-		if err := libkite.Check(thread, "ssh", "download", host+":"+p.Src+"->"+p.Dst); err != nil {
+		if err := libkite.Check(thread, "ssh", "transfer", "download", host+":"+p.Src+"->"+p.Dst); err != nil {
 			return nil, err
 		}
 	}

@@ -242,7 +242,7 @@ func GetPermissions() *libkite.PermissionConfig {
 	case "":
 		return nil
 	case "strict":
-		return libkite.SandboxedPermissions()
+		return libkite.StrictPermissions()
 	default:
 		fmt.Fprintf(os.Stderr, "warning: unknown permissions profile %q, falling back to trust mode\n", permissionsMode)
 		return nil

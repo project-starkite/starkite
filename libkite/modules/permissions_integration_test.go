@@ -392,8 +392,8 @@ func TestSelectivePermissions(t *testing.T) {
 	thread := &starlark.Thread{Name: "test"}
 	checker, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{
 		Allow: []string{
-			"os.env",    // Allow env but not exec
-			"fs.exists", // Allow exists but not read_file
+			"os.env",            // Allow env category (env + setenv); not exec
+			"fs.read(exists:*)", // Allow only the exists function in fs.read; not read_file
 		},
 		Default: libkite.DefaultDeny,
 	})

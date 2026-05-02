@@ -18,7 +18,7 @@ import (
 // With handler: calls handler(event_type, resource_dict) for each event, stops on False return.
 // Without handler: collects events into a list, returns on timeout.
 func (c *K8sClient) watch(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 
@@ -147,7 +147,7 @@ func (c *K8sClient) watchCollect(watcher watch.Interface, ctx context.Context) (
 // Signature: k8s.wait_for(kind, name, condition="ready", namespace="", timeout="3m")
 // Returns: {"ready": bool, "resource": dict, "message": string}
 func (c *K8sClient) waitFor(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 

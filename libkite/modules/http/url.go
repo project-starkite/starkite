@@ -130,7 +130,7 @@ func (u *URL) doRequest(method string, hasBody bool, args starlark.Tuple, kwargs
 	}
 
 	// Permission check
-	if err := libkite.Check(u.thread, "http", method, u.rawURL); err != nil {
+	if err := libkite.Check(u.thread, "http", "client", method, u.rawURL); err != nil {
 		return nil, err
 	}
 

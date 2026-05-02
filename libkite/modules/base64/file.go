@@ -81,7 +81,7 @@ func (f *Base64File) isDryRun() bool {
 }
 
 func (f *Base64File) readFile() ([]byte, error) {
-	if err := libkite.Check(f.thread, "fs", "read_file", f.path); err != nil {
+	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
 	return os.ReadFile(f.path)

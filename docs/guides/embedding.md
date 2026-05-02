@@ -136,7 +136,7 @@ config := &libkite.Config{
     Registry: registry,
 
     // Permission policy (nil = allow all)
-    Permissions: libkite.SandboxedPermissions(),
+    Permissions: libkite.StrictPermissions(),
 
     // Global variables injected into every script
     Globals: map[string]interface{}{
@@ -406,7 +406,7 @@ Control what scripts can do:
 config.Permissions = libkite.TrustedPermissions()
 
 // Block dangerous operations (exec, file writes, network)
-config.Permissions = libkite.SandboxedPermissions()
+config.Permissions = libkite.StrictPermissions()
 
 // Fine-grained rules
 config.Permissions = &libkite.PermissionConfig{

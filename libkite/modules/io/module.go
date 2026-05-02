@@ -67,7 +67,7 @@ func (m *Module) confirm(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "io", "confirm", p.Msg); err != nil {
+	if err := libkite.Check(thread, "io", "prompt", "confirm", p.Msg); err != nil {
 		return nil, err
 	}
 
@@ -121,7 +121,7 @@ func (m *Module) prompt(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "io", "prompt", p.Msg); err != nil {
+	if err := libkite.Check(thread, "io", "prompt", "prompt", p.Msg); err != nil {
 		return nil, err
 	}
 

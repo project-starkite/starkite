@@ -54,7 +54,7 @@ func (m *Module) FactoryMethod() string { return "config" }
 // Usage: ssh.config(hosts=["host1", "host2"], user="root", key="/path/to/key", ...)
 func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	// Permission check for creating SSH client
-	if err := libkite.Check(thread, "ssh", "config", ""); err != nil {
+	if err := libkite.Check(thread, "ssh", "connect", "config", ""); err != nil {
 		return nil, err
 	}
 

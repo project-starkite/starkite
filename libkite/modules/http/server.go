@@ -53,8 +53,8 @@ type Server struct {
 // newServer creates a Server with default config.
 func newServer(runtime *libkite.Runtime, config *libkite.ModuleConfig) *Server {
 	return &Server{
-		maxHeaderBytes:  1 << 20,      // 1MB
-		maxBodyBytes:    10 << 20,     // 10MB
+		maxHeaderBytes:  1 << 20,  // 1MB
+		maxBodyBytes:    10 << 20, // 10MB
 		shutdownTimeout: 5 * time.Second,
 		runtime:         runtime,
 		config:          config,
@@ -115,7 +115,7 @@ func (s *Server) AttrNames() []string {
 func (s *Server) handleMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "handle"); err != nil {
+	if err := libkite.Check(thread, "http", "server", "handle", ""); err != nil {
 		return nil, err
 	}
 
@@ -148,7 +148,7 @@ func (s *Server) handleMethod(thread *starlark.Thread, fn *starlark.Builtin,
 func (s *Server) useMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "use"); err != nil {
+	if err := libkite.Check(thread, "http", "server", "use", ""); err != nil {
 		return nil, err
 	}
 
@@ -178,7 +178,7 @@ func (s *Server) useMethod(thread *starlark.Thread, fn *starlark.Builtin,
 func (s *Server) serveMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "serve"); err != nil {
+	if err := libkite.Check(thread, "http", "server", "serve", ""); err != nil {
 		return nil, err
 	}
 
@@ -227,7 +227,7 @@ func (s *Server) serveMethod(thread *starlark.Thread, fn *starlark.Builtin,
 func (s *Server) startMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "start"); err != nil {
+	if err := libkite.Check(thread, "http", "server", "start", ""); err != nil {
 		return nil, err
 	}
 
@@ -242,7 +242,7 @@ func (s *Server) startMethod(thread *starlark.Thread, fn *starlark.Builtin,
 func (s *Server) shutdownMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "shutdown"); err != nil {
+	if err := libkite.Check(thread, "http", "server", "shutdown", ""); err != nil {
 		return nil, err
 	}
 
@@ -274,7 +274,7 @@ func (s *Server) shutdownInternal() {
 func (s *Server) portMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "port"); err != nil {
+	if err := libkite.Check(thread, "http", "server", "port", ""); err != nil {
 		return nil, err
 	}
 

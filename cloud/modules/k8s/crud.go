@@ -16,7 +16,7 @@ import (
 // get retrieves a single Kubernetes resource.
 // Signature: k8s.get(kind, name, namespace="", timeout="")
 func (c *K8sClient) get(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 
@@ -67,7 +67,7 @@ func (c *K8sClient) get(thread *starlark.Thread, fn *starlark.Builtin, args star
 // listResources retrieves a list of Kubernetes resources.
 // Signature: k8s.list(kind, namespace="", labels="", fields="", timeout="")
 func (c *K8sClient) listResources(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 
@@ -131,7 +131,7 @@ func (c *K8sClient) listResources(thread *starlark.Thread, fn *starlark.Builtin,
 // create creates a new Kubernetes resource.
 // Signature: k8s.create(manifest, namespace="", dry_run=False, timeout="")
 func (c *K8sClient) create(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -216,7 +216,7 @@ func (c *K8sClient) create(thread *starlark.Thread, fn *starlark.Builtin, args s
 // apply performs server-side apply on Kubernetes resources.
 // Signature: k8s.apply(manifest, namespace="", field_manager="starkite", dry_run=False, force=False, timeout="")
 func (c *K8sClient) apply(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -324,7 +324,7 @@ func (c *K8sClient) apply(thread *starlark.Thread, fn *starlark.Builtin, args st
 // del deletes a Kubernetes resource.
 // Signature: k8s.delete(kind, name, namespace="", propagation="Background", timeout="")
 func (c *K8sClient) del(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -385,7 +385,7 @@ func (c *K8sClient) del(thread *starlark.Thread, fn *starlark.Builtin, args star
 // patch applies a patch to a Kubernetes resource.
 // Signature: k8s.patch(kind, name, patch, namespace="", type="merge", timeout="")
 func (c *K8sClient) patch(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -475,7 +475,7 @@ func (c *K8sClient) patch(thread *starlark.Thread, fn *starlark.Builtin, args st
 // label sets labels on a Kubernetes resource.
 // Signature: k8s.label(kind, name, labels, namespace="", timeout="")
 func (c *K8sClient) label(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -559,7 +559,7 @@ func (c *K8sClient) label(thread *starlark.Thread, fn *starlark.Builtin, args st
 // annotate sets annotations on a Kubernetes resource.
 // Signature: k8s.annotate(kind, name, annotations, namespace="", timeout="")
 func (c *K8sClient) annotate(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -642,7 +642,7 @@ func (c *K8sClient) annotate(thread *starlark.Thread, fn *starlark.Builtin, args
 // version returns the Kubernetes server version.
 // Signature: k8s.version(timeout="")
 func (c *K8sClient) version(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 
@@ -663,7 +663,7 @@ func (c *K8sClient) version(thread *starlark.Thread, fn *starlark.Builtin, args 
 // apiResources returns available API resources on the server.
 // Signature: k8s.api_resources(timeout="")
 func (c *K8sClient) apiResources(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
 		return nil, err
 	}
 
@@ -761,7 +761,7 @@ func injectOwnerRef(obj *unstructuredObj, owner starlark.Value) error {
 // updateStatus updates the status subresource of a Kubernetes resource.
 // Signature: k8s.status(obj, status, namespace="", timeout="")
 func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 

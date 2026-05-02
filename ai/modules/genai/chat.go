@@ -405,7 +405,7 @@ func (c *Chat) sendBuiltin(thread *starlark.Thread, fnBuiltin *starlark.Builtin,
 		return nil, fmt.Errorf("ai.chat.send: stream=True with tools= is not yet supported (pass tools=[] to disable tools for this turn)")
 	}
 
-	if err := libkite.Check(thread, "ai", "generate", modelName); err != nil {
+	if err := libkite.Check(thread, "ai", "generate", "generate", modelName); err != nil {
 		return nil, err
 	}
 

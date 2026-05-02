@@ -578,7 +578,7 @@ func TestServerAddHandlerWhileRunning(t *testing.T) {
 
 func TestServerPermissions(t *testing.T) {
 	rt, err := libkite.New(&libkite.Config{
-		Permissions: libkite.SandboxedPermissions(),
+		Permissions: libkite.StrictPermissions(),
 	})
 	if err != nil {
 		t.Fatal(err)

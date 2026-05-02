@@ -90,7 +90,7 @@ func (m *Module) readFile(thread *starlark.Thread, fn *starlark.Builtin, args st
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(thread, "fs", "read_file", p.Path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", p.Path); err != nil {
 		return nil, err
 	}
 	data, err := os.ReadFile(p.Path)
@@ -132,7 +132,7 @@ func (m *Module) write(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		}
 	}
 
-	if err := libkite.Check(thread, "fs", "write", path); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", path); err != nil {
 		return nil, err
 	}
 
@@ -153,7 +153,7 @@ func (m *Module) readBytes(thread *starlark.Thread, fn *starlark.Builtin, args s
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(thread, "fs", "read_bytes", p.Path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_bytes", p.Path); err != nil {
 		return nil, err
 	}
 
@@ -175,7 +175,7 @@ func (m *Module) exists(thread *starlark.Thread, fn *starlark.Builtin, args star
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(thread, "fs", "exists", p.Path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "exists", p.Path); err != nil {
 		return nil, err
 	}
 	_, err := os.Stat(p.Path)
@@ -193,7 +193,7 @@ func (m *Module) glob(thread *starlark.Thread, fn *starlark.Builtin, args starla
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(thread, "fs", "glob", p.Pattern); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "glob", p.Pattern); err != nil {
 		return nil, err
 	}
 	matches, err := filepath.Glob(p.Pattern)

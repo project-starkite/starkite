@@ -70,4 +70,3 @@ func (rt *Runtime) builtinResult(thread *starlark.Thread, fn *starlark.Builtin, 
 	}
 	return ResultErr(errMsg), nil
 }
-

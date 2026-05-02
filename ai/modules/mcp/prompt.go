@@ -96,7 +96,7 @@ func buildPromptHandler(p *promptEntry, rt *libkite.Runtime) func(context.Contex
 	return func(ctx context.Context, req *mcpsdk.GetPromptRequest) (*mcpsdk.GetPromptResult, error) {
 		thread := rt.NewThread("mcp-prompt-" + p.name)
 
-		if err := libkite.Check(thread, "mcp", "prompt_render", p.name); err != nil {
+		if err := libkite.Check(thread, "mcp", "client", "prompt_render", p.name); err != nil {
 			return nil, err
 		}
 

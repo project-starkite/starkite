@@ -81,7 +81,7 @@ func (f *CsvFile) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starl
 		return nil, err
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read_file", f.path); err != nil {
+	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
 

@@ -116,7 +116,7 @@ func buildResourceHandler(r *resourceEntry, rt *libkite.Runtime) func(context.Co
 	return func(ctx context.Context, req *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
 		thread := rt.NewThread("mcp-resource-" + r.name)
 
-		if err := libkite.Check(thread, "mcp", "resource_read", r.name); err != nil {
+		if err := libkite.Check(thread, "mcp", "client", "resource_read", r.name); err != nil {
 			return nil, err
 		}
 

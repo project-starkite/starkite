@@ -16,7 +16,7 @@ import (
 // deployHighLevel creates a Deployment and optional Service in one call.
 // Signature: k8s.deploy(name, image, replicas=1, port=0, namespace="", labels=None, env=None, timeout="")
 func (c *K8sClient) deployHighLevel(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -165,7 +165,7 @@ func (c *K8sClient) deployHighLevel(thread *starlark.Thread, fn *starlark.Builti
 // run creates and runs a Pod, optionally waiting for completion and returning logs.
 // Signature: k8s.run(name, image, command=None, namespace="", restart="Never", rm=False, timeout="3m")
 func (c *K8sClient) run(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -288,7 +288,7 @@ done:
 // expose creates a Service to expose a resource.
 // Signature: k8s.expose(kind, name, port, target_port=0, type="ClusterIP", namespace="", timeout="")
 func (c *K8sClient) expose(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -357,7 +357,7 @@ func (c *K8sClient) expose(thread *starlark.Thread, fn *starlark.Builtin, args s
 // scale changes the replica count for a scalable resource.
 // Signature: k8s.scale(kind, name, replicas, namespace="", timeout="")
 func (c *K8sClient) scale(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -414,7 +414,7 @@ func (c *K8sClient) scale(thread *starlark.Thread, fn *starlark.Builtin, args st
 // autoscale creates a HorizontalPodAutoscaler.
 // Signature: k8s.autoscale(kind, name, min=1, max=10, cpu_percent=80, namespace="", timeout="")
 func (c *K8sClient) autoscale(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -505,7 +505,7 @@ func (c *K8sClient) autoscale(thread *starlark.Thread, fn *starlark.Builtin, arg
 // rollout manages deployment rollouts.
 // Signature: k8s.rollout(kind, name, action="status", namespace="", revision=0, timeout="")
 func (c *K8sClient) rollout(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -628,7 +628,7 @@ func rolloutStatusFromObj(obj *unstructuredObj) (starlark.Value, error) {
 // setImage updates the container image on a workload.
 // Signature: k8s.set_image(kind, name, container, image, namespace="", timeout="")
 func (c *K8sClient) setImage(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -688,7 +688,7 @@ func (c *K8sClient) setImage(thread *starlark.Thread, fn *starlark.Builtin, args
 // setEnv updates environment variables on a workload.
 // Signature: k8s.set_env(kind, name, env, namespace="", container="", timeout="")
 func (c *K8sClient) setEnv(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 
@@ -767,7 +767,7 @@ func (c *K8sClient) setEnv(thread *starlark.Thread, fn *starlark.Builtin, args s
 // setResources updates resource requests/limits on a workload.
 // Signature: k8s.set_resources(kind, name, requests=None, limits=None, namespace="", container="", timeout="")
 func (c *K8sClient) setResources(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
 		return nil, err
 	}
 

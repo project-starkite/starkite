@@ -126,7 +126,7 @@ func (m *Module) generate(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, fmt.Errorf("ai.generate: %w", err)
 	}
 
-	if err := libkite.Check(thread, "ai", "generate", modelName); err != nil {
+	if err := libkite.Check(thread, "ai", "generate", "generate", modelName); err != nil {
 		return nil, err
 	}
 

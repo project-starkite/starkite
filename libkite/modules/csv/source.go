@@ -96,7 +96,7 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		return nil, err
 	}
 
-	if err := libkite.Check(w.thread, "fs", "write", p.Path); err != nil {
+	if err := libkite.Check(w.thread, "fs", "write", "write", p.Path); err != nil {
 		return nil, err
 	}
 

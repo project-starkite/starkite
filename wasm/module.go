@@ -174,7 +174,7 @@ func (m *WasmModule) makeBuiltin(fn FunctionManifest) *starlark.Builtin {
 		args starlark.Tuple, kwargs []starlark.Tuple,
 	) (starlark.Value, error) {
 		// Check permission
-		if err := libkite.Check(thread, m.manifest.Name, fn.Name, ""); err != nil {
+		if err := libkite.Check(thread, m.manifest.Name, "wasm", fn.Name, ""); err != nil {
 			return nil, err
 		}
 

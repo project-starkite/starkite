@@ -137,7 +137,7 @@ func (m *Module) env_(thread *starlark.Thread, fn *starlark.Builtin, args starla
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "os", "env", p.Name); err != nil {
+	if err := libkite.Check(thread, "os", "env", "env", p.Name); err != nil {
 		return nil, err
 	}
 
@@ -157,7 +157,7 @@ func (m *Module) setenv(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "os", "setenv", p.Name); err != nil {
+	if err := libkite.Check(thread, "os", "env", "setenv", p.Name); err != nil {
 		return nil, err
 	}
 
@@ -189,7 +189,7 @@ func (m *Module) chdir(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "os", "chdir", p.Path); err != nil {
+	if err := libkite.Check(thread, "os", "process", "chdir", p.Path); err != nil {
 		return nil, err
 	}
 
@@ -237,7 +237,7 @@ func (m *Module) exit(thread *starlark.Thread, fn *starlark.Builtin, args starla
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "os", "exit", fmt.Sprintf("%d", p.Code)); err != nil {
+	if err := libkite.Check(thread, "os", "process", "exit", fmt.Sprintf("%d", p.Code)); err != nil {
 		return nil, err
 	}
 
@@ -284,7 +284,7 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 		}
 	}
 
-	if err := libkite.Check(thread, "os", "exec", cmdStr); err != nil {
+	if err := libkite.Check(thread, "os", "exec", "exec", cmdStr); err != nil {
 		return nil, err
 	}
 
@@ -493,7 +493,7 @@ func (m *Module) which(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "os", "which", p.Name); err != nil {
+	if err := libkite.Check(thread, "os", "exec", "which", p.Name); err != nil {
 		return nil, err
 	}
 

@@ -67,7 +67,7 @@ func (h *HostContext) checkPermission(function, resource string) error {
 	if h.thread == nil {
 		return nil
 	}
-	return libkite.Check(h.thread, h.moduleName, function, resource)
+	return libkite.Check(h.thread, h.moduleName, "wasm", function, resource)
 }
 
 // hostLog creates the "log" host function. Always allowed.
