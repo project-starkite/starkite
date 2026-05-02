@@ -33,7 +33,7 @@
 //		ScriptPath:  "script.star",
 //		Timeout:     30 * time.Second,
 //		Debug:       true,
-//		Permissions: libkite.TrustedPermissions(),
+//		Permissions: libkite.AllowAllPermissions(),
 //	}
 //	rt, err := libkite.New(config)
 //	if err != nil {
@@ -45,7 +45,7 @@
 //
 // The permission system controls which operations scripts can perform:
 //
-//   - TrustedPermissions() - Allow all operations (default for CLI tools)
+//   - AllowAllPermissions() - Allow all operations (default for CLI tools)
 //   - StrictPermissions() - Allow only safe operations (no I/O)
 //   - Custom PermissionConfig - Fine-grained control with allow/deny rules
 //

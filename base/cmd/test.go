@@ -93,16 +93,21 @@ func runTests(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Filter: %s\n", testFilter)
 	}
 
+	perms, err := GetPermissions()
+	if err != nil {
+		return err
+	}
+
 	startTime := time.Now()
 	var results []testResult
 
 	if testParallel > 1 && len(testFiles) > 1 {
 		// Run test files in parallel
-		results = runTestFilesParallel(testFiles, testParallel)
+		results = runTestFilesParallel(testFiles, testParallel, perms)
 	} else {
 		// Run test files sequentially
 		for _, testFile := range testFiles {
-			fileResults := runTestFile(testFile)
+			fileResults := runTestFile(testFile, perms)
 			results = append(results, fileResults...)
 		}
 	}
@@ -121,7 +126,7 @@ func runTests(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runTestFilesParallel(testFiles []string, workers int) []testResult {
+func runTestFilesParallel(testFiles []string, workers int, perms *libkite.PermissionConfig) []testResult {
 	// Create work channel
 	work := make(chan string, len(testFiles))
 	for _, f := range testFiles {
@@ -139,7 +144,7 @@ func runTestFilesParallel(testFiles []string, workers int) []testResult {
 		go func() {
 			defer wg.Done()
 			for testFile := range work {
-				fileResults := runTestFile(testFile)
+				fileResults := runTestFile(testFile, perms)
 				resultsChan <- fileResults
 			}
 		}()
@@ -190,7 +195,7 @@ func findTestFiles(path string) ([]string, error) {
 	return files, err
 }
 
-func runTestFile(testFile string) []testResult {
+func runTestFile(testFile string, perms *libkite.PermissionConfig) []testResult {
 	if testVerbose {
 		fmt.Printf("Running %s\n", testFile)
 	}
@@ -230,7 +235,7 @@ func runTestFile(testFile string) []testResult {
 		DryRun:       dryRun,
 		VarStore:     varStore,
 		TestMode:     true,
-		Permissions:  GetPermissions(),
+		Permissions:  perms,
 		Registry:     registry,
 	}
 

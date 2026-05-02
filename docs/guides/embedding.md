@@ -403,7 +403,7 @@ Control what scripts can do:
 
 ```go
 // Allow everything
-config.Permissions = libkite.TrustedPermissions()
+config.Permissions = libkite.AllowAllPermissions()
 
 // Block dangerous operations (exec, file writes, network)
 config.Permissions = libkite.StrictPermissions()

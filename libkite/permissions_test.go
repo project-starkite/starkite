@@ -126,7 +126,7 @@ func TestRuleMatches(t *testing.T) {
 
 func TestPermissionChecker(t *testing.T) {
 	t.Run("trusted allows everything", func(t *testing.T) {
-		checker, err := NewPermissionChecker(TrustedPermissions())
+		checker, err := NewPermissionChecker(AllowAllPermissions())
 		if err != nil {
 			t.Fatalf("NewPermissionChecker: %v", err)
 		}
@@ -138,22 +138,48 @@ func TestPermissionChecker(t *testing.T) {
 		}
 	})
 
-	t.Run("strict blocks all gated modules", func(t *testing.T) {
+	t.Run("strict allows working-tree fs, blocks the rest", func(t *testing.T) {
 		checker, err := NewPermissionChecker(StrictPermissions())
 		if err != nil {
 			t.Fatalf("NewPermissionChecker: %v", err)
 		}
-		blocked := []struct{ mod, cat, fn string }{
-			{"fs", "read", "read_file"},
+
+		cwd, _ := filepath.Abs(".")
+
+		// Working-tree fs operations are allowed.
+		for _, c := range []struct{ cat, fn, res string }{
+			{"read", "read_file", cwd + "/data.json"},
+			{"write", "write", cwd + "/out.txt"},
+			{"delete", "remove", cwd + "/tmp/x"},
+		} {
+			if err := checker.Check("fs", c.cat, c.fn, c.res); err != nil {
+				t.Errorf("strict should allow fs.%s.%s under $CWD: %v", c.cat, c.fn, err)
+			}
+		}
+
+		// Outside-cwd fs operations are blocked.
+		for _, c := range []struct{ cat, fn, res string }{
+			{"read", "read_file", "/etc/passwd"},
+			{"write", "write", "/etc/hosts"},
+			{"delete", "remove", "/etc/foo"},
+		} {
+			if err := checker.Check("fs", c.cat, c.fn, c.res); err == nil {
+				t.Errorf("strict should block fs.%s.%s outside $CWD", c.cat, c.fn)
+			}
+		}
+
+		// Non-fs gated operations are all blocked.
+		for _, c := range []struct{ mod, cat, fn string }{
 			{"os", "exec", "exec"},
+			{"os", "env", "env"},
 			{"http", "client", "get"},
 			{"ssh", "connect", "config"},
 			{"k8s", "write", "write"},
 			{"ai", "generate", "generate"},
-		}
-		for _, b := range blocked {
-			if err := checker.Check(b.mod, b.cat, b.fn, ""); err == nil {
-				t.Errorf("strict should block %s.%s.%s", b.mod, b.cat, b.fn)
+			{"io", "prompt", "prompt"},
+		} {
+			if err := checker.Check(c.mod, c.cat, c.fn, "anything"); err == nil {
+				t.Errorf("strict should block %s.%s.%s", c.mod, c.cat, c.fn)
 			}
 		}
 	})
@@ -224,8 +250,13 @@ func TestCheckWithThread(t *testing.T) {
 		checker, _ := NewPermissionChecker(StrictPermissions())
 		SetPermissions(thread, checker)
 
-		if err := Check(thread, "fs", "read", "read_file", "any"); err == nil {
-			t.Error("strict should block fs.read.read_file")
+		// outside-$CWD path → blocked
+		if err := Check(thread, "fs", "read", "read_file", "/etc/passwd"); err == nil {
+			t.Error("strict should block fs.read outside $CWD")
+		}
+		// non-fs gated op → blocked
+		if err := Check(thread, "os", "exec", "exec", "ls"); err == nil {
+			t.Error("strict should block os.exec")
 		}
 	})
 }

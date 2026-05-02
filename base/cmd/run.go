@@ -124,6 +124,11 @@ func runScript(cmd *cobra.Command, args []string) error {
 	// Create registry with all modules
 	registry := NewRegistry(moduleConfig)
 
+	perms, err := resolvePermissionsForScript(scriptPath)
+	if err != nil {
+		return err
+	}
+
 	// Create runtime configuration
 	cfg := &libkite.Config{
 		ScriptPath:   scriptPath,
@@ -131,7 +136,7 @@ func runScript(cmd *cobra.Command, args []string) error {
 		Debug:        debugMode,
 		DryRun:       dryRun,
 		VarStore:     varStore,
-		Permissions:  GetPermissions(),
+		Permissions:  perms,
 		Registry:     registry,
 	}
 

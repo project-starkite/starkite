@@ -12,6 +12,7 @@ import (
 	"github.com/project-starkite/starkite/base/edition"
 	"github.com/project-starkite/starkite/base/version"
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/spf13/cobra"
 )
 
@@ -235,18 +236,26 @@ func PrintDebug(format string, args ...interface{}) {
 	}
 }
 
-// GetPermissions returns the permission config based on CLI flags.
-// Returns nil for trusted mode (default), which allows all operations.
-func GetPermissions() *libkite.PermissionConfig {
-	switch permissionsMode {
-	case "":
-		return nil
-	case "strict":
-		return libkite.StrictPermissions()
-	default:
-		fmt.Fprintf(os.Stderr, "warning: unknown permissions profile %q, falling back to trust mode\n", permissionsMode)
-		return nil
+// GetPermissions resolves --permissions to a PermissionConfig. See
+// libkite/permissions/profile.go for the resolution order. Returns nil for
+// the empty case (trust mode); errors are surfaced to stderr and abort the
+// run via Execute().
+func GetPermissions() (*libkite.PermissionConfig, error) {
+	return permissions.LoadProfile(permissionsMode)
+}
+
+// resolvePermissionsForScript resolves the permissions to apply when running
+// a specific script file. The CLI flag wins; if no flag is set, the script's
+// `# permissions: <value>` frontmatter (if present) is used.
+func resolvePermissionsForScript(scriptPath string) (*libkite.PermissionConfig, error) {
+	if permissionsMode != "" {
+		return permissions.LoadProfile(permissionsMode)
 	}
+	value, err := permissions.ParseFrontmatterPermissions(scriptPath)
+	if err != nil {
+		return nil, err
+	}
+	return permissions.LoadProfile(value)
 }
 
 // shouldHandoff returns true if this invocation should attempt edition handoff.

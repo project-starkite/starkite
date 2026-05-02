@@ -354,20 +354,35 @@ func GetPermissions(thread *starlark.Thread) *PermissionChecker {
 	return checker
 }
 
-// TrustedPermissions returns a config that allows all operations.
-func TrustedPermissions() *PermissionConfig {
+// AllowAllPermissions returns a config that grants every gated operation.
+// Equivalent to "no permission system" — any Check call returns nil.
+func AllowAllPermissions() *PermissionConfig {
 	return &PermissionConfig{
 		Allow:   []string{"*.*"},
 		Default: DefaultAllow,
 	}
 }
 
-// StrictPermissions returns a config that denies every gated operation. Pure
-// utility modules (strings, json, yaml, …) bypass the permission system, so
-// they remain available; any module that calls Check (fs, os, http, ssh,
-// k8s, ai, mcp, io) is blocked.
+// DenyAllPermissions returns a config that denies every gated operation.
+// Pure utility modules (strings, json, yaml, …) bypass the permission system,
+// so they remain available; any module that calls Check (fs, os, http, ssh,
+// k8s, ai, mcp, io, wasm) is blocked.
+func DenyAllPermissions() *PermissionConfig {
+	return &PermissionConfig{
+		Default: DefaultDeny,
+	}
+}
+
+// StrictPermissions returns a working-tree-only config: filesystem read,
+// write, and delete are permitted under $CWD; everything else (exec,
+// network, env, ssh, k8s, ai, mcp, io) is denied.
 func StrictPermissions() *PermissionConfig {
 	return &PermissionConfig{
+		Allow: []string{
+			"fs.read($CWD/**)",
+			"fs.write($CWD/**)",
+			"fs.delete($CWD/**)",
+		},
 		Default: DefaultDeny,
 	}
 }

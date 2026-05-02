@@ -156,7 +156,7 @@ func NewTrusted(config *Config, opts ...ConfigOption) (*Runtime, error) {
 	for _, opt := range opts {
 		opt(config)
 	}
-	config.Permissions = TrustedPermissions()
+	config.Permissions = AllowAllPermissions()
 	return New(config)
 }
 

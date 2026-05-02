@@ -223,7 +223,7 @@ func TestCategoryRule_HTTPClientVsServer(t *testing.T) {
 // gated operation blocked across modules.
 func TestCategoryRule_TrustedAllowsEverything(t *testing.T) {
 	thread := &starlark.Thread{Name: "test"}
-	checker, _ := libkite.NewPermissionChecker(libkite.TrustedPermissions())
+	checker, _ := libkite.NewPermissionChecker(libkite.AllowAllPermissions())
 	libkite.SetPermissions(thread, checker)
 
 	for _, c := range []struct{ mod, cat, fn string }{
@@ -242,17 +242,28 @@ func TestCategoryRule_TrustedAllowsEverything(t *testing.T) {
 	}
 }
 
-// TestCategoryRule_StrictBlocksEverything: the strict profile blocks every
-// gated category in every gated module.
-func TestCategoryRule_StrictBlocksEverything(t *testing.T) {
+// TestCategoryRule_StrictBlocksNonFS: strict blocks every gated module other
+// than fs. Working-tree fs is allowed (covered by the dedicated strict test
+// in libkite/permissions_test.go); fs operations outside $CWD are also
+// blocked, exercised here with explicit outside-cwd paths.
+func TestCategoryRule_StrictBlocksNonFS(t *testing.T) {
 	thread := &starlark.Thread{Name: "test"}
 	checker, _ := libkite.NewPermissionChecker(libkite.StrictPermissions())
 	libkite.SetPermissions(thread, checker)
 
+	// fs operations outside $CWD are blocked.
+	for _, c := range []struct{ cat, fn, res string }{
+		{"read", "read_file", "/etc/passwd"},
+		{"write", "write", "/etc/hosts"},
+		{"delete", "remove", "/etc/foo"},
+	} {
+		if err := libkite.Check(thread, "fs", c.cat, c.fn, c.res); err == nil {
+			t.Errorf("strict should block fs.%s.%s outside $CWD", c.cat, c.fn)
+		}
+	}
+
+	// All non-fs gated operations are blocked.
 	for _, c := range []struct{ mod, cat, fn string }{
-		{"fs", "read", "read_file"},
-		{"fs", "write", "write"},
-		{"fs", "delete", "remove"},
 		{"os", "exec", "exec"},
 		{"os", "env", "env"},
 		{"os", "process", "chdir"},
@@ -269,7 +280,7 @@ func TestCategoryRule_StrictBlocksEverything(t *testing.T) {
 		{"mcp", "server", "serve"},
 		{"io", "prompt", "prompt"},
 	} {
-		if err := libkite.Check(thread, c.mod, c.cat, c.fn, ""); err == nil {
+		if err := libkite.Check(thread, c.mod, c.cat, c.fn, "anything"); err == nil {
 			t.Errorf("strict should block %s.%s.%s", c.mod, c.cat, c.fn)
 		}
 	}

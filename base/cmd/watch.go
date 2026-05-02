@@ -61,12 +61,17 @@ func watchScript(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to watch directory: %w", err)
 	}
 
+	perms, err := resolvePermissionsForScript(absPath)
+	if err != nil {
+		return err
+	}
+
 	fmt.Printf("Watching %s for changes...\n", scriptPath)
 	fmt.Println("Press Ctrl+C to stop")
 	fmt.Println()
 
 	// Run script initially
-	runWatchedScript(absPath)
+	runWatchedScript(absPath, perms)
 
 	// Debounce timer
 	var debounceTimer *time.Timer
@@ -95,7 +100,7 @@ func watchScript(cmd *cobra.Command, args []string) error {
 			}
 			debounceTimer = time.AfterFunc(debounceDelay, func() {
 				fmt.Println("\n--- File changed, re-executing ---")
-				runWatchedScript(absPath)
+				runWatchedScript(absPath, perms)
 			})
 
 		case err, ok := <-watcher.Errors:
@@ -107,7 +112,7 @@ func watchScript(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func runWatchedScript(scriptPath string) {
+func runWatchedScript(scriptPath string, perms *libkite.PermissionConfig) {
 	// Read script content
 	content, err := os.ReadFile(scriptPath)
 	if err != nil {
@@ -137,7 +142,7 @@ func runWatchedScript(scriptPath string) {
 		Debug:        debugMode,
 		DryRun:       dryRun,
 		VarStore:     varStore,
-		Permissions:  GetPermissions(),
+		Permissions:  perms,
 		Registry:     registry,
 	}
 

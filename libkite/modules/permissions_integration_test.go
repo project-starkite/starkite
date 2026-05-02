@@ -335,7 +335,7 @@ func TestIOModulePermissions(t *testing.T) {
 func TestModulePermissionsAllowed(t *testing.T) {
 	// Create a trusted thread
 	thread := &starlark.Thread{Name: "test"}
-	checker, err := libkite.NewPermissionChecker(libkite.TrustedPermissions())
+	checker, err := libkite.NewPermissionChecker(libkite.AllowAllPermissions())
 	if err != nil {
 		t.Fatalf("NewPermissionChecker error: %v", err)
 	}

@@ -45,7 +45,7 @@ func TestStarlarkEndToEnd(t *testing.T) {
 	config := &libkite.Config{
 		ScriptPath:  "echo_test.star",
 		Registry:    registry,
-		Permissions: libkite.TrustedPermissions(),
+		Permissions: libkite.AllowAllPermissions(),
 	}
 
 	rt, err := libkite.New(config)

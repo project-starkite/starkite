@@ -226,14 +226,48 @@ else
 fi
 
 # --------------------------------------------
-# Test 13: Unknown profile warns and falls back to trust
+# Test 13: Unknown profile errors with helpful message (Phase 2b: was a
+# stderr warning + fallback in Phase 2a; now a hard error from LoadProfile).
 # --------------------------------------------
-info "Test 13: unknown --permissions value warns and runs"
+info "Test 13: unknown --permissions value errors out"
 
-if $KITE exec 'print("ok")' --permissions=bogus 2>&1 | grep -q "unknown permissions profile"; then
-    pass "unknown profile produces stderr warning"
+if $KITE exec 'print("ok")' --permissions=bogus 2>&1 | grep -q "unknown profile"; then
+    pass "unknown profile produces error"
 else
-    fail "unknown profile produces stderr warning"
+    fail "unknown profile produces error"
+fi
+
+# --------------------------------------------
+# Test 13b: deny-all blocks every gated op (Phase 2b)
+# --------------------------------------------
+info "Test 13b: --permissions=deny-all blocks fs reads even under \$CWD"
+
+if $KITE exec 'print(read_text("README.md"))' --permissions=deny-all 2>&1 | grep -q "permission denied"; then
+    pass "--permissions=deny-all blocks fs.read"
+else
+    fail "--permissions=deny-all blocks fs.read"
+fi
+
+# --------------------------------------------
+# Test 13c: strict allows fs read under \$CWD (Phase 2b semantic change)
+# --------------------------------------------
+info "Test 13c: --permissions=strict allows fs read under \$CWD"
+
+if $KITE exec 'print(read_text("README.md")[:20])' --permissions=strict 2>&1 | grep -q "starkite\|#"; then
+    pass "--permissions=strict allows \$CWD fs read"
+else
+    fail "--permissions=strict allows \$CWD fs read"
+fi
+
+# --------------------------------------------
+# Test 13d: inline rule syntax (Phase 2b)
+# --------------------------------------------
+info "Test 13d: inline rules --permissions=allow:os.exec"
+
+if $KITE exec 'print(exec("echo inline"))' --permissions='allow:os.exec' 2>&1 | grep -q "inline"; then
+    pass "inline rules work"
+else
+    fail "inline rules work"
 fi
 
 # --------------------------------------------

@@ -66,7 +66,7 @@ func WithPermissions(perms *PermissionConfig) ConfigOption {
 // WithTrusted sets trusted permissions (allow all).
 func WithTrusted() ConfigOption {
 	return func(c *Config) {
-		c.Permissions = TrustedPermissions()
+		c.Permissions = AllowAllPermissions()
 	}
 }
 

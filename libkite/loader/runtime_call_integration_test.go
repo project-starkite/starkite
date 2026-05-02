@@ -34,7 +34,7 @@ func TestRuntime_Call_UsesStarbaseModule(t *testing.T) {
 	}))
 	t.Cleanup(srv.Close)
 
-	rt := newRuntimeWithModules(t, libkite.TrustedPermissions())
+	rt := newRuntimeWithModules(t, libkite.AllowAllPermissions())
 	if err := rt.ExecuteRepl(context.Background(), `
 def check(url):
     return http.url(url).get(timeout="5s").status_code
@@ -56,7 +56,7 @@ def check(url):
 }
 
 func TestRuntime_Eval_UsesStarbaseModule(t *testing.T) {
-	rt := newRuntimeWithModules(t, libkite.TrustedPermissions())
+	rt := newRuntimeWithModules(t, libkite.AllowAllPermissions())
 	v, err := rt.Eval(context.Background(), `exists("/tmp")`)
 	if err != nil {
 		t.Fatalf("Eval: %v", err)

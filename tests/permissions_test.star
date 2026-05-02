@@ -3,8 +3,16 @@
 # These tests verify the permission system works correctly when executed
 # with different permission modes. Run with:
 #
-#   kite test ./tests/permissions_test.star                       # Default trusted mode - all tests pass
-#   kite test ./tests/permissions_test.star --permissions=strict  # Strict profile - I/O tests should fail
+#   kite test ./tests/permissions_test.star                        # Default trust mode - all 16 tests pass
+#   kite test ./tests/permissions_test.star --permissions=strict   # Working-tree fs allowed; non-fs gated ops blocked
+#   kite test ./tests/permissions_test.star --permissions=deny-all # Every gated op blocked
+#
+# Under --permissions=strict (since Phase 2b):
+#   - $CWD-scoped fs reads/writes/deletes still pass
+#   - exec, env, http, ssh, k8s, ai, mcp, io, /tmp/ paths still fail
+#
+# Under --permissions=deny-all:
+#   - Every gated op blocked, including the $CWD fs ones
 
 # Test 1: Pure utility modules should always work
 def test_pure_utilities():
@@ -83,9 +91,10 @@ def test_env_access():
     assert(len(path) > 0, "PATH should be set")
 
 # Test 6: File read (when allowed)
-# Note: Under --permissions=strict, read_file will fail
+# Note: Under --permissions=strict this PASSES (path is under $CWD).
+# Under --permissions=deny-all it fails.
 def test_file_read():
-    """File read works in trusted mode"""
+    """File read works in trust and strict (path under $CWD)"""
     # Read this test file itself
     content = read_text("tests/permissions_test.star")
     assert("Permission System Integration Tests" in content, "should read this file")
@@ -98,9 +107,10 @@ def test_exec():
     assert("hello" in output, "should capture output")
 
 # Test 8: File existence check (when allowed)
-# Note: Under --permissions=strict, exists will fail
+# Note: Under --permissions=strict this PASSES (path is under $CWD).
+# Under --permissions=deny-all it fails.
 def test_file_exists():
-    """File existence check works in trusted mode"""
+    """File existence check works in trust and strict (path under $CWD)"""
     assert(exists("tests/permissions_test.star"), "this file should exist")
     assert(not exists("nonexistent-file-12345.txt"), "nonexistent file should not exist")
 
@@ -137,19 +147,20 @@ def test_concur():
 # they should all fail with a permission error (proving the category is
 # correctly gated). Under default trusted mode they should all pass.
 
-# Test 11: fs.write category
-# Note: Under --permissions=strict, write_text will fail
+# Test 11: fs.write category outside $CWD
+# Note: Path is under /tmp/, so it fails under both strict and deny-all
+# (strict only allows $CWD-scoped writes).
 def test_fs_write_category():
-    """fs.write category is gated"""
+    """fs.write outside $CWD is gated under strict and deny-all"""
     tmp_path = path("/tmp/starkite_perm_write_test")
     tmp_path.write_text("hello")
     assert(tmp_path.exists(), "file should have been written")
     tmp_path.remove()
 
-# Test 12: fs.delete category
-# Note: Under --permissions=strict, remove will fail (separately from write)
+# Test 12: fs.delete category outside $CWD
+# Note: Path is under /tmp/, so it fails under both strict and deny-all.
 def test_fs_delete_category():
-    """fs.delete category is gated separately from fs.write"""
+    """fs.delete outside $CWD is gated under strict and deny-all"""
     tmp_path = path("/tmp/starkite_perm_delete_test")
     tmp_path.write_text("temp")
     tmp_path.remove()
@@ -185,3 +196,14 @@ def test_http_server_construct():
     """http.server category is distinct from http.client"""
     srv = http.server(port=0)  # port 0 = OS picks a free port; doesn't auto-start
     assert(srv != None, "server should construct")
+
+# Test 17: $CWD-scoped fs round-trip — exercises strict's allow rules end-to-end.
+# Passes under trust AND strict; fails under deny-all.
+def test_strict_allows_cwd_fs():
+    """Strict permits read/write/delete inside $CWD"""
+    p = path(cwd()) / "starkite_strict_roundtrip.tmp"
+    p.write_text("ok")
+    assert(p.exists(), "should write under $CWD")
+    assert(p.read_text() == "ok", "should read under $CWD")
+    p.remove()
+    assert(not p.exists(), "should delete under $CWD")
