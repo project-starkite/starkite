@@ -36,6 +36,13 @@ type Runner interface {
 // on this platform/build (the typical case on macOS and Windows).
 var Backend Runner
 
+// InsideEnvVar is the environment variable that signals "this kite process
+// is running inside an active sandbox." The sandbox backend sets it on the
+// inner kite invocation; the CLI's MaybeHandoffToSandbox checks it to avoid
+// recursive re-sandboxing. Any code that needs to know "am I inside a
+// sandbox?" should consult this variable rather than hard-coding the name.
+const InsideEnvVar = "STARKITE_INSIDE_SANDBOX"
+
 // Available reports whether a backend is registered and usable.
 func Available() bool {
 	return Backend != nil

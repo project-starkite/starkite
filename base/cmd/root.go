@@ -279,19 +279,13 @@ func GetSandbox() (sandbox.Profile, error) {
 	return sandbox.LoadProfile(sandboxMode)
 }
 
-// kiteInsideSandboxEnv signals that this kite process is running inside an
-// already-active sandbox. The sandbox backend sets it before re-executing
-// the kite binary so the inner kite skips its own handoff (otherwise we'd
-// recurse forever).
-const kiteInsideSandboxEnv = "STARKITE_INSIDE_SANDBOX"
-
 // MaybeHandoffToSandbox checks if --sandbox is set and routes execution
 // through sandbox.Backend if so. Returns (true, err) when the backend
 // handled execution (caller must return immediately, propagating err);
 // (false, nil) when the caller should continue running natively;
 // (false, err) when the sandbox config itself was invalid.
 func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
-	if os.Getenv(kiteInsideSandboxEnv) == "1" {
+	if os.Getenv(sandbox.InsideEnvVar) == "1" {
 		return false, nil
 	}
 	profile, err := GetSandbox()
