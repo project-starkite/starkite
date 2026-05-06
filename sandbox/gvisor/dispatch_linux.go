@@ -43,6 +43,19 @@ func DispatchSubprocess() bool {
 		return false
 	}
 
+	// NOTE: we previously gated this with looksLikeGvisorSelfExec to
+	// suppress gVisor's verbose help when a curious user typed
+	// `kite boot --help` directly. That guard was wrong: gVisor's own
+	// MaybeRunAsRoot intermediate re-exec uses argv[0] = "/proc/self/exe"
+	// (NOT "runsc-*"), so the guard incorrectly killed legitimate
+	// gofer/sandbox subprocesses with our friendly-error message,
+	// breaking the sandbox flow. The cosmetic-help issue is small;
+	// fixing the dispatch is critical.
+	//
+	// We could narrow the guard by checking for gVisor-specific flags
+	// (--root=, --rootless) in argv, but that's a tightening we can
+	// do later if the help-leak ever becomes a real concern.
+
 	// Register only the three "internal use only" subcommands. We
 	// deliberately do NOT register the user-facing OCI subcommands
 	// (run, exec, kill, ...) — gVisor's user CLI is not exposed via
@@ -55,6 +68,17 @@ func DispatchSubprocess() bool {
 	}
 	cli.Run(cmds, nil) // calls os.Exit; never returns
 	return true        // unreachable
+}
+
+// looksLikeGvisorSelfExec reports whether argv[0] suggests gVisor itself
+// invoked us (via /proc/self/exe with cmd.Args[0] rewritten to a
+// "runsc-*" cosmetic name). Used to gate cli.Run delegation against
+// direct user invocation of the internal subcommands.
+func looksLikeGvisorSelfExec(args []string) bool {
+	if len(args) == 0 {
+		return false
+	}
+	return strings.HasPrefix(filepath.Base(args[0]), "runsc-")
 }
 
 // looksLikeRunscInvocation reports whether argv suggests a gVisor self-

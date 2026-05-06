@@ -76,6 +76,29 @@ func TestIsRuntimeMarker(t *testing.T) {
 	}
 }
 
+func TestLooksLikeGvisorSelfExec(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{name: "empty", args: nil, want: false},
+		{name: "runsc-sandbox argv0", args: []string{"runsc-sandbox", "boot"}, want: true},
+		{name: "runsc-gofer argv0", args: []string{"runsc-gofer", "gofer"}, want: true},
+		{name: "runsc- prefix anywhere in basename", args: []string{"runsc-foo"}, want: true},
+		{name: "kite argv0 (direct invocation)", args: []string{"kite", "boot"}, want: false},
+		{name: "/proc/self/exe argv0 (no runsc- prefix)", args: []string{"/proc/self/exe", "boot"}, want: false},
+		{name: "full path to runsc-sandbox", args: []string{"/some/path/runsc-sandbox", "boot"}, want: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := looksLikeGvisorSelfExec(tt.args); got != tt.want {
+				t.Errorf("looksLikeGvisorSelfExec(%v) = %v, want %v", tt.args, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestStripRuntimeMarker(t *testing.T) {
 	saved := os.Args
 	defer func() { os.Args = saved }()
