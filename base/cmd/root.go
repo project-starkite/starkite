@@ -80,7 +80,14 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&permissionsMode, "permissions", "", "Permission profile (e.g. \"strict\")")
 
 	// Sandbox flag — Linux only; non-Linux returns a clear error.
-	rootCmd.PersistentFlags().StringVar(&sandboxMode, "sandbox", "", "Sandbox profile for OS-level isolation (Linux: \"strict\")")
+	// `--sandbox` (no value) resolves to the built-in "default" profile via
+	// NoOptDefVal. `--sandbox=<name>` looks up a user-defined profile
+	// (Phase 5; today only "default" is recognized).
+	rootCmd.PersistentFlags().StringVar(&sandboxMode, "sandbox", "",
+		"Sandbox profile for OS-level isolation (Linux). "+
+			"Use --sandbox alone for the built-in \"default\" profile, "+
+			"or --sandbox=<name> for a user-defined profile.")
+	rootCmd.PersistentFlags().Lookup("sandbox").NoOptDefVal = "default"
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		applyEnvDefaults()

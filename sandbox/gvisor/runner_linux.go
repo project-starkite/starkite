@@ -64,7 +64,10 @@ func (Runner) Run(ctx context.Context, spec sandbox.ExecSpec) error {
 	}
 	defer bun.cleanup()
 
-	ociSpec := buildSpec(spec.Profile, innerArgs, cwd, hostBinary)
+	ociSpec, err := buildSpec(spec.Profile, innerArgs, cwd, hostBinary, bun)
+	if err != nil {
+		return fmt.Errorf("building spec: %w", err)
+	}
 	if err := bun.writeSpec(ociSpec); err != nil {
 		return fmt.Errorf("writing spec: %w", err)
 	}
@@ -74,7 +77,13 @@ func (Runner) Run(ctx context.Context, spec sandbox.ExecSpec) error {
 		return fmt.Errorf("building gvisor config: %w", err)
 	}
 	conf.RootDir = filepath.Join(os.TempDir(), "starkite-sandbox-state-"+bun.id)
-	conf.Network = config.NetworkNone
+	// NetworkHost: the contained process shares the host's network
+	// namespace, giving full network reachability without the overhead
+	// of gVisor's user-space netstack. Trade-off: network syscalls
+	// bypass gVisor's kernel mediation. Custom profiles (Phase 5) can
+	// switch this to NetworkSandbox for full kernel isolation including
+	// the network path.
+	conf.Network = config.NetworkHost
 	conf.Rootless = true
 	// Disable overlayfs for both root and submounts. The default would
 	// stack a writable tmpfs on top of every mount; we don't need that

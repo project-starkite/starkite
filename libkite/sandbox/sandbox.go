@@ -54,42 +54,66 @@ func PlatformError() error {
 	return fmt.Errorf("sandbox not available on %s, use container isolation", runtime.GOOS)
 }
 
-// Profile describes the sandbox environment. Phase 4 ships only the "strict"
-// built-in; Phase 5 adds YAML-loaded profiles with mounts, network, etc.
+// Profile describes the sandbox environment. Phase 4 ships one built-in
+// (the "default" profile); Phase 5 adds YAML-loaded user profiles with
+// custom mounts, network, etc. defined in ~/.starkite/security.yaml.
 type Profile struct {
 	Name    string  // empty for "no sandbox"
-	Network bool    // false = network namespace isolated
-	Mounts  []Mount // host paths exposed inside the sandbox
+	Network bool    // currently informational; runner reads Name to dispatch
+	Mounts  []Mount // future use (Phase 5)
 }
 
-// Mount describes a host-to-sandbox path mapping.
+// Mount describes a host-to-sandbox path mapping. Reserved for Phase 5.
 type Mount struct {
 	Source   string // path on the host
 	Target   string // path inside the sandbox
 	ReadOnly bool
 }
 
+// ProfileDefault is the name of the built-in default sandbox profile.
+//
+// The default profile relies on gVisor's intrinsic kernel-isolation
+// guarantees (syscall mediation, gofer-mediated filesystem, sentry-level
+// seccomp) and adds minimal additional spec hardening:
+//
+//   - host filesystem read-only via gofer
+//   - $CWD bound writable at the same path inside the sandbox
+//   - host network shared (NetworkHost — script can reach the network,
+//     but network syscalls bypass gVisor's netstack for performance)
+//   - pid/mount/ipc/uts/user/network namespaces isolated from host
+//   - NoNewPrivileges set (cheap belt; default Linux capabilities preserved)
+//   - in-process kite --permissions remains independent and unchanged
+//
+// Users wanting a tighter surface (no network, fs scoped to $CWD, caps
+// dropped, etc.) define a custom profile in ~/.starkite/security.yaml.
+// A "strict" recipe is documented in docs/guides/sandbox.md.
+const ProfileDefault = "default"
+
 // LoadProfile resolves a --sandbox value to a Profile. An empty value
-// returns the zero Profile (no sandbox). Phase 4 only knows the "strict"
-// built-in; Phase 5 adds named user profiles loaded from
-// ~/.starkite/security.yaml.
+// returns the zero Profile (no sandbox).
+//
+// Phase 4 only knows the "default" built-in; Phase 5 adds named user
+// profiles loaded from ~/.starkite/security.yaml.
 func LoadProfile(value string) (Profile, error) {
 	if value == "" {
 		return Profile{}, nil
 	}
-	if value != "strict" {
-		return Profile{}, fmt.Errorf("unknown sandbox profile %q (built-ins: strict)", value)
+	if value == ProfileDefault {
+		return defaultProfile(), nil
 	}
-	return strictProfile(), nil
+	return Profile{}, fmt.Errorf(
+		"unknown sandbox profile %q (built-in: %s; user-defined profiles "+
+			"in ~/.starkite/security.yaml are not yet supported)",
+		value, ProfileDefault)
 }
 
-// strictProfile is the minimal-environment sandbox: no network namespace,
-// stdin/stdout/stderr only, no extra mounts. Phase 4b will add the
-// $CWD-read-only and /etc/ssl/certs mounts that scripts typically need.
-func strictProfile() Profile {
+// defaultProfile populates the Profile struct with the default settings.
+// The runner consults Name to dispatch; richer fields land in Phase 5
+// when user-defined profiles need to drive runtime behavior.
+func defaultProfile() Profile {
 	return Profile{
-		Name:    "strict",
-		Network: false,
+		Name:    ProfileDefault,
+		Network: true,
 		Mounts:  nil,
 	}
 }
