@@ -69,8 +69,9 @@ func runScript(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Sandbox handoff: if --sandbox is set, hand the entire script execution
-	// to the OS-level sandbox backend and return its result.
+	// Sandbox handoff: if STARKITE_SECURITY_SANDBOX is set, hand the
+	// entire script execution to the OS-level sandbox backend and
+	// return its result.
 	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
 		return err
 	}

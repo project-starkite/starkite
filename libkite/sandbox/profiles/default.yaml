@@ -1,0 +1,61 @@
+# default.yaml — built-in default sandbox profile.
+#
+# Goal: "run a script I might not fully trust" without further configuration.
+# Network is reachable; the current directory is writable; host credentials
+# under $HOME and /etc/passwd, /etc/shadow, etc. are NOT visible.
+#
+# Network mode: host
+#   The contained process shares the host's network namespace, so HTTPS,
+#   SSH, DNS — anything that works outside the sandbox — works inside it
+#   without further setup. Trade-off: network syscalls bypass gVisor's
+#   netstack, so this profile defends the filesystem and process-table
+#   surfaces but not the network stack.
+#
+# Filesystem:
+#   - $CWD bound rw at the same host path. Project files and outputs work
+#     transparently.
+#   - /tmp is a private tmpfs (lost on exit).
+#   - /etc/ssl/certs, /etc/resolv.conf, /etc/hosts, /etc/nsswitch.conf
+#     mounted ro to make TLS verification and name resolution work. Each
+#     is "optional: true" — silently skipped if the host doesn't have it
+#     (minimal containers, alpine variants, etc.).
+#
+# Plumbing the runner adds independently of this file: /proc, /dev,
+# and the kite binary bind-mounted at /.kite (the contained process
+# entrypoint).
+
+network: host
+
+mounts:
+  - source: $CWD
+    destination: $CWD
+    mode: rw
+    type: bind
+
+  - destination: /tmp
+    type: tmpfs
+    mode: rw
+
+  - source: /etc/ssl/certs
+    destination: /etc/ssl/certs
+    type: bind
+    mode: ro
+    optional: true
+
+  - source: /etc/resolv.conf
+    destination: /etc/resolv.conf
+    type: bind
+    mode: ro
+    optional: true
+
+  - source: /etc/hosts
+    destination: /etc/hosts
+    type: bind
+    mode: ro
+    optional: true
+
+  - source: /etc/nsswitch.conf
+    destination: /etc/nsswitch.conf
+    type: bind
+    mode: ro
+    optional: true

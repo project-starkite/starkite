@@ -1,9 +1,13 @@
 //go:build linux
 
 // Package sandbox_test drives the .star sandbox integration tests by
-// invoking `kite test --sandbox` against tests/sandbox/*_test.star from
-// a clean temp directory (so credential-isolation tests aren't fooled
-// by $HOME being the $CWD bind).
+// invoking `kite test <file>` against tests/sandbox/*_test.star from a
+// clean temp directory (so credential-isolation tests aren't fooled by
+// $HOME being the $CWD bind).
+//
+// Two engagement paths are exercised:
+//   - --sandbox CLI flag (the explicit kite-invocation path)
+//   - STARKITE_SECURITY_SANDBOX env var (the shebang-style path)
 //
 // Skipped on non-Linux (build tag).
 // Skipped unless STARKITE_SANDBOX_INTEGRATION=1 — these tests build
@@ -26,7 +30,37 @@ import (
 
 const perTestTimeout = 60 * time.Second
 
-func TestSandboxDefaultProfile(t *testing.T) {
+// engagement picks how the test driver tells kite to engage the sandbox.
+// Both paths are documented user-facing: the flag for explicit CLI use,
+// the env var for shebang-launched scripts.
+type engagement int
+
+const (
+	viaFlag engagement = iota
+	viaEnv
+)
+
+func TestSandboxDefaultProfile_flag(t *testing.T) {
+	runStarTest(t, "sandbox_default_test.star", "default", viaFlag)
+}
+
+func TestSandboxStrictProfile_flag(t *testing.T) {
+	runStarTest(t, "sandbox_strict_test.star", "strict", viaFlag)
+}
+
+// Env-var engagement is the shebang-style path. Exercised on the strict
+// profile; default-via-env would just duplicate the flag-path coverage.
+func TestSandboxStrictProfile_env(t *testing.T) {
+	runStarTest(t, "sandbox_strict_test.star", "strict", viaEnv)
+}
+
+// runStarTest builds kite, copies the named .star file into a non-$HOME
+// temp dir, and runs `kite test <file>` with the sandbox engaged via
+// either the --sandbox flag or STARKITE_SECURITY_SANDBOX env var.
+// Asserts the printed test summary shows passes and zero failures.
+func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
+	t.Helper()
+
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
@@ -47,11 +81,10 @@ func TestSandboxDefaultProfile(t *testing.T) {
 		t.Fatalf("temp dir %s is under $HOME — sandbox isolation tests would be confounded", workDir)
 	}
 
-	// The default sandbox profile only mounts $CWD (and a few public
-	// system files). The test script must live inside $CWD so kite
-	// inside the sandbox can find it.
-	srcPath := mustAbs(t, "sandbox_default_test.star")
-	dstPath := filepath.Join(workDir, "sandbox_default_test.star")
+	// The sandbox profiles only mount $CWD. The test script must live
+	// inside $CWD so kite inside the sandbox can find it.
+	srcPath := mustAbs(t, scriptName)
+	dstPath := filepath.Join(workDir, scriptName)
 	if err := copyFile(srcPath, dstPath); err != nil {
 		t.Fatalf("staging test script into workdir: %v", err)
 	}
@@ -59,17 +92,30 @@ func TestSandboxDefaultProfile(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, kite, "test", dstPath, "--sandbox")
-	cmd.Dir = workDir
-
-	out, err := cmd.CombinedOutput()
-	t.Logf("kite test --sandbox output:\n%s", out)
-	if err != nil {
-		t.Fatalf("kite test --sandbox failed: %v", err)
+	args := []string{"test", dstPath}
+	env := os.Environ()
+	var label string
+	switch eng {
+	case viaFlag:
+		args = append(args, "--sandbox="+profile)
+		label = "--sandbox=" + profile
+	case viaEnv:
+		env = append(env, "STARKITE_SECURITY_SANDBOX="+profile)
+		label = "STARKITE_SECURITY_SANDBOX=" + profile
+	default:
+		t.Fatalf("unknown engagement %d", eng)
 	}
 
-	// kite test prints "Tests: N passed, M failed, K total".
-	// Pass condition: exit 0 AND non-zero "passed" count AND zero "failed" count.
+	cmd := exec.CommandContext(ctx, kite, args...)
+	cmd.Dir = workDir
+	cmd.Env = env
+
+	out, err := cmd.CombinedOutput()
+	t.Logf("kite test (%s) output:\n%s", label, out)
+	if err != nil {
+		t.Fatalf("kite test (%s) failed: %v", label, err)
+	}
+
 	output := string(out)
 	if !strings.Contains(output, "passed") {
 		t.Errorf("expected 'passed' summary in output")

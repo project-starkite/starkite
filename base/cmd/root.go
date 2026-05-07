@@ -30,6 +30,9 @@ var (
 	permissionsMode string
 
 	// Sandbox flag (Linux: gVisor; other OSes return a friendly error).
+	// Set via --sandbox on the CLI; STARKITE_SECURITY_SANDBOX env var
+	// is the alternative entry point for shebang-launched scripts (and
+	// works for CLI invocations too). The flag wins when both are set.
 	sandboxMode string
 )
 
@@ -80,9 +83,11 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&permissionsMode, "permissions", "", "Permission profile (e.g. \"strict\")")
 
 	// Sandbox flag — Linux only; non-Linux returns a clear error.
-	// `--sandbox` (no value) resolves to the built-in "default" profile via
-	// NoOptDefVal. `--sandbox=<name>` looks up a user-defined profile
-	// (Phase 5; today only "default" is recognized).
+	// `--sandbox` (no value) resolves to the built-in "default" profile;
+	// `--sandbox=<name>` resolves a built-in, file path, or named user
+	// profile from ~/.starkite/security.yaml. Shebang-launched scripts
+	// can use STARKITE_SECURITY_SANDBOX env var instead — see
+	// docs/guides/sandbox.md.
 	rootCmd.PersistentFlags().StringVar(&sandboxMode, "sandbox", "",
 		"Sandbox profile for OS-level isolation (Linux). "+
 			"Use --sandbox alone for the built-in \"default\" profile, "+
@@ -272,25 +277,40 @@ func resolvePermissionsForScript(scriptPath string) (*libkite.PermissionConfig, 
 	return permissions.LoadProfile(value)
 }
 
-// GetSandbox resolves --sandbox to a sandbox.Profile. An empty value means
-// "no sandbox" (the zero Profile, with Name == ""). When --sandbox is set
-// but no backend is registered (typical on macOS/Windows), returns a
+// GetSandbox resolves the sandbox profile from two equivalent inputs:
+//
+//  1. The --sandbox CLI flag (typed by the user explicitly invoking kite).
+//  2. The STARKITE_SECURITY_SANDBOX env var (the path shebang-launched
+//     scripts use, since shebang lines can't easily carry flags).
+//
+// The flag wins when both are set — same precedence convention as the
+// other env-resolved options (STARKITE_DEBUG, etc.). An unset flag and
+// unset env var means "no sandbox" (zero Profile). When either is set
+// but no sandbox backend is registered (macOS/Windows), returns
 // PlatformError so the caller can surface a clear message.
 func GetSandbox() (sandbox.Profile, error) {
-	if sandboxMode == "" {
+	value := sandboxMode
+	if value == "" {
+		value = os.Getenv(sandbox.EngagementEnvVar)
+	}
+	if value == "" {
 		return sandbox.Profile{}, nil
 	}
 	if !sandbox.Available() {
 		return sandbox.Profile{}, sandbox.PlatformError()
 	}
-	return sandbox.LoadProfile(sandboxMode)
+	return sandbox.LoadProfile(value)
 }
 
-// MaybeHandoffToSandbox checks if --sandbox is set and routes execution
-// through sandbox.Backend if so. Returns (true, err) when the backend
-// handled execution (caller must return immediately, propagating err);
-// (false, nil) when the caller should continue running natively;
-// (false, err) when the sandbox config itself was invalid.
+// MaybeHandoffToSandbox checks whether a sandbox is requested (via
+// --sandbox flag or STARKITE_SECURITY_SANDBOX env var) and routes
+// execution through sandbox.Backend if so. Returns (true, err) when
+// the backend handled execution (caller must return immediately,
+// propagating err); (false, nil) when the caller should continue
+// running natively; (false, err) when the sandbox config was invalid.
+//
+// Subcommands that re-enter starkite (e.g. via gVisor's argv-rewrite
+// for boot/gofer) check sandbox.InsideEnvVar to avoid recursion.
 func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
 	if os.Getenv(sandbox.InsideEnvVar) == "1" {
 		return false, nil
@@ -299,12 +319,9 @@ func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	if profile.Name == "" {
+	if profile.IsZero() {
 		return false, nil
 	}
-	// Backend takes responsibility for re-executing kite inside the sandbox
-	// with the appropriate marker. Phase 4a backend is a stub that prints
-	// and returns nil; Phase 4b builds the real OCI spec.
 	return true, sandbox.Backend.Run(ctx, sandbox.ExecSpec{Profile: profile})
 }
 

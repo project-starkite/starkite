@@ -25,12 +25,11 @@ import (
 )
 
 // init quiets gVisor's stderr noise for normal kite users. Without this,
-// every --sandbox run prints "Setting up network", "Host setting X is not
+// every sandbox run prints "Setting up network", "Host setting X is not
 // optimal", etc. — informative to gVisor developers, noise to script
 // authors. Users who want gVisor logs back can opt in via the standard
 // pkg/log API at higher levels (Debug/Info), e.g. by calling
-// gvlog.SetLevel from their own embedding code or by implementing a
-// future kite --debug-sandbox flag.
+// gvlog.SetLevel from their own embedding code.
 func init() {
 	gvlog.SetLevel(gvlog.Warning)
 }
@@ -71,9 +70,10 @@ func (Runner) Run(ctx context.Context, spec sandbox.ExecSpec) error {
 	}
 
 	// What argv should the inner kite see? Strip our own argv[0] (binary
-	// path) plus the --sandbox flag (which would cause infinite recursion
-	// despite the env-var guard, because flags can survive env wipes
-	// across exec).
+	// path) plus the --sandbox flag. The InsideEnvVar marker prevents
+	// re-sandboxing semantically, but stripping the flag keeps the inner
+	// process's argv clean — no surprise tokens if the script ever
+	// inspects its own arguments.
 	innerArgs := stripSandboxFlag(os.Args[1:])
 
 	bun, err := allocBundle()
@@ -95,13 +95,16 @@ func (Runner) Run(ctx context.Context, spec sandbox.ExecSpec) error {
 		return fmt.Errorf("building gvisor config: %w", err)
 	}
 	conf.RootDir = filepath.Join(os.TempDir(), "starkite-sandbox-state-"+bun.id)
-	// NetworkHost: the contained process shares the host's network
-	// namespace, giving full network reachability without the overhead
-	// of gVisor's user-space netstack. Trade-off: network syscalls
-	// bypass gVisor's kernel mediation. Custom profiles (Phase 5) can
-	// switch this to NetworkSandbox for full kernel isolation including
-	// the network path.
-	conf.Network = config.NetworkHost
+	// Profile-driven network mode. The default profile uses NetworkHost
+	// (full host reachability, network syscalls bypass gVisor); strict
+	// uses NetworkSandbox with no host bridging (in-sandbox loopback
+	// only — packets cannot leave). The profile YAML's "network:" field
+	// is the source of truth.
+	netMode, err := networkModeFor(spec.Profile.Network)
+	if err != nil {
+		return err
+	}
+	conf.Network = netMode
 	conf.Rootless = true
 	// Disable overlayfs for both root and submounts. The default would
 	// stack a writable tmpfs on top of every mount; we don't need that
@@ -157,9 +160,9 @@ func defaultConfig() (*config.Config, error) {
 }
 
 // stripSandboxFlag removes any --sandbox=... or `--sandbox X` token from
-// the argv slice so the inner kite invocation doesn't try to re-sandbox.
-// (The env-var guard already prevents recursion, but argv hygiene avoids
-// confusing the user if they ever inspect the contained process's argv.)
+// the argv slice so the inner kite invocation doesn't surface a stale
+// flag when scripts inspect their own argv. The recursion guard itself
+// is the InsideEnvVar marker, which is independent of argv hygiene.
 func stripSandboxFlag(args []string) []string {
 	out := make([]string, 0, len(args))
 	for i := 0; i < len(args); i++ {
@@ -175,3 +178,31 @@ func stripSandboxFlag(args []string) []string {
 	}
 	return out
 }
+
+// networkModeFor translates a profile NetworkMode into the runsc config
+// equivalent.
+//
+//   - NetworkHost: contained process shares the host netns. Full
+//     reachability; network syscalls bypass gVisor's netstack.
+//   - NetworkNone: gVisor netstack runs with only the loopback interface.
+//     In-sandbox loopback (127.0.0.1, ::1) works; nothing reaches the
+//     host or external network because no host interfaces are mirrored
+//     into the sandbox netstack and there's no bridge.
+//
+// We deliberately do NOT use config.NetworkSandbox for strict: that mode
+// mirrors the host's network interfaces into the sentry's netstack
+// (creating veth equivalents) and requires reading the host netns, which
+// rootless mode cannot do across processes ("operation not permitted").
+// NetworkNone gives the loopback-only behavior we want without that
+// privilege requirement.
+func networkModeFor(mode sandbox.NetworkMode) (config.NetworkType, error) {
+	switch mode {
+	case sandbox.NetworkHost:
+		return config.NetworkHost, nil
+	case sandbox.NetworkSandboxLoopback:
+		return config.NetworkNone, nil
+	default:
+		return 0, fmt.Errorf("unsupported network mode %q", mode)
+	}
+}
+

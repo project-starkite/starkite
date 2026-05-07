@@ -3,6 +3,7 @@
 package gvisor
 
 import (
+	"fmt"
 	"os"
 
 	specs "github.com/opencontainers/runtime-spec/specs-go"
@@ -17,78 +18,48 @@ import (
 // host path the user might expect to see.
 const sandboxKitePath = "/.kite"
 
-// publicSystemFiles is the small curated set of host files mounted
-// read-only into the default-profile sandbox to make network protocols
-// (HTTP/HTTPS DNS+TLS resolution, SSH socket reachability) work out of
-// the box without exposing user credentials or any portion of $HOME.
+// buildSpec produces an OCI runtime spec from a resolved sandbox.Profile.
 //
-// What's intentionally OUT of this list:
-//   - /etc/ssh/ssh_config — system-wide SSH client config can include
-//     IdentityFile paths like `~/.ssh/foo`. Even though the referenced
-//     files are NOT readable inside the sandbox (~/.ssh isn't mounted),
-//     the config itself reveals host directory structure to a script,
-//     which is information disclosure we'd rather not give.
-//   - ~/.ssh/* (private keys, known_hosts, user config) — credentials.
-//     Scripts needing SSH key auth must move/copy the key into $CWD.
-//   - /etc/ssh/ssh_known_hosts — system-wide TOFU state.
-//   - Any host file under $HOME or elsewhere — credentials risk.
+// The profile's `mounts:` list is the single source of truth for what's
+// visible inside the sandbox. Everything else the spec needs (the kite
+// binary entrypoint, /proc, /dev) is added by the runner as plumbing —
+// the user's profile YAML never has to mention these.
 //
-// Custom profiles (Phase 5) defined in ~/.starkite/security.yaml can
-// override any of this.
-var publicSystemFiles = []string{
-	"/etc/ssl/certs",     // TLS root certificates (HTTPS verify)
-	"/etc/resolv.conf",   // DNS resolver config
-	"/etc/hosts",         // hostname overrides
-	"/etc/nsswitch.conf", // name service switch (DNS, etc.)
-}
-
-// buildSpec produces an OCI runtime spec for the sandbox default profile.
-//
-// Default profile semantics (locked 2026-05-06, tightened 2026-05-06):
+// Profile semantics realized here:
 //   - Root.Path = bundle's empty rootfs (NOT host /)
-//   - $CWD bound writable at the same host path inside the sandbox
-//   - kite binary bind-mounted read-only at /.kite (Process.Args[0])
-//   - tmpfs at /tmp (writable, private, lost on exit)
-//   - /proc and /dev as the pseudo-filesystems gVisor needs
-//   - Curated set of public system files (TLS certs, DNS config) bound
-//     read-only — no credentials or user data
-//   - **No other host filesystem visible**
+//   - Process.Args[0] = sandboxKitePath ("/.kite"), bind-mounted from
+//     hostBinary
 //   - Process.Capabilities = AllCapabilities (gVisor default)
 //   - NoNewPrivileges = true
 //   - pid/mount/ipc/uts/user namespaces isolated
-//   - NetworkNamespace deliberately omitted (NetworkHost is in effect)
+//   - NetworkNamespace deliberately omitted; runner sets conf.Network
+//     based on profile.Network (host vs sandbox-loopback)
 //   - Single-UID identity mapping
-//
-// The ~/.aws/credentials, ~/.ssh/, ~/.kube/, ~/.config/, $HOME/-anything
-// paths are NOT visible inside the sandbox under this profile. Scripts
-// needing broader fs access define a custom profile in
-// ~/.starkite/security.yaml (Phase 5).
-//
-// `bun` provides the rootfs path AND mountpoint preparation hooks.
-// `cwd` is the host CWD path that becomes the sandbox CWD too.
-// `hostBinary` is the absolute kite executable path on the host.
 func buildSpec(profile sandbox.Profile, innerArgs []string, cwd, hostBinary string, bun *bundle) (*specs.Spec, error) {
 	procArgs := append([]string{sandboxKitePath, "__runtime__"}, innerArgs...)
 	env := append(os.Environ(), sandbox.InsideEnvVar+"=1")
 
-	// Pre-create mountpoints inside rootfs so the gofer can satisfy
-	// each mount request. Files for file binds; dirs for dir binds /
-	// pseudo-fs. Order doesn't matter; failures abort the whole spec.
+	// Mountpoint preparation: every destination inside the rootfs needs
+	// to exist before the gofer mounts onto it. Files for file-bind
+	// mounts; dirs for everything else.
 	mountpoints := []struct {
 		path   string
 		isFile bool
 	}{
-		{sandboxKitePath, true},  // kite binary (file bind)
-		{cwd, false},             // user's working dir (dir bind)
-		{"/tmp", false},          // tmpfs
-		{"/proc", false},         // procfs
-		{"/dev", false},          // devtmpfs
+		{sandboxKitePath, true}, // kite binary entrypoint (file bind)
+		{"/proc", false},        // procfs (plumbing)
+		{"/dev", false},         // devtmpfs (plumbing)
 	}
-	for _, p := range publicSystemFiles {
+	for _, m := range profile.Mounts {
+		if m.Optional && m.Type == sandbox.MountBind {
+			if _, err := os.Stat(m.Source); err != nil {
+				continue
+			}
+		}
 		mountpoints = append(mountpoints, struct {
 			path   string
 			isFile bool
-		}{p, isFileMount(p)})
+		}{m.Destination, m.Type == sandbox.MountBind && isFileMount(m.Source)})
 	}
 	for _, mp := range mountpoints {
 		if err := bun.prepMountpoint(mp.path, mp.isFile); err != nil {
@@ -96,6 +67,7 @@ func buildSpec(profile sandbox.Profile, innerArgs []string, cwd, hostBinary stri
 		}
 	}
 
+	// Plumbing mounts: always present regardless of profile.
 	mounts := []specs.Mount{
 		{
 			Destination: sandboxKitePath,
@@ -103,33 +75,38 @@ func buildSpec(profile sandbox.Profile, innerArgs []string, cwd, hostBinary stri
 			Source:      hostBinary,
 			Options:     []string{"bind", "ro", "nosuid"},
 		},
-		{
-			// User's working dir — the only writable host path.
-			Destination: cwd,
-			Type:        "bind",
-			Source:      cwd,
-			Options:     []string{"rbind", "rw", "nosuid", "nodev"},
-		},
-		{
-			Destination: "/tmp",
-			Type:        "tmpfs",
-			Source:      "tmpfs",
-			Options:     []string{"nosuid", "nodev"},
-		},
 		{Destination: "/proc", Type: "proc", Source: "proc"},
 		{Destination: "/dev", Type: "tmpfs", Source: "tmpfs"},
 	}
-	for _, p := range publicSystemFiles {
-		// Skip host paths that don't exist (e.g. some minimal containers).
-		if _, err := os.Stat(p); err != nil {
+
+	// Profile-driven mounts.
+	for _, m := range profile.Mounts {
+		ociMount, ok, err := mountToOCI(m)
+		if err != nil {
+			return nil, err
+		}
+		if !ok {
+			// Optional bind whose source doesn't exist on the host —
+			// silently skipped, by design.
 			continue
 		}
-		mounts = append(mounts, specs.Mount{
-			Destination: p,
-			Type:        "bind",
-			Source:      p,
-			Options:     []string{"rbind", "ro", "nosuid", "nodev"},
-		})
+		mounts = append(mounts, ociMount)
+	}
+
+	// NetworkNamespace deliberately omitted for both profiles. The
+	// runner sets conf.Network instead:
+	//   - NetworkHost: sandbox shares host netns (full reachability).
+	//   - NetworkSandbox: gVisor implements an internal netstack inside
+	//     the sentry; the contained process sees only that netstack
+	//     regardless of which host netns the gofer runs in. Adding a
+	//     NetworkNamespace spec entry causes runsc rootless to attempt
+	//     a netns join that fails ("operation not permitted").
+	namespaces := []specs.LinuxNamespace{
+		{Type: specs.PIDNamespace},
+		{Type: specs.MountNamespace},
+		{Type: specs.IPCNamespace},
+		{Type: specs.UTSNamespace},
+		{Type: specs.UserNamespace},
 	}
 
 	return &specs.Spec{
@@ -147,16 +124,7 @@ func buildSpec(profile sandbox.Profile, innerArgs []string, cwd, hostBinary stri
 		},
 		Mounts: mounts,
 		Linux: &specs.Linux{
-			Namespaces: []specs.LinuxNamespace{
-				{Type: specs.PIDNamespace},
-				{Type: specs.MountNamespace},
-				{Type: specs.IPCNamespace},
-				{Type: specs.UTSNamespace},
-				{Type: specs.UserNamespace},
-				// NetworkNamespace deliberately omitted: the default
-				// profile uses runsc's NetworkHost mode. Custom profiles
-				// pairing NetworkNone with isolation should add this back.
-			},
+			Namespaces: namespaces,
 			UIDMappings: []specs.LinuxIDMapping{
 				{HostID: uint32(os.Getuid()), ContainerID: 0, Size: 1},
 			},
@@ -165,6 +133,44 @@ func buildSpec(profile sandbox.Profile, innerArgs []string, cwd, hostBinary stri
 			},
 		},
 	}, nil
+}
+
+// mountToOCI translates a sandbox.Mount into the OCI runtime-spec form
+// the gofer consumes. Returns (mount, false, nil) when the mount is an
+// optional bind whose source doesn't exist on the host (caller skips it).
+func mountToOCI(m sandbox.Mount) (specs.Mount, bool, error) {
+	switch m.Type {
+	case sandbox.MountBind:
+		if m.Optional {
+			if _, err := os.Stat(m.Source); err != nil {
+				return specs.Mount{}, false, nil
+			}
+		}
+		opts := []string{"rbind", "nosuid", "nodev"}
+		switch m.Mode {
+		case sandbox.MountRO:
+			opts = append(opts, "ro")
+		case sandbox.MountRW:
+			opts = append(opts, "rw")
+		default:
+			return specs.Mount{}, false, fmt.Errorf("mount %s: unknown mode %q", m.Destination, m.Mode)
+		}
+		return specs.Mount{
+			Destination: m.Destination,
+			Type:        "bind",
+			Source:      m.Source,
+			Options:     opts,
+		}, true, nil
+	case sandbox.MountTmpfs:
+		return specs.Mount{
+			Destination: m.Destination,
+			Type:        "tmpfs",
+			Source:      "tmpfs",
+			Options:     []string{"nosuid", "nodev"},
+		}, true, nil
+	default:
+		return specs.Mount{}, false, fmt.Errorf("mount %s: unknown type %q", m.Destination, m.Type)
+	}
 }
 
 // isFileMount reports whether a host path is a regular file (vs directory),
