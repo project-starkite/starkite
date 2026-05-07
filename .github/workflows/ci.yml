@@ -22,6 +22,7 @@ jobs:
             ai/go.sum
             allkite/go.sum
             wasm/go.sum
+            sandbox/gvisor/go.sum
 
       - name: Build libkite
         run: go build -v ./...
@@ -47,6 +48,10 @@ jobs:
         run: go build -v ./...
         working-directory: wasm
 
+      - name: Build sandbox/gvisor
+        run: go build -v ./...
+        working-directory: sandbox/gvisor
+
       - name: Test libkite
         run: go test -race ./...
         working-directory: libkite
@@ -66,3 +71,48 @@ jobs:
       - name: Test allkite
         run: go test -race ./...
         working-directory: allkite
+
+      - name: Test sandbox/gvisor
+        run: go test -race ./...
+        working-directory: sandbox/gvisor
+
+  sandbox-integration:
+    # Drives the .star sandbox tests under tests/sandbox/ end-to-end:
+    # builds kite, configures the kernel for unprivileged user namespaces,
+    # invokes `kite test --sandbox` against the test file from a
+    # non-$HOME working directory.
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Disable AppArmor unprivileged-userns restriction
+        # ubuntu-latest (24.04+) ships with this restriction enabled by
+        # default, which blocks gVisor's rootless mode. We turn it off
+        # for the duration of this job. Production users would install
+        # an AppArmor profile granting `userns,` to the kite binary.
+        run: |
+          echo "before: $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo absent)"
+          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          echo "after:  $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)"
+
+      - name: Run sandbox integration tests
+        env:
+          STARKITE_SANDBOX_INTEGRATION: "1"
+          GOWORK: "off"
+        run: go test -v -timeout 5m ./...
+        working-directory: tests/sandbox
+
+      - name: Upload gVisor debug logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sandbox-debug-logs
+          path: |
+            /tmp/starkite-sandbox-debug-*.log
+            /tmp/starkite-sandbox-log-*.log
+          if-no-files-found: ignore

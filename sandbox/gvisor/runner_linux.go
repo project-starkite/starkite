@@ -16,12 +16,24 @@ import (
 	"os/exec"
 	"path/filepath"
 
+	gvlog "gvisor.dev/gvisor/pkg/log"
 	"gvisor.dev/gvisor/runsc/config"
 	"gvisor.dev/gvisor/runsc/container"
 	"gvisor.dev/gvisor/runsc/flag"
 
 	"github.com/project-starkite/starkite/libkite/sandbox"
 )
+
+// init quiets gVisor's stderr noise for normal kite users. Without this,
+// every --sandbox run prints "Setting up network", "Host setting X is not
+// optimal", etc. — informative to gVisor developers, noise to script
+// authors. Users who want gVisor logs back can opt in via the standard
+// pkg/log API at higher levels (Debug/Info), e.g. by calling
+// gvlog.SetLevel from their own embedding code or by implementing a
+// future kite --debug-sandbox flag.
+func init() {
+	gvlog.SetLevel(gvlog.Warning)
+}
 
 // Runner satisfies sandbox.Runner using gVisor.
 type Runner struct{}
@@ -38,6 +50,12 @@ type Runner struct{}
 //  5. Translate gVisor's unix.WaitStatus into a Go error: nil on exit 0,
 //     ExitError on non-zero, error on signal/setup failure.
 func (Runner) Run(ctx context.Context, spec sandbox.ExecSpec) error {
+	// Preflight: check known-blocking kernel state and emit friendly
+	// errors before gVisor's container path produces cryptic failures.
+	if err := preflight(); err != nil {
+		return err
+	}
+
 	cwd, err := os.Getwd()
 	if err != nil {
 		return fmt.Errorf("getwd: %w", err)
