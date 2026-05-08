@@ -4,10 +4,9 @@ description: "OS-level isolation with --sandbox / STARKITE_SECURITY_SANDBOX (Lin
 weight: 3
 ---
 
-The sandbox runs your script inside a [gVisor](https://gvisor.dev) sandbox:
-a user-space kernel that mediates every syscall. The script gets a clean
-view of the filesystem, can't see your home directory, and can't read
-host credentials.
+The sandbox runs your script inside a [gVisor](https://gvisor.dev) user-space
+kernel. The script gets a clean view of the filesystem, no access to your
+home directory, and no access to host credentials.
 
 The sandbox is **Linux-only**. On macOS or Windows, requesting a sandbox
 returns an error.
@@ -23,8 +22,7 @@ kite test ./tests/ --sandbox
 ```
 
 For a shebang script (`./script.star` via `#!/usr/bin/env kite`), use the
-`STARKITE_SECURITY_SANDBOX` env var — shebang lines can't easily carry
-flags:
+`STARKITE_SECURITY_SANDBOX` env var:
 
 ```bash
 STARKITE_SECURITY_SANDBOX=strict ./script.star
@@ -32,147 +30,128 @@ export STARKITE_SECURITY_SANDBOX=default
 ./other.star
 ```
 
-The two are equivalent: same profiles, same syntax. The `--sandbox` flag
-wins when both are set.
-
-| Lever | When to use it |
+| Lever | Use it for |
 |---|---|
-| `--sandbox=<profile>` | Explicit `kite run / test / exec / repl / watch` invocations. |
-| `STARKITE_SECURITY_SANDBOX=<profile>` | Shebang scripts; or any time you want to set the sandbox in the shell environment for a series of runs. |
+| `--sandbox=<profile>` | Explicit `kite run / test / exec / repl / watch`. |
+| `STARKITE_SECURITY_SANDBOX=<profile>` | Shebang scripts; or to set a sandbox for a series of runs in a shell. |
 
-Either way, an unset / empty value means "no sandbox" — the script runs
-natively.
+Both accept the same profile values. The flag wins when both are set.
+An unset / empty value runs the script natively.
 
 ## Built-in profiles
 
-There are two built-ins. `--sandbox` (no value) and
-`STARKITE_SECURITY_SANDBOX=default` both select `default`.
-
 | Profile | Network | Filesystem |
 |---|---|---|
-| `default` | Full host network — HTTPS, SSH, DNS, anything reachable from the host. | `$CWD` rw, `/tmp` tmpfs, ro `/etc/{ssl/certs,resolv.conf,hosts,nsswitch.conf}` |
-| `strict` | Loopback only. In-sandbox servers and clients can talk to each other; nothing reaches outside. | `$CWD` rw, `/tmp` tmpfs. **No `/etc/*` mounts.** No DNS, no TLS roots. |
+| `default` | Full host network. | `$CWD` rw, `/tmp` tmpfs, ro `/etc/{ssl/certs,resolv.conf,hosts,nsswitch.conf}` |
+| `strict` | Loopback only. | `$CWD` rw, `/tmp` tmpfs. No `/etc/*`. |
 
-### Default profile
+`--sandbox` (no value) and `STARKITE_SECURITY_SANDBOX=default` both select
+`default`.
 
-The default profile is intended for "run a script I might not fully trust"
-without needing to think about which files or paths it touches.
+### default
 
-**Accessible:**
+Use `default` when the script needs the network or has to verify TLS, but
+shouldn't see your home directory or host credentials.
 
-- The current directory — read **and** write. Files your script needs (config,
-  scripts, generated output) belong here.
-- `/tmp` — a private writable tmpfs scoped to the sandbox.
-- `/etc/ssl/certs`, `/etc/resolv.conf`, `/etc/hosts`, `/etc/nsswitch.conf` —
-  read-only, just enough for HTTPS and DNS to work.
-- The network — full host network, same reachability as a normal `kite` run.
+Inside the sandbox:
 
-**Not accessible:**
+- The current directory is readable and writable. Your project files,
+  configs, and outputs live here.
+- `/tmp` is a private writable tmpfs.
+- `/etc/ssl/certs`, `/etc/resolv.conf`, `/etc/hosts`, and
+  `/etc/nsswitch.conf` are read-only. HTTPS verification and DNS
+  resolution work.
+- The host network is reachable.
+
+Not visible:
 
 - `$HOME` and everything under it (`~/.ssh`, `~/.aws`, `~/.kube`, …).
-- `/etc/passwd`, `/etc/shadow`, and the rest of `/etc`.
+- `/etc/passwd`, `/etc/shadow`, the rest of `/etc`.
 - Other users' files, system binaries, kernel state.
-- Any directory outside the current working directory unless your custom
-  profile mounts it (see [Custom profiles](#custom-profiles) below).
+- Any directory outside the current working directory (unless added by a
+  custom profile).
 
-### Strict profile
+### strict
 
-`strict` is the maximally-isolated built-in. Same empty rootfs as
-default, but with the network and `/etc/*` mounts dropped. Use it for
-compute-only workloads — parsing, transforms, analysis over project
-files — where the script has no business reaching the network.
+Use `strict` for compute-only workloads that don't need outbound network
+access — parsing, transforms, analysis over project files.
 
 ```bash
 kite analyze.star --sandbox=strict
-# or, for shebang scripts:
 STARKITE_SECURITY_SANDBOX=strict ./analyze.star
 ```
 
-What still works:
+Inside the sandbox:
 
-- The current directory — same `$CWD` rw bind as default.
-- `/tmp` — same private tmpfs.
-- **Loopback networking inside the sandbox** — an `http.server()` and an
-  `http.url("http://127.0.0.1:…")` client can round-trip with each other.
-  Useful for in-script test fixtures.
+- The current directory is readable and writable.
+- `/tmp` is a private writable tmpfs.
+- Loopback networking works inside the sandbox: an `http.server()` and an
+  `http.url("http://127.0.0.1:…")` client in the same script can round-trip.
 
-What `strict` blocks compared to default:
+Not available under `strict`:
 
-- No outbound — packets to non-loopback addresses fail with "network
+- Outbound network — packets to non-loopback addresses fail with "network
   unreachable".
-- No DNS resolution — `/etc/resolv.conf` isn't there.
-- No TLS verification — `/etc/ssl/certs` isn't there.
-- No name service config — no `/etc/nsswitch.conf`, no `/etc/hosts`.
+- DNS resolution — `/etc/resolv.conf` is not mounted.
+- TLS verification — `/etc/ssl/certs` is not mounted.
+- `/etc/hosts`, `/etc/nsswitch.conf`.
 
-If your script needs the network, use `default`. `strict` exists
-specifically for the case where you don't.
+## Run from the project directory
 
-## Tip: project directories, not `$HOME`
-
-Run sandboxed scripts from the directory containing the project they operate
-on. The sandbox binds **the current directory** — running from `~` would
-expose your entire home directory through that bind. The integration tests
-deliberately use a non-home temp directory for this reason.
+The sandbox binds the **current working directory** read-write. Run kite
+from the project directory, not from `~`:
 
 ```bash
 cd ~/projects/my-deployment
 kite deploy.star --sandbox        # only ~/projects/my-deployment is visible
 
 cd ~
-kite ~/projects/my-deployment/deploy.star --sandbox  # exposes ALL of $HOME — avoid
+kite ~/projects/my-deployment/deploy.star --sandbox  # exposes ALL of $HOME
 ```
 
-If your script needs an SSH key, copy it into the project directory rather
-than relying on `~/.ssh/`.
+If your script needs an SSH key, copy it into the project directory.
 
 ## Shebang scripts
 
-A `#!/usr/bin/env kite` script picks up `STARKITE_SECURITY_SANDBOX` from
-the surrounding environment:
+`STARKITE_SECURITY_SANDBOX` from the surrounding environment applies to
+shebang-launched scripts:
 
 ```bash
 export STARKITE_SECURITY_SANDBOX=strict
-./compute.star            # runs sandboxed
-./other_compute.star      # also sandboxed
+./compute.star
+./other.star
 unset STARKITE_SECURITY_SANDBOX
-./debug.star              # runs natively
+./debug.star
 ```
 
-For a one-off invocation:
+For a one-off:
 
 ```bash
 STARKITE_SECURITY_SANDBOX=strict ./compute.star
 ```
 
-Shebang scripts that should *always* run sandboxed can be wrapped:
+To pin a script's sandbox at the file level, wrap kite in a shim:
 
 ```bash
 #!/bin/sh
 exec env STARKITE_SECURITY_SANDBOX=strict kite "$0.star" "$@"
 ```
 
-…or use a tiny shim with GNU `env -S`:
+Or with GNU `env -S` (Linux):
 
 ```
 #!/usr/bin/env -S env STARKITE_SECURITY_SANDBOX=strict kite
 ```
 
-(The `-S` form on `env` requires GNU `env` 8.30+; available on most
-modern Linux. macOS `/usr/bin/env` does **not** support `-S`.)
-
 ## Custom profiles
 
-Beyond the two built-ins, you can author your own profile YAML. Use it
-either by file path or by name in `~/.starkite/security.yaml`. Both
-forms work via flag or env var — the value's just passed straight to
-the profile resolver.
+Author your own profile YAML and pass either the path or a name registered
+in `~/.starkite/security.yaml`.
 
-**As a file path** — pass `--sandbox=./myprofile.yaml` or set
-`STARKITE_SECURITY_SANDBOX=./myprofile.yaml`:
+### By file path
 
 ```yaml
-# myprofile.yaml — a custom profile that mounts the user's kubeconfig
-# read-only alongside the default profile's defaults.
+# myprofile.yaml — default-like, plus a read-only kubeconfig mount.
 network: host
 
 mounts:
@@ -195,15 +174,15 @@ mounts:
 
 ```bash
 kite deploy.star --sandbox=./myprofile.yaml
+STARKITE_SECURITY_SANDBOX=./myprofile.yaml ./deploy.star
 ```
 
-**As a named profile in `~/.starkite/security.yaml`** — same file the
-permissions loader reads, with a `sandbox:` section:
+### By name in `~/.starkite/security.yaml`
 
 ```yaml
 # ~/.starkite/security.yaml
 permissions:
-  # ... (consumed by --permissions)
+  # ...
 
 sandbox:
   k8s-deploy:
@@ -221,7 +200,6 @@ sandbox:
 
 ```bash
 kite deploy.star --sandbox=k8s-deploy
-# or:
 STARKITE_SECURITY_SANDBOX=k8s-deploy ./deploy.star
 ```
 
@@ -229,73 +207,56 @@ STARKITE_SECURITY_SANDBOX=k8s-deploy ./deploy.star
 
 | Field | Required | Allowed values | Notes |
 |---|---|---|---|
-| `network` | yes | `host`, `sandbox-loopback` | `host` shares the host network namespace; `sandbox-loopback` runs gVisor's netstack with only the loopback interface. |
-| `mounts[].source` | for `bind` | absolute path, or `$CWD` / `$CWD/sub` | Source path on the host. Must exist at sandbox start unless `optional: true`. |
+| `network` | yes | `host`, `sandbox-loopback` | `host` uses the host network. `sandbox-loopback` is loopback-only inside the sandbox. |
+| `mounts[].source` | for `bind` | absolute path, or `$CWD` / `$CWD/sub` | Must exist at sandbox start unless `optional: true`. |
 | `mounts[].destination` | yes | absolute path | Where the mount appears inside the sandbox. |
 | `mounts[].type` | no (default `bind`) | `bind`, `tmpfs` | `tmpfs` ignores `source`. |
 | `mounts[].mode` | no | `ro`, `rw` | Default `ro` for binds, `rw` for tmpfs. |
 | `mounts[].optional` | no | bool | Bind mounts only. Skip silently when source is absent. |
 
-`$CWD` and `$CWD/...` are the only path expansions. `~` and other
-shell-style expansions are deliberately unsupported — `$HOME` would make
-profiles harder to audit and could surface user-data risks accidentally.
+`$CWD` and `$CWD/sub` are the only path expansions. `~` and other
+shell-style expansions are not supported.
 
-The runner adds `/proc`, `/dev`, and a bind mount of the kite binary at
-`/.kite` regardless of your profile — these are plumbing the sandbox
-runtime needs.
+## Combining with `--permissions`
 
-## Composing with `--permissions`
-
-The sandbox and `--permissions` are independent layers:
-
-| Lever | What it does |
-|---|---|
-| `--permissions=strict` | Blocks operations at the Starlark API level (`exec()`, file writes, network) — see [Permissions](../permissions/). |
-| `--sandbox=…` / `STARKITE_SECURITY_SANDBOX=…` | Confines the OS view (filesystem, processes) — kernel-level. |
-
-Use them together for the strongest restriction:
+The sandbox and `--permissions` are independent. They compose:
 
 ```bash
 kite untrusted.star --sandbox=strict --permissions=strict
 ```
 
-That combination gives defense in depth: the permissions layer blocks
-unwanted module calls in-process, and even if a Starlark module is
-compromised, the kernel layer denies the syscalls it would need to reach
-your filesystem or network.
-
-Use the sandbox alone when the script legitimately needs `exec()`, file
-I/O, or network access but you want to keep it away from your
-credentials and unrelated host state.
+`--permissions` blocks operations at the Starlark API level (`exec()`, file
+writes, network calls). The sandbox confines the OS view (filesystem,
+processes). See [Permissions](../permissions/).
 
 ## Ubuntu 24.04+ setup
 
-Ubuntu 24.04 ships with an AppArmor restriction that blocks unprivileged
-user namespaces — the kernel feature gVisor's rootless mode depends on. If
-you see an error like:
+Ubuntu 24.04 enables an AppArmor restriction on unprivileged user
+namespaces by default, which gVisor's rootless mode requires. If kite
+reports:
 
 ```
 sandbox: kernel restricts unprivileged user namespaces
 ```
 
-you have two options.
+apply one of the following.
 
-### Option A: turn the restriction off (simplest)
+### Option A: disable the restriction system-wide
 
 ```bash
 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 ```
 
-To make it persistent across reboots:
+Persist across reboots:
 
 ```bash
 echo 'kernel.apparmor_restrict_unprivileged_userns=0' | \
   sudo tee /etc/sysctl.d/60-userns.conf
 ```
 
-### Option B: grant `userns,` to the kite binary (more targeted)
+### Option B: grant `userns,` to the kite binary
 
-Create `/etc/apparmor.d/kite` with:
+Create `/etc/apparmor.d/kite`:
 
 ```
 abi <abi/4.0>,
@@ -307,36 +268,18 @@ profile kite /usr/local/bin/kite flags=(unconfined) {
 }
 ```
 
-Then reload AppArmor:
+Reload AppArmor:
 
 ```bash
 sudo apparmor_parser -r /etc/apparmor.d/kite
 ```
 
-Adjust the path if `kite` lives somewhere else. This grants user-namespace
-creation only to `kite`, leaving the system-wide restriction in place.
+Adjust the binary path if needed. This grants user-namespace creation only
+to `kite`.
 
-Starkite does not ship an AppArmor profile — install or write one suited to
-your environment.
+## Limits
 
-## When the sandbox is the wrong tool
-
-- **macOS / Windows.** Not supported; gVisor is Linux-only.
-- **Scripts that need to read your home directory.** The default profile
-  hides `$HOME` on purpose. If you genuinely need it, run without the
-  sandbox.
-- **Scripts that bind privileged ports (<1024).** Rootless gVisor can't.
-
-## How it works (briefly)
-
-`kite` resolves the profile from `--sandbox` (CLI) or
-`STARKITE_SECURITY_SANDBOX` (env). When set, it re-executes itself
-inside a one-shot gVisor sandbox built on the fly: an empty rootfs with
-only the curated mounts your profile declares, the kite binary itself
-bind-mounted at `/.kite`, and a network mode picked from the profile
-(host network for `default`, gVisor's loopback-only netstack for
-`strict`). The sandbox is destroyed when your script exits.
-
-The inner kite invocation sets `STARKITE_INSIDE_SANDBOX=1` so the
-sandbox engagement check short-circuits — no recursion even though the
-parent's flag/env is still in scope.
+- macOS and Windows: not supported. The sandbox requires the Linux kernel.
+- Scripts that need to read `$HOME`: don't use the sandbox, or write a
+  custom profile that mounts the specific paths the script needs.
+- Privileged ports (<1024): rootless gVisor cannot bind them.

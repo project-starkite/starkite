@@ -54,6 +54,61 @@ func TestSandboxStrictProfile_env(t *testing.T) {
 	runStarTest(t, "sandbox_strict_test.star", "strict", viaEnv)
 }
 
+// TestSandboxPerTestFile verifies that `kite test <dir>` with a sandbox
+// engaged runs each test file in its own sandbox process. The "multi"
+// directory holds two test files; we expect to see two "--- <file> ---"
+// banner lines in the parent output (one per child) and a "Total: ...
+// across 2 file(s)" footer.
+func TestSandboxPerTestFile(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+	if reason := unprivilegedUsernsBlocked(); reason != "" {
+		t.Skipf("kernel restricts unprivileged user namespaces: %s", reason)
+	}
+
+	kite := buildKite(t)
+
+	workDir := t.TempDir()
+	home, err := os.UserHomeDir()
+	if err == nil && strings.HasPrefix(workDir, home) {
+		t.Fatalf("temp dir %s is under $HOME — sandbox isolation tests would be confounded", workDir)
+	}
+	for _, name := range []string{"multi_a_test.star", "multi_b_test.star"} {
+		src := mustAbs(t, filepath.Join("multi", name))
+		dst := filepath.Join(workDir, name)
+		if err := copyFile(src, dst); err != nil {
+			t.Fatalf("staging %s: %v", name, err)
+		}
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, kite, "test", workDir, "--sandbox=strict")
+	cmd.Dir = workDir
+	out, err := cmd.CombinedOutput()
+	t.Logf("kite test --sandbox=strict (multi-file) output:\n%s", out)
+	if err != nil {
+		t.Fatalf("kite test multi failed: %v", err)
+	}
+
+	output := string(out)
+	for _, want := range []string{
+		"--- " + filepath.Join(workDir, "multi_a_test.star") + " ---",
+		"--- " + filepath.Join(workDir, "multi_b_test.star") + " ---",
+		"Total: ",
+		"across 2 file(s)",
+	} {
+		if !strings.Contains(output, want) {
+			t.Errorf("expected %q in output", want)
+		}
+	}
+	if strings.Contains(output, "failed") && !strings.Contains(output, "0 failed") {
+		t.Errorf("kite test reports failures; see output above")
+	}
+}
+
 // runStarTest builds kite, copies the named .star file into a non-$HOME
 // temp dir, and runs `kite test <file>` with the sandbox engaged via
 // either the --sandbox flag or STARKITE_SECURITY_SANDBOX env var.

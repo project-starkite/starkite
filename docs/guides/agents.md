@@ -179,7 +179,7 @@ print(resp.text)
 client.close()
 ```
 
-No special plumbing is required — MCP tools (Phase 2) compose with `ai.chat()` (Phase 1) as regular Starlark callables.
+No special plumbing is required — MCP tools compose with `ai.chat()` as regular Starlark callables.
 
 Full example: [`ai/examples/agent/mcp_integration.star`](https://github.com/project-starkite/starkite/tree/main/ai/examples/agent/mcp_integration.star).
 
