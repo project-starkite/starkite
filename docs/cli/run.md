@@ -41,4 +41,13 @@ kite manifest.star | kubectl apply -f -
 
 # Strict permissions profile
 kite deploy.star --permissions=strict
+
+# OS-level sandbox (Linux only)
+kite deploy.star --sandbox             # default profile (network ok, no $HOME)
+kite deploy.star --sandbox=strict      # offline, $CWD-only
+kite deploy.star --sandbox --permissions=strict   # both layers
 ```
+
+For shebang scripts (`./script.star` via `#!/usr/bin/env kite`), set
+`STARKITE_SECURITY_SANDBOX` instead of passing `--sandbox`. See the
+[Sandbox guide](../guides/sandbox.md) for profile details.

@@ -133,6 +133,23 @@ kite hello.star --permissions=strict   # fails: no rules → every op is denied
 
 `--permissions` is most useful with a profile or a frontmatter block in the script that declares the rules the script needs. See [Permissions](../guides/permissions.md) for the rule syntax and the built-in profiles.
 
+## Run inside a sandbox (Linux)
+
+For untrusted scripts, the `--sandbox` flag runs the script inside a [gVisor](https://gvisor.dev) user-space kernel. The script sees only the current directory, has no access to `$HOME` or host credentials, and uses a clean view of the filesystem:
+
+```bash
+kite hello.star --sandbox             # default profile: network ok, no $HOME
+kite hello.star --sandbox=strict      # offline, $CWD-only
+```
+
+For shebang scripts, set `STARKITE_SECURITY_SANDBOX` instead:
+
+```bash
+STARKITE_SECURITY_SANDBOX=strict ./hello.star
+```
+
+The sandbox is Linux-only and composes with `--permissions` for defense in depth. See [Sandbox](../guides/sandbox.md).
+
 ## What's next
 
 - [CLI Reference](../cli/index.md) — all available subcommands and flags
@@ -140,3 +157,4 @@ kite hello.star --permissions=strict   # fails: no rules → every op is denied
 - [Variables](../guides/variables.md) — `--var`, `--var-file`, and the `var_*` builtins
 - [Error Handling](../guides/error-handling.md) — the `try_` pattern
 - [Permissions](../guides/permissions.md) — permission rules and profiles
+- [Sandbox](../guides/sandbox.md) — OS-level isolation with gVisor (Linux)

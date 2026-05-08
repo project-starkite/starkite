@@ -225,9 +225,11 @@ The sandbox and `--permissions` are independent. They compose:
 kite untrusted.star --sandbox=strict --permissions=strict
 ```
 
-`--permissions` blocks operations at the Starlark API level (`exec()`, file
-writes, network calls). The sandbox confines the OS view (filesystem,
-processes). See [Permissions](../permissions/).
+`--permissions` enforces allow/deny rules on Starlark API calls (exec,
+network, filesystem, k8s, …) inside one process. The sandbox confines
+the OS view (filesystem visibility, process isolation, network reach)
+at the kernel level via gVisor. A bypass in one is contained by the
+other. See [Permissions](permissions.md).
 
 ## Ubuntu 24.04+ setup
 

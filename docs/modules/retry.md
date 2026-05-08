@@ -59,10 +59,10 @@ else:
 
 ```python
 def call_api():
-    resp = http.get("https://api.example.com/data")
+    resp = http.url("https://api.example.com/data").get()
     if resp.status_code >= 500:
         fail("server error: " + str(resp.status_code))
-    return resp.json()
+    return json.decode(resp.body)
 
 r = retry.with_backoff(call_api, max_attempts=5, delay="500ms", max_delay="10s")
 if r.ok:
@@ -76,10 +76,10 @@ def is_transient(err):
     return "timeout" in err or "503" in err
 
 def fetch():
-    resp = http.get("https://api.example.com/resource")
+    resp = http.url("https://api.example.com/resource").get()
     if resp.status_code != 200:
         fail(str(resp.status_code))
-    return resp.json()
+    return json.decode(resp.body)
 
 r = retry.do(fetch, retry_on=is_transient, max_attempts=3)
 ```

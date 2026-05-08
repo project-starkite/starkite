@@ -13,6 +13,16 @@ weight: 50
 | [remote-check.star](https://github.com/project-starkite/starkite/blob/main/examples/core/remote-check.star) | Remote server health checks via SSH |
 | [HTTP Server Examples](https://github.com/project-starkite/starkite/tree/main/examples/core/http-server) | REST APIs, webhooks, middleware |
 
+## Sandbox Examples
+
+OS-level isolation with `--sandbox` (Linux only). See the [Sandbox guide](../guides/sandbox.md).
+
+| Example | Description |
+|---------|-------------|
+| [default-http-fetch.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/default-http-fetch.star) | HTTPS fetch under the default profile |
+| [strict-compute.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/strict-compute.star) | Offline compute over `$CWD` with in-sandbox loopback fixture |
+| [defense-in-depth.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/defense-in-depth.star) | Compose `--sandbox=strict` with `--permissions=strict` |
+
 ## Cloud Examples (Kubernetes)
 
 | Example | Description |

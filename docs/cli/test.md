@@ -66,4 +66,21 @@ kite test ./tests/math_test.star       # Run single file
 kite test ./tests/ --verbose           # Verbose output
 kite test ./tests/ --run string        # Filter by name
 kite test ./tests/ --parallel 4        # Parallel execution
+kite test ./tests/ --permissions=strict
+kite test ./tests/ --sandbox=strict    # Linux: each test file gets its own sandbox
 ```
+
+## Sandbox
+
+When `--sandbox` (or `STARKITE_SECURITY_SANDBOX`) is engaged and the path
+resolves to a directory of multiple test files, each file runs in its own
+sandbox process. Filesystem mutations in `/tmp`, in-sandbox listening
+ports, and other sandbox-internal state do not leak between files.
+
+Single-file invocations (`kite test ./single_test.star --sandbox`) use one
+sandbox for that file.
+
+`--parallel N` runs up to N files concurrently, each in its own sandbox.
+
+See the [Sandbox guide](../guides/sandbox.md) for profile details and
+Ubuntu 24.04+ setup.

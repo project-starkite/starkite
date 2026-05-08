@@ -35,7 +35,7 @@ env = var_str("environment", "dev")
 ### Script parameters
 
 ```python
-# kite run deploy.star -- --env=prod --replicas=3 --dry-run=true
+# kite run deploy.star --var env=prod --var replicas=3 --var dry-run=true
 
 env = var_str("env", "dev")
 replicas = var_int("replicas", 1)
@@ -49,7 +49,7 @@ if dry_run:
 ### List and dict variables
 
 ```python
-# kite run script.star -- --tags='["web","api"]' --labels='{"team":"platform"}'
+# kite run script.star --var tags='["web","api"]' --var labels='{"team":"platform"}'
 
 tags = var_list("tags")
 labels = var_dict("labels")
@@ -59,6 +59,11 @@ for tag in tags:
 for k, v in labels.items():
     print(k, "=", v)
 ```
+
+Variables can also come from a YAML file (`--var-file=values.yaml`),
+the user config (`~/.starkite/config.yaml`), or environment variables
+(`STARKITE_VAR_<name>=value`). See [Variables](../guides/variables.md)
+for the full priority order.
 
 ### Listing variables
 

@@ -54,6 +54,7 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--dry-run` | Preview commands without executing | `false` |
 | `--timeout seconds` | Script execution timeout | `300` |
 | `--permissions profile` | Permission profile (e.g. `strict`); empty = trust mode | `""` |
+| `--sandbox[=profile]` | OS-level sandbox profile (Linux only). Bare `--sandbox` selects `default`; see [Sandbox guide](../guides/sandbox.md). | `""` |
 
 ## Environment Variables
 
@@ -63,3 +64,4 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `STARKITE_OUTPUT` | Default output format |
 | `STARKITE_TIMEOUT` | Default timeout in seconds |
 | `STARKITE_VAR_*` | Variable injection (e.g., `STARKITE_VAR_DB_HOST=localhost` → `var_str("db.host")`) |
+| `STARKITE_SECURITY_SANDBOX` | Sandbox profile for shebang-launched scripts (same syntax as `--sandbox`). Linux only. |
