@@ -6,10 +6,7 @@ weight: 20
 
 # Authoring permission profiles
 
-A permission profile is a named bundle of rules. Profiles live in `~/.starkite/security.yaml`, in a file you point `--permissions=path/to/file.yaml#name` at, or inline in a script's frontmatter. Authoring a good profile is mostly about deciding what the *minimum* set of allowed operations is — start from `deny-all` and add only what the script demands.
-
-!!! info "Coming soon"
-    A full walkthrough with worked examples is in progress.
+A permission profile is a named bundle of rules. Profiles live in `~/.starkite/security.yaml`, in a file referenced via `--permissions=path/to/file.yaml#name`, or inline in a script's frontmatter. Start from `deny-all` and add only the operations the script requires.
 
 ## Skeleton
 

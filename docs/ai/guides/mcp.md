@@ -6,10 +6,7 @@ weight: 20
 
 # MCP
 
-The `mcp` module gives starkite both sides of the [Model Context Protocol](https://modelcontextprotocol.io): use `mcp.serve()` to expose tools, resources, and prompts to an LLM client (such as Claude Desktop or your own `genai`-based agent), or use `mcp.connect()` to consume an existing MCP server.
-
-!!! info "Coming soon"
-    A full walkthrough — exposing a starkite script as an MCP server and consuming it from a `kiteai` agent — is in progress.
+The `mcp` module provides both sides of the [Model Context Protocol](https://modelcontextprotocol.io): `mcp.serve()` exposes tools, resources, and prompts to an LLM client (Claude Desktop, a `genai`-based agent, or any MCP consumer); `mcp.connect()` consumes an existing MCP server.
 
 ## See also
 

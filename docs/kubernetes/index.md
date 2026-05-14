@@ -44,18 +44,15 @@ Starkite's cloud edition ships the `k8s` module — full Kubernetes resource man
 
 </div>
 
-## Quick taste
+## Example operations
 
 ```python
-# List pods in a namespace
 pods = k8s.list("pod", namespace="default")
 for pod in pods:
     print(pod["metadata"]["name"])
 
-# Create a deployment + service in one call
 k8s.deploy("nginx", "nginx:latest", replicas=3, port=80)
 
-# Apply a manifest constructed from a dict
 manifest = yaml.encode({
     "apiVersion": "v1",
     "kind": "ConfigMap",
@@ -64,12 +61,11 @@ manifest = yaml.encode({
 })
 k8s.apply(manifest)
 
-# Scale and rolling-restart
 k8s.scale("deployment", "nginx", 5)
 k8s.rollout("deployment", "nginx", action="restart")
 ```
 
-For the full API surface, head to the [`k8s` reference](../references/api/k8s.md).
+Full API surface: [`k8s` reference](../references/api/k8s.md).
 
 ## Install the cloud edition
 

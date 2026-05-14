@@ -6,9 +6,7 @@ weight: 1
 
 # Getting Started
 
-Starkite (pronounced *"star-kite"*) is a secure runtime for cloud-native and agentic-AI automation. Scripts are written in [Starlark](what-is-starlark.md) — a deterministic, Python-derived language — and run inside a single binary that ships its own batteries: a module library, a permission engine, and an optional gVisor sandbox.
-
-This page walks you from a fresh install to running your first script in under five minutes.
+Starkite (pronounced *"star-kite"*) is a secure runtime for cloud-native and agentic-AI automation. Scripts are written in [Starlark](what-is-starlark.md) — a deterministic, Python-derived language — and run inside a single binary that bundles a module library, a permission engine, and an optional gVisor sandbox.
 
 ## Editions
 
@@ -71,9 +69,9 @@ Hello, Alice!
 time=... level=INFO msg="Running on" platform=darwin arch=arm64
 ```
 
-## Other things to try
+## Common subcommands
 
-| Command | What it does |
+| Command | Description |
 |---|---|
 | `kite repl` | Interactive REPL — explore modules and try expressions |
 | `kite exec 'print(os.exec("hostname"))'` | Run a one-liner without a script file |

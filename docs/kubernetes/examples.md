@@ -6,7 +6,4 @@ weight: 90
 
 # Kubernetes examples
 
-Runnable `.star` files that demonstrate working patterns. All examples live in the [project-starkite/starkite repo under `examples/cloud/`](https://github.com/project-starkite/starkite/tree/main/examples/cloud).
-
-!!! info "Coming soon"
-    A curated, annotated index of the example set is in progress. For now, browse the directory directly.
+Runnable `.star` files demonstrating Kubernetes patterns: [`examples/cloud/`](https://github.com/project-starkite/starkite/tree/main/examples/cloud) in the starkite repo.

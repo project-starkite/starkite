@@ -13,11 +13,11 @@ Starkite is distributed as four independent binaries. Every edition speaks the s
 | `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
 | `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
 
-## Why four binaries instead of one
+## Per-edition Go modules
 
-Each edition is a distinct Go module with its own dependency graph. `kitecmd` has no Kubernetes or LLM client code linked in, so it's a ~26 MB binary with no transitive cloud-SDK dependencies. `kitecloud` and `kiteai` add only what they need. `kite` is the all-in-one for users who don't want to choose.
+Each edition is a distinct Go module with its own dependency graph. `kitecmd` links no Kubernetes or LLM client code (~26 MB binary, no transitive cloud-SDK dependencies). `kitecloud` and `kiteai` add only what their domain requires. `kite` composes all three.
 
-This matters when you're shipping starkite into constrained environments (init containers, edge nodes, CI runners) where every megabyte of binary size and every dependency is a liability.
+This matters in constrained environments — init containers, edge nodes, CI runners — where binary size and dependency surface are liabilities.
 
 ## What's in "base"
 

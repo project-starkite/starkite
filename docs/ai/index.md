@@ -44,9 +44,9 @@ Starkite's AI edition ships two modules: [`ai`](../references/api/ai.md) for mul
 
 </div>
 
-## Quick taste
+## Run a query
 
-The fastest path uses Ollama (no API key required):
+Ollama requires no API key — the minimal local path:
 
 ```python
 # hello-ai.star
@@ -58,18 +58,18 @@ print(resp.text)
 kiteai run hello-ai.star
 ```
 
-Or with Anthropic once `ANTHROPIC_API_KEY` is set:
+With Anthropic, set `ANTHROPIC_API_KEY` first:
 
 ```python
 resp = ai.generate("Say hi in 5 words.", model="anthropic/claude-sonnet-4-5")
 print(resp.text)
 ```
 
-Every call identifies the backend with a `provider/model-name` string — `anthropic/claude-sonnet-4-5`, `openai/gpt-4o-mini`, `googleai/gemini-1.5-pro`, `ollama/llama3.2`. Set a default to skip the prefix on every call:
+Every call identifies the backend with a `provider/model-name` string: `anthropic/claude-sonnet-4-5`, `openai/gpt-4o-mini`, `googleai/gemini-1.5-pro`, `ollama/llama3.2`. Set a default to skip the prefix:
 
 ```python
 ai.config(default_model="anthropic/claude-sonnet-4-5")
-resp = ai.generate("...")  # uses the default
+resp = ai.generate("...")
 ```
 
 ## Provider credentials
@@ -101,4 +101,4 @@ If you already have the all-in-one `kite` binary, the AI modules are bundled in 
 
 ## Compose with base modules
 
-All 27 base modules (`os`, `fs`, `http`, `ssh`, `json`, `yaml`, `concur`, …) remain available in the AI edition. Agents typically combine `ai.chat()` with these for tool implementations — see the [agents guide](guides/agents.md) and [Embedding](../fundamentals/embedding.md#calling-starlark-functions-from-go) for driving agents from Go with Starlark tool bodies.
+All 27 base modules (`os`, `fs`, `http`, `ssh`, `json`, `yaml`, `concur`, …) remain available in the AI edition. Agents combine `ai.chat()` with these for tool implementations — see the [agents guide](guides/agents.md) and [Embedding](../fundamentals/embedding.md#calling-starlark-functions-from-go) for driving agents from Go with Starlark tool bodies.

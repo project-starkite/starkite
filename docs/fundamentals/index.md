@@ -6,7 +6,7 @@ weight: 20
 
 # Fundamentals
 
-The five things every starkite user touches: how the editions fit together, how scripts are secured, how the language works, how modules are organized, and how to embed the runtime.
+Five concepts that govern every starkite script: editions, security, language, modules, embedding.
 
 <div class="grid cards" markdown>
 

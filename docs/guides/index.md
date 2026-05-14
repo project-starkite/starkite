@@ -6,9 +6,9 @@ weight: 30
 
 # Guides
 
-Long-form, cross-cutting walkthroughs that span multiple modules. Use these to learn patterns; use [References](../references/index.md) when you already know what you're looking for.
+Cross-cutting walkthroughs that span multiple modules. For per-module syntax and CLI flags, see [References](../references/index.md).
 
-Domain-specific guides live alongside their domain bucket: see [Kubernetes > Guides](../kubernetes/index.md) and [AI > Guides](../ai/index.md).
+Domain-specific guides live alongside their domain bucket — [Kubernetes > Guides](../kubernetes/index.md) and [AI > Guides](../ai/index.md).
 
 <div class="grid cards" markdown>
 

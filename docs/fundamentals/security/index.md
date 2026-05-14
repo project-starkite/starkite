@@ -6,7 +6,7 @@ weight: 20
 
 # Security
 
-Starkite secures scripts in two distinct, composable layers. Use either independently, or use both together for defense in depth.
+Starkite has two composable security layers. Use either independently, or both together for defense in depth.
 
 ## Layer 1 — Permissions
 
@@ -35,4 +35,4 @@ Sandbox is Linux-only and depends on unprivileged user namespaces. Composes clea
 | Quickly limit a script to `$CWD`-only filesystem | `--permissions=strict` |
 | Cut all network access and host filesystem visibility | `--sandbox=strict` |
 
-The two layers answer different questions: permissions answers *"which operations is this script allowed to invoke?"*; sandbox answers *"what slice of the host can the process see at all?"*. Pairing both is the recommended posture for anything untrusted.
+Permissions answer *which operations a script may invoke*. Sandbox answers *what slice of the host the process can see at all*. Pair both for any untrusted script.

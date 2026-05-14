@@ -4,11 +4,9 @@ description: "The language behind starkite scripts"
 weight: 2
 ---
 
-Starkite scripts are written in [Starlark](https://github.com/bazelbuild/starlark), a small, deterministic, Python-derived language originally developed at Google for the [Bazel](https://bazel.build) build system. If you've written Python, Starlark will feel immediately familiar — but it deliberately removes several features in exchange for being safer to embed and easier to reason about.
+Starkite scripts are written in [Starlark](https://github.com/bazelbuild/starlark), a small, deterministic, Python-derived language used by the [Bazel](https://bazel.build) build system. Starlark is a Python subset that removes constructs incompatible with safe embedding and predictable execution.
 
-## A small, familiar subset of Python
-
-A Starlark script reads almost identically to Python:
+## A Python subset
 
 ```python
 name    = var_str("env", "dev")
@@ -24,28 +22,22 @@ for host in servers:
         fail("deploy failed on " + host)
 ```
 
-You get the things you'd expect: functions, lambdas, `if`/`for`, list/dict/set comprehensions, string/list/dict/tuple types, slicing, exceptions via `fail()`, and a familiar standard library of `len()`, `range()`, `sorted()`, `enumerate()`, and friends.
+Available: functions, lambdas, `if`/`for`, list/dict/set comprehensions, string/list/dict/tuple types, slicing, exceptions via `fail()`, and a standard library of `len()`, `range()`, `sorted()`, `enumerate()`, etc.
 
-## What's intentionally absent
-
-Starlark is **not** Python. It removes constructs that make programs hard to predict or sandbox:
+## Removed constructs
 
 - **No `while` loops.** Only bounded `for`-loops over a collection.
-- **No recursion.** Functions cannot call themselves (directly or indirectly).
+- **No recursion.** Functions cannot call themselves, directly or indirectly.
 - **No mutable globals after initialization.** Top-level bindings are frozen once the script's module finishes loading.
 - **No classes or inheritance.** Use dicts, tuples, and functions.
-- **No I/O in the language itself.** Filesystem, network, processes — everything privileged comes from modules the runtime provides.
-- **No exceptions you can catch.** Errors halt the script unless the function you called offers a `try_` variant.
+- **No I/O in the language itself.** Filesystem, network, and process operations come from modules the runtime provides.
+- **No catchable exceptions.** Errors halt the script unless the function offers a `try_` variant.
 
-These omissions are the *point*. A Starlark program is guaranteed to terminate, never silently mutates shared state, and runs identically every time given identical inputs — properties that make it ideal for build systems, configuration, and ops automation.
+## Guarantees this provides
 
-## Why this fits ops automation
-
-Operations scripts are unforgiving: they run on production, they're triggered by humans under stress, and they're rarely re-executed in a clean environment. Starkite leans on Starlark's guarantees to keep scripts predictable:
-
-- **Determinism.** A `deploy.star` that succeeds on your laptop will execute the same way in CI and on the prod jumpbox.
-- **Bounded execution.** No infinite loops, no runaway recursion. Scripts finish or fail; they don't hang.
-- **No hidden state.** Everything a script touches goes through a typed module call you can audit and a [permission rule](../fundamentals/security/permissions.md) you can deny.
+- **Determinism.** Identical inputs produce identical execution.
+- **Bounded execution.** No infinite loops or runaway recursion. Scripts terminate or fail.
+- **No hidden state.** Every privileged operation goes through a typed module call subject to a [permission rule](../fundamentals/security/permissions.md).
 
 ## Where to go next
 

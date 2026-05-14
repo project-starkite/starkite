@@ -6,7 +6,7 @@ weight: 40
 
 # References
 
-The canonical lookup catalog. Reference pages assume you know what you're looking for — start with [Getting Started](../getting-started/index.md) and [Fundamentals](../fundamentals/index.md) if you don't.
+Canonical lookup catalog. For background concepts and onboarding, see [Getting Started](../getting-started/index.md) and [Fundamentals](../fundamentals/index.md).
 
 <div class="grid cards" markdown>
 
