@@ -680,22 +680,8 @@ rolling out v1.0.0</code></pre>
 <section class="run-section">
   <div class="run-grid">
     <div class="run-card">
-      <h4>Trust mode</h4>
-      <p>Trusted scripts have access to all modules and host operations.</p>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">shell</span>
-        </div>
-        <pre><code class="language-bash">$ kite run deploy.star            # script is trusted (default)</code></pre>
-      </div>
-    </div>
-
-    <div class="run-card">
-      <h4>Strict permissions</h4>
-      <p>Script functionalities are restricted with execution policies.</p>
+      <h4>Script Permission</h4>
+      <p><code>--permissions</code> applies an allow/deny policy to gated module calls inside the script process. Pick a built-in profile (<code>strict</code>, <code>deny-all</code>) or supply your own rules in <code>~/.starkite/security.yaml</code>.</p>
       <div class="terminal">
         <div class="terminal__bar">
           <span class="terminal__dot terminal__dot--red"></span>
@@ -705,6 +691,21 @@ rolling out v1.0.0</code></pre>
         </div>
         <pre><code class="language-bash">$ kite run untrusted.star --permissions=strict
 Error: permission denied: os.exec is not allowed</code></pre>
+      </div>
+    </div>
+
+    <div class="run-card">
+      <h4>Script Sandbox</h4>
+      <p><code>--sandbox</code> runs the script inside a gVisor user-space kernel on Linux. The script gets a clean filesystem view — your home directory, host credentials, and unrelated host state are not visible — and the <code>strict</code> profile additionally blocks outbound network access.</p>
+      <div class="terminal">
+        <div class="terminal__bar">
+          <span class="terminal__dot terminal__dot--red"></span>
+          <span class="terminal__dot terminal__dot--yellow"></span>
+          <span class="terminal__dot terminal__dot--green"></span>
+          <span class="terminal__title">shell</span>
+        </div>
+        <pre><code class="language-bash">$ kite run untrusted.star --sandbox=strict
+Error: open /etc/passwd: no such file or directory</code></pre>
       </div>
     </div>
   </div>
