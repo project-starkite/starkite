@@ -6,9 +6,24 @@ weight: 40
 
 # References
 
-The canonical lookup catalog. Two halves:
+The canonical lookup catalog. Reference pages assume you know what you're looking for — start with [Getting Started](../getting-started/index.md) and [Fundamentals](../fundamentals/index.md) if you don't.
 
-- [CLI](cli/index.md) — every subcommand of the `kite` binary (and its edition-specific cousins) with flags, examples, and exit codes
-- [API](api/index.md) — every built-in module, organized into foundations, network, data, cloud, and AI groups
+<div class="grid cards" markdown>
 
-Reference pages assume you know what you're looking for. New here? Start with [Getting Started](../getting-started/index.md) and the [Fundamentals](../fundamentals/index.md) bucket first.
+-   :material-console-line:{ .lg .middle } __CLI__
+
+    ---
+
+    Every subcommand of `kite` (and its edition-specific cousins) with flags, examples, and exit codes.
+
+    [:octicons-arrow-right-24: Browse CLI](cli/index.md)
+
+-   :material-api:{ .lg .middle } __API__
+
+    ---
+
+    Every built-in module, organized into Foundations / Network / Data / Cloud / AI groups.
+
+    [:octicons-arrow-right-24: Browse API](api/index.md)
+
+</div>

@@ -10,8 +10,30 @@ Long-form, cross-cutting walkthroughs that span multiple modules. Use these to l
 
 Domain-specific guides live alongside their domain bucket: see [Kubernetes > Guides](../kubernetes/index.md) and [AI > Guides](../ai/index.md).
 
-## Available
+<div class="grid cards" markdown>
 
-- [CI integration](ci-integration.md) — running starkite in GitHub Actions, GitLab CI, and other runners
-- [Authoring permission profiles](authoring-permission-profiles.md) — designing a `security.yaml` for your team
-- [Multi-step automation](multi-step-automation.md) — composing scripts with `load()`, retry, and concurrency
+-   :material-source-branch:{ .lg .middle } __CI integration__
+
+    ---
+
+    Run starkite in GitHub Actions, GitLab CI, and other runners with reproducible, pinned permission profiles.
+
+    [:octicons-arrow-right-24: Read more](ci-integration.md)
+
+-   :material-shield-edit:{ .lg .middle } __Authoring permission profiles__
+
+    ---
+
+    Design a `security.yaml` profile for your team — from `deny-all` baseline to a minimum-viable rule set.
+
+    [:octicons-arrow-right-24: Read more](authoring-permission-profiles.md)
+
+-   :material-graph:{ .lg .middle } __Multi-step automation__
+
+    ---
+
+    Compose larger workflows with `load()`, retry-with-backoff, and concurrent execution via `concur`.
+
+    [:octicons-arrow-right-24: Read more](multi-step-automation.md)
+
+</div>

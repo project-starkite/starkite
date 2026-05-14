@@ -1,26 +1,50 @@
 ---
-title: "Cloud Edition"
-description: "Kubernetes and cloud modules"
-weight: 5
+title: "Kubernetes"
+description: "Build controllers, webhooks, and manifest workflows in starkite"
+weight: 50
 ---
 
-The cloud edition of starkite adds Kubernetes (`k8s` module) and the `kite kube` artifact-generation subcommand on top of the base edition. It ships as the standalone `kitecloud` binary, and is also bundled into the all-in-one `kite` binary.
+# Kubernetes
 
-## Installation
+Starkite's cloud edition ships the `k8s` module — full Kubernetes resource management, controller-runtime, and admission webhooks — plus the `kite kube` subcommand for artifact generation. Install with `kitecmd edition use cloud`, or use the all-in-one `kite` binary.
 
-```bash
-# Build from source — produces ./bin/kitecloud
-make build-cloud
+<div class="grid cards" markdown>
 
-# Or install via the edition manager (downloads from GitHub Releases)
-kitecmd edition use cloud
-```
+-   :material-cog-sync:{ .lg .middle } __Controllers__
 
-If you have the all-in-one `kite` binary installed, you already have the cloud module — no separate install needed.
+    ---
 
-## Kubernetes Module
+    Write reconcile loops, owner references, leader election, and status updates with `k8s.control()`.
 
-The `k8s` module provides full Kubernetes resource management:
+    [:octicons-arrow-right-24: Read more](guides/controllers.md)
+
+-   :material-shield-check:{ .lg .middle } __Admission webhooks__
+
+    ---
+
+    Validating and mutating webhooks with RFC 6902 patch generation via `k8s.webhook()`.
+
+    [:octicons-arrow-right-24: Read more](guides/webhooks.md)
+
+-   :material-api:{ .lg .middle } __`k8s` API reference__
+
+    ---
+
+    The full three-tier API — CRUD primitives, `kubectl`-equivalents, and typed constructors.
+
+    [:octicons-arrow-right-24: Read more](../references/api/k8s.md)
+
+-   :material-folder-open:{ .lg .middle } __Examples__
+
+    ---
+
+    Runnable `.star` files demonstrating working patterns — deployments, services, controllers, more.
+
+    [:octicons-arrow-right-24: Browse](examples.md)
+
+</div>
+
+## Quick taste
 
 ```python
 # List pods in a namespace
@@ -28,10 +52,10 @@ pods = k8s.list("pod", namespace="default")
 for pod in pods:
     print(pod["metadata"]["name"])
 
-# Create a deployment
+# Create a deployment + service in one call
 k8s.deploy("nginx", "nginx:latest", replicas=3, port=80)
 
-# Apply a manifest
+# Apply a manifest constructed from a dict
 manifest = yaml.encode({
     "apiVersion": "v1",
     "kind": "ConfigMap",
@@ -40,44 +64,21 @@ manifest = yaml.encode({
 })
 k8s.apply(manifest)
 
-# Scale a deployment
+# Scale and rolling-restart
 k8s.scale("deployment", "nginx", 5)
-
-# Rolling restart
 k8s.rollout("deployment", "nginx", action="restart")
 ```
 
-## Available Kubernetes Functions
+For the full API surface, head to the [`k8s` reference](../references/api/k8s.md).
 
-| Function | Description |
-|----------|-------------|
-| `k8s.get(kind, name)` | Get a single resource |
-| `k8s.list(kind)` | List resources |
-| `k8s.create(manifest)` | Create a resource |
-| `k8s.apply(manifest)` | Server-side apply |
-| `k8s.delete(kind, name)` | Delete a resource |
-| `k8s.patch(kind, name, patch)` | Patch a resource |
-| `k8s.label(kind, name, labels)` | Set labels |
-| `k8s.annotate(kind, name, annotations)` | Set annotations |
-| `k8s.deploy(name, image, ...)` | Create Deployment + optional Service |
-| `k8s.run(name, image, ...)` | Run a Pod |
-| `k8s.expose(kind, name, port)` | Create a Service |
-| `k8s.scale(kind, name, replicas)` | Scale a workload |
-| `k8s.rollout(kind, name, action)` | Manage rollouts |
-| `k8s.set_image(kind, name, container, image)` | Update container image |
-| `k8s.set_env(kind, name, env)` | Update environment variables |
-| `k8s.set_resources(kind, name, ...)` | Update resource limits |
-| `k8s.autoscale(kind, name, ...)` | Create HPA |
-| `k8s.version()` | Get server version |
-| `k8s.api_resources()` | List API resources |
-
-## Editions Management
+## Install the cloud edition
 
 ```bash
-kitecmd edition status        # List installed editions
-kitecmd edition use cloud     # Install cloud edition (downloads kitecloud)
-kitecmd edition use base      # Switch back to base
-kitecmd edition remove cloud  # Uninstall cloud edition
+# From source — produces ./bin/kitecloud
+make build-cloud
+
+# Or via the edition manager (downloads from GitHub Releases)
+kitecmd edition use cloud
 ```
 
-When cloud is active, `kitecmd` transparently execs into `kitecloud` for every command.
+If you already have the all-in-one `kite` binary, the cloud module is bundled in — no separate install needed. See [Editions](../fundamentals/editions.md) for the full edition model and switching commands.

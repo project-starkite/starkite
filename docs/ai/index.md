@@ -1,43 +1,52 @@
 ---
-title: "AI Edition"
-description: "kiteai binary: LLM client, MCP, and agent primitives"
-weight: 6
+title: "AI"
+description: "LLM clients, MCP, and agent primitives in starkite"
+weight: 60
 ---
 
-The AI edition of starkite adds the [`ai`](../references/api/ai.md) module (multi-provider LLM client) and the [`mcp`](../references/api/mcp.md) module (Model Context Protocol server + client) to the base edition. Every base module remains available. It ships as the standalone `kiteai` binary, and is also bundled into the all-in-one `kite` binary.
+# AI
 
-## Installation
+Starkite's AI edition ships two modules: [`ai`](../references/api/ai.md) for multi-provider LLM access (Anthropic, OpenAI, Google AI, Ollama) and [`mcp`](../references/api/mcp.md) for the Model Context Protocol — both a server (`mcp.serve()`) and a client (`mcp.connect()`). Install with `kitecmd edition use ai`, or use the all-in-one `kite` binary.
 
-```bash
-# Build from source — produces ./bin/kiteai
-make build-ai
+<div class="grid cards" markdown>
 
-# Or install via the edition manager (downloads from GitHub Releases)
-kitecmd edition use ai
-```
+-   :material-robot:{ .lg .middle } __Building agents__
 
-If you have the all-in-one `kite` binary installed, you already have the ai modules — no separate install needed.
+    ---
 
-## Provider Credentials
+    Compose `ai.chat()` with tools, history, and the `ai.run_until()` driver for multi-turn agent loops.
 
-The AI edition supports Anthropic, OpenAI, Google AI, and Ollama. Set the relevant environment variable for any provider you plan to use:
+    [:octicons-arrow-right-24: Read more](guides/agents.md)
 
-| Provider | Env var | Notes |
-|----------|---------|-------|
-| Anthropic | `ANTHROPIC_API_KEY` | claude-3-5-sonnet, claude-opus, etc. |
-| OpenAI | `OPENAI_API_KEY` | gpt-4o, gpt-4o-mini, etc. |
-| Google AI | `GOOGLE_API_KEY` | gemini-1.5-pro, gemini-flash, etc. |
-| Ollama | *(none)* | Local; default endpoint `http://localhost:11434`. Override with `ai.config(base_urls={"ollama": "..."})` or per-call `base_url=` |
+-   :material-connection:{ .lg .middle } __MCP__
 
-You can also configure credentials in a script via `ai.config()` — useful for scripts that manage their own credentials:
+    ---
 
-```python
-ai.config(api_keys = {"openai": env("MY_OPENAI_KEY")})
-```
+    Expose starkite tools over MCP, or call existing MCP servers from `kiteai` agents.
 
-## Quick Start
+    [:octicons-arrow-right-24: Read more](guides/mcp.md)
 
-The fastest path to verifying the install uses Ollama (no API key required):
+-   :material-api:{ .lg .middle } __API reference__
+
+    ---
+
+    The full `ai` and `mcp` module surfaces — generate, chat, tool registration, streaming, structured output.
+
+    [:octicons-arrow-right-24: ai](../references/api/ai.md) · [:octicons-arrow-right-24: mcp](../references/api/mcp.md)
+
+-   :material-folder-open:{ .lg .middle } __Examples__
+
+    ---
+
+    Runnable agent and MCP scripts demonstrating working patterns.
+
+    [:octicons-arrow-right-24: Browse](examples.md)
+
+</div>
+
+## Quick taste
+
+The fastest path uses Ollama (no API key required):
 
 ```python
 # hello-ai.star
@@ -56,47 +65,40 @@ resp = ai.generate("Say hi in 5 words.", model="anthropic/claude-sonnet-4-5")
 print(resp.text)
 ```
 
-## Model Strings
-
-Every call identifies the backend by a `provider/model-name` string:
-
-```python
-ai.generate(prompt, model="anthropic/claude-sonnet-4-5")
-ai.generate(prompt, model="openai/gpt-4o-mini")
-ai.generate(prompt, model="googleai/gemini-1.5-pro")
-ai.generate(prompt, model="ollama/llama3.2")
-```
-
-Set a default so you don't have to repeat it:
+Every call identifies the backend with a `provider/model-name` string — `anthropic/claude-sonnet-4-5`, `openai/gpt-4o-mini`, `googleai/gemini-1.5-pro`, `ollama/llama3.2`. Set a default to skip the prefix on every call:
 
 ```python
 ai.config(default_model="anthropic/claude-sonnet-4-5")
 resp = ai.generate("...")  # uses the default
 ```
 
-## What's Included
+## Provider credentials
 
-| Module | Purpose | Reference |
-|--------|---------|-----------|
-| `ai` | Multi-provider LLM client (generate, chat, tools, agents) | [ai module reference](../references/api/ai.md) |
-| `mcp` | MCP server (expose Starlark tools over stdio or HTTP) + client (call remote MCP servers) | [mcp module reference](../references/api/mcp.md) |
+| Provider | Env var | Notes |
+|----------|---------|-------|
+| Anthropic | `ANTHROPIC_API_KEY` | claude-3-5-sonnet, claude-opus, etc. |
+| OpenAI | `OPENAI_API_KEY` | gpt-4o, gpt-4o-mini, etc. |
+| Google AI | `GOOGLE_API_KEY` | gemini-1.5-pro, gemini-flash, etc. |
+| Ollama | *(none)* | Local; default endpoint `http://localhost:11434`. Override via `ai.config(base_urls={...})` |
 
-All 27 modules from the base edition (`os`, `fs`, `http`, `ssh`, `json`, `yaml`, `concur`, etc.) remain available. Agents typically compose `ai.chat()` with these for tool implementations — see the [agents guide](guides/agents.md).
+`ai.config()` configures credentials in-script, useful when a script manages its own keys:
 
-## Editions Management
-
-```bash
-kitecmd edition status        # List installed editions
-kitecmd edition use ai        # Install AI edition (downloads kiteai)
-kitecmd edition use base      # Switch back to base
-kitecmd edition remove ai     # Uninstall AI edition
+```python
+ai.config(api_keys = {"openai": env("MY_OPENAI_KEY")})
 ```
 
-When ai is active, `kitecmd` transparently execs into `kiteai` for every command.
+## Install the AI edition
 
-## Next Steps
+```bash
+# From source — produces ./bin/kiteai
+make build-ai
 
-- [AI module reference](../references/api/ai.md) — full `ai.generate()` / `ai.chat()` / `ai.tool()` / `ai.run_until()` signatures
-- [MCP module reference](../references/api/mcp.md) — `mcp.serve()` and `mcp.connect()` with stdio, HTTP, and TLS
-- [Building Agents](guides/agents.md) — four composition patterns for multi-turn agents
-- [Embedding Libkite](../fundamentals/embedding.md#calling-starlark-functions-from-go) — drive agents from Go, with Starlark providing tool bodies
+# Or via the edition manager (downloads from GitHub Releases)
+kitecmd edition use ai
+```
+
+If you already have the all-in-one `kite` binary, the AI modules are bundled in — no separate install needed. See [Editions](../fundamentals/editions.md) for the full edition model.
+
+## Compose with base modules
+
+All 27 base modules (`os`, `fs`, `http`, `ssh`, `json`, `yaml`, `concur`, …) remain available in the AI edition. Agents typically combine `ai.chat()` with these for tool implementations — see the [agents guide](guides/agents.md) and [Embedding](../fundamentals/embedding.md#calling-starlark-functions-from-go) for driving agents from Go with Starlark tool bodies.

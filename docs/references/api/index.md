@@ -1,90 +1,225 @@
 ---
-title: "Module Reference"
-description: "Built-in modules available in starkite scripts"
+title: "API Reference"
+description: "Built-in modules grouped by domain — foundations, network, data, cloud, AI"
 weight: 1
 ---
 
-Starkite exposes Go's standard library as type-safe, scriptable Starlark modules for general-purpose automation, cloud-native operations, data processing, and GenAI agent workflows. All modules are **auto-loaded** and available in every `.star` script without any import statement.
+# API Reference
 
-## Available Modules
+Starkite exposes Go's standard library as type-safe, scriptable Starlark modules. All modules are **auto-loaded** in every `.star` script — no `import` statement, no `load()` call.
 
-| Module | Description |
-|--------|-------------|
-| [`os`](os.md) | Environment, process info, and command execution |
-| [`fs`](fs.md) | Filesystem operations and Path objects |
-| [`http`](http.md) | HTTP client, server, and URL builder |
-| [`ssh`](ssh.md) | Remote command execution and file transfer |
-| [`json`](json.md) | JSON encoding, decoding, and file I/O |
-| [`yaml`](yaml.md) | YAML encoding, decoding, and file I/O |
-| [`csv`](csv.md) | CSV reading, writing, and file I/O |
-| [`gzip`](gzip.md) | Gzip compression and decompression |
-| [`zip`](zip.md) | ZIP archive reading and writing |
-| [`base64`](base64.md) | Base64 encoding and decoding |
-| [`hash`](hash.md) | Cryptographic hash functions |
-| [`strings`](strings.md) | String utility functions |
-| [`regexp`](regexp.md) | Regular expression matching and replacement |
-| [`template`](template.md) | Go text/template rendering |
-| [`time`](time.md) | Time, duration, and arithmetic |
-| [`uuid`](uuid.md) | UUID generation |
-| [`fmt`](fmt.md) | Formatted printing and string formatting |
-| [`log`](log.md) | Structured logging |
-| [`table`](table.md) | ASCII table rendering |
-| [`concur`](concur.md) | Concurrent execution |
-| [`retry`](retry.md) | Retry logic with backoff |
-| [`io`](io.md) | Interactive user input |
-| [`vars`](vars.md) | Typed variable access |
-| [`runtime`](runtime.md) | Runtime and platform information |
-| [`inventory`](inventory.md) | Inventory management |
-| [`test`](test.md) | Testing assertions |
-| [`k8s`](k8s.md) | Kubernetes resource management (Cloud edition) |
-| [`ai`](ai.md) | Multi-provider LLM client with chat, tools, and agents (AI edition) |
-| [`mcp`](mcp.md) | Model Context Protocol server + client (AI edition) |
+For the auto-loading mechanism and the `try_` error pattern that every function supports, see [Modules](../../fundamentals/modules.md) and [Language](../../fundamentals/language.md).
 
-## Auto-Loading
+## Foundations
 
-Unlike standard Starlark, starkite modules do not require `load()` statements. All modules are injected into the global scope automatically:
+System primitives, control flow, and built-in utilities every script needs.
 
-```python
-# No import needed — just use the module directly
-content = read_text("config.yaml")
-data = yaml.decode(content)
-print(os.hostname())
-```
+<div class="grid cards" markdown>
 
-## The load() Function
+-   :material-server:{ .lg .middle } [`os`](os.md)
 
-You can still use `load()` to import symbols from other `.star` files in your project:
+    ---
 
-```python
-load("helpers.star", "deploy", "rollback")
+    Environment, process info, command execution.
 
-deploy("production")
-```
+-   :material-folder-multiple:{ .lg .middle } [`fs`](fs.md)
 
-The `load()` function searches relative to the current script's directory.
+    ---
 
-## The try_ Pattern
+    Filesystem operations and `Path` objects.
 
-Every module function that can fail has a corresponding `try_` variant. Instead of raising an error, `try_` functions return a `Result` object:
+-   :material-format-text:{ .lg .middle } [`fmt`](fmt.md)
 
-```python
-# Raises an error if the file doesn't exist
-content = read_text("/etc/missing")
+    ---
 
-# Returns a Result — never raises
-result = path("/etc/missing").try_read_text()
-if result.ok:
-    print(result.value)
-else:
-    print("Error:", result.error)
-```
+    Formatted printing — `printf`, `sprintf`, `errorf`.
 
-The `Result` type has three attributes:
+-   :material-keyboard:{ .lg .middle } [`io`](io.md)
 
-| Attribute | Type | Description |
-|-----------|------|-------------|
-| `ok` | `bool` | `True` if the operation succeeded |
-| `value` | `any` | The return value on success |
-| `error` | `string` | The error message on failure |
+    ---
 
-This pattern applies uniformly to all modules — module-level functions, factory functions, and object methods all support `try_` variants. See the [Error Handling guide](../../fundamentals/language.md) for more details.
+    Interactive user input — `confirm`, `prompt`.
+
+-   :material-variable:{ .lg .middle } [`vars`](vars.md)
+
+    ---
+
+    Typed variable access — `var_str`, `var_int`, `var_list`, …
+
+-   :material-information-outline:{ .lg .middle } [`runtime`](runtime.md)
+
+    ---
+
+    Runtime and platform information.
+
+-   :material-text-box:{ .lg .middle } [`log`](log.md)
+
+    ---
+
+    Structured logging with slog backend.
+
+-   :material-clipboard-check:{ .lg .middle } [`test`](test.md)
+
+    ---
+
+    Testing assertions and helpers.
+
+-   :material-format-list-bulleted:{ .lg .middle } [`inventory`](inventory.md)
+
+    ---
+
+    Inventory management — file, list, filter, group_by, merge.
+
+-   :material-arrow-decision:{ .lg .middle } [`concur`](concur.md)
+
+    ---
+
+    Concurrent execution — map, each, exec, worker pools.
+
+-   :material-restart:{ .lg .middle } [`retry`](retry.md)
+
+    ---
+
+    Retry logic with fixed delay and exponential backoff.
+
+</div>
+
+## Network
+
+Remote services — HTTP and SSH.
+
+<div class="grid cards" markdown>
+
+-   :material-web:{ .lg .middle } [`http`](http.md)
+
+    ---
+
+    HTTP client, server, and URL builder.
+
+-   :material-console-network:{ .lg .middle } [`ssh`](ssh.md)
+
+    ---
+
+    Remote command execution and SCP file transfer.
+
+</div>
+
+## Data
+
+Encoding, serialization, text processing, and value utilities.
+
+<div class="grid cards" markdown>
+
+-   :material-code-json:{ .lg .middle } [`json`](json.md)
+
+    ---
+
+    JSON encoding, decoding, and file I/O.
+
+-   :material-file-document:{ .lg .middle } [`yaml`](yaml.md)
+
+    ---
+
+    YAML encoding, decoding, and file I/O.
+
+-   :material-table:{ .lg .middle } [`csv`](csv.md)
+
+    ---
+
+    CSV reading, writing, and file I/O.
+
+-   :material-zip-box:{ .lg .middle } [`gzip`](gzip.md)
+
+    ---
+
+    Gzip compression and decompression.
+
+-   :material-folder-zip:{ .lg .middle } [`zip`](zip.md)
+
+    ---
+
+    ZIP archive reading and writing.
+
+-   :material-numeric:{ .lg .middle } [`base64`](base64.md)
+
+    ---
+
+    Base64 encoding and decoding.
+
+-   :material-pound:{ .lg .middle } [`hash`](hash.md)
+
+    ---
+
+    Cryptographic hash functions.
+
+-   :material-format-text-variant:{ .lg .middle } [`strings`](strings.md)
+
+    ---
+
+    String utility functions.
+
+-   :material-regex:{ .lg .middle } [`regexp`](regexp.md)
+
+    ---
+
+    Regular expression matching and replacement.
+
+-   :material-file-replace:{ .lg .middle } [`template`](template.md)
+
+    ---
+
+    Go `text/template` rendering.
+
+-   :material-clock-outline:{ .lg .middle } [`time`](time.md)
+
+    ---
+
+    Time, duration, and arithmetic.
+
+-   :material-identifier:{ .lg .middle } [`uuid`](uuid.md)
+
+    ---
+
+    UUID generation.
+
+-   :material-table-large:{ .lg .middle } [`table`](table.md)
+
+    ---
+
+    ASCII table rendering.
+
+</div>
+
+## Cloud
+
+Kubernetes and cloud-native resource management — **cloud edition** (`kitecloud` or `kite`).
+
+<div class="grid cards" markdown>
+
+-   :material-kubernetes:{ .lg .middle } [`k8s`](k8s.md)
+
+    ---
+
+    Full Kubernetes API — CRUD, kubectl-equivalents, typed constructors, controllers, webhooks.
+
+</div>
+
+## AI
+
+LLM clients and Model Context Protocol — **AI edition** (`kiteai` or `kite`).
+
+<div class="grid cards" markdown>
+
+-   :material-robot:{ .lg .middle } [`ai`](ai.md)
+
+    ---
+
+    Multi-provider LLM client with chat, tools, streaming, and structured output.
+
+-   :material-connection:{ .lg .middle } [`mcp`](mcp.md)
+
+    ---
+
+    Model Context Protocol — `mcp.serve()` server and `mcp.connect()` client.
+
+</div>
