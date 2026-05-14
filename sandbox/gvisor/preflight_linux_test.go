@@ -47,11 +47,11 @@ func withFakeSysctls(t *testing.T, apparmor, userns string) {
 
 func TestPreflight(t *testing.T) {
 	tests := []struct {
-		name        string
-		apparmor    string // "" simulates missing file
-		userns      string // ""
-		wantErr     bool
-		wantSubstr  string // substring expected in the error message
+		name       string
+		apparmor   string // "" simulates missing file
+		userns     string // ""
+		wantErr    bool
+		wantSubstr string // substring expected in the error message
 	}{
 		{name: "both files missing → ok (non-Ubuntu / older Ubuntu)"},
 		{name: "apparmor=0 → ok", apparmor: "0\n"},

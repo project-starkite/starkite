@@ -7,8 +7,8 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/spf13/cobra"
 	"github.com/project-starkite/starkite/base/manager"
+	"github.com/spf13/cobra"
 )
 
 var moduleCmd = &cobra.Command{

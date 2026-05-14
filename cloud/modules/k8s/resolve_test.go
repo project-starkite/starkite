@@ -8,10 +8,10 @@ func TestResolveBuiltinKinds(t *testing.T) {
 	resolver := NewResolver(nil) // nil discovery — only builtins
 
 	tests := []struct {
-		kind       string
-		wantGroup  string
-		wantRes    string
-		wantNS     bool
+		kind      string
+		wantGroup string
+		wantRes   string
+		wantNS    bool
 	}{
 		{"pod", "", "pods", true},
 		{"pods", "", "pods", true},

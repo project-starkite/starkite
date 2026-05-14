@@ -83,11 +83,11 @@ func TestLoadProfile_Inline(t *testing.T) {
 			wantDeny:  []string{"os.exec"},
 		},
 		// Errors
-		{input: "allow:", wantParseFail: true},                // empty rule list
-		{input: "allow:,fs.read", wantParseFail: true},        // empty entry
-		{input: "allow:fs.read,", wantParseFail: true},        // trailing comma → empty entry
-		{input: "allow", wantParseFail: true},                 // no colon
-		{input: "permit:fs.read", wantParseFail: true},        // unknown kind (only matches LoadProfile path; isInline filters)
+		{input: "allow:", wantParseFail: true},         // empty rule list
+		{input: "allow:,fs.read", wantParseFail: true}, // empty entry
+		{input: "allow:fs.read,", wantParseFail: true}, // trailing comma → empty entry
+		{input: "allow", wantParseFail: true},          // no colon
+		{input: "permit:fs.read", wantParseFail: true}, // unknown kind (only matches LoadProfile path; isInline filters)
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
@@ -269,13 +269,13 @@ func TestLoadProfile_InvalidDefault(t *testing.T) {
 
 func TestIsInline(t *testing.T) {
 	cases := map[string]bool{
-		"allow:fs.read":  true,
-		"deny:os.exec":   true,
-		"strict":         false,
-		"./team.yaml":    false,
-		"":               false,
-		"allow":          false, // missing colon
-		"alloW:fs.read":  false, // case-sensitive
+		"allow:fs.read": true,
+		"deny:os.exec":  true,
+		"strict":        false,
+		"./team.yaml":   false,
+		"":              false,
+		"allow":         false, // missing colon
+		"alloW:fs.read": false, // case-sensitive
 	}
 	for in, want := range cases {
 		if got := isInline(in); got != want {
@@ -286,16 +286,16 @@ func TestIsInline(t *testing.T) {
 
 func TestIsFilePath(t *testing.T) {
 	cases := map[string]bool{
-		"./team.yaml":         true,
-		"/abs/path.yml":       true,
-		"team.yaml":           true,
-		"team.yaml#dev":       true,
-		"team.yml":            true,
-		"strict":              false,
-		"allow-all":           false,
-		"some-name":           false,
-		"some.name":           false, // not yaml/yml extension
-		`C:\path\file.yaml`:   true,  // Windows path with backslash
+		"./team.yaml":       true,
+		"/abs/path.yml":     true,
+		"team.yaml":         true,
+		"team.yaml#dev":     true,
+		"team.yml":          true,
+		"strict":            false,
+		"allow-all":         false,
+		"some-name":         false,
+		"some.name":         false, // not yaml/yml extension
+		`C:\path\file.yaml`: true,  // Windows path with backslash
 	}
 	for in, want := range cases {
 		if got := isFilePath(in); got != want {

@@ -66,10 +66,10 @@ var allMethods = map[string]clientMethod{
 	"port_forward": (*K8sClient).portForward,
 
 	// Tier 1: Cluster info
-	"context":       (*K8sClient).contextName,
+	"context":        (*K8sClient).contextName,
 	"namespace_name": (*K8sClient).namespaceName,
-	"version":       (*K8sClient).version,
-	"api_resources": (*K8sClient).apiResources,
+	"version":        (*K8sClient).version,
+	"api_resources":  (*K8sClient).apiResources,
 
 	// Tier 2: High-level
 	"deploy":        (*K8sClient).deployHighLevel,

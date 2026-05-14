@@ -32,11 +32,11 @@ func TestLoadProfile_default(t *testing.T) {
 	cwd, _ := os.Getwd()
 	wantMounts := map[string]Mount{
 		cwd:                  {Source: cwd, Destination: cwd, Type: MountBind, Mode: MountRW},
-		"/tmp":                {Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
-		"/etc/ssl/certs":      {Source: "/etc/ssl/certs", Destination: "/etc/ssl/certs", Type: MountBind, Mode: MountRO, Optional: true},
-		"/etc/resolv.conf":    {Source: "/etc/resolv.conf", Destination: "/etc/resolv.conf", Type: MountBind, Mode: MountRO, Optional: true},
-		"/etc/hosts":          {Source: "/etc/hosts", Destination: "/etc/hosts", Type: MountBind, Mode: MountRO, Optional: true},
-		"/etc/nsswitch.conf":  {Source: "/etc/nsswitch.conf", Destination: "/etc/nsswitch.conf", Type: MountBind, Mode: MountRO, Optional: true},
+		"/tmp":               {Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
+		"/etc/ssl/certs":     {Source: "/etc/ssl/certs", Destination: "/etc/ssl/certs", Type: MountBind, Mode: MountRO, Optional: true},
+		"/etc/resolv.conf":   {Source: "/etc/resolv.conf", Destination: "/etc/resolv.conf", Type: MountBind, Mode: MountRO, Optional: true},
+		"/etc/hosts":         {Source: "/etc/hosts", Destination: "/etc/hosts", Type: MountBind, Mode: MountRO, Optional: true},
+		"/etc/nsswitch.conf": {Source: "/etc/nsswitch.conf", Destination: "/etc/nsswitch.conf", Type: MountBind, Mode: MountRO, Optional: true},
 	}
 	if got, want := len(p.Mounts), len(wantMounts); got != want {
 		t.Fatalf("len(Mounts) = %d, want %d (mounts: %+v)", got, want, p.Mounts)

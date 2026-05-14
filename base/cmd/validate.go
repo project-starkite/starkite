@@ -134,12 +134,12 @@ func parseStarlarkErrors(file string, err error) []SyntaxError {
 
 	// Starlark error format: "file:line:col: message"
 	errStr := err.Error()
-	
+
 	// Try to parse location from error message
 	// Pattern: "filename:line:col: message"
 	re := regexp.MustCompile(`^([^:]+):(\d+):(\d+): (.+)$`)
 	matches := re.FindStringSubmatch(errStr)
-	
+
 	if len(matches) == 5 {
 		var line, col int
 		fmt.Sscanf(matches[2], "%d", &line)

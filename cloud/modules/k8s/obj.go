@@ -81,7 +81,7 @@ func (r *KubeResource) String() string {
 
 func (r *KubeResource) Type() string          { return "k8s.obj." + strings.ToLower(r.schema.Kind) }
 func (r *KubeResource) Freeze()               {}
-func (r *KubeResource) Truth() starlark.Bool   { return starlark.True }
+func (r *KubeResource) Truth() starlark.Bool  { return starlark.True }
 func (r *KubeResource) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: %s", r.Type()) }
 
 func (r *KubeResource) Kind() string { return r.schema.Kind }

@@ -31,10 +31,10 @@ type PortForwardHandle struct {
 }
 
 func (h *PortForwardHandle) String() string        { return "<port_forward>" }
-func (h *PortForwardHandle) Type() string           { return "port_forward" }
-func (h *PortForwardHandle) Freeze()                {}
-func (h *PortForwardHandle) Truth() starlark.Bool   { return starlark.True }
-func (h *PortForwardHandle) Hash() (uint32, error)  { return 0, nil }
+func (h *PortForwardHandle) Type() string          { return "port_forward" }
+func (h *PortForwardHandle) Freeze()               {}
+func (h *PortForwardHandle) Truth() starlark.Bool  { return starlark.True }
+func (h *PortForwardHandle) Hash() (uint32, error) { return 0, nil }
 
 func (h *PortForwardHandle) Attr(name string) (starlark.Value, error) {
 	switch name {

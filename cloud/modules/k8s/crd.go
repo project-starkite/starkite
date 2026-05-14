@@ -75,7 +75,7 @@ func crdConstructor(thread *starlark.Thread, fn *starlark.Builtin, args starlark
 	}
 
 	openAPISchema := map[string]interface{}{
-		"type": "object",
+		"type":       "object",
 		"properties": schemaProps,
 	}
 
@@ -145,9 +145,9 @@ func (r *CRDResource) String() string {
 }
 func (r *CRDResource) Type() string          { return "k8s.obj.crd" }
 func (r *CRDResource) Freeze()               {}
-func (r *CRDResource) Truth() starlark.Bool   { return starlark.True }
+func (r *CRDResource) Truth() starlark.Bool  { return starlark.True }
 func (r *CRDResource) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: k8s.obj.crd") }
-func (r *CRDResource) Kind() string           { return "CustomResourceDefinition" }
+func (r *CRDResource) Kind() string          { return "CustomResourceDefinition" }
 
 func (r *CRDResource) Attr(name string) (starlark.Value, error) {
 	if name == "to_dict" {

@@ -34,8 +34,8 @@ type securityFile struct {
 // users will write in custom profile files (Phase 5.4), so the same
 // shape parses both embedded and user-supplied profiles.
 type profileSpec struct {
-	Network string       `yaml:"network"`
-	Mounts  []mountSpec  `yaml:"mounts,omitempty"`
+	Network string      `yaml:"network"`
+	Mounts  []mountSpec `yaml:"mounts,omitempty"`
 }
 
 // mountSpec is the YAML form of a single mount entry. Defaults applied

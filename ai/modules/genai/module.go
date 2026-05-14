@@ -46,7 +46,7 @@ func New() *Module {
 	}
 }
 
-func (m *Module) Name() libkite.ModuleName    { return ModuleName }
+func (m *Module) Name() libkite.ModuleName     { return ModuleName }
 func (m *Module) Description() string          { return "ai provides LLM generation via Genkit" }
 func (m *Module) Aliases() starlark.StringDict { return nil }
 func (m *Module) FactoryMethod() string        { return "" }

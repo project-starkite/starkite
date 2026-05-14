@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/cobra"
 	"github.com/project-starkite/starkite/base/edition"
 	"github.com/project-starkite/starkite/base/version"
+	"github.com/spf13/cobra"
 )
 
 var editionCmd = &cobra.Command{

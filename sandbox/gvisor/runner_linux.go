@@ -205,4 +205,3 @@ func networkModeFor(mode sandbox.NetworkMode) (config.NetworkType, error) {
 		return 0, fmt.Errorf("unsupported network mode %q", mode)
 	}
 }
-

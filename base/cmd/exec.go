@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/project-starkite/starkite/base/varstore"
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/spf13/cobra"
 )
 
 var execCmd = &cobra.Command{

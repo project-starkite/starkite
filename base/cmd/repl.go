@@ -7,10 +7,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/spf13/cobra"
 	"github.com/project-starkite/starkite/base/varstore"
 	"github.com/project-starkite/starkite/base/version"
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/spf13/cobra"
 )
 
 var replCmd = &cobra.Command{

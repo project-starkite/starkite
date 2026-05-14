@@ -10,8 +10,8 @@ import (
 	"net"
 	gohttp "net/http"
 	"os"
-	"sync"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 

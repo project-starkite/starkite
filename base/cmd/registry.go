@@ -3,10 +3,10 @@ package cmd
 import (
 	stdlog "log"
 
-	"github.com/spf13/cobra"
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/loader"
 	"github.com/project-starkite/starkite/wasm"
+	"github.com/spf13/cobra"
 )
 
 // newDefaultRegistryWithWASM creates the default registry with built-in modules + WASM plugins.

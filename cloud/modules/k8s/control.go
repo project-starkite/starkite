@@ -39,10 +39,10 @@ type AttrDict struct {
 }
 
 var (
-	_ starlark.Value      = (*AttrDict)(nil)
-	_ starlark.HasAttrs   = (*AttrDict)(nil)
-	_ starlark.Mapping    = (*AttrDict)(nil)
-	_ starlark.HasSetKey  = (*AttrDict)(nil)
+	_ starlark.Value     = (*AttrDict)(nil)
+	_ starlark.HasAttrs  = (*AttrDict)(nil)
+	_ starlark.Mapping   = (*AttrDict)(nil)
+	_ starlark.HasSetKey = (*AttrDict)(nil)
 )
 
 func (d *AttrDict) String() string {
@@ -51,8 +51,8 @@ func (d *AttrDict) String() string {
 	return fmt.Sprintf("AttrDict(%d keys)", len(d.data))
 }
 
-func (d *AttrDict) Type() string  { return "AttrDict" }
-func (d *AttrDict) Freeze()       {}
+func (d *AttrDict) Type() string { return "AttrDict" }
+func (d *AttrDict) Freeze()      {}
 func (d *AttrDict) Hash() (uint32, error) {
 	return 0, fmt.Errorf("unhashable type: AttrDict")
 }
@@ -149,9 +149,9 @@ func unstructuredToAttrDict(obj *unstructured.Unstructured) *AttrDict {
 
 // queueItem holds the event info for work queue dispatch.
 type queueItem struct {
-	key       string                       // "namespace/name" or "name"
-	eventType string                       // "ADDED", "MODIFIED", "DELETED"
-	old       *unstructured.Unstructured   // previous version (for MODIFIED events)
+	key       string                     // "namespace/name" or "name"
+	eventType string                     // "ADDED", "MODIFIED", "DELETED"
+	old       *unstructured.Unstructured // previous version (for MODIFIED events)
 }
 
 // controlBuiltin is the k8s.control() function that blocks like http.serve().
@@ -264,8 +264,8 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		thread:               thread,
 		cache:                make(map[string]*unstructured.Unstructured),
 		watchOwned:           watchOwned,
-		predicateFn:         predicateFn,
-		fieldSelector:       p.FieldSelector,
+		predicateFn:          predicateFn,
+		fieldSelector:        p.FieldSelector,
 		enableLeaderElection: p.LeaderElection,
 		leaderElectionID:     leaderID,
 		leaderElectionNS:     leaderNS,
@@ -275,23 +275,23 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 }
 
 type controller struct {
-	kind       string
-	gvr        schema.GroupVersionResource
-	namespaced bool
+	kind          string
+	gvr           schema.GroupVersionResource
+	namespaced    bool
 	namespace     string
 	labels        string
 	fieldSelector string
 	resync        time.Duration
-	workers    int
-	maxRetries int
-	backoff    time.Duration
+	workers       int
+	maxRetries    int
+	backoff       time.Duration
 
-	reconcileFn  starlark.Callable
-	onCreateFn   starlark.Callable
-	onUpdateFn   starlark.Callable
-	onDeleteFn   starlark.Callable
-	predicateFn  starlark.Callable // predicate: fn(event, obj) -> bool
-	watchOwned  []string // owned resource kinds to watch (e.g., ["deployments", "services"])
+	reconcileFn starlark.Callable
+	onCreateFn  starlark.Callable
+	onUpdateFn  starlark.Callable
+	onDeleteFn  starlark.Callable
+	predicateFn starlark.Callable // predicate: fn(event, obj) -> bool
+	watchOwned  []string          // owned resource kinds to watch (e.g., ["deployments", "services"])
 
 	enableLeaderElection bool
 	leaderElectionID     string

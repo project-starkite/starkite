@@ -23,7 +23,7 @@ type Module struct {
 
 func New() *Module { return &Module{} }
 
-func (m *Module) Name() libkite.ModuleName    { return ModuleName }
+func (m *Module) Name() libkite.ModuleName     { return ModuleName }
 func (m *Module) Description() string          { return "mcp provides Model Context Protocol server + client" }
 func (m *Module) Aliases() starlark.StringDict { return nil }
 func (m *Module) FactoryMethod() string        { return "" }

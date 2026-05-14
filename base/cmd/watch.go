@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/spf13/cobra"
 	"github.com/project-starkite/starkite/base/varstore"
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/spf13/cobra"
 )
 
 var watchCmd = &cobra.Command{

@@ -75,7 +75,7 @@ func runInit(cmd *cobra.Command, args []string) error {
 	// Create files
 	for _, file := range tmpl {
 		path := filepath.Join(dir, file.Name)
-		
+
 		// Check if file already exists
 		if _, err := os.Stat(path); err == nil {
 			fmt.Printf("Skipped %s (already exists)\n", path)

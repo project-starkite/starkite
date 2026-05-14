@@ -11,8 +11,8 @@ import (
 	"github.com/spf13/cobra"
 	"go.starlark.net/starlark"
 
-	"github.com/project-starkite/starkite/cloud/loader"
 	"github.com/project-starkite/starkite/base/varstore"
+	"github.com/project-starkite/starkite/cloud/loader"
 	"github.com/project-starkite/starkite/libkite"
 )
 
