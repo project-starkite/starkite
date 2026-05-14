@@ -1,10 +1,10 @@
 ---
-title: "CI integration"
+title: "Run starkite in CI"
 description: "Running starkite in GitHub Actions, GitLab CI, and other runners"
 weight: 10
 ---
 
-# CI integration
+# Run starkite in CI
 
 Starkite is a single binary with no runtime dependencies, suited to CI runners: install the binary, run the script, exit with its status code.
 

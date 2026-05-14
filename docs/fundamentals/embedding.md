@@ -1,5 +1,5 @@
 ---
-title: "Embedding Libkite"
+title: "Embed libkite"
 description: "Using libkite as a library to add Starlark scripting to your Go application"
 weight: 7
 ---
@@ -342,7 +342,7 @@ if !ok {
 
 ### Common pattern: Go host, Starlark tools
 
-This layering pairs well with agent loops. The Go host owns the LLM client and tool-schema JSON; libkite runs the body of each tool the model calls:
+This layering fits agent loops. The Go host owns the LLM client and tool-schema JSON; libkite runs the body of each tool the model calls:
 
 ```go
 // 1. Register tool bodies

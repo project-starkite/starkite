@@ -1,10 +1,10 @@
 ---
-title: "Controllers"
+title: "Write a Kubernetes controller"
 description: "Writing Kubernetes controllers in starkite"
 weight: 20
 ---
 
-# Controllers
+# Write a Kubernetes controller
 
 `k8s.control()` exposes controller-runtime patterns — reconcile loops, owner references, leader election, status subresources, owned-resource watches — as a Starlark API. A starkite controller is a `.star` script with reconciler functions for `on_create`, `on_update`, `on_delete`, and optionally `reconcile`.
 

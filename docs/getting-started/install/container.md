@@ -1,5 +1,5 @@
 ---
-title: "Container Distribution"
+title: "Install via container"
 description: "Running starkite as a container image"
 weight: 9
 ---

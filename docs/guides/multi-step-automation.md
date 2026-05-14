@@ -1,10 +1,10 @@
 ---
-title: "Multi-step automation"
+title: "Compose multi-step automation"
 description: "Composing scripts with load(), retry, and concurrency"
 weight: 30
 ---
 
-# Multi-step automation
+# Compose multi-step automation
 
 Larger workflows compose across files and across modules. The primitives:
 

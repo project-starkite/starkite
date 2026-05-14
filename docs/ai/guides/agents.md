@@ -1,5 +1,5 @@
 ---
-title: "Building Agents"
+title: "Build agents"
 description: "Compose ai.chat() with libkite modules to build multi-turn agents"
 weight: 7
 edition: ai
@@ -10,7 +10,7 @@ edition: ai
 
 Starkite-AI does **not** ship a packaged REPL or a blocking `agent.run()` facade. Instead, scripts build agents by composing [`ai.chat()`](../../references/api/ai.md#aichatkwargs) + [`ai.run_until()`](../../references/api/ai.md#airun_untilchat-initial-kwargs) with the existing libkite modules for UI, I/O, and side effects (`io.prompt`, `fs`, `http`, `k8s`, `ssh`, …). This keeps the `ai` module small and gives scripts full control over the UX.
 
-This guide documents four patterns. Each comes with a complete runnable example in [`ai/examples/agent/`](https://github.com/project-starkite/starkite/tree/main/ai/examples/agent).
+Four patterns, each with a runnable example in [`ai/examples/agent/`](https://github.com/project-starkite/starkite/tree/main/ai/examples/agent):
 
 ---
 
@@ -64,7 +64,7 @@ Full example: [`ai/examples/agent/autonomous_fix.star`](https://github.com/proje
 
 **When to use:** interactive assistants, CLI tools where the user asks questions turn by turn. The agent reads a line, replies, reads the next line, and so on.
 
-**Primitive:** a plain Starlark `for` loop with `io.prompt()` for input and `chat.send()` for each turn. Ther's no built-in REPL helper — you compose one yourself with exactly the UX you want.
+**Primitive:** a plain Starlark `for` loop with `io.prompt()` for input and `chat.send()` for each turn. No built-in REPL helper exists; compose one with the UX you need.
 
 ```python
 def read_file(path):

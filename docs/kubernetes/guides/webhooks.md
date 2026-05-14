@@ -1,5 +1,5 @@
 ---
-title: "Admission Webhooks"
+title: "Write an admission webhook"
 description: "Building Kubernetes admission webhooks with starkite"
 weight: 8
 ---

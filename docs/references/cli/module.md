@@ -4,7 +4,7 @@ description: "Manage external starkite modules"
 weight: 24
 ---
 
-Manage external starkite modules. Modules extend starkite with additional functionality and come in two types:
+Manage external starkite modules. Modules come in two types:
 
 - **starlark** — script modules installed from git repositories
 - **wasm** — WebAssembly modules installed from local paths or git

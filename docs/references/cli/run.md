@@ -16,7 +16,7 @@ kite <script.star>          # shorthand (run is implicit)
 
 ## Variable Injection
 
-Variables can be injected with the following priority (highest to lowest):
+Priority order, highest first:
 
 1. **CLI flags:** `--var key=value`
 2. **Variable files:** `--var-file=values.yaml`

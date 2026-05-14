@@ -12,7 +12,7 @@ Start an interactive Starlark REPL (Read-Eval-Print Loop) with all starkite modu
 kite repl
 ```
 
-All built-in modules are available. Useful for exploring APIs and quick prototyping.
+All built-in modules are pre-loaded. Use the REPL to explore module APIs interactively.
 
 ## Example Session
 

@@ -4,7 +4,7 @@ description: "Validate script syntax without executing"
 weight: 22
 ---
 
-Validate one or more starkite scripts for syntax errors without executing them. Useful for CI/CD pipelines, pre-commit hooks, and editor integration.
+Validate one or more starkite scripts for syntax errors without executing them. Common contexts: CI/CD pipelines, pre-commit hooks, editor integration.
 
 ## Usage
 

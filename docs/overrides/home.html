@@ -95,6 +95,7 @@
       <div class="tx-hero__content">
         <img src="assets/images/starkite-logo.svg" alt="Starkite" style="max-height: 300px; margin: 0.3rem;">
         <h3><strong>Secure Runtime for Cloud-Native and Agentic AI Automation with Starlark</strong></h3>
+        <p style="font-size: 0.85rem; opacity: 0.85; margin: 0.2rem 0 1rem;">Starkite — pronounced <em>"star-kite"</em></p>
 
         <a href="getting-started/" class="md-button">
           Get Started
@@ -412,10 +413,10 @@
 </style>
 
 <h2>Starkite examples</h2>
-<p>Starkite can help automate local tasks,  
-  work with Kubernetes workloads, 
-  build agentic AI workflows,
-  and create HTTP/SSH clients and servers.</p>
+<p>Starkite automates local tasks,
+  drives Kubernetes workloads,
+  builds agentic AI workflows,
+  and runs HTTP/SSH clients and servers.</p>
 <section class="examples-section">
   <div class="example-tabs">
     <input type="radio" id="ex-core" name="ex" checked>
@@ -496,7 +497,7 @@ print("web is live")
 
 def get_weather(city):
     """Return the current weather for a city."""
-    # Stub data — replace with a real weather API in production.
+    # Stub data — replace with a real weather API.
     forecasts = {
         "san francisco": {"temp_f": 64, "conditions": "foggy"},
         "tokyo":         {"temp_f": 78, "conditions": "sunny"},
@@ -567,7 +568,7 @@ http.serve(
     </div>
 
     <div class="example-pane" data-for="ex-tests">
-      <h3>Built-in test runner with assertions</h3>
+      <h3>Run tests with built-in assertions</h3>
       <div class="terminal">
         <div class="terminal__bar">
           <span class="terminal__dot terminal__dot--red"></span>
@@ -636,7 +637,7 @@ def test_list_length():
   <div class="run-grid">
     <div class="run-card">
       <h4>1. Run via the <code>kite</code> CLI</h4>
-      <p>Pass any <code>.star</code> file to <code>kite run</code> (or use the implicit shorthand). Best for ad-hoc invocation, CI pipelines, and passing variables.</p>
+      <p>Pass any <code>.star</code> file to <code>kite run</code> (or use the implicit shorthand). Use for ad-hoc invocation, CI pipelines, and variable passing.</p>
       <div class="terminal">
         <div class="terminal__bar">
           <span class="terminal__dot terminal__dot--red"></span>

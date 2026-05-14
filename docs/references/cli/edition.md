@@ -6,7 +6,7 @@ weight: 23
 
 Manage installed starkite editions. Editions add feature sets on top of the base `kitecmd` binary — `cloud` adds Kubernetes support, `ai` adds LLM/MCP modules.
 
-If you installed `kitecmd` (the lean base edition) and later want Kubernetes or LLM functionality without reinstalling, the `edition` subcommand fetches the corresponding edition binary and lets `kitecmd` delegate to it transparently. Users who installed the all-in-one `kite` binary don't need this — it already contains every edition's modules.
+The `edition` subcommand adds Kubernetes or LLM functionality to a `kitecmd` install without reinstalling — it fetches the matching edition binary on demand and lets `kitecmd` delegate to it transparently. Not needed for the all-in-one `kite` binary, which already bundles every edition's modules.
 
 ## Subcommands
 
