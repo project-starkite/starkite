@@ -65,7 +65,7 @@ distroless image:
 docker run --rm ghcr.io/project-starkite/kite:latest exec 'print(hostname())'
 ```
 
-See [Container Distribution](docs/guides/container-distribution.md) for
+See [Container install](docs/getting-started/install/container.md) for
 multi-arch details, signature verification, and Kubernetes usage.
 
 ## Quick Start
@@ -110,7 +110,7 @@ kite module install <repo>            # Install a module
 kite update                           # Self-update
 ```
 
-See the [CLI reference](https://starkite.dev/cli/) for all commands and flags.
+See the [CLI reference](https://starkite.dev/references/cli/) for all commands and flags.
 
 ## Modules
 
@@ -152,7 +152,7 @@ yaml.source(data).write_file("output.yaml")
 | Cloud | `k8s` (in `kite` and `kitecloud`) |
 | AI | `ai`, `mcp` (in `kite` and `kiteai`) |
 
-See the [module reference](https://starkite.dev/modules/) for full API documentation.
+See the [API reference](https://starkite.dev/references/api/) for full module documentation.
 
 ## Permission Sandbox
 
@@ -184,7 +184,7 @@ permissions:
     - "ssh.*"
 ```
 
-Deny rules take precedence over allow rules. Modules enforce permissions internally — a sandboxed script that calls `fs.write_file()` without a matching allow rule gets a permission error. See the [permissions guide](https://starkite.dev/guides/permissions/) for details.
+Deny rules take precedence over allow rules. Modules enforce permissions internally — a sandboxed script that calls `fs.write_file()` without a matching allow rule gets a permission error. See the [permissions reference](https://starkite.dev/fundamentals/security/permissions/) for details.
 
 ## Error Handling
 

@@ -6,7 +6,9 @@ weight: 1
 
 # Getting Started
 
-This page walks you from a fresh checkout to running your first script in under five minutes.
+Starkite (pronounced *"star-kite"*) is a secure runtime for cloud-native and agentic-AI automation. Scripts are written in [Starlark](what-is-starlark.md) — a deterministic, Python-derived language — and run inside a single binary that ships its own batteries: a module library, a permission engine, and an optional gVisor sandbox.
+
+This page walks you from a fresh install to running your first script in under five minutes.
 
 ## Editions
 
@@ -19,61 +21,17 @@ Starkite ships as four independent binaries that share the same script language 
 | `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
 | `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
 
-A single host can install one, two, or all four. Each is a stand-alone binary. `kite` is a strict superset of `kitecmd`/`kitecloud`/`kiteai`, so most examples on this site work with any edition that includes the modules they touch.
+A single host can install one, two, or all four. Each is a stand-alone binary. `kite` is a strict superset of `kitecmd`/`kitecloud`/`kiteai`. See [Editions](../fundamentals/editions.md) for the deeper picture.
 
 ## Install
 
-### From source (recommended during development)
+See [Install (native)](install/native.md) for source builds and pre-built releases, or [Install (container)](install/container.md) to pull `ghcr.io/project-starkite/kite`.
 
-The repository is a Go workspace with one module per edition. Build the editions you need — local builds land in `./bin/`:
-
-```bash
-git clone https://github.com/project-starkite/starkite.git
-cd starkite
-
-make build              # all four binaries → ./bin/
-# or:
-make build-all          # ./bin/kite       (all-in-one)
-make build-base         # ./bin/kitecmd   (base only)
-make build-cloud        # ./bin/kitecloud  (base + k8s)
-make build-ai           # ./bin/kiteai     (base + LLM/MCP)
-```
-
-Move the binary onto your `PATH`:
-
-```bash
-sudo install -m 0755 ./bin/kite /usr/local/bin/kite
-```
-
-### From GitHub Releases
-
-Download a pre-built binary for your platform from [GitHub Releases](https://github.com/project-starkite/starkite/releases).
-
-Release assets follow the `<binary>-<os>-<arch>` pattern:
-
-- `kite-linux-amd64`, `kite-linux-arm64`, `kite-darwin-amd64`, `kite-darwin-arm64`, `kite-windows-amd64.exe`
-- `kitecmd-*`, `kitecloud-*`, `kiteai-*` (same OS/arch matrix)
-
-Rename the downloaded file to `kite` (or `kitecmd` / `kitecloud` / `kiteai`), make it executable, and place it on your `PATH`.
-
-## Verify the install
+After install, verify:
 
 ```bash
 kite version
 ```
-
-Expected output (your commit and Go version will differ):
-
-```
-kite version v0.1.0 (all)
-  edition: all
-  commit:  <git-sha>
-  built:   <timestamp>
-  go:      go1.26.1
-  os/arch: darwin/arm64
-```
-
-`kitecmd version` reports `(base)`, `kitecloud version` reports `(cloud)`, `kiteai version` reports `(ai)`.
 
 ## Your first script
 
@@ -131,7 +89,7 @@ By default `kite` runs in **trust mode** — scripts can do anything the user ca
 kite hello.star --permissions=strict   # fails: no rules → every op is denied
 ```
 
-`--permissions` is most useful with a profile or a frontmatter block in the script that declares the rules the script needs. See [Permissions](../guides/permissions.md) for the rule syntax and the built-in profiles.
+`--permissions` is most useful with a profile or a frontmatter block in the script that declares the rules the script needs. See [Permissions](../fundamentals/security/permissions.md) for the rule syntax and the built-in profiles.
 
 ## Run inside a sandbox (Linux)
 
@@ -148,13 +106,13 @@ For shebang scripts, set `STARKITE_SECURITY_SANDBOX` instead:
 STARKITE_SECURITY_SANDBOX=strict ./hello.star
 ```
 
-The sandbox is Linux-only and composes with `--permissions` for defense in depth. See [Sandbox](../guides/sandbox.md).
+The sandbox is Linux-only and composes with `--permissions` for defense in depth. See [Sandbox](../fundamentals/security/sandbox.md).
 
 ## What's next
 
-- [CLI Reference](../cli/index.md) — all available subcommands and flags
-- [Module Reference](../modules/index.md) — the full builtin module catalog
-- [Variables](../guides/variables.md) — `--var`, `--var-file`, and the `var_*` builtins
-- [Error Handling](../guides/error-handling.md) — the `try_` pattern
-- [Permissions](../guides/permissions.md) — permission rules and profiles
-- [Sandbox](../guides/sandbox.md) — OS-level isolation with gVisor (Linux)
+- [What is Starlark?](what-is-starlark.md) — the language behind starkite scripts
+- [CLI Reference](../references/cli/index.md) — all available subcommands and flags
+- [API Reference](../references/api/index.md) — the full builtin module catalog
+- [Language](../fundamentals/language.md) — variables and the `try_` pattern
+- [Permissions](../fundamentals/security/permissions.md) — rules, profiles, and the security model
+- [Sandbox](../fundamentals/security/sandbox.md) — OS-level isolation with gVisor (Linux)

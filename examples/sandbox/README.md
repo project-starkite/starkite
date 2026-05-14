@@ -19,5 +19,5 @@ Or via env var, useful for shebang scripts:
 STARKITE_SECURITY_SANDBOX=default ./default-http-fetch.star
 ```
 
-The sandbox is Linux-only. See `docs/guides/sandbox.md` for setup
+The sandbox is Linux-only. See `docs/fundamentals/security/sandbox.md` for setup
 on Ubuntu 24.04+.

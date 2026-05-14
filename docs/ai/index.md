@@ -4,7 +4,7 @@ description: "kiteai binary: LLM client, MCP, and agent primitives"
 weight: 6
 ---
 
-The AI edition of starkite adds the [`ai`](../modules/ai.md) module (multi-provider LLM client) and the [`mcp`](../modules/mcp.md) module (Model Context Protocol server + client) to the base edition. Every base module remains available. It ships as the standalone `kiteai` binary, and is also bundled into the all-in-one `kite` binary.
+The AI edition of starkite adds the [`ai`](../references/api/ai.md) module (multi-provider LLM client) and the [`mcp`](../references/api/mcp.md) module (Model Context Protocol server + client) to the base edition. Every base module remains available. It ships as the standalone `kiteai` binary, and is also bundled into the all-in-one `kite` binary.
 
 ## Installation
 
@@ -78,10 +78,10 @@ resp = ai.generate("...")  # uses the default
 
 | Module | Purpose | Reference |
 |--------|---------|-----------|
-| `ai` | Multi-provider LLM client (generate, chat, tools, agents) | [ai module reference](../modules/ai.md) |
-| `mcp` | MCP server (expose Starlark tools over stdio or HTTP) + client (call remote MCP servers) | [mcp module reference](../modules/mcp.md) |
+| `ai` | Multi-provider LLM client (generate, chat, tools, agents) | [ai module reference](../references/api/ai.md) |
+| `mcp` | MCP server (expose Starlark tools over stdio or HTTP) + client (call remote MCP servers) | [mcp module reference](../references/api/mcp.md) |
 
-All 27 modules from the base edition (`os`, `fs`, `http`, `ssh`, `json`, `yaml`, `concur`, etc.) remain available. Agents typically compose `ai.chat()` with these for tool implementations — see the [agents guide](agents.md).
+All 27 modules from the base edition (`os`, `fs`, `http`, `ssh`, `json`, `yaml`, `concur`, etc.) remain available. Agents typically compose `ai.chat()` with these for tool implementations — see the [agents guide](guides/agents.md).
 
 ## Editions Management
 
@@ -96,7 +96,7 @@ When ai is active, `kitecmd` transparently execs into `kiteai` for every command
 
 ## Next Steps
 
-- [AI module reference](../modules/ai.md) — full `ai.generate()` / `ai.chat()` / `ai.tool()` / `ai.run_until()` signatures
-- [MCP module reference](../modules/mcp.md) — `mcp.serve()` and `mcp.connect()` with stdio, HTTP, and TLS
-- [Building Agents](agents.md) — four composition patterns for multi-turn agents
-- [Embedding Libkite](embedding.md#calling-starlark-functions-from-go) — drive agents from Go, with Starlark providing tool bodies
+- [AI module reference](../references/api/ai.md) — full `ai.generate()` / `ai.chat()` / `ai.tool()` / `ai.run_until()` signatures
+- [MCP module reference](../references/api/mcp.md) — `mcp.serve()` and `mcp.connect()` with stdio, HTTP, and TLS
+- [Building Agents](guides/agents.md) — four composition patterns for multi-turn agents
+- [Embedding Libkite](../fundamentals/embedding.md#calling-starlark-functions-from-go) — drive agents from Go, with Starlark providing tool bodies

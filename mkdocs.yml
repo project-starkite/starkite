@@ -5,6 +5,7 @@ site_url: https://starkite.dev/
 
 repo_name: project-starkite/starkite
 repo_url: https://github.com/project-starkite/starkite
+edit_uri: edit/main/docs/
 
 theme:
   name: material
@@ -23,6 +24,7 @@ theme:
     - search.share
     - content.code.copy
     - content.tabs.link
+    - content.action.edit
   font:
     text: Inter
     code: Fira Code
@@ -55,53 +57,87 @@ extra_css:
   - assets/stylesheets/extra.css
 
 nav:
-  - Getting Started: getting-started/index.md
-  - CLI:
-    - Overview: cli/index.md
-    - run: cli/run.md
-    - exec: cli/exec.md
-    - test: cli/test.md
-    - init: cli/init.md
-    - repl: cli/repl.md
-    - watch: cli/watch.md
-  - Modules:
-    - Overview: modules/index.md
-    - os: modules/os.md
-    - fs: modules/fs.md
-    - http: modules/http.md
-    - ssh: modules/ssh.md
-    - json: modules/json.md
-    - yaml: modules/yaml.md
-    - csv: modules/csv.md
-    - gzip: modules/gzip.md
-    - zip: modules/zip.md
-    - base64: modules/base64.md
-    - hash: modules/hash.md
-    - strings: modules/strings.md
-    - regexp: modules/regexp.md
-    - template: modules/template.md
-    - time: modules/time.md
-    - uuid: modules/uuid.md
-    - fmt: modules/fmt.md
-    - log: modules/log.md
-    - table: modules/table.md
-    - concur: modules/concur.md
-    - retry: modules/retry.md
-    - io: modules/io.md
-    - vars: modules/vars.md
-    - runtime: modules/runtime.md
-    - inventory: modules/inventory.md
-    - test: modules/test.md
-    - k8s: modules/k8s.md
+  - Home: index.md
+  - Getting Started:
+      - Overview: getting-started/index.md
+      - What is Starlark?: getting-started/what-is-starlark.md
+      - Install:
+          - Native: getting-started/install/native.md
+          - Container: getting-started/install/container.md
+  - Fundamentals:
+      - Overview: fundamentals/index.md
+      - Editions: fundamentals/editions.md
+      - Security:
+          - Overview: fundamentals/security/index.md
+          - Permissions: fundamentals/security/permissions.md
+          - Sandbox: fundamentals/security/sandbox.md
+      - Language: fundamentals/language.md
+      - Modules: fundamentals/modules.md
+      - Embedding: fundamentals/embedding.md
   - Guides:
-    - Overview: guides/index.md
-    - Variables: guides/variables.md
-    - Error Handling: guides/error-handling.md
-    - Permissions: guides/permissions.md
-    - WASM Plugins: guides/wasm-plugins.md
-    - Cloud Edition: guides/cloud-edition.md
-    - Admission Webhooks: guides/webhooks.md
-    - Embedding Starbase: guides/embedding.md
+      - Overview: guides/index.md
+      - CI integration: guides/ci-integration.md
+      - Authoring permission profiles: guides/authoring-permission-profiles.md
+      - Multi-step automation: guides/multi-step-automation.md
+  - References:
+      - Overview: references/index.md
+      - CLI:
+          - Overview: references/cli/index.md
+          - run: references/cli/run.md
+          - exec: references/cli/exec.md
+          - test: references/cli/test.md
+          - repl: references/cli/repl.md
+          - watch: references/cli/watch.md
+          - validate: references/cli/validate.md
+          - init: references/cli/init.md
+          - version: references/cli/version.md
+          - edition: references/cli/edition.md
+          - module: references/cli/module.md
+          - update: references/cli/update.md
+          - kube: references/cli/kube.md
+      - API:
+          - Overview: references/api/index.md
+          - os: references/api/os.md
+          - fs: references/api/fs.md
+          - http: references/api/http.md
+          - ssh: references/api/ssh.md
+          - json: references/api/json.md
+          - yaml: references/api/yaml.md
+          - csv: references/api/csv.md
+          - gzip: references/api/gzip.md
+          - zip: references/api/zip.md
+          - base64: references/api/base64.md
+          - hash: references/api/hash.md
+          - strings: references/api/strings.md
+          - regexp: references/api/regexp.md
+          - template: references/api/template.md
+          - time: references/api/time.md
+          - uuid: references/api/uuid.md
+          - fmt: references/api/fmt.md
+          - log: references/api/log.md
+          - table: references/api/table.md
+          - concur: references/api/concur.md
+          - retry: references/api/retry.md
+          - io: references/api/io.md
+          - vars: references/api/vars.md
+          - runtime: references/api/runtime.md
+          - inventory: references/api/inventory.md
+          - test: references/api/test.md
+          - k8s: references/api/k8s.md
+          - ai: references/api/ai.md
+          - mcp: references/api/mcp.md
+  - Kubernetes:
+      - Overview: kubernetes/index.md
+      - Guides:
+          - Webhooks: kubernetes/guides/webhooks.md
+          - Controllers: kubernetes/guides/controllers.md
+      - Examples: kubernetes/examples.md
+  - AI:
+      - Overview: ai/index.md
+      - Guides:
+          - Agents: ai/guides/agents.md
+          - MCP: ai/guides/mcp.md
+      - Examples: ai/examples.md
   - Examples: examples/index.md
 
 extra:

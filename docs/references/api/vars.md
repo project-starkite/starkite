@@ -62,7 +62,7 @@ for k, v in labels.items():
 
 Variables can also come from a YAML file (`--var-file=values.yaml`),
 the user config (`~/.starkite/config.yaml`), or environment variables
-(`STARKITE_VAR_<name>=value`). See [Variables](../guides/variables.md)
+(`STARKITE_VAR_<name>=value`). See [Variables](../../fundamentals/language.md)
 for the full priority order.
 
 ### Listing variables

@@ -87,4 +87,4 @@ The `Result` type has three attributes:
 | `value` | `any` | The return value on success |
 | `error` | `string` | The error message on failure |
 
-This pattern applies uniformly to all modules — module-level functions, factory functions, and object methods all support `try_` variants. See the [Error Handling guide](../guides/error-handling.md) for more details.
+This pattern applies uniformly to all modules — module-level functions, factory functions, and object methods all support `try_` variants. See the [Error Handling guide](../../fundamentals/language.md) for more details.

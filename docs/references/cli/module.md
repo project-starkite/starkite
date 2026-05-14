@@ -117,4 +117,4 @@ kite module info helm
 
 ## Related
 
-- [WASM plugins guide](../guides/wasm-plugins.md) — how to author WASM modules
+- [WASM plugins guide](../../fundamentals/modules.md) — how to author WASM modules
