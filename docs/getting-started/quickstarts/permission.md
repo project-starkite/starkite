@@ -6,7 +6,9 @@ weight: 6
 
 # Run with restricted permissions
 
-By default `kite` runs in **trust mode** — scripts can do anything the host user can do. The `--permissions=<profile>` flag flips the default to deny-all and requires explicit allow rules.
+By default `kite` runs in **trust mode** — a script can perform any operation the host user can perform. For scripts that haven't been audited locally, the `--permissions=<profile>` flag activates the permission engine: every privileged module call (filesystem write, network connect, command exec, Kubernetes apply, LLM generate) is matched against a rule set before it runs. Operations not explicitly allowed are denied.
+
+Three built-in profiles cover the common cases. Custom profiles — authored in `~/.starkite/security.yaml`, a file path, or passed inline on the command line — cover everything else.
 
 ## With a built-in profile
 
@@ -63,5 +65,5 @@ The CLI flag wins over frontmatter when both are present.
 
 ## See also
 
-- [Permissions](../../fundamentals/security/permissions.md) — full rule grammar, every category, $CWD/$HOME expansion, all four resolution paths
+- [Permissions](../../concepts/permission.md) — full rule grammar, every category, $CWD/$HOME expansion, all four resolution paths
 - [Authoring permission profiles](../../guides/authoring-permission-profiles.md) — designing a `security.yaml` for a team

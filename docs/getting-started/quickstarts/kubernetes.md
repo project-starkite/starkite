@@ -6,7 +6,9 @@ weight: 9
 
 # Deploy to Kubernetes
 
-Two halves: scripting Kubernetes operations from a starkite script (`k8s` module — cloud edition), and running starkite scripts inside a Kubernetes Job from the published image.
+Starkite has two ways to interact with Kubernetes. The `k8s` module — available in the `kitecloud` and `kite` editions — exposes the full Kubernetes API as a three-tier surface: CRUD primitives (`get`, `list`, `apply`, `delete`), kubectl-equivalent shortcuts (`deploy`, `scale`, `rollout`, `autoscale`), and typed object constructors for building manifests in code. Deploys, scales, rollouts, and watches happen from a `.star` script with no shelling out to `kubectl`.
+
+The starkite container image also runs inside a Kubernetes pod as a one-shot Job for triggered automation — backup jobs, periodic reports, controller bootstrap, anything where a single script execution closes the work. The two halves are independent: a script can use the `k8s` module without running inside Kubernetes (it uses the local kubeconfig), or run inside a Job without using the `k8s` module (any starkite script works).
 
 ## Script Kubernetes from starkite
 

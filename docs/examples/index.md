@@ -15,7 +15,7 @@ weight: 50
 
 ## Sandbox Examples
 
-OS-level isolation with `--sandbox` (Linux only). See the [Sandbox guide](../fundamentals/security/sandbox.md).
+OS-level isolation with `--sandbox` (Linux only). See the [Sandbox guide](../concepts/sandbox.md).
 
 | Example | Description |
 |---------|-------------|

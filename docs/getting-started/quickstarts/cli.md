@@ -6,7 +6,9 @@ weight: 5
 
 # Use the kite CLI
 
-Every command below runs against [`examples/core/hello.star`](https://github.com/project-starkite/starkite/blob/main/examples/core/hello.star) and is verified by [`examples/core/cli-quickstart-verify.sh`](https://github.com/project-starkite/starkite/blob/main/examples/core/cli-quickstart-verify.sh) — re-run the script after any CLI change to confirm the docs still match.
+The `kite` binary exposes its functionality through subcommands. The most common is `run <script>` to execute a `.star` file, but kite also offers a one-line evaluator (`exec`), an interactive REPL (`repl`), a test runner (`test`), a syntax validator (`validate`), and a file-watch loop (`watch`). When the first positional argument resolves to a script path, the `run` subcommand is implicit — so the most frequent case shortens to `kite <script>`.
+
+The commands here each invoke against [`examples/core/hello.star`](https://github.com/project-starkite/starkite/blob/main/examples/core/hello.star) to show the typical shape.
 
 ## kite version
 
@@ -20,12 +22,12 @@ v0.1.0
 ```bash
 $ kite run examples/core/hello.star
 Hello from starkite!
-Hostname: vladimirs-mbp.lan
-User:     vladimirvivien
-Cwd:      /Users/vladimirvivien/DEV/starkite
-Kernel:   Darwin
-Time:     2026-05-15T08:52:25-04:00
-Home:     /Users/vladimirvivien
+Hostname: dev-host.local
+User:     alice
+Cwd:      /home/alice/projects/starkite
+Kernel:   Linux
+Time:     2026-01-15T10:00:00Z
+Home:     /home/alice
 ```
 
 ## kite &lt;script&gt; (shorthand)
@@ -70,7 +72,7 @@ Time:  15ms
 
 ## kite repl
 
-Interactive REPL with all built-in modules pre-loaded — no scripted output (TTY required). Quit with Ctrl-D.
+Interactive REPL with all built-in modules pre-loaded. Requires a TTY; exit with Ctrl-D.
 
 ```bash
 $ kite repl
@@ -80,7 +82,7 @@ $ kite repl
 
 ## kite watch &lt;script&gt;
 
-Re-run a script on every file change — no scripted output (long-running). Quit with Ctrl-C.
+Re-run a script on every file change. Stop with Ctrl-C.
 
 ```bash
 $ kite watch examples/core/hello.star

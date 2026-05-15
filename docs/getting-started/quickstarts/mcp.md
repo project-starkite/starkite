@@ -6,7 +6,9 @@ weight: 10
 
 # Build an MCP-backed agent
 
-Open an [MCP](https://modelcontextprotocol.io) session with `mcp.connect()`, wrap each remote tool in a small Starlark function, and pass those functions to `ai.chat(tools=...)`. The agent treats them as native tools.
+[MCP (Model Context Protocol)](https://modelcontextprotocol.io) is an open protocol that lets LLM clients call tools hosted by external servers — filesystem access, database queries, SaaS-API integration, and so on. The MCP ecosystem ships ready-made servers for many common surfaces, so an agent that needs those tools doesn't reimplement them.
+
+Starkite's `mcp` module connects to an MCP server (`mcp.connect`) over stdio or HTTP and exposes each remote tool as a regular Starlark callable. Those callables hand directly to `ai.chat(tools=...)`, where the agent sees them alongside any native Starlark tools and calls them by name. The pattern: open the session, wrap each tool in a small Starlark function (the docstring becomes the tool description, and the wrapper is the natural place for argument coercion or validation), run the agent, close the session. Requires the AI edition (`kiteai` or `kite`).
 
 **Source:** [`ai/examples/agent/mcp_integration.star`](https://github.com/project-starkite/starkite/blob/main/ai/examples/agent/mcp_integration.star)
 

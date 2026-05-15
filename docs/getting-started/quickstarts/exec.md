@@ -6,7 +6,9 @@ weight: 3
 
 # Execute local commands
 
-`os.exec(cmd)` runs a shell command and returns stdout as a string. `os.try_exec(cmd)` returns a `Result` instead of raising — use it when the command may legitimately fail.
+Shelling out to other tools is a first-class operation in starkite. The script is the orchestrator: starkite scripts commonly compose `kubectl`, `helm`, `git`, `make`, and other CLIs by wrapping them in `os.exec` calls and parsing the output.
+
+The contract has two variants. `os.exec(cmd)` runs a command through `/bin/sh -c`, captures stdout, and returns it as a string — raising on non-zero exit (halt-on-failure). `os.try_exec(cmd)` returns a `Result` with `.ok`, `.stdout`, `.stderr`, and `.exit_code` instead of raising (capture-and-decide). Both pass `cmd` through the shell, so pipes, redirection, and shell globbing work as written.
 
 **Source:** [`examples/core/sysinfo.star`](https://github.com/project-starkite/starkite/blob/main/examples/core/sysinfo.star) (excerpted)
 
@@ -53,11 +55,11 @@ System Information Report
 ============================================================
 
 [Host]
-  Hostname:  vladimirs-mbp.lan
-  Directory: /Users/vladimirvivien/DEV/starkite
+  Hostname:  dev-host.local
+  Directory: /home/alice/projects/starkite
 
 [Operating System]
-  Darwin vladimirs-mbp.lan 22.6.0 Darwin Kernel Version 22.6.0: ...
+  Linux dev-host.local 6.5.0-generic #1 SMP ...
 
 [Disk /]
   Total:     466Gi
@@ -68,10 +70,10 @@ System Information Report
 ## What's happening
 
 - `os.exec(cmd)` raises on non-zero exit. Use it when failure should halt the script.
-- `os.try_exec(cmd)` returns a `Result` with `.ok`, `.stdout`, `.stderr`, `.exit_code`. Use it for commands that may fail without halting (the disk check above).
+- `os.try_exec(cmd)` returns a `Result` with `.ok`, `.stdout`, `.stderr`, `.exit_code` instead of halting on non-zero exit.
 - `cmd.strip()` removes the trailing newline `os.exec` carries from the underlying shell command.
 
 ## See also
 
 - [`os` reference](../../references/api/os.md) — `exec`, `try_exec`, `env`, `setenv`, `which`
-- [Language: error handling](../../fundamentals/language.md#error-handling) — the `try_` pattern and `Result` type
+- [Language: error handling](../../concepts/language.md#error-handling) — the `try_` pattern and `Result` type

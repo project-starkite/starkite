@@ -54,7 +54,7 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--dry-run` | Preview commands without executing | `false` |
 | `--timeout seconds` | Script execution timeout | `300` |
 | `--permissions profile` | Permission profile (e.g. `strict`); empty = trust mode | `""` |
-| `--sandbox[=profile]` | OS-level sandbox profile (Linux only). Bare `--sandbox` selects `default`; see [Sandbox guide](../../fundamentals/security/sandbox.md). | `""` |
+| `--sandbox[=profile]` | OS-level sandbox profile (Linux only). Bare `--sandbox` selects `default`; see [Sandbox guide](../../concepts/sandbox.md). | `""` |
 
 ## Environment Variables
 

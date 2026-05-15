@@ -1,10 +1,12 @@
 ---
 title: "Language"
-description: "Variable injection and error handling patterns"
-weight: 30
+description: "Starkite language features — variable injection and the try_ error pattern"
+weight: 40
 ---
 
-Starkite scripts are Starlark — a deterministic, Python-derived language — extended with two core conventions that show up across every module: a layered variable-injection system, and the `try_` prefix for error handling.
+# Language
+
+Starkite scripts are Starlark — a deterministic, Python-derived language — extended with two conventions that show up across every module: a layered variable-injection system, and the `try_` prefix for error handling. This page covers both. For Starlark's syntax and semantics, see the upstream [Starlark spec](https://github.com/bazelbuild/starlark/blob/master/spec.md).
 
 ## Variable Injection
 
@@ -30,9 +32,21 @@ Starkite resolves variables from five sources, highest priority first:
 
 ### Config File Format
 
-```yaml
-# ~/.starkite/config.yaml or ./config.yaml
+`~/.starkite/config.yaml` (and `./config.yaml` in the working directory) holds defaults for the starkite runtime. Four top-level keys are **reserved** — parsed specially and **not** accessible via `var_*`:
 
+| Reserved key | Purpose |
+|---|---|
+| `project` | Project metadata (name, version). Read by tooling; not user variables. |
+| `defaults` | Runtime defaults (log_level, timeout). Read by the runtime; not user variables. |
+| `providers` | Provider-specific defaults (`ssh`, etc.). Read by the relevant module at construction time; not user variables. |
+| `active_edition` | The active edition for `kite edition use`. |
+
+Every **other** top-level key becomes a user variable accessible via `var_*`. Nested maps flatten into dot-notation:
+
+```yaml
+# ~/.starkite/config.yaml
+
+# Reserved sections (not accessible via var_*)
 project:
   name: my-project
   version: 0.1.0
@@ -46,7 +60,7 @@ providers:
     user: deploy
     private_key_file: ~/.ssh/id_rsa
 
-# Top-level keys become variables
+# User variables (accessible via var_*)
 environment: dev
 replicas: 3
 labels:
@@ -57,21 +71,23 @@ labels:
 ### Access Patterns
 
 ```python
-# Simple variables
+# Top-level variables
 env = var_str("environment", "dev")
 count = var_int("replicas", 3)
 
-# Nested variables (dot notation)
-user = var_str("ssh.user", "deploy")
+# Nested user variables (dot notation flattens automatically)
+app = var_str("labels.app")               # "myapp"
+labels = var_dict("labels", {})           # {"app": "myapp", "team": "platform"}
 
-# Complex types
-labels = var_dict("labels", {"app": "default"})
+# Lists
 regions = var_list("regions", ["us-east-1"])
 
-# List all available variables
+# Enumerate every defined variable
 for name in var_names():
     print(name, "=", var_str(name))
 ```
+
+Reserved keys (`project.name`, `providers.ssh.user`, etc.) do not appear in `var_names()` and `var_str("providers.ssh.user")` returns the default. Provider config is read by the relevant module's factory (`ssh.config(...)`), not via `var_*`.
 
 ### Environment Variables
 

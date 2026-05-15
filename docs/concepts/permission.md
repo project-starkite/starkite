@@ -1,28 +1,26 @@
 ---
-title: "Permissions"
-description: "Allow/deny rules controlling what scripts can do"
-weight: 2
+title: "Permission"
+description: "Rule-based gating of privileged module calls — what scripts may invoke"
+weight: 20
 ---
 
-`--permissions` controls what gated operations a script may perform —
-filesystem access, command execution, network calls, Kubernetes
-operations, and other privileged actions. It works on every OS and runs
-in-process: no subprocess, no kernel features needed.
+# Permission
 
-For OS-level isolation (filesystem visibility, process containment),
-see the [Sandbox](sandbox.md) guide. The two compose.
+The permission engine intercepts every privileged module call (filesystem write, network connect, command exec, Kubernetes apply, LLM generate, …) and matches it against a rule set. It answers *which operations a script may invoke*. This page covers trust mode, built-in profiles, custom profiles, the rule grammar, and how the engine composes with the sandbox.
+
+The permission engine is pure Go: no kernel call, no namespace, no measurable overhead. Available on every platform that runs starkite.
+
+For OS-level isolation (filesystem visibility, process containment), see [Sandbox](sandbox.md). The two compose cleanly — pair both for any untrusted script.
 
 ## Trust mode (default)
 
-Without `--permissions`, scripts run in trust mode and may perform any
-operation:
+Without `--permissions`, scripts run in trust mode and may perform any operation:
 
 ```bash
 kite script.star
 ```
 
-Trust mode is the right default for scripts you wrote or audited
-yourself. For scripts you don't fully trust, pick a profile.
+Trust mode is appropriate for locally-written or audited scripts. Unaudited scripts run under an explicit profile.
 
 ## Quick start
 
@@ -32,7 +30,7 @@ kite script.star --permissions=deny-all    # block everything
 kite script.star --permissions=./team.yaml#deploy  # custom profile
 ```
 
-Or via per-script frontmatter (the script declares the rules it needs):
+Per-script frontmatter — the script declares the rules it needs:
 
 ```python
 #!/usr/bin/env kite
@@ -58,8 +56,7 @@ kite untrusted.star --permissions=deny-all
 
 ## Custom profiles
 
-Author your own profile YAML — by file path or by name in
-`~/.starkite/security.yaml`.
+Author a profile YAML — by file path or by name in `~/.starkite/security.yaml`.
 
 ### By file path
 
@@ -82,8 +79,7 @@ permissions:
 kite build.star --permissions=./team-deploy.yaml
 ```
 
-When the file holds exactly one profile, the `#name` fragment is
-optional. With multiple, select one explicitly:
+When the file holds exactly one profile, the `#name` fragment is optional. With multiple, select one explicitly:
 
 ```yaml
 # team.yaml
@@ -121,9 +117,7 @@ kite ci-task.star --permissions=ci
 
 ### Inline rules
 
-For one-off invocations, pass rules directly on the command line. The
-value must start with `allow:` or `deny:`. Multiple rules within one
-clause are comma-separated; clauses are separated by `;`:
+For one-off invocations, pass rules directly on the command line. The value must start with `allow:` or `deny:`. Multiple rules within one clause are comma-separated; clauses are separated by `;`:
 
 ```bash
 # Single clause: allow fs.read only
@@ -136,8 +130,7 @@ kite script.star --permissions='allow:fs.read,fs.write,os.exec'
 kite script.star --permissions='allow:fs.read($CWD/**),fs.write($CWD/**);deny:http.client'
 ```
 
-Inline rules use `default: deny` — anything not explicitly allowed is
-denied.
+Inline rules use `default: deny` — anything not explicitly allowed is denied.
 
 ## Rule grammar
 
@@ -147,8 +140,7 @@ A rule has the form:
 module.category[(functions:resource)]
 ```
 
-The functions list and resource are both optional. When both appear,
-they're separated by `:`.
+The functions list and resource are both optional. When both appear, they're separated by `:`.
 
 | Pattern | Matches |
 |---|---|
@@ -160,13 +152,11 @@ they're separated by `:`.
 | `fs.read(read_file,read_bytes:/etc/**)` | either function, resource matching glob |
 | `os.exec(make*)` | any function in `os.exec`, resource (the command string) starting with `make` |
 
-Deny rules are evaluated first; allow rules second; the profile's
-`default` resolves the unmatched case.
+Deny rules are evaluated first; allow rules second; the profile's `default` resolves the unmatched case.
 
 ### Path expansion
 
-`$CWD` and `$HOME` expand at startup using the process's working
-directory and the user's home:
+`$CWD` and `$HOME` expand at startup using the process's working directory and the user's home:
 
 ```yaml
 allow:
@@ -178,9 +168,7 @@ Resources without these prefixes are matched verbatim against globs.
 
 ### Function lists vs resources
 
-The contents inside parentheses are parsed as a function list only when
-they consist of bare identifiers separated by commas, followed by `:`.
-Otherwise they're treated as a resource pattern:
+The contents inside parentheses are parsed as a function list only when they consist of bare identifiers separated by commas, followed by `:`. Otherwise they're treated as a resource pattern:
 
 ```
 fs.read(/etc/**)              → resource: /etc/**
@@ -191,9 +179,7 @@ fs.read(/some,path:with-colon)→ resource: /some,path:with-colon  (no valid fun
 
 ## Modules and categories
 
-These categories go through the permission check. Anything not listed
-(string manipulation, data encoding, math, time, regexp, templates,
-etc.) is unchecked and always works.
+These categories go through the permission check. Anything not listed (string manipulation, data encoding, math, time, regexp, templates, etc.) is unchecked and always works.
 
 | Module | Categories | What's checked |
 |---|---|---|
@@ -208,17 +194,13 @@ etc.) is unchecked and always works.
 
 ## Composing with `--sandbox`
 
-`--permissions` and `--sandbox` are independent layers. Use them
-together for defense in depth:
+`--permissions` and `--sandbox` are independent, composable layers. Combined, they provide defense in depth:
 
 ```bash
 kite untrusted.star --sandbox=strict --permissions=strict
 ```
 
-`--permissions` blocks operations at the Starlark API level inside one
-process. `--sandbox` confines the OS view (filesystem, processes,
-network) at the kernel level via gVisor. A bypass in one is contained
-by the other. See [Sandbox](sandbox.md) for sandbox details.
+`--permissions` blocks operations at the Starlark API level inside one process. `--sandbox` confines the OS view (filesystem, processes, network) at the kernel level via gVisor. A bypass in one is contained by the other. See [Sandbox](sandbox.md).
 
 ## Permission errors
 
@@ -230,5 +212,4 @@ os.exec("echo hi")
 # Error: permission denied: os.exec.exec("echo hi") — no matching allow rule
 ```
 
-Error messages list the matched rule (for deny) or the available allow
-rules (when nothing matched).
+Error messages list the matched rule (for deny) or the available allow rules (when nothing matched).

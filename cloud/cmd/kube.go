@@ -195,12 +195,12 @@ func extractCRDYAML(resourceFile string) (string, error) {
 
 func writeDockerfile(filename string) error {
 	var b strings.Builder
-	b.WriteString("FROM ghcr.io/vladimirvivien/kite-cloud:latest\n")
+	b.WriteString("FROM ghcr.io/project-starkite/kite:latest\n")
 	b.WriteString(fmt.Sprintf("COPY %s /app/\n", genController))
 	if genResource != "" {
 		b.WriteString(fmt.Sprintf("COPY %s /app/\n", genResource))
 	}
-	b.WriteString(fmt.Sprintf("CMD [\"kite-cloud\", \"run\", \"/app/%s\"]\n", genController))
+	b.WriteString(fmt.Sprintf("CMD [\"kite\", \"run\", \"/app/%s\"]\n", genController))
 	return os.WriteFile(filename, []byte(b.String()), 0644)
 }
 
@@ -318,9 +318,9 @@ func runGenWebhookArtifacts(cmd *cobra.Command, args []string) error {
 	// Dockerfile
 	if whDockerfile != "" {
 		var b strings.Builder
-		b.WriteString("FROM ghcr.io/vladimirvivien/kite-cloud:latest\n")
+		b.WriteString("FROM ghcr.io/project-starkite/kite:latest\n")
 		b.WriteString(fmt.Sprintf("COPY %s /app/\n", whWebhook))
-		b.WriteString(fmt.Sprintf("CMD [\"kite-cloud\", \"run\", \"/app/%s\"]\n", whWebhook))
+		b.WriteString(fmt.Sprintf("CMD [\"kite\", \"run\", \"/app/%s\"]\n", whWebhook))
 		if err := os.WriteFile(whDockerfile, []byte(b.String()), 0644); err != nil {
 			return err
 		}

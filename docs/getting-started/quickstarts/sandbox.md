@@ -6,7 +6,9 @@ weight: 7
 
 # Run inside a sandbox
 
-The `--sandbox[=<profile>]` flag runs a script inside a [gVisor](https://gvisor.dev) user-space kernel. The script sees only the directories the profile mounts — no `$HOME`, no host credentials. Linux-only.
+OS-level isolation for untrusted scripts. The `--sandbox[=<profile>]` flag runs the script inside a [gVisor](https://gvisor.dev) user-space kernel — the script sees only the directories the profile mounts (no `$HOME`, no host credentials, no `/etc/passwd`), and its outbound network can be cut to loopback. The host filesystem outside the mounted paths is invisible from inside the sandbox, even under a runtime compromise.
+
+The sandbox composes cleanly with `--permissions` — independent layers, one at the kernel level via gVisor, the other at the Starlark API level inside the process. Linux-only.
 
 Two built-in profiles:
 
@@ -92,5 +94,5 @@ kite run untrusted.star --sandbox=strict --permissions=strict
 
 ## See also
 
-- [Sandbox](../../fundamentals/security/sandbox.md) — full profile schema, custom profiles, AppArmor setup on Ubuntu 24.04+
-- [Permissions](../../fundamentals/security/permissions.md) — the orthogonal layer
+- [Sandbox](../../concepts/sandbox.md) — full profile schema, custom profiles, AppArmor setup on Ubuntu 24.04+
+- [Permissions](../../concepts/permission.md) — the orthogonal layer

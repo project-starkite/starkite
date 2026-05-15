@@ -109,7 +109,7 @@ Shows detailed info: name, type, path, version, repository, entry point. For WAS
 kite module info helm
 # Name:        helm
 # Type:        starlark
-# Path:        /Users/you/.starkite/modules/helm
+# Path:        /home/alice/.starkite/modules/helm
 # Version:     v1.0.0
 # Repository:  github.com/user/kite-helm
 # Description: Helm chart operations for starkite
@@ -117,4 +117,4 @@ kite module info helm
 
 ## Related
 
-- [WASM plugins guide](../../fundamentals/modules.md) — how to author WASM modules
+- [Modules concept](../../concepts/modules.md) — auto-loading and `load()`

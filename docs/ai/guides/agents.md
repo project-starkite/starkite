@@ -187,7 +187,7 @@ Full example: [`ai/examples/agent/mcp_integration.star`](https://github.com/proj
 
 ## Go embedders
 
-If you're driving the LLM loop from Go rather than Starlark, the mirror of these patterns lives in the [embedding guide](../../fundamentals/embedding.md#calling-starlark-functions-from-go). The Go host owns the LLM client and tool schemas; libkite executes the bodies of tools via `Runtime.Call(ctx, name, args, kwargs)`. Same underlying story — different driver.
+If you're driving the LLM loop from Go rather than Starlark, the mirror of these patterns lives in the [embedding guide](../../references/embedding.md#calling-starlark-functions-from-go). The Go host owns the LLM client and tool schemas; libkite executes the bodies of tools via `Runtime.Call(ctx, name, args, kwargs)`. Same underlying story — different driver.
 
 ---
 
@@ -199,6 +199,6 @@ If you're driving the LLM loop from Go rather than Starlark, the mirror of these
 | User types questions, agent replies | [2 — REPL](#pattern-2--user-in-the-loop-repl) |
 | Conversation grows longer than context window | [3 — history management](#pattern-3--history-management-for-long-runs) |
 | Tools live in an existing MCP server | [4 — MCP integration](#pattern-4--mcp-integration) |
-| Go code orchestrates, Starlark provides tool bodies | [Embedding guide — Calling from Go](../../fundamentals/embedding.md#calling-starlark-functions-from-go) |
+| Go code orchestrates, Starlark provides tool bodies | [Embedding guide — Calling from Go](../../references/embedding.md#calling-starlark-functions-from-go) |
 
 The patterns compose. A production agent often combines Pattern 1 (autonomous loop) with Pattern 3 (summarization) and Pattern 4 (MCP tools) in a single script.

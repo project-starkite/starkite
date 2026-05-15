@@ -77,4 +77,4 @@ make build-cloud
 kitecmd edition use cloud
 ```
 
-If you already have the all-in-one `kite` binary, the cloud module is bundled in — no separate install needed. See [Editions](../fundamentals/editions.md) for the full edition model and switching commands.
+If you already have the all-in-one `kite` binary, the cloud module is bundled in — no separate install needed. See [Editions](../concepts/editions.md) for the full edition model and switching commands.

@@ -8,7 +8,7 @@ weight: 1
 
 Starkite exposes Go's standard library as type-safe, scriptable Starlark modules. All modules are **auto-loaded** in every `.star` script — no `import` statement, no `load()` call.
 
-For the auto-loading mechanism and the `try_` error pattern that every function supports, see [Modules](../../fundamentals/modules.md) and [Language](../../fundamentals/language.md).
+For the auto-loading mechanism and the `try_` error pattern that every function supports, see [Modules](../../concepts/modules.md) and [Language](../../concepts/language.md).
 
 ## Foundations
 

@@ -23,5 +23,5 @@ permissions:
 
 ## See also
 
-- [Permissions](../fundamentals/security/permissions.md) — full rule grammar and built-in profiles
+- [Permissions](../concepts/permission.md) — full rule grammar and built-in profiles
 - [CI integration](ci-integration.md) — wiring a profile into a CI job

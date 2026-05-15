@@ -6,7 +6,9 @@ weight: 4
 
 # Run commands across SSH hosts
 
-`ssh.config()` returns a client bound to a list of hosts. Calling `.exec(cmd)` on the client runs the command on every host and returns one `SSHResult` per host.
+Starkite's `ssh` module is designed for fleet operations — running the same command across a set of hosts and collecting per-host results. `ssh.config()` builds a client bound to a list of hosts with shared credentials. Every method on the client (`exec`, `upload`, `download`) fans out across the list and returns a per-host result array. Connection setup happens once when the client is created and is reused across calls.
+
+The pattern fits SRE workflows: check uptime across a web fleet, push config files to a node group in parallel, gather log snippets after an incident. Single-host invocations use the same API with a one-element host list.
 
 **Source:** [`examples/core/remote-check.star`](https://github.com/project-starkite/starkite/blob/main/examples/core/remote-check.star) (excerpted)
 

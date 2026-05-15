@@ -6,7 +6,9 @@ weight: 1
 
 # Run a first script
 
-The shortest path from `kite version` to a working script. Exercises the global helpers (`hostname`, `username`, `cwd`, `env`), `os.exec`, `time.now`, and `printf`.
+A starkite script is a Starlark file (`.star`) executed by the `kite` runtime. Starkite pre-loads a curated set of modules into every script — filesystem, shell exec, HTTP, logging, time, formatting, and more — so common automation tasks need no imports.
+
+The example below exercises the helpers most scripts reach for first: `print`/`printf` for output, `hostname`/`username`/`cwd`/`env` for host info, `os.exec` for shelling out, and `time.format`/`time.now` for timestamps. Reading it end-to-end gives a feel for what a typical kite script looks like.
 
 **Source:** [`examples/core/hello.star`](https://github.com/project-starkite/starkite/blob/main/examples/core/hello.star)
 
@@ -39,12 +41,12 @@ Expected output (host-specific values differ):
 
 ```
 Hello from starkite!
-Hostname: vladimirs-mbp.lan
-User:     vladimirvivien
-Cwd:      /Users/vladimirvivien/DEV/starkite
-Kernel:   Darwin
-Time:     2026-05-15T08:51:41-04:00
-Home:     /Users/vladimirvivien
+Hostname: dev-host.local
+User:     alice
+Cwd:      /home/alice/projects/starkite
+Kernel:   Linux
+Time:     2026-01-15T10:00:00Z
+Home:     /home/alice
 ```
 
 ## What's happening

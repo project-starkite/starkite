@@ -82,5 +82,5 @@ sandbox for that file.
 
 `--parallel N` runs up to N files concurrently, each in its own sandbox.
 
-See the [Sandbox guide](../../fundamentals/security/sandbox.md) for profile details and
+See the [Sandbox guide](../../concepts/sandbox.md) for profile details and
 Ubuntu 24.04+ setup.

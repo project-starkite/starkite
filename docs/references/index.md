@@ -6,7 +6,7 @@ weight: 40
 
 # References
 
-Canonical lookup catalog. For background concepts and onboarding, see [Getting Started](../getting-started/index.md) and [Fundamentals](../fundamentals/index.md).
+Canonical lookup catalog. For background concepts and onboarding, see [Getting Started](../getting-started/index.md) and [Concepts](../concepts/index.md).
 
 <div class="grid cards" markdown>
 

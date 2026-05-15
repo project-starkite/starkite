@@ -6,7 +6,9 @@ weight: 2
 
 # Serve and call HTTP
 
-Two sides of HTTP in starkite: `http.serve()` runs a server with method-aware routing; `http.url(...).get()` makes a client call.
+Starkite includes a first-class HTTP module with both a server side (`http.serve`) and a client side (`http.url`). The server is a one-liner: a dict maps `"METHOD /path"` to handler callables, with no framework or boilerplate around it. The client is a fluent URL builder that issues requests and returns response objects with status code, body, and header accessors.
+
+Both fit the single-binary, no-dependency profile of starkite scripts. Webhook endpoints, health checks, scratch APIs, and outbound integration calls all run from one `.star` file with no external runtime.
 
 **Source:** [`examples/core/http-server/hello.star`](https://github.com/project-starkite/starkite/blob/main/examples/core/http-server/hello.star)
 

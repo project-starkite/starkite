@@ -97,8 +97,8 @@ make build-ai
 kitecmd edition use ai
 ```
 
-If you already have the all-in-one `kite` binary, the AI modules are bundled in — no separate install needed. See [Editions](../fundamentals/editions.md) for the full edition model.
+If you already have the all-in-one `kite` binary, the AI modules are bundled in — no separate install needed. See [Editions](../concepts/editions.md) for the full edition model.
 
 ## Compose with base modules
 
-All 27 base modules (`os`, `fs`, `http`, `ssh`, `json`, `yaml`, `concur`, …) remain available in the AI edition. Agents combine `ai.chat()` with these for tool implementations — see the [agents guide](guides/agents.md) and [Embedding](../fundamentals/embedding.md#calling-starlark-functions-from-go) for driving agents from Go with Starlark tool bodies.
+All 27 base modules (`os`, `fs`, `http`, `ssh`, `json`, `yaml`, `concur`, …) remain available in the AI edition. Agents combine `ai.chat()` with these for tool implementations — see the [agents guide](guides/agents.md) and [Embedding](../references/embedding.md#calling-starlark-functions-from-go) for driving agents from Go with Starlark tool bodies.

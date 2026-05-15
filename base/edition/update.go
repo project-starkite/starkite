@@ -14,7 +14,7 @@ import (
 	"github.com/project-starkite/starkite/base/version"
 )
 
-const GitHubReleasesAPI = "https://api.github.com/repos/vladimirvivien/starkite/releases/latest"
+const GitHubReleasesAPI = "https://api.github.com/repos/project-starkite/starkite/releases/latest"
 
 // ReleaseInfo holds GitHub release metadata.
 type ReleaseInfo struct {
