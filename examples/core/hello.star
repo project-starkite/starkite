@@ -1,22 +1,14 @@
 #!/usr/bin/env kite
-# hello.starctl - Simple hello world example
+# hello.star — exercises print, printf, os.exec, time.now, env.
 
-# Print a greeting
-print("Hello from starctl! 🦞")
+print("Hello from starkite!")
 
-# Get system information
 printf("Hostname: %s\n", hostname())
-printf("Username: %s\n", username())
-printf("Current directory: %s\n", cwd())
+printf("User:     %s\n", username())
+printf("Cwd:      %s\n", cwd())
 
-# Execute a local command
-output = os.exec("uname -a")
-printf("System: %s", output)
+uname = os.exec("uname -s").strip()
+printf("Kernel:   %s\n", uname)
 
-# Show current time
-now = time.now()
-printf("Current time: %s\n", time.format(now, time.RFC3339))
-
-# Environment variable example
-home = env("HOME", "/tmp")
-printf("HOME directory: %s\n", home)
+printf("Time:     %s\n", time.format(time.now(), time.RFC3339))
+printf("Home:     %s\n", env("HOME", "/tmp"))

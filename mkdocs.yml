@@ -61,10 +61,18 @@ nav:
   - Home: index.md
   - Getting Started:
       - Overview: getting-started/index.md
-      - What is Starlark?: getting-started/what-is-starlark.md
-      - Install:
-          - Native: getting-started/install/native.md
-          - Container: getting-started/install/container.md
+      - Install: getting-started/install.md
+      - Quickstarts:
+          - First script:                 getting-started/quickstarts/first-script.md
+          - Serve and call HTTP:          getting-started/quickstarts/http.md
+          - Execute local commands:       getting-started/quickstarts/exec.md
+          - Run commands across SSH:      getting-started/quickstarts/ssh.md
+          - Use the kite CLI:             getting-started/quickstarts/cli.md
+          - Run with restricted permissions: getting-started/quickstarts/permission.md
+          - Run inside a sandbox:         getting-started/quickstarts/sandbox.md
+          - Run from container:           getting-started/quickstarts/container.md
+          - Deploy to Kubernetes:         getting-started/quickstarts/kubernetes.md
+          - Build an MCP agent:           getting-started/quickstarts/mcp.md
   - Fundamentals:
       - Overview: fundamentals/index.md
       - Editions: fundamentals/editions.md
