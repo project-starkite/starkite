@@ -289,7 +289,7 @@ func coerceHistoryEntry(v starlark.Value) (Message, error) {
 		ToolErr:  toolErr,
 	}
 
-	// tool_input / tool_output are pass-through to the client; we route them
+	// tool_input / tool_output are pass-through to the client; route them
 	// through startype back to Go-native shape.
 	if in, found, _ := d.Get(starlark.String("tool_input")); found && in != starlark.None {
 		gv, err := starlarkValueToGoAny(in)
@@ -653,7 +653,7 @@ func newChatStream(inner *StreamValue, chat *Chat) *chatStreamValue {
 func (csv *chatStreamValue) String() string { return "<ai.ChatStream>" }
 func (csv *chatStreamValue) Type() string   { return "ai.ChatStream" }
 
-// Iterate wraps the inner iterator so we can accumulate text and, on Done(),
+// Iterate wraps the inner iterator to accumulate text and, on Done(),
 // commit to history.
 func (csv *chatStreamValue) Iterate() starlark.Iterator {
 	return &chatStreamIterator{

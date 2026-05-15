@@ -15,11 +15,11 @@ import (
 )
 
 // runscInternalGroup is the help-group name gVisor uses for boot/gofer/
-// umount in its standard runsc CLI. We reuse the same string for parity.
+// umount in its standard runsc CLI. The same string is reused here for parity.
 const runscInternalGroup = "internal use only"
 
 // DispatchSubprocess inspects argv for gVisor's self-exec personalities
-// (boot, gofer, umount) plus our own "__runtime__" marker, and routes
+// (boot, gofer, umount) plus a private "__runtime__" marker, and routes
 // each to the appropriate handler. Returns true if the call was
 // dispatched and the caller MUST stop further setup (cli.Run calls
 // os.Exit; the __runtime__ branch returns true after stripping the
@@ -43,24 +43,19 @@ func DispatchSubprocess() bool {
 		return false
 	}
 
-	// NOTE: we previously gated this with looksLikeGvisorSelfExec to
-	// suppress gVisor's verbose help when a curious user typed
-	// `kite boot --help` directly. That guard was wrong: gVisor's own
+	// looksLikeGvisorSelfExec must NOT gate this dispatch. gVisor's
 	// MaybeRunAsRoot intermediate re-exec uses argv[0] = "/proc/self/exe"
-	// (NOT "runsc-*"), so the guard incorrectly killed legitimate
-	// gofer/sandbox subprocesses with our friendly-error message,
-	// breaking the sandbox flow. The cosmetic-help issue is small;
-	// fixing the dispatch is critical.
-	//
-	// We could narrow the guard by checking for gVisor-specific flags
-	// (--root=, --rootless) in argv, but that's a tightening we can
-	// do later if the help-leak ever becomes a real concern.
+	// (not "runsc-*"), so a runsc- prefix gate would incorrectly reject
+	// legitimate gofer/sandbox subprocesses and break the sandbox flow.
+	// Narrowing by gVisor-specific flags (--root=, --rootless) is
+	// possible if the cosmetic-help leak from `kite boot --help` ever
+	// becomes a real concern.
 
-	// Register only the three "internal use only" subcommands. We
-	// deliberately do NOT register the user-facing OCI subcommands
-	// (run, exec, kill, ...) — gVisor's user CLI is not exposed via
-	// kite. The only legitimate way to enter cli.Run from kite is a
-	// gVisor self-exec, which only ever uses these three.
+	// Register only the three "internal use only" subcommands. The
+	// user-facing OCI subcommands (run, exec, kill, ...) are NOT
+	// registered — gVisor's user CLI is not exposed via kite. The
+	// only legitimate path into cli.Run from kite is a gVisor self-exec,
+	// which only ever uses these three.
 	cmds := map[util.SubCommand]string{
 		new(cmd.Boot):   runscInternalGroup,
 		new(cmd.Gofer):  runscInternalGroup,
@@ -71,9 +66,8 @@ func DispatchSubprocess() bool {
 }
 
 // looksLikeGvisorSelfExec reports whether argv[0] suggests gVisor itself
-// invoked us (via /proc/self/exe with cmd.Args[0] rewritten to a
-// "runsc-*" cosmetic name). Used to gate cli.Run delegation against
-// direct user invocation of the internal subcommands.
+// invoked the binary (via /proc/self/exe with cmd.Args[0] rewritten to a
+// "runsc-*" cosmetic name).
 func looksLikeGvisorSelfExec(args []string) bool {
 	if len(args) == 0 {
 		return false
@@ -119,17 +113,17 @@ func looksLikeRunscInvocation(args []string) bool {
 	return false
 }
 
-// isRuntimeMarker reports whether argv[1] is the __runtime__ marker we
-// inject into the sandbox-side argv to distinguish "running normally"
-// from "running inside a sandbox" without changing the script's own argv.
+// isRuntimeMarker reports whether argv[1] is the __runtime__ marker injected
+// into the sandbox-side argv to distinguish "running normally" from
+// "running inside a sandbox" without changing the script's own argv.
 func isRuntimeMarker(args []string) bool {
 	return len(args) >= 2 && args[1] == "__runtime__"
 }
 
 // stripRuntimeMarker removes the __runtime__ token from os.Args[1] so
 // cobra sees argv as if the marker were never there. The marker lives
-// at index 1 by construction (we always write it as the first arg of
-// the inner kite invocation).
+// at index 1 by construction (always written as the first arg of the
+// inner kite invocation).
 func stripRuntimeMarker() {
 	if len(os.Args) < 2 || os.Args[1] != "__runtime__" {
 		return

@@ -80,7 +80,7 @@ func (m *Module) runUntilBuiltin(thread *starlark.Thread, fn *starlark.Builtin, 
 			msg = initial
 		}
 
-		// Delegate to chat.send(msg) — we invoke the bound builtin so that
+		// Delegate to chat.send(msg) by invoking the bound builtin so that
 		// all the merging/validation/history-append logic runs unchanged.
 		sendArg := starlark.Tuple{starlark.String(msg)}
 		resp, err := starlark.Call(thread, starlark.NewBuiltin("ai.chat.send", chat.sendBuiltin), sendArg, nil)

@@ -651,7 +651,7 @@ func (c *controller) doWatchOwned(ownedKind string) error {
 				continue
 			}
 
-			// Look up ownerReferences — enqueue parent if it matches our primary kind
+			// Look up ownerReferences — enqueue parent if it matches the controller's primary kind
 			for _, ref := range obj.GetOwnerReferences() {
 				if strings.EqualFold(ref.Kind, c.kind) {
 					parentKey := obj.GetNamespace() + "/" + ref.Name

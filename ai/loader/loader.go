@@ -16,7 +16,6 @@ import (
 func RegisterAIModules(r *libkite.Registry) {
 	r.Register(genai.New())
 	r.Register(mcp.New())
-	// agent module will be registered here in Phase 3
 }
 
 // NewAIRegistry creates a new registry with all base and ai modules registered.

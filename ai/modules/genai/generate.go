@@ -68,7 +68,7 @@ func (m *Module) generate(thread *starlark.Thread, fn *starlark.Builtin, args st
 	}
 
 	// Tools with streaming: also deferred. The LLM and tool call loop
-	// doesn't play cleanly with our current streaming iterator.
+	// does not compose cleanly with the current streaming iterator.
 	if p.Stream && p.Tools != nil {
 		return nil, fmt.Errorf("ai.generate: stream=True with tools= is not yet supported")
 	}
@@ -93,8 +93,8 @@ func (m *Module) generate(thread *starlark.Thread, fn *starlark.Builtin, args st
 		tools = t
 	}
 
-	// Validate on_tool_error (applies only when tools are present but
-	// we validate eagerly so users see errors even without a network call).
+	// Validate on_tool_error (applies only when tools are present, but
+	// validation runs eagerly so users see errors without a network call).
 	switch p.OnToolError {
 	case "", "feedback":
 		p.OnToolError = "feedback"

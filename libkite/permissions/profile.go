@@ -37,8 +37,8 @@ const (
 const UserSecurityFile = ".starkite/security.yaml"
 
 // SecurityFile is the on-disk schema for ~/.starkite/security.yaml. The
-// Sandbox section is reserved for sandbox-isolation Phase 4+ and is parsed
-// but otherwise unused here.
+// Sandbox section is consumed by libkite/sandbox; it is parsed but
+// otherwise unused here.
 type SecurityFile struct {
 	Permissions map[string]ProfileSpec `yaml:"permissions"`
 	Sandbox     map[string]any         `yaml:"sandbox,omitempty"`

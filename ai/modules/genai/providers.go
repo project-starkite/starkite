@@ -58,11 +58,10 @@ func knownList() string {
 
 // buildProviderConfig dispatches to a provider-specific config builder. Each
 // provider has its own config struct shape (OpenAI's ChatCompletionNewParams,
-// Anthropic's MessageNewParams, etc.). When we can't meaningfully translate
-// our request kwargs for a given provider, this returns nil (sampling-control
-// kwargs like temperature are silently dropped — documented limitation; users
-// who need precise control for Tier 1 non-OpenAI providers can pass raw
-// provider configs via a future extension).
+// Anthropic's MessageNewParams, etc.). Returns nil when request kwargs cannot
+// be meaningfully translated for the given provider — sampling-control kwargs
+// like temperature are silently dropped (documented limitation; raw provider
+// configs for Tier 1 non-OpenAI providers may land in a future extension).
 func buildProviderConfig(provider string, req GenerateRequest) any {
 	switch provider {
 	case providerOpenAI, providerOllama:
@@ -77,7 +76,7 @@ func buildProviderConfig(provider string, req GenerateRequest) any {
 	return nil
 }
 
-// buildOpenAIConfig constructs the OpenAI-compat config struct from our
+// buildOpenAIConfig constructs the OpenAI-compat config struct from a
 // GenerateRequest. Returns nil if no config kwargs were provided (letting
 // Genkit use its defaults).
 func buildOpenAIConfig(req GenerateRequest) *openaiGo.ChatCompletionNewParams {

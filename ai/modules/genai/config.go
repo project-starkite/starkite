@@ -95,8 +95,7 @@ func envVarForProvider(provider string) string {
 //	base_urls     : dict[string, string]   (provider -> URL)
 //	timeout       : string (duration, parsed with time.ParseDuration)
 //
-// Idempotent: calling ai.config() again replaces previously set values.
-// Returns None.
+// Idempotent: subsequent calls replace earlier values. Returns None.
 func (m *Module) configBuiltin(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) != 0 {
 		return nil, fmt.Errorf("ai.config: takes only keyword arguments, got %d positional", len(args))

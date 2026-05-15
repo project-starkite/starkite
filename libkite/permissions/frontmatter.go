@@ -8,8 +8,8 @@ import (
 )
 
 // frontmatterScanLimit is the maximum number of leading lines scanned when
-// looking for a `# permissions:` directive. Past this limit we assume the
-// script header is over and stop.
+// looking for a `# permissions:` directive. Past this limit, scanning stops;
+// the script header is presumed over.
 const frontmatterScanLimit = 32
 
 // ParseFrontmatterPermissions reads up to frontmatterScanLimit leading lines

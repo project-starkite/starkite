@@ -99,7 +99,7 @@ func (t *Template) renderMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	if missingKey != "" {
 		switch missingKey {
 		case "error", "zero", "default":
-			// Clone the template so we don't mutate the original
+			// Clone the template to avoid mutating the original
 			var err error
 			tmpl, err = t.tmpl.Clone()
 			if err != nil {

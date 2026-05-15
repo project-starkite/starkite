@@ -88,7 +88,7 @@ func (s *StreamValue) Attr(name string) (starlark.Value, error) {
 func (s *StreamValue) AttrNames() []string { return []string{"error", "model", "usage"} }
 
 // streamIterator yields *StreamChunk values from StreamValue.result.Chunks.
-// exhausted is true for the second-iterate case, where we yield nothing.
+// exhausted is true for the second-iterate case, which yields nothing.
 type streamIterator struct {
 	sv        *StreamValue
 	exhausted bool
@@ -108,7 +108,7 @@ func (it *streamIterator) Next(p *starlark.Value) bool {
 }
 
 // Done signals early termination. If the consumer broke out of iteration,
-// we cancel the producer goroutine so it doesn't block on a full channel.
+// the producer goroutine is cancelled so it does not block on a full channel.
 func (it *streamIterator) Done() {
 	if it.exhausted || it.sv == nil || it.sv.result == nil {
 		return

@@ -156,7 +156,7 @@ func (s *StreamResult) Cancel() {
 	}
 }
 
-// genaiClient is the surface our module uses to talk to a generation backend.
+// genaiClient is the surface the module uses to talk to a generation backend.
 // It exists so tests can inject a fake without standing up Genkit.
 type genaiClient interface {
 	Generate(ctx context.Context, req GenerateRequest) (*GenerateResult, error)

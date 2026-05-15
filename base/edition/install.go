@@ -179,7 +179,7 @@ func Remove(name string) error {
 		return fmt.Errorf("failed to remove edition: %w", err)
 	}
 
-	// Reset active edition if we just removed the active one
+	// Reset active edition if the just-removed name was active
 	if ActiveEdition() == name {
 		if err := SetActiveEdition(EditionBase); err != nil {
 			fmt.Fprintf(os.Stderr, "warning: failed to reset active edition: %v\n", err)

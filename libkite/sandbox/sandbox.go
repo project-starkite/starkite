@@ -129,9 +129,9 @@ type Mount struct {
 // description that the runtime backend translates to a runsc/OCI spec.
 //
 // Profile is loaded by LoadProfile from one of the built-in YAML files
-// embedded into the binary, from a file path on disk (Phase 5.4), or
-// from ~/.starkite/security.yaml (Phase 5.4). Both built-ins live as
-// .yaml files in libkite/sandbox/profiles/ and are embedded via go:embed.
+// embedded into the binary, from a file path on disk, or from
+// ~/.starkite/security.yaml. Both built-ins live as .yaml files in
+// libkite/sandbox/profiles/ and are embedded via go:embed.
 type Profile struct {
 	Name    string      // empty for "no sandbox"
 	Network NetworkMode // host | sandbox-loopback

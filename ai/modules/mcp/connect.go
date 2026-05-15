@@ -62,7 +62,7 @@ func (m *Module) connectBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 	session, err := sdkClient.Connect(ctx, transport, nil)
 	if err != nil {
 		// Connect may have failed after spawning the subprocess; kill it
-		// so we don't leak a process.
+		// to avoid leaking the process.
 		if subproc != nil && subproc.Process != nil {
 			_ = subproc.Process.Kill()
 			_ = subproc.Wait()
@@ -128,7 +128,7 @@ func coerceCommandList(v starlark.Value) ([]string, error) {
 }
 
 // describeTransport returns a short string used as the permission "resource"
-// for the mcp.connect check. For a list we show argv[0]; for a URL we show
+// for the mcp.connect check. For a list, the resource is argv[0]; for a URL,
 // the URL itself. Gives operators something meaningful to match against in
 // permission policies.
 func describeTransport(v starlark.Value) string {

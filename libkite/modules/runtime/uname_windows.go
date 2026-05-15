@@ -11,8 +11,8 @@ import (
 )
 
 // uname returns system information as a dict.
-// On Windows, syscall.Utsname is not available, so we return
-// what we can from the Go runtime and os packages.
+// On Windows, syscall.Utsname is not available; this returns the
+// subset available from the Go runtime and os packages.
 func (m *Module) uname(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 || len(kwargs) > 0 {
 		return nil, fmt.Errorf("uname takes no arguments")

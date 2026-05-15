@@ -21,8 +21,8 @@ const UserSecurityFile = ".starkite/security.yaml"
 
 // securityFile is the on-disk schema for ~/.starkite/security.yaml,
 // limited to the fields this package consumes. The Permissions section
-// (top-level "permissions:") is parsed by libkite/permissions and is not
-// our concern here.
+// (top-level "permissions:") is parsed by libkite/permissions and
+// ignored here.
 type securityFile struct {
 	Sandbox map[string]profileSpec `yaml:"sandbox"`
 	// Permissions is parsed but unused — declared so KnownFields(true)
@@ -30,9 +30,9 @@ type securityFile struct {
 	Permissions map[string]any `yaml:"permissions,omitempty"`
 }
 
-// profileSpec is the YAML schema for a sandbox profile. It mirrors what
-// users will write in custom profile files (Phase 5.4), so the same
-// shape parses both embedded and user-supplied profiles.
+// profileSpec is the YAML schema for a sandbox profile. The shape
+// matches what users write in custom profile files, so the same
+// decoder parses both embedded and user-supplied profiles.
 type profileSpec struct {
 	Network string      `yaml:"network"`
 	Mounts  []mountSpec `yaml:"mounts,omitempty"`
@@ -328,10 +328,9 @@ func readSecurityFile(path string) (*securityFile, []byte, error) {
 }
 
 // profileFromSpec builds a Profile from an already-decoded profileSpec.
-// The spec was decoded by yaml.Decoder without KnownFields(true) (so
-// the parent file may have other sections), so we re-marshal here and
-// pass through decodeProfile to get the same strict validation as
-// embedded built-ins.
+// The spec was decoded without KnownFields(true) (the parent file may
+// have other sections), so re-marshal here and pass through decodeProfile
+// for the same strict validation applied to embedded built-ins.
 func profileFromSpec(name string, spec profileSpec, origin string) (Profile, error) {
 	raw, err := yaml.Marshal(spec)
 	if err != nil {

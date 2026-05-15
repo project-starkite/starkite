@@ -9,7 +9,7 @@ import (
 )
 
 // ExecHandoff runs the edition binary as a subprocess and exits with its code.
-// On Windows, syscall.Exec is not available, so we use os/exec instead.
+// On Windows, syscall.Exec is not available; this falls back to os/exec.
 func ExecHandoff(binaryPath string) error {
 	cmd := exec.Command(binaryPath, os.Args[1:]...)
 	cmd.Stdin = os.Stdin

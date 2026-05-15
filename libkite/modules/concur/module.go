@@ -336,7 +336,7 @@ func (m *Module) concurEach(thread *starlark.Thread, fn *starlark.Builtin, args 
 //
 // Usage: a, b, c = concur.exec(fn_a, fn_b, fn_c, timeout="", on_error="abort")
 func (m *Module) concurExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	// Parse kwargs manually since we need variadic positional callables
+	// Parse kwargs manually — variadic positional callables are not supported by starlark.UnpackArgs
 	var timeout string
 	var onError string
 	for _, kv := range kwargs {

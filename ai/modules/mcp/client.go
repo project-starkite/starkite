@@ -50,7 +50,7 @@ type MCPClient struct {
 }
 
 // cachedTool is the internal record of one discovered server tool.
-// InputSchema is omitted for v1 — we don't expose schemas to scripts yet.
+// InputSchema is omitted for v1 — schemas are not exposed to scripts yet.
 type cachedTool struct {
 	name        string
 	description string
@@ -278,8 +278,8 @@ func (it *toolsIterator) Next(p *starlark.Value) bool {
 func (it *toolsIterator) Done() {}
 
 // errorIterator is an empty iterator used when discovery fails inside Iterate().
-// Starlark's iterator protocol has no error channel, so we yield nothing and
-// callers see an empty loop. The error is still surfaced on subsequent
+// Starlark's iterator protocol has no error channel; this yields nothing and
+// callers see an empty loop. The error still surfaces on subsequent
 // client.tools.X accesses because ensureDiscovered is a sync.Once.
 type errorIterator struct {
 	err error

@@ -436,7 +436,7 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		ns = c.namespace
 	}
 
-	// Determine direction: if src starts with pod name, we're copying FROM pod
+	// Determine direction: a colon in src marks it as the pod-side path (copying FROM pod)
 	isPodSrc := strings.Contains(p.Src, ":")
 	isPodDst := strings.Contains(p.Dst, ":")
 

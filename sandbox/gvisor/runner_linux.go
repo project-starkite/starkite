@@ -42,8 +42,8 @@ type Runner struct{}
 // Flow:
 //  1. Build an OCI spec for the requested profile (currently only "strict").
 //  2. Create a temp bundle directory containing config.json + empty rootfs.
-//  3. Build a *config.Config from gVisor's defaults, then mutate for our
-//     constraints (NetworkNone, RootDir, Rootless, no-debug-output).
+//  3. Build a *config.Config from gVisor's defaults, then mutate to apply
+//     the profile's constraints (NetworkNone, RootDir, Rootless, no-debug-output).
 //  4. Call container.Run(conf, args) — gVisor's synchronous one-shot
 //     create+start+wait+destroy convenience.
 //  5. Translate gVisor's unix.WaitStatus into a Go error: nil on exit 0,
@@ -60,7 +60,7 @@ func (Runner) Run(ctx context.Context, spec sandbox.ExecSpec) error {
 		return fmt.Errorf("getwd: %w", err)
 	}
 
-	// Resolve the host kite binary so we can bind-mount it into the sandbox
+	// Resolve the host kite binary for bind-mounting into the sandbox
 	// as the contained process's exe. /proc/self/exe doesn't work as
 	// Process.Args[0]: at the moment gVisor's sentry tries to load the
 	// binary, /proc isn't yet mounted in the sandbox.
@@ -69,7 +69,7 @@ func (Runner) Run(ctx context.Context, spec sandbox.ExecSpec) error {
 		return fmt.Errorf("resolving host binary: %w", err)
 	}
 
-	// What argv should the inner kite see? Strip our own argv[0] (binary
+	// Build the argv the inner kite sees: strip the host argv[0] (binary
 	// path) plus the --sandbox flag. The InsideEnvVar marker prevents
 	// re-sandboxing semantically, but stripping the flag keeps the inner
 	// process's argv clean — no surprise tokens if the script ever
@@ -107,10 +107,10 @@ func (Runner) Run(ctx context.Context, spec sandbox.ExecSpec) error {
 	conf.Network = netMode
 	conf.Rootless = true
 	// Disable overlayfs for both root and submounts. The default would
-	// stack a writable tmpfs on top of every mount; we don't need that
-	// for one-shot script execution and it fails on rootless without
-	// a writable host filestore. "none" means: bind mounts are exposed
-	// directly, no overlay layer.
+	// stack a writable tmpfs on top of every mount, which is unnecessary
+	// for one-shot script execution and fails on rootless without a
+	// writable host filestore. "none" means bind mounts are exposed
+	// directly, with no overlay layer.
 	if err := conf.Overlay2.Set("none"); err != nil {
 		return fmt.Errorf("setting overlay2=none: %w", err)
 	}
@@ -193,8 +193,8 @@ func stripSandboxFlag(args []string) []string {
 // mirrors the host's network interfaces into the sentry's netstack
 // (creating veth equivalents) and requires reading the host netns, which
 // rootless mode cannot do across processes ("operation not permitted").
-// NetworkNone gives the loopback-only behavior we want without that
-// privilege requirement.
+// NetworkNone gives the loopback-only behavior the strict profile needs
+// without that privilege requirement.
 func networkModeFor(mode sandbox.NetworkMode) (config.NetworkType, error) {
 	switch mode {
 	case sandbox.NetworkHost:

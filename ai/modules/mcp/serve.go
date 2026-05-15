@@ -80,7 +80,7 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 		return nil, fmt.Errorf("mcp.serve: port must be non-negative, got %d", p.Port)
 	}
 	// Reject partial TLS config early so the error surfaces at validation time
-	// (before we do any expensive work).
+	// (before any expensive work runs).
 	if (p.TLSCert != "") != (p.TLSKey != "") {
 		return nil, fmt.Errorf("mcp.serve: tls_cert and tls_key must both be set to enable TLS")
 	}
@@ -142,8 +142,8 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 	return starlark.None, runStdioServer(server)
 }
 
-// buildServer constructs an MCP server from our inputs and registers the
-// provided tools, resources, and prompts. Extracted so unit tests can
+// buildServer constructs an MCP server from the resolved inputs and registers
+// the provided tools, resources, and prompts. Extracted so unit tests can
 // exercise registration logic without calling server.Run (which blocks on stdio).
 func buildServer(name, version string, tools []*genai.Tool, resources []*resourceEntry, prompts []*promptEntry, rt *libkite.Runtime) (*mcpsdk.Server, error) {
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: name, Version: version}, nil)
@@ -226,7 +226,7 @@ func runHTTPServer(server *mcpsdk.Server, opts httpOpts) error {
 }
 
 // runHTTPServerCtx runs the HTTP transport under an explicit cancellation
-// context, exposing the test seam we need to spin up an ephemeral-port server
+// context, exposing the test seam needed to spin up an ephemeral-port server
 // and shut it down deterministically.
 //
 // Shuts down gracefully when ctx is cancelled (up to httpShutdownTimeout).

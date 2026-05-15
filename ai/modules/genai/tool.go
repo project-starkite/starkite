@@ -72,8 +72,8 @@ func (m *Module) toolBuiltin(thread *starlark.Thread, fnBuiltin *starlark.Builti
 		Params      starlark.Value `name:"params"`
 	}
 	// startype doesn't report presence for string kwargs (empty string is
-	// indistinguishable from unset), so we first detect the presence of
-	// description= in kwargs, then unpack normally.
+	// indistinguishable from unset), so detect description= presence first,
+	// then unpack normally.
 	for _, kv := range kwargs {
 		if key, ok := kv[0].(starlark.String); ok && string(key) == "description" {
 			p.DescPresent = true
@@ -163,8 +163,8 @@ func invokeToolCallback(t *Tool, input any, thread *starlark.Thread, onToolError
 }
 
 // toolInputToStarlark converts the Genkit-delivered tool input into Starlark
-// call arguments. For object-shaped schemas the input is map[string]any, and
-// we pass each key/value as a kwarg. Non-object inputs error out.
+// call arguments. For object-shaped schemas the input is map[string]any; each
+// key/value becomes a kwarg. Non-object inputs error out.
 func toolInputToStarlark(input any) (starlark.Tuple, []starlark.Tuple, error) {
 	if input == nil {
 		return starlark.Tuple{}, nil, nil

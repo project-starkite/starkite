@@ -23,7 +23,7 @@ type Response struct {
 
 var _ starlark.HasAttrs = (*Response)(nil)
 
-// newResponse constructs a Response from the values our client layer produces.
+// newResponse constructs a Response from the values produced by the client layer.
 // data may be nil (no schema requested) or any starlark.Value.
 func newResponse(text, model string, inputTokens, outputTokens int, data starlark.Value) *Response {
 	return &Response{

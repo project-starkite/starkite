@@ -76,7 +76,7 @@ func coerceResources(v starlark.Value) ([]*resourceEntry, error) {
 }
 
 // resourceArity returns 0 or 1 for a valid resource callable. Non-def
-// callables (starlark.Builtin, etc.) are introspection-free so we assume 0.
+// callables (starlark.Builtin, etc.) are introspection-free, so 0 is assumed.
 // Rejects 2+ params, *args, and **kwargs.
 func resourceArity(name string, callable starlark.Callable) (int, error) {
 	fn, ok := callable.(*starlark.Function)

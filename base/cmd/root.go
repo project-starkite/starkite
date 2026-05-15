@@ -66,8 +66,8 @@ Examples:
 	// before RunE runs.
 	SilenceUsage: true,
 
-	// SilenceErrors lets us handle error printing ourselves in Execute(),
-	// so we can suppress ExitError messages and avoid double-printing.
+	// SilenceErrors leaves error printing to Execute(), which suppresses
+	// ExitError messages to avoid double-printing.
 	SilenceErrors: true,
 }
 

@@ -51,7 +51,7 @@ func inferToolSchema(fn *starlark.Function) (*Tool, error) {
 }
 
 // inferParamSchema maps a Starlark default value to a JSON Schema fragment.
-// When the default is nil (parameter is required) or None, we fall back to
+// When the default is nil (parameter is required) or None, the fallback is
 // {"type": "string"} — the safest assumption for a required param.
 func inferParamSchema(def starlark.Value) map[string]any {
 	schema := map[string]any{"type": "string"}
