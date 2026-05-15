@@ -66,3 +66,26 @@
 .md-footer-meta {
   background-color: var(--md-default-bg-color--light);
 }
+
+/* Sidebar nav: make subsection headings (e.g. "CLI", "API" under References)
+   darker, larger, and bolder so they stand out from leaf links. Targets only
+   the primary (left) nav. Section labels render as <label class="md-nav__link">
+   (toggles for nested sections); leaf links render as <a class="md-nav__link">. */
+.md-nav--primary label.md-nav__link {
+  color: var(--md-default-fg-color);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+[data-md-color-scheme="slate"] .md-nav--primary label.md-nav__link {
+  color: var(--md-default-fg-color);
+}
+
+/* Mobile-drawer subsection title (visible when the nav slides out on small
+   screens) styled to match desktop section labels. */
+.md-nav--primary .md-nav__title {
+  color: var(--md-default-fg-color);
+  font-size: 0.82rem;
+  font-weight: 700;
+}
