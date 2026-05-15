@@ -73,6 +73,8 @@ nav:
           - Run from container:           getting-started/quickstarts/container.md
           - Kubernetes support:         getting-started/quickstarts/kubernetes.md
           - Build an MCP agent:           getting-started/quickstarts/mcp.md
+      - Examples:
+          - Starkite examples: getting-started/examples/index.md
   - Concepts:
       - Overview: concepts/index.md
       - Editions: concepts/editions.md
@@ -80,11 +82,6 @@ nav:
       - Sandbox: concepts/sandbox.md
       - Language: concepts/language.md
       - Modules: concepts/modules.md
-  - Guides:
-      - Overview: guides/index.md
-      - CI integration: guides/ci-integration.md
-      - Authoring permission profiles: guides/authoring-permission-profiles.md
-      - Multi-step automation: guides/multi-step-automation.md
   - References:
       - Overview: references/index.md
       - CLI:
@@ -145,8 +142,6 @@ nav:
           - Agents: ai/guides/agents.md
           - MCP: ai/guides/mcp.md
       - Examples: ai/examples.md
-  - Examples: examples/index.md
-
 extra:
   social:
     - icon: fontawesome/brands/github

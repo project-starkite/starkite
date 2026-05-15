@@ -66,4 +66,3 @@ The CLI flag wins over frontmatter when both are present.
 ## See also
 
 - [Permissions](../../concepts/permission.md) — full rule grammar, every category, $CWD/$HOME expansion, all four resolution paths
-- [Authoring permission profiles](../../guides/authoring-permission-profiles.md) — designing a `security.yaml` for a team

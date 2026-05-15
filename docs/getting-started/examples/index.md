@@ -1,6 +1,6 @@
 ---
-title: "Examples"
-description: "Example starkite scripts"
+title: "Starkite examples"
+description: "Runnable starkite example scripts on GitHub"
 weight: 50
 ---
 
@@ -15,7 +15,7 @@ weight: 50
 
 ## Sandbox Examples
 
-OS-level isolation with `--sandbox` (Linux only). See the [Sandbox guide](../concepts/sandbox.md).
+OS-level isolation with `--sandbox` (Linux only). See the [Sandbox concept](../../concepts/sandbox.md).
 
 | Example | Description |
 |---------|-------------|
