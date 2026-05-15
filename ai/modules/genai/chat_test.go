@@ -120,16 +120,9 @@ c.send("two")
 func TestChat_Send_TracePersistsInHistory(t *testing.T) {
 	m := New()
 	// Build a chat whose fake records tool trace via callbacks.
-	// We use the real (not fake) path to exercise trace capture, so install
-	// a client that wraps a fake generate but lets buildGenkitTool fire.
-	// Simpler: directly inspect behavior through fake + seed a trace in result.
-	//
-	// Since fakeClient.Generate doesn't invoke tool callbacks (it just returns
-	// the scripted result), we simulate the trace by having the test inject
-	// invocations directly via the ToolTrace pointer. Chat reads *req.ToolTrace
-	// after Generate returns.
-	//
-	// Easiest approach: extend fake to populate trace when asked.
+	// fakeClient.Generate doesn't invoke tool callbacks (it returns only
+	// the scripted result), so the test seeds the ToolTrace pointer
+	// directly. Chat reads *req.ToolTrace after Generate returns.
 	fake := installFake(m)
 	fake.script = []*GenerateResult{
 		{Text: "final reply", Model: "openai/x"},
@@ -245,8 +238,8 @@ c.send("one")
 		t.Fatalf("expected first send to error with 'boom', got %v", execErr)
 	}
 	// Starlark populates globals up to (but not through) the erroring stmt,
-	// so `c` should be available. If newGlobals is nil on error, we'll have
-	// to resolve differently; check it.
+	// so `c` should be available. A nil newGlobals on error would require
+	// a different resolution path; guard for it.
 	if newGlobals == nil {
 		t.Fatal("ExecFile returned nil globals on error; test needs adjustment")
 	}

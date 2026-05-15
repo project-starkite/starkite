@@ -134,8 +134,8 @@ func TestRunHTTPServerCtx_StartsAndShutsDown(t *testing.T) {
 		t.Fatalf("buildServer: %v", err)
 	}
 
-	// Capture stderr around the call so we can inspect the startup log
-	// without polluting test output.
+	// Capture stderr around the call to inspect the startup log without
+	// polluting test output.
 	origStderr := os.Stderr
 	r, w, _ := os.Pipe()
 	os.Stderr = w

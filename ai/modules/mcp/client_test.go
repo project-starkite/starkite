@@ -57,8 +57,8 @@ func startInMemoryServer(t *testing.T, tools []string, fakeResults map[string]*m
 	client := newMCPClient(session, nil)
 	cleanup := func() {
 		_ = client.doClose()
-		// Server.Run exits when the transport closes; wait briefly so we
-		// don't leak goroutines across tests.
+		// Server.Run exits when the transport closes; wait briefly to
+		// avoid leaking goroutines across tests.
 		select {
 		case <-serverDone:
 		case <-time.After(2 * time.Second):

@@ -35,9 +35,9 @@ ai.generate("b", model = "openai/x", base_url = "http://host-2/v1")
 		t.Errorf("constructed = %d, want 2 (one per call with override)", constructed)
 	}
 
-	// A call without overrides should reuse the cached client — separate
-	// test to avoid coupling: run it on a fresh module so we don't count
-	// earlier constructions.
+	// A call without overrides should reuse the cached client — kept as a
+	// separate test to avoid coupling. Runs on a fresh module to keep
+	// prior constructions out of the count.
 }
 
 // TestGenerate_NoOverrides_CachesClient verifies repeated calls without

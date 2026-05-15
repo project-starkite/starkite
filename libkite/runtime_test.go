@@ -432,7 +432,7 @@ func TestRuntime_Call_MixedArgsAndKwargs(t *testing.T) {
 	}
 }
 
-// ---------- Phase 5.1: ctx unification + CallFn + exit unwrap ----------
+// ---------- ctx unification + CallFn + exit unwrap ----------
 
 func TestRuntime_Execute_ContextCancel_StopsRunaway(t *testing.T) {
 	rt := newTrustedRT(t)

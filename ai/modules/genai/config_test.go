@@ -112,8 +112,8 @@ ai.generate("two")                          # uses new default, fresh client
 	}
 	// Both calls should have gone through the fake — the production
 	// client factory would have been invoked once initially, then again
-	// after the config change. The fake doesn't care about that detail,
-	// but we prove the second call succeeds and sees the new default.
+	// after the config change. The fake doesn't care about that detail;
+	// the second call must succeed and see the new default.
 	if fake.calls[1].ModelName != "openai/b" {
 		t.Errorf("call[1].ModelName = %q, want %q", fake.calls[1].ModelName, "openai/b")
 	}
