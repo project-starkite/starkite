@@ -19,51 +19,93 @@
   }
 
   .tx-container {
-    padding: 2rem 0;
-    min-height: 30vh;
-    background-color: #0a1628;
-    background-image:
-      linear-gradient(180deg, rgba(10, 22, 40, 0.55) 0%, rgba(10, 22, 40, 0.55) 100%);
-    background-repeat: no-repeat;
-    background-position: center;
-    background-size: cover;
-    background-attachment: fixed;
+    padding: 2.5rem 0;
+    background: linear-gradient(180deg, #04101e 0%, #0a1628 55%, #18293f 100%);
   }
 
   .tx-hero {
     margin: 0 .8rem;
     color: var(--md-primary-bg-color);
-    text-align: center;
   }
 
-  .tx-hero__content {
-    padding-bottom: 2rem;
-    max-width: 40rem;
-    margin: 0 auto;
+  .tx-hero__split {
+    display: grid;
+    grid-template-columns: 5fr 7fr;
+    gap: 2rem;
+    align-items: center;
   }
 
-  .tx-hero__content h1 {
-    font-size: 2.5rem;
-    font-weight: 700;
-    margin-bottom: 0.5rem;
+  .tx-hero__left,
+  .tx-hero__right {
+    min-width: 0;
+  }
+
+  @media (max-width: 50em) {
+    .tx-hero__split {
+      grid-template-columns: 1fr;
+      gap: 1.75rem;
+    }
+  }
+
+  .tx-hero__left {
+    text-align: left;
+  }
+
+  .tx-hero__logo {
+    display: block;
+    max-height: 80px;
+    margin: 0 auto 1.5rem;
+    filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.45));
+  }
+
+  .tx-hero .tx-hero__headline {
+    font-size: 2.25rem;
+    font-weight: 900;
+    line-height: 1.12;
+    letter-spacing: -0.015em;
+    margin: 0 0 0.5rem 0;
+    color: #ffffff;
+    overflow-wrap: break-word;
+  }
+
+  .tx-hero .tx-hero__accent {
+    color: #67e8f9;
+  }
+
+  .tx-hero .tx-hero__subhead {
+    font-size: 1.5rem;
+    font-weight: 600;
+    line-height: 1.25;
+    letter-spacing: -0.005em;
+    margin: 0 0 1.25rem 0;
+    color: #ffffff;
+    opacity: 0.82;
+    overflow-wrap: break-word;
+  }
+
+  .tx-hero .tx-hero__desc {
+    color: #ffffff;
+  }
+
+  .tx-hero__desc {
+    font-size: 0.95rem;
+    line-height: 1.6;
+    margin: 0 0 1.5rem 0;
     color: var(--md-primary-bg-color);
+    opacity: 0.85;
   }
 
-  .tx-hero__content h3 {
-    font-size: 1.0rem;
-    font-weight: 700;
-    margin: 0.7rem;
-    color: var(--md-primary-bg-color);
-  }
-
-  .tx-hero__content p {
-    font-size: 0.5rem;
-    margin-bottom: 0.5rem;
+  .tx-hero__ctas {
+    display: flex;
+    gap: 0.6rem;
+    flex-wrap: wrap;
+    justify-content: center;
+    margin-top: 2rem;
   }
 
   .tx-hero .md-button {
-    margin: 0.2rem;
-    font-size: 0.7rem;
+    margin: 0;
+    font-size: 0.78rem;
     color: var(--md-primary-bg-color);
     border-color: var(--md-primary-bg-color);
   }
@@ -87,28 +129,166 @@
     color: var(--md-primary-fg-color);
     border-color: var(--md-primary-bg-color);
   }
+
+  .tx-hero__right .example-tabs {
+    background: var(--md-default-bg-color);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 0.5rem;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+    overflow: hidden;
+    max-width: 100%;
+  }
+
+  .tx-hero__right .example-pane {
+    padding: 0.85rem;
+  }
+
+  .tx-hero__right .example-pane h3 {
+    display: none;
+  }
+
+  .tx-hero__right .example-pane .terminal pre {
+    font-size: 0.78rem;
+    line-height: 1.45;
+    padding: 0.75rem 0.85rem;
+  }
+
+  .tx-hero__right .example-tabs__labels label {
+    padding: 0.6rem 0.5rem;
+    font-size: 0.82rem;
+  }
 </style>
 
 <section class="tx-container">
   <div class="md-grid md-typeset">
     <div class="tx-hero">
-      <div class="tx-hero__content">
-        <img src="assets/images/starkite-logo.svg" alt="Starkite" style="max-height: 300px; margin: 0.3rem;">
-        <h3><strong>Secure Runtime for Cloud-Native and Agentic AI Automation with Starlark</strong></h3>
-        <p style="font-size: 0.85rem; opacity: 0.85; margin: 0.2rem 0 1rem;">Starkite — pronounced <em>"star-kite"</em></p>
+      <img src="assets/images/starkite-logo.svg" alt="Starkite" class="tx-hero__logo">
+      <div class="tx-hero__split">
+        <div class="tx-hero__left">
+          <h1 class="tx-hero__headline">Scripting runtime for <span class="tx-hero__accent">automation</span></h1>
+          <p class="tx-hero__subhead">A secure runtime for system, infrastructure, and AI agent automation.</p>
+          <p class="tx-hero__desc">Starkite is a modern scripting runtime for automation using the Starlark language. It is shipped as a single static binary with zero setup or additional toolchain to install.</p>
+        </div>
+        <div class="tx-hero__right">
+          <div class="example-tabs">
+            <input type="radio" id="ex-system" name="ex" checked>
+            <input type="radio" id="ex-cloud" name="ex">
+            <input type="radio" id="ex-ai" name="ex">
+            <input type="radio" id="ex-tests" name="ex">
 
-        <a href="getting-started/" class="md-button">
-          Get Started
-        </a>
-        <a href="https://github.com/project-starkite/starkite" class="md-button md-button--primary">
-          Starkite Core
-        </a>
-        <a href="https://github.com/project-starkite/starkite" class="md-button md-button--primary">
-          Starkite Cloud
-        </a> 
-        <a href="https://github.com/project-starkite/starkite" class="md-button md-button--primary">
-          Starkite AI
-        </a>
+            <div class="example-tabs__labels">
+              <label for="ex-system">System</label>
+              <label for="ex-cloud">Kubernetes</label>
+              <label for="ex-ai">AI</label>
+              <label for="ex-tests">Tests</label>
+            </div>
+
+            <div class="example-pane" data-for="ex-system">
+              <div class="terminal">
+                <div class="terminal__bar">
+                  <span class="terminal__dot terminal__dot--red"></span>
+                  <span class="terminal__dot terminal__dot--yellow"></span>
+                  <span class="terminal__dot terminal__dot--green"></span>
+                  <span class="terminal__title">fetch-configs.star</span>
+                </div>
+                <pre><code class="language-python">#!/usr/bin/env kite
+
+def main():
+    fleet = ssh.config(
+        hosts       = ["web-1", "web-2", "web-3"],
+        user        = "deploy",
+        key         = "~/.ssh/id_ed25519",
+        exec_policy = "concurrent",
+    )
+    for r in fleet.download("/etc/nginx/nginx.conf", "/tmp/configs/nginx.conf"):
+        printf("%s -> %s (%d bytes)\n", r.host, r.dst, r.bytes)
+
+main()
+</code></pre>
+              </div>
+            </div>
+
+            <div class="example-pane" data-for="ex-cloud">
+              <div class="terminal">
+                <div class="terminal__bar">
+                  <span class="terminal__dot terminal__dot--red"></span>
+                  <span class="terminal__dot terminal__dot--yellow"></span>
+                  <span class="terminal__dot terminal__dot--green"></span>
+                  <span class="terminal__title">controller.star</span>
+                </div>
+                <pre><code class="language-python">#!/usr/bin/env kite
+
+def reconcile(event, obj):
+    if obj.spec.replicas > 10:
+        k8s.apply({
+            "apiVersion": "apps/v1", "kind": "Deployment",
+            "metadata": {"name": obj.metadata.name,
+                         "namespace": obj.metadata.namespace},
+            "spec": {"replicas": 10},
+        })
+
+k8s.control("deployments",
+    reconcile = reconcile,
+    labels    = "enforce-max=true",
+)
+</code></pre>
+              </div>
+            </div>
+
+            <div class="example-pane" data-for="ex-ai">
+              <div class="terminal">
+                <div class="terminal__bar">
+                  <span class="terminal__dot terminal__dot--red"></span>
+                  <span class="terminal__dot terminal__dot--yellow"></span>
+                  <span class="terminal__dot terminal__dot--green"></span>
+                  <span class="terminal__title">weather-server.star</span>
+                </div>
+                <pre><code class="language-python">#!/usr/bin/env kite
+
+def get_weather(city):
+    """Return the current weather for a city."""
+    forecasts = {
+        "san francisco": {"temp_f": 64, "conditions": "foggy"},
+        "tokyo":         {"temp_f": 78, "conditions": "sunny"},
+        "berlin":        {"temp_f": 52, "conditions": "cloudy"},
+    }
+    return forecasts.get(city.lower(), {"error": "no data for " + city})
+
+mcp.serve(
+    name  = "weather",
+    tools = [get_weather],
+)
+</code></pre>
+              </div>
+            </div>
+
+            <div class="example-pane" data-for="ex-tests">
+              <div class="terminal">
+                <div class="terminal__bar">
+                  <span class="terminal__dot terminal__dot--red"></span>
+                  <span class="terminal__dot terminal__dot--yellow"></span>
+                  <span class="terminal__dot terminal__dot--green"></span>
+                  <span class="terminal__title">math_test.star</span>
+                </div>
+                <pre><code class="language-python">def test_addition():
+    assert(2 + 2 == 4, "basic math should work")
+
+def test_string_contains():
+    assert("kite" in "starkite", "starkite should contain kite")
+
+def test_list_length():
+    items = ["a", "b", "c"]
+    assert(len(items) == 3, "list should have 3 items")
+</code></pre>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="tx-hero__ctas">
+        <a href="getting-started/" class="md-button">Get Started</a>
+        <a href="kubernetes/" class="md-button md-button--primary">Kubernetes</a>
+        <a href="ai/" class="md-button md-button--primary">AI Agents</a>
       </div>
     </div>
   </div>
@@ -222,38 +402,74 @@
       <svg viewBox="0 0 24 24">
         <path d="M17,17H7V7H17M21,11V9H19V7C19,5.89 18.1,5 17,5H15V3H13V5H11V3H9V5H7C5.89,5 5,5.89 5,7V9H3V11H5V13H3V15H5V17A2,2 0 0,0 7,19H9V21H11V19H13V21H15V19H17A2,2 0 0,0 19,17V15H21V13H19V11M15,15H9V9H15V15Z" />
       </svg>
-      25+ Built-in Modules
+      Standard Library
     </h3>
-    <p>File I/O, HTTP, SSH, JSON/YAML, string/text, concurrency, os, time, and more.</p>
+    <p>A full set of modules for everyday automation, letting scripts handle local I/O, network, and data work entirely in Starlark.</p>
   </div>
   <div class="feature-card">
     <h3>
       <svg viewBox="0 0 24 24">
         <path d="M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,5C10.31,5 8.77,5.61 7.59,6.61L9.5,8.5C10.21,8.04 11.07,7.78 12,7.78C12.93,7.78 13.79,8.04 14.5,8.5L16.41,6.61C15.23,5.61 13.69,5 12,5M5,12C5,13.69 5.61,15.23 6.61,16.41L8.5,14.5C8.04,13.79 7.78,12.93 7.78,12C7.78,11.07 8.04,10.21 8.5,9.5L6.61,7.59C5.61,8.77 5,10.31 5,12M12,19C13.69,19 15.23,18.39 16.41,17.39L14.5,15.5C13.79,15.96 12.93,16.22 12,16.22C11.07,16.22 10.21,15.96 9.5,15.5L7.59,17.39C8.77,18.39 10.31,19 12,19M19,12C19,10.31 18.39,8.77 17.39,7.59L15.5,9.5C15.96,10.21 16.22,11.07 16.22,12C16.22,12.93 15.96,13.79 15.5,14.5L17.39,16.41C18.39,15.23 19,13.69 19,12M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z" />
       </svg>
-      Kubernetes Native
+      Infrastructure
     </h3>
-    <p>Kubernetes primitives for first-class programmatic support: apply, deploy, scale, rollout, run, exec, and more.</p>
+    <p>Kubernetes built in: manage resources, run controllers and admission webhooks, and generate manifests — all in Starlark, no Go project required.</p>
   </div>
   <div class="feature-card">
     <h3>
       <svg viewBox="0 0 24 24">
         <path d="M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7H14A7,7 0 0,1 21,14H22A1,1 0 0,1 23,15V18A1,1 0 0,1 22,19H21V20A2,2 0 0,1 19,22H5A2,2 0 0,1 3,20V19H2A1,1 0 0,1 1,18V15A1,1 0 0,1 2,14H3A7,7 0 0,1 10,7H11V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7.5,13A2.5,2.5 0 0,0 5,15.5A2.5,2.5 0 0,0 7.5,18A2.5,2.5 0 0,0 10,15.5A2.5,2.5 0 0,0 7.5,13M16.5,13A2.5,2.5 0 0,0 14,15.5A2.5,2.5 0 0,0 16.5,18A2.5,2.5 0 0,0 19,15.5A2.5,2.5 0 0,0 16.5,13Z" />
       </svg>
-      Agentic AI
+      Agentic Support
     </h3>
-    <p>Build agentic workflows with MCP servers, multi-provider LLM clients, and tool calling.</p>
+    <p>Expose scripts as MCP tools for any LLM agent to call, or build your own agent with multi-provider LLM clients and tool calling.</p>
   </div>
   <div class="feature-card">
     <h3>
       <svg viewBox="0 0 24 24">
         <path d="M12,17A2,2 0 0,0 14,15C14,13.89 13.1,13 12,13A2,2 0 0,0 10,15A2,2 0 0,0 12,17M18,8A2,2 0 0,1 20,10V20A2,2 0 0,1 18,22H6A2,2 0 0,1 4,20V10C4,8.89 4.9,8 6,8H7V6A5,5 0 0,1 12,1A5,5 0 0,1 17,6V8H18M12,3A3,3 0 0,0 9,6V8H15V6A3,3 0 0,0 12,3Z" />
       </svg>
-      Safe by Default
+      Security
     </h3>
-    <p>Scripts can be sandboxed with sensible defaults or fine-grained restriction policies.</p>
+    <p>Permission policies and gVisor sandboxing apply to every script — untrusted code runs alongside trusted code without bespoke isolation.</p>
   </div>
 </div>
+
+<h2>Quick Install</h2>
+<div class="install-section">
+  <div class="install-tabs">
+    <input type="radio" name="install-tab" id="tab-go" checked>
+    <label for="tab-go">Go install</label>
+    <input type="radio" name="install-tab" id="tab-binary">
+    <label for="tab-binary">Binary</label>
+    <input type="radio" name="install-tab" id="tab-source">
+    <label for="tab-source">From source</label>
+  </div>
+
+  <div id="content-go" class="install-content active">
+    <pre><code>go install github.com/project-starkite/starkite@latest</code></pre>
+  </div>
+
+  <div id="content-binary" class="install-content">
+    <p>Download from <a href="https://github.com/project-starkite/starkite/releases/latest">GitHub Releases</a></p>
+  </div>
+
+  <div id="content-source" class="install-content">
+    <pre><code>git clone https://github.com/project-starkite/starkite.git
+cd starkite
+go build -o kite .</code></pre>
+  </div>
+</div>
+
+<script>
+  document.querySelectorAll('.install-tabs input[type="radio"]').forEach(radio => {
+    radio.addEventListener('change', function () {
+      document.querySelectorAll('.install-content').forEach(c => c.classList.remove('active'));
+      const contentId = 'content-' + this.id.replace('tab-', '');
+      document.getElementById(contentId).classList.add('active');
+    });
+  });
+</script>
 
 <style>
   .md-content__inner {
@@ -391,7 +607,7 @@
     padding: 0;
   }
 
-  #ex-core:checked   ~ .example-tabs__labels label[for="ex-core"],
+  #ex-system:checked ~ .example-tabs__labels label[for="ex-system"],
   #ex-cloud:checked  ~ .example-tabs__labels label[for="ex-cloud"],
   #ex-ai:checked     ~ .example-tabs__labels label[for="ex-ai"],
   #ex-ssh:checked    ~ .example-tabs__labels label[for="ex-ssh"],
@@ -402,7 +618,7 @@
     background: transparent;
   }
 
-  #ex-core:checked  ~ .example-pane[data-for="ex-core"],
+  #ex-system:checked ~ .example-pane[data-for="ex-system"],
   #ex-cloud:checked ~ .example-pane[data-for="ex-cloud"],
   #ex-ai:checked    ~ .example-pane[data-for="ex-ai"],
   #ex-ssh:checked   ~ .example-pane[data-for="ex-ssh"],
@@ -411,185 +627,6 @@
     display: block;
   }
 </style>
-
-<h2>Starkite examples</h2>
-<p>Starkite automates local tasks,
-  drives Kubernetes workloads,
-  builds agentic AI workflows,
-  and runs HTTP/SSH clients and servers.</p>
-<section class="examples-section">
-  <div class="example-tabs">
-    <input type="radio" id="ex-core" name="ex" checked>
-    <input type="radio" id="ex-cloud" name="ex">
-    <input type="radio" id="ex-ai" name="ex">
-    <input type="radio" id="ex-ssh" name="ex">
-    <input type="radio" id="ex-http" name="ex">
-    <input type="radio" id="ex-tests" name="ex">
-
-    <div class="example-tabs__labels">
-      <label for="ex-core">Local</label>
-      <label for="ex-cloud">Kubernetes</label>
-      <label for="ex-ai">AI</label>
-      <label for="ex-ssh">SSH</label>
-      <label for="ex-http">HTTP</label>
-      <label for="ex-tests">Tests</label>
-    </div>
-
-    <div class="example-pane" data-for="ex-core">
-      <h3>Aggregate system info from local machine into a JSON report</h3>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">ops-report.star</span>
-        </div>
-        <pre><code class="language-python">#!/usr/bin/env kite
-
-report = {
-    "date":    time.format(time.now(), "2006-01-02"),
-    "host":    os.hostname(),
-    "uptime":  os.exec("uptime").strip(),
-    "configs": [fs.path(f).name for f in glob("/etc/nginx/conf.d/*.conf")],
-}
-
-write_text("/var/log/ops-report.json", json.encode(report))
-printf("report written for %s\n", report["host"])
-</code></pre>
-      </div>
-    </div>
-
-    <div class="example-pane" data-for="ex-cloud">
-      <h3>Automate Kubernetes cluster operations</h3>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">rollout.star</span>
-        </div>
-        <pre><code class="language-python">#!/usr/bin/env kite
-
-k8s.deploy("web", "nginx:1.27", replicas=3, namespace="prod",
-    labels={"app": "web", "tier": "frontend"})
-
-k8s.expose("deployment", "web",
-    port=80, type="LoadBalancer", namespace="prod")
-
-k8s.wait_for("deployment", "web",
-    condition="Available", namespace="prod", timeout="2m")
-
-print("web is live")
-</code></pre>
-      </div>
-    </div>
-
-    <div class="example-pane" data-for="ex-ai">
-      <h3>Build MCP server for LLM tool calling</h3>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">weather-server.star</span>
-        </div>
-        <pre><code class="language-python">#!/usr/bin/env kite
-
-def get_weather(city):
-    """Return the current weather for a city."""
-    # Stub data — replace with a real weather API.
-    forecasts = {
-        "san francisco": {"temp_f": 64, "conditions": "foggy"},
-        "tokyo":         {"temp_f": 78, "conditions": "sunny"},
-        "berlin":        {"temp_f": 52, "conditions": "cloudy"},
-    }
-    return forecasts.get(city.lower(), {"error": "no data for " + city})
-
-mcp.serve(
-    name  = "weather",
-    tools = [get_weather],
-)
-</code></pre>
-      </div>
-    </div>
-
-    <div class="example-pane" data-for="ex-ssh">
-      <h3>Run commands across an SSH fleet</h3>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">fleet-uptime.star</span>
-        </div>
-        <pre><code class="language-python">#!/usr/bin/env kite
-
-fleet = ssh.config(
-    hosts=["web-1", "web-2", "web-3"],
-    user="deploy",
-    key="~/.ssh/id_ed25519",
-    exec_policy="concurrent",
-)
-
-results = fleet.exec("uptime -p")
-for r in results:
-    status = "OK" if r.ok else "FAIL"
-    printf("%s %-8s %s\n", status, r.host, r.stdout.strip())
-</code></pre>
-      </div>
-    </div>
-
-    <div class="example-pane" data-for="ex-http">
-      <h3>Spin up a JSON API server</h3>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">api-server.star</span>
-        </div>
-        <pre><code class="language-python">#!/usr/bin/env kite
-
-def health(req):
-    return {"status": 200, "body": {"ok": True}}
-
-def echo(req):
-    return {"status": 200, "body": req.body}
-
-http.serve(
-    {
-        "GET /health": health,
-        "POST /echo":  echo,
-    },
-    port=8080,
-)
-</code></pre>
-      </div>
-    </div>
-
-    <div class="example-pane" data-for="ex-tests">
-      <h3>Run tests with built-in assertions</h3>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">math_test.star</span>
-        </div>
-        <pre><code class="language-python">def test_addition():
-    assert(2 + 2 == 4, "basic math should work")
-
-def test_string_contains():
-    assert("kite" in "starkite", "starkite should contain kite")
-
-def test_list_length():
-    items = ["a", "b", "c"]
-    assert(len(items) == 3, "list should have 3 items")
-</code></pre>
-      </div>
-    </div>
-  </div>
-</section>
 
 <style>
   .run-section {
@@ -711,42 +748,6 @@ Error: open /etc/passwd: no such file or directory</code></pre>
     </div>
   </div>
 </section>
-
-<h2>Quick Install</h2>
-<div class="install-section">
-  <div class="install-tabs">
-    <input type="radio" name="install-tab" id="tab-go" checked>
-    <label for="tab-go">Go install</label>
-    <input type="radio" name="install-tab" id="tab-binary">
-    <label for="tab-binary">Binary</label>
-    <input type="radio" name="install-tab" id="tab-source">
-    <label for="tab-source">From source</label>
-  </div>
-
-  <div id="content-go" class="install-content active">
-    <pre><code>go install github.com/project-starkite/starkite@latest</code></pre>
-  </div>
-
-  <div id="content-binary" class="install-content">
-    <p>Download from <a href="https://github.com/project-starkite/starkite/releases/latest">GitHub Releases</a></p>
-  </div>
-
-  <div id="content-source" class="install-content">
-    <pre><code>git clone https://github.com/project-starkite/starkite.git
-cd starkite
-go build -o kite .</code></pre>
-  </div>
-</div>
-
-<script>
-  document.querySelectorAll('.install-tabs input[type="radio"]').forEach(radio => {
-    radio.addEventListener('change', function () {
-      document.querySelectorAll('.install-content').forEach(c => c.classList.remove('active'));
-      const contentId = 'content-' + this.id.replace('tab-', '');
-      document.getElementById(contentId).classList.add('active');
-    });
-  });
-</script>
 
 <!-- Syntax highlighting for the Examples terminal blocks (home page only). -->
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>

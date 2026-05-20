@@ -325,7 +325,7 @@ obj["spec"]["replicas"] = 3
 
 Nested maps share the same underlying data — mutations via bracket notation on a nested AttrDict propagate to the parent object automatically.
 
-See the [webhooks guide](../../kubernetes/guides/webhooks.md) for a full end-to-end workflow including `gen-webhook-artifacts`.
+See the [webhooks guide](../../kubernetes/quickstarts/webhooks.md) for a full end-to-end workflow including `gen-webhook-artifacts`.
 
 ## Object constructors
 

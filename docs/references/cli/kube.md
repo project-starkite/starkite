@@ -95,5 +95,5 @@ kitecloud kube gen-webhook-artifacts \
 
 ## Related
 
-- [Building webhooks guide](../../kubernetes/guides/webhooks.md)
+- [Building webhooks guide](../../kubernetes/quickstarts/webhooks.md)
 - [k8s module reference](../api/k8s.md)

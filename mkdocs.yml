@@ -1,5 +1,5 @@
 site_name: Starkite
-site_description: A secure runtime for cloud-native and agentic AI automation with Starlark
+site_description: A secure scripting runtime for system, infrastructure, and AI agent automation
 site_author: Vladimir Vivien
 site_url: https://starkite.dev/
 
@@ -132,11 +132,15 @@ nav:
           - mcp: references/api/mcp.md
   - Kubernetes:
       - Overview: kubernetes/index.md
-      - Guides:
-          - Webhooks: kubernetes/guides/webhooks.md
-          - Controllers: kubernetes/guides/controllers.md
-      - Examples: kubernetes/examples.md
-  - AI:
+      - Quickstarts:
+          - Deploy:                      kubernetes/quickstarts/deploy.md
+          - Rolling update:              kubernetes/quickstarts/rolling-update.md
+          - Cluster health audit:        kubernetes/quickstarts/cluster-health.md
+          - Multi-environment manifests: kubernetes/quickstarts/multi-env.md
+          - Full app stack:              kubernetes/quickstarts/app-stack.md
+          - Webhooks:                    kubernetes/quickstarts/webhooks.md
+          - Controllers:                 kubernetes/quickstarts/controllers.md
+  - AI Agents:
       - Overview: ai/index.md
       - Guides:
           - Agents: ai/guides/agents.md
