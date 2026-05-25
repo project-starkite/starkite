@@ -151,6 +151,19 @@
     font-size: 0.78rem;
     line-height: 1.45;
     padding: 0.75rem 0.85rem;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+
+  .tx-hero__right .example-pane .terminal pre::-webkit-scrollbar,
+  .tx-hero__right .example-pane .terminal pre::-webkit-scrollbar-thumb,
+  .tx-hero__right .example-pane .terminal pre::-webkit-scrollbar-track,
+  .tx-hero__right .example-pane .terminal pre::-webkit-scrollbar-corner {
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
+    -webkit-appearance: none;
   }
 
   .tx-hero__right .example-tabs__labels label {
@@ -174,13 +187,13 @@
             <input type="radio" id="ex-system" name="ex" checked>
             <input type="radio" id="ex-cloud" name="ex">
             <input type="radio" id="ex-ai" name="ex">
-            <input type="radio" id="ex-tests" name="ex">
+            <input type="radio" id="ex-secure" name="ex">
 
             <div class="example-tabs__labels">
               <label for="ex-system">System</label>
               <label for="ex-cloud">Kubernetes</label>
               <label for="ex-ai">AI</label>
-              <label for="ex-tests">Tests</label>
+              <label for="ex-secure">Secure</label>
             </div>
 
             <div class="example-pane" data-for="ex-system">
@@ -262,23 +275,31 @@ mcp.serve(
               </div>
             </div>
 
-            <div class="example-pane" data-for="ex-tests">
+            <div class="example-pane" data-for="ex-secure">
               <div class="terminal">
                 <div class="terminal__bar">
                   <span class="terminal__dot terminal__dot--red"></span>
                   <span class="terminal__dot terminal__dot--yellow"></span>
                   <span class="terminal__dot terminal__dot--green"></span>
-                  <span class="terminal__title">math_test.star</span>
+                  <span class="terminal__title">security.yaml</span>
                 </div>
-                <pre><code class="language-python">def test_addition():
-    assert(2 + 2 == 4, "basic math should work")
+                <pre><code class="language-yaml"># ~/.starkite/security.yaml
+permissions:
+  ci:
+    default: deny
+    allow:
+      - fs.read
+      - http.client
 
-def test_string_contains():
-    assert("kite" in "starkite", "starkite should contain kite")
-
-def test_list_length():
-    items = ["a", "b", "c"]
-    assert(len(items) == 3, "list should have 3 items")
+sandbox:
+  ci:
+    network: sandbox-loopback
+    mounts:
+      - source: $CWD
+        destination: $CWD
+        mode: rw
+      - destination: /tmp
+        type: tmpfs
 </code></pre>
               </div>
             </div>
@@ -451,7 +472,14 @@ def test_list_length():
   </div>
 
   <div id="content-binary" class="install-content">
-    <p>Download from <a href="https://github.com/project-starkite/starkite/releases/latest">GitHub Releases</a></p>
+    <pre><code># Linux (x86_64)
+wget https://github.com/project-starkite/starkite/releases/latest/download/kite-linux-amd64 -O kite
+
+# macOS (Apple Silicon)
+wget https://github.com/project-starkite/starkite/releases/latest/download/kite-darwin-arm64 -O kite
+
+# Windows (PowerShell)
+Invoke-WebRequest -Uri "https://github.com/project-starkite/starkite/releases/latest/download/kite-windows-amd64.exe" -OutFile kite.exe</code></pre>
   </div>
 
   <div id="content-source" class="install-content">
@@ -610,9 +638,7 @@ go build -o kite .</code></pre>
   #ex-system:checked ~ .example-tabs__labels label[for="ex-system"],
   #ex-cloud:checked  ~ .example-tabs__labels label[for="ex-cloud"],
   #ex-ai:checked     ~ .example-tabs__labels label[for="ex-ai"],
-  #ex-ssh:checked    ~ .example-tabs__labels label[for="ex-ssh"],
-  #ex-http:checked   ~ .example-tabs__labels label[for="ex-http"],
-  #ex-tests:checked  ~ .example-tabs__labels label[for="ex-tests"] {
+  #ex-secure:checked ~ .example-tabs__labels label[for="ex-secure"] {
     border-bottom-color: var(--md-accent-fg-color);
     opacity: 1;
     background: transparent;
@@ -621,9 +647,7 @@ go build -o kite .</code></pre>
   #ex-system:checked ~ .example-pane[data-for="ex-system"],
   #ex-cloud:checked ~ .example-pane[data-for="ex-cloud"],
   #ex-ai:checked    ~ .example-pane[data-for="ex-ai"],
-  #ex-ssh:checked   ~ .example-pane[data-for="ex-ssh"],
-  #ex-http:checked  ~ .example-pane[data-for="ex-http"],
-  #ex-tests:checked ~ .example-pane[data-for="ex-tests"] {
+  #ex-secure:checked ~ .example-pane[data-for="ex-secure"] {
     display: block;
   }
 </style>
@@ -639,6 +663,10 @@ go build -o kite .</code></pre>
     gap: 1rem;
   }
 
+  .run-grid--stacked {
+    grid-template-columns: 1fr;
+  }
+
   .run-card h4 {
     margin: 0 0 0.5rem;
     font-size: 0.95rem;
@@ -651,21 +679,50 @@ go build -o kite .</code></pre>
     opacity: 0.8;
   }
 
-  .run-card .terminal pre {
+  /* Plain HTML <pre> blocks don't inherit Material's pymdownx .highlight
+     wrapper, so give them the same bg/padding/radius Material uses elsewhere. */
+  .run-card pre {
+    background-color: var(--md-code-bg-color);
+    border-radius: 0.25rem;
+    padding: 0.75rem 1rem;
     margin: 0;
-    padding: 0.85rem 1rem;
-    background: #0a1628;
-    color: #e6edf3;
+    overflow-x: auto;
     font-size: 0.85rem;
     line-height: 1.55;
-    overflow-x: auto;
   }
 
-  .run-card .terminal pre code {
-    background: transparent;
-    color: inherit;
+  /* Light-theme highlight.js token colors for run-card code blocks.
+     Overrides the github-dark stylesheet so syntax colors read on light bg. */
+  .run-card pre code.hljs {
+    background: transparent !important;
+    color: var(--md-typeset-color);
     padding: 0;
-    font-family: var(--md-code-font-family);
+  }
+  .run-card .hljs-keyword,
+  .run-card .hljs-built_in,
+  .run-card .hljs-literal {
+    color: #cf222e;
+  }
+  .run-card .hljs-string,
+  .run-card .hljs-meta-string {
+    color: #0a3069;
+  }
+  .run-card .hljs-comment,
+  .run-card .hljs-meta {
+    color: #6e7781;
+    font-style: italic;
+  }
+  .run-card .hljs-number {
+    color: #0550ae;
+  }
+  .run-card .hljs-title,
+  .run-card .hljs-title.function_,
+  .run-card .hljs-attr {
+    color: #8250df;
+  }
+  .run-card .hljs-type,
+  .run-card .hljs-variable {
+    color: #953800;
   }
 </style>
 
@@ -675,76 +732,55 @@ go build -o kite .</code></pre>
     <div class="run-card">
       <h4>1. Run via the <code>kite</code> CLI</h4>
       <p>Pass any <code>.star</code> file to <code>kite run</code> (or use the implicit shorthand). Use for ad-hoc invocation, CI pipelines, and variable passing.</p>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">shell</span>
-        </div>
-        <pre><code class="language-bash">$ kite run deploy.star
+      <pre><code class="language-bash">$ kite run deploy.star
 
 # shorthand — `run` is implicit
 $ kite deploy.star --var image_tag=v1.0.0
 
 # pipe results to other tools
 $ kite manifest.star | kubectl apply -f -</code></pre>
-      </div>
     </div>
 
     <div class="run-card">
       <h4>2. Execute directly via shebang</h4>
       <p>Add <code>#!/usr/bin/env kite</code> at the top, mark the file executable, and run it like any other script — no <code>kite</code> prefix needed.</p>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">shell</span>
-        </div>
-        <pre><code class="language-bash">$ cat deploy.star
+      <pre><code class="language-bash">$ cat deploy.star
 #!/usr/bin/env kite
 print("rolling out v1.0.0")
 
 $ chmod +x deploy.star
 $ ./deploy.star
 rolling out v1.0.0</code></pre>
-      </div>
     </div>
   </div>
 </section>
 
-<h2>Script Security</h2>
+<h2>Built-in Script Testing</h2>
 <section class="run-section">
-  <div class="run-grid">
+  <div class="run-grid run-grid--stacked">
     <div class="run-card">
-      <h4>Script Permission</h4>
-      <p><code>--permissions</code> applies an allow/deny policy to gated module calls inside the script process. Pick a built-in profile (<code>strict</code>, <code>deny-all</code>) or supply your own rules in <code>~/.starkite/security.yaml</code>.</p>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">shell</span>
-        </div>
-        <pre><code class="language-bash">$ kite run untrusted.star --permissions=strict
-Error: permission denied: os.exec is not allowed</code></pre>
-      </div>
+      <h4>Write tests</h4>
+      <p>Test files end in <code>_test.star</code> and define <code>test_*</code> functions. Use the built-in <code>assert(cond, msg)</code>, and optionally <code>setup()</code>/<code>teardown()</code> for per-test fixtures. <code>skip()</code> marks a test as skipped.</p>
+      <pre><code class="language-python">def test_addition():
+    assert(2 + 2 == 4, "basic math should work")
+
+def test_string_contains():
+    assert("kite" in "starkite", "starkite should contain kite")
+
+def test_list_length():
+    items = ["a", "b", "c"]
+    assert(len(items) == 3, "list should have 3 items")</code></pre>
     </div>
 
     <div class="run-card">
-      <h4>Script Sandbox</h4>
-      <p><code>--sandbox</code> runs the script inside a gVisor user-space kernel on Linux. The script gets a clean filesystem view — your home directory, host credentials, and unrelated host state are not visible — and the <code>strict</code> profile additionally blocks outbound network access.</p>
-      <div class="terminal">
-        <div class="terminal__bar">
-          <span class="terminal__dot terminal__dot--red"></span>
-          <span class="terminal__dot terminal__dot--yellow"></span>
-          <span class="terminal__dot terminal__dot--green"></span>
-          <span class="terminal__title">shell</span>
-        </div>
-        <pre><code class="language-bash">$ kite run untrusted.star --sandbox=strict
-Error: open /etc/passwd: no such file or directory</code></pre>
-      </div>
+      <h4>Run tests</h4>
+      <p><code>kite test</code> discovers every <code>_test.star</code> file under the path, runs each <code>test_*</code> function, and reports pass/fail counts. Add <code>--verbose</code> to see each test name as it runs; the exit code is non-zero if any test fails — CI-ready out of the box.</p>
+      <pre><code class="language-bash">$ kite test ./tests/
+Found 1 test file(s)
+============================================================
+Tests: 3 passed, 0 failed, 3 total
+Time:  9ms
+============================================================</code></pre>
     </div>
   </div>
 </section>
@@ -753,8 +789,9 @@ Error: open /etc/passwd: no such file or directory</code></pre>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/python.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/bash.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/yaml.min.js"></script>
 <script>
-  document.querySelectorAll('.example-pane .terminal pre code, .run-card .terminal pre code').forEach(el => {
+  document.querySelectorAll('.example-pane .terminal pre code, .run-card pre code').forEach(el => {
     if (typeof hljs !== 'undefined') {
       hljs.highlightElement(el);
     }
