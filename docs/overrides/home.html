@@ -715,19 +715,13 @@ sandbox:
 </h2>
 <div class="install-section">
   <div class="install-tabs">
-    <input type="radio" name="install-tab" id="tab-go" checked>
-    <label for="tab-go">Go install</label>
-    <input type="radio" name="install-tab" id="tab-binary">
+    <input type="radio" name="install-tab" id="tab-binary" checked>
     <label for="tab-binary">Binary</label>
     <input type="radio" name="install-tab" id="tab-source">
     <label for="tab-source">From source</label>
   </div>
 
-  <div id="content-go" class="install-content active">
-    <pre><code>go install github.com/project-starkite/starkite@latest</code></pre>
-  </div>
-
-  <div id="content-binary" class="install-content">
+  <div id="content-binary" class="install-content active">
     <pre><code># Linux (x86_64)
 wget https://github.com/project-starkite/starkite/releases/latest/download/kite-linux-amd64 -O kite
 
@@ -741,7 +735,8 @@ Invoke-WebRequest -Uri "https://github.com/project-starkite/starkite/releases/la
   <div id="content-source" class="install-content">
     <pre><code>git clone https://github.com/project-starkite/starkite.git
 cd starkite
-go build -o kite .</code></pre>
+make build-all          # builds ./bin/kite (all-in-one)
+sudo install -m 0755 ./bin/kite /usr/local/bin/kite</code></pre>
   </div>
 </div>
 

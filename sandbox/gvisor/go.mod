@@ -2,8 +2,6 @@ module github.com/project-starkite/starkite/sandbox/gvisor
 
 go 1.26
 
-require github.com/project-starkite/starkite/libkite v0.0.0
-
 require (
 	github.com/cilium/ebpf v0.12.3 // indirect
 	github.com/coreos/go-systemd/v22 v22.6.0 // indirect
@@ -29,5 +27,3 @@ require (
 	google.golang.org/protobuf v1.36.8 // indirect
 	gvisor.dev/gvisor v0.0.0-20260505181943-18babf4ea276
 )
-
-replace github.com/project-starkite/starkite/libkite => ../../libkite

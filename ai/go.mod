@@ -8,9 +8,6 @@ require (
 	github.com/modelcontextprotocol/go-sdk v1.5.0
 	github.com/openai/openai-go v1.12.0
 	github.com/spf13/cobra v1.10.2
-	github.com/project-starkite/starkite/base v0.0.0
-	github.com/project-starkite/starkite/libkite v0.0.0
-	github.com/project-starkite/starkite/wasm v0.0.0
 	github.com/vladimirvivien/startype v0.7.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 )
@@ -42,6 +39,7 @@ require (
 	github.com/invopop/jsonschema v0.13.0 // indirect
 	github.com/mailru/easyjson v0.9.0 // indirect
 	github.com/mbleigh/raymond v0.0.0-20250414171441-6b3a58ab9e0a // indirect
+	github.com/project-starkite/starkite/libkite v0.0.0-20260527011535-40f754bda80b // indirect
 	github.com/segmentio/asm v1.1.3 // indirect
 	github.com/segmentio/encoding v0.5.4 // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
@@ -74,10 +72,4 @@ require (
 	google.golang.org/grpc v1.73.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-)
-
-replace (
-	github.com/project-starkite/starkite/base => ../base
-	github.com/project-starkite/starkite/libkite => ../libkite
-	github.com/project-starkite/starkite/wasm => ../wasm
 )

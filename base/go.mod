@@ -5,7 +5,6 @@ go 1.26
 require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/spf13/cobra v1.10.2
-	github.com/project-starkite/starkite/libkite v0.0.0
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	gopkg.in/yaml.v3 v3.0.1
 )
@@ -16,6 +15,7 @@ require (
 	github.com/gobwas/glob v0.2.3 // indirect
 	github.com/ianlancetaylor/demangle v0.0.0-20240805132620-81f5be970eca // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
+	github.com/project-starkite/starkite/libkite v0.0.0-20260527011535-40f754bda80b // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
@@ -26,9 +26,3 @@ require (
 	golang.org/x/term v0.41.0 // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 )
-
-replace github.com/project-starkite/starkite/libkite => ../libkite
-
-require github.com/project-starkite/starkite/wasm v0.0.0
-
-replace github.com/project-starkite/starkite/wasm => ../wasm
