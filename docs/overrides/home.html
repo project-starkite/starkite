@@ -66,7 +66,7 @@
   }
   .tx-hero__logo {
     display: block;
-    max-height: 80px;
+    max-height: 160px;
     margin: 0 auto 1.5rem;
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.45));
   }
@@ -346,6 +346,36 @@
   }
   .install-content code {
     font-family: var(--md-code-font-family);
+  }
+
+  /* =====================================================
+     SECTION DIVIDER — large centered heading that breaks the
+     vertical flow between major page regions
+     ===================================================== */
+  .section-divider {
+    text-align: center;
+    margin: 5rem 0 2rem;
+    padding-top: 3rem;
+    border-top: 1px solid var(--md-typeset-table-color);
+  }
+  .md-typeset h2.section-divider__title {
+    font-size: 2.75em;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.15;
+    margin: 0;
+    color: var(--md-typeset-color);
+  }
+  .section-divider__title em {
+    color: var(--md-accent-fg-color);
+    font-style: normal;
+  }
+  .section-divider__ctas {
+    display: flex;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-top: 1.75rem;
+    flex-wrap: wrap;
   }
 
   /* =====================================================
@@ -761,6 +791,10 @@ rolling out v1.0.0</code></pre>
   </div>
 </section>
 
+<div class="section-divider">
+  <h2 class="section-divider__title">One Binary. <em>Complete Automation.</em></h2>
+</div>
+
 <h2 class="section-heading">
   <svg viewBox="0 0 24 24"><path d="M17,17H7V7H17M21,11V9H19V7C19,5.89 18.1,5 17,5H15V3H13V5H11V3H9V5H7C5.89,5 5,5.89 5,7V9H3V11H5V13H3V15H5V17A2,2 0 0,0 7,19H9V21H11V19H13V21H15V19H17A2,2 0 0,0 19,17V15H21V13H19V11M15,15H9V9H15V15Z"/></svg>
   Standard Library
@@ -913,6 +947,15 @@ Time:  9ms
     </div>
   </div>
 </section>
+
+<div class="section-divider">
+  <h2 class="section-divider__title">Ready to Start? <em>Learn more.</em></h2>
+  <div class="section-divider__ctas">
+    <a href="getting-started/" class="md-button md-button--primary">Get Started</a>
+    <a href="kubernetes/" class="md-button">Kubernetes</a>
+    <a href="ai/" class="md-button">AI Agents</a>
+  </div>
+</div>
 
 <!-- Syntax highlighting for the Examples terminal blocks (home page only). -->
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>

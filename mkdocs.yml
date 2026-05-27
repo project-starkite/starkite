@@ -10,7 +10,7 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   custom_dir: docs/overrides
-  logo: assets/images/starkite-logo-small-bg.png
+  logo: assets/images/starkite-logo.svg
   favicon: assets/images/starkite-logo-small-bg.png
   palette:
     scheme: default
@@ -146,7 +146,13 @@ nav:
           - Agents: ai/guides/agents.md
           - MCP: ai/guides/mcp.md
       - Examples: ai/examples.md
+copyright: >-
+  Copyright &copy; 2026 The Starkite Authors.<br>
+  Kubernetes&reg; is a registered trademark of The Linux Foundation
+  in the United States and other countries.
+
 extra:
+  generator: false
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/project-starkite/starkite

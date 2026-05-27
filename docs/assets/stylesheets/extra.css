@@ -35,9 +35,44 @@
   font-size: 0.85em;
 }
 
-/* Navigation tabs styling */
-.md-tabs {
+/* Top header bar: use the darker cyan for depth at the top of the page */
+.md-header {
   background-color: var(--md-primary-fg-color--dark);
+}
+
+/* Menu tabs sit below the header in the lighter primary cyan — flipped from
+   Material's default so the gradient runs dark-to-light top-to-bottom. */
+.md-tabs {
+  background-color: var(--md-primary-fg-color);
+}
+
+/* Use the full starkite wordmark SVG as the header brand. The SVG already
+   contains the "Starkite" lettering, so the separate site-name text is
+   hidden — the logo carries both icon and wordmark. */
+.md-header .md-header__button.md-logo {
+  padding: 0.25rem 0.4rem;
+}
+.md-header .md-header__button.md-logo img,
+.md-header .md-header__button.md-logo svg {
+  height: 2rem;
+  width: auto;
+  max-width: none;
+}
+.md-header .md-header__title {
+  display: none;
+}
+
+/* Menu tabs: bolder text + full opacity so labels read clearly against the
+   lighter cyan tab strip. Active link gets a heavier weight + underline. */
+.md-tabs__link {
+  font-weight: 700;
+  opacity: 1;
+  color: #ffffff;
+}
+.md-tabs__link--active,
+.md-tabs__item--active > .md-tabs__link {
+  font-weight: 800;
+  color: #ffffff;
 }
 
 /* Admonition styling */
@@ -62,9 +97,87 @@
   font-weight: 500;
 }
 
-/* Footer links */
+/* Footer — single continuous gradient covers both the sitemap and the
+   copyright/social bar so they read as one visual block. Inverted from the
+   hero gradient (lighter at top, deepest navy at bottom) to anchor the page. */
+.md-footer {
+  background: linear-gradient(180deg, #18293f 0%, #0a1628 55%, #04101e 100%);
+}
 .md-footer-meta {
-  background-color: var(--md-default-bg-color--light);
+  background: transparent;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+.md-footer-meta__inner {
+  padding: 1.25rem 0.8rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+.md-copyright {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.78);
+  font-size: 0.78rem;
+  line-height: 1.6;
+}
+.md-copyright__highlight {
+  color: rgba(255, 255, 255, 0.92);
+}
+.md-footer-meta .md-social__link {
+  color: rgba(255, 255, 255, 0.7);
+}
+.md-footer-meta .md-social__link:hover {
+  color: #ffffff;
+}
+
+/* Footer sitemap — brand cell on the left, 3 link columns to the right */
+.md-footer-sitemap {
+  display: grid;
+  grid-template-columns: minmax(140px, 200px) repeat(3, 1fr);
+  gap: 2.5rem;
+  padding: 3rem 0.8rem 2.5rem;
+  align-items: start;
+  color: rgba(255, 255, 255, 0.85);
+}
+.md-footer-sitemap__brand a {
+  display: inline-block;
+}
+.md-footer-sitemap__brand img {
+  height: 2.25rem;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.3));
+}
+.md-footer-sitemap__col h4 {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0 0 0.9rem 0;
+}
+.md-footer-sitemap__col ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+.md-footer-sitemap__col li {
+  margin-bottom: 0.45rem;
+}
+.md-footer-sitemap__col a {
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  font-size: 0.86rem;
+  transition: color 0.15s ease;
+}
+.md-footer-sitemap__col a:hover {
+  color: #67e8f9;
+}
+@media (max-width: 50em) {
+  .md-footer-sitemap {
+    grid-template-columns: 1fr;
+    gap: 1.75rem;
+    padding: 2rem 0.8rem 1.5rem;
+  }
 }
 
 /* Sidebar nav: make subsection headings (e.g. "CLI", "API" under References)
