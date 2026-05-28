@@ -33,7 +33,7 @@ To pin a specific commit instead, pass its SHA: `go get gvisor.dev/gvisor@<sha>`
 Then:
 
 1. rsync `go.mod` + `go.sum` back to the working copy
-2. `go build ./...` in `sandbox/gvisor` and `allkite`
+2. `go build ./...` in `sandbox/gvisor` and `kite`
 3. `go test ./...` in `sandbox/gvisor`
 4. `STARKITE_SANDBOX_INTEGRATION=1 GOWORK=off go test ./...` in `tests/sandbox`
 5. update the "Current pin" table above

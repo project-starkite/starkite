@@ -10,7 +10,7 @@ weight: 10
 
 Starkite's `mcp` module connects to an MCP server (`mcp.connect`) over stdio or HTTP and exposes each remote tool as a regular Starlark callable. Those callables hand directly to `ai.chat(tools=...)`, where the agent sees them alongside any native Starlark tools and calls them by name. The pattern: open the session, wrap each tool in a small Starlark function (the docstring becomes the tool description, and the wrapper is the natural place for argument coercion or validation), run the agent, close the session. Requires the AI edition (`kiteai` or `kite`).
 
-**Source:** [`ai/examples/agent/mcp_integration.star`](https://github.com/project-starkite/starkite/blob/main/ai/examples/agent/mcp_integration.star)
+**Source:** [`aikite/examples/agent/mcp_integration.star`](https://github.com/project-starkite/starkite/blob/main/aikite/examples/agent/mcp_integration.star)
 
 ## Script
 
@@ -52,7 +52,7 @@ Requires `kiteai` (or `kite`) and `ANTHROPIC_API_KEY` set in the environment:
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-kiteai run ai/examples/agent/mcp_integration.star
+kiteai run aikite/examples/agent/mcp_integration.star
 ```
 
 ## What's happening

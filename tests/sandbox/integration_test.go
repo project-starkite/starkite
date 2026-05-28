@@ -11,7 +11,7 @@
 //
 // Skipped on non-Linux (build tag).
 // Skipped unless STARKITE_SANDBOX_INTEGRATION=1 — these tests build
-// allkite, spawn kite under gVisor, and depend on the kernel allowing
+// kite, spawn it under gVisor, and depend on the kernel allowing
 // unprivileged user namespaces. CI opts in explicitly; local `go test
 // ./...` doesn't trigger them.
 package sandbox_test
@@ -180,7 +180,7 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	}
 }
 
-// buildKite builds the allkite binary (the kite all-in-one) into a
+// buildKite builds the kite all-in-one binary into a
 // t.TempDir() and returns its path.
 func buildKite(t *testing.T) string {
 	t.Helper()
@@ -192,7 +192,7 @@ func buildKite(t *testing.T) string {
 	out := filepath.Join(t.TempDir(), "kite")
 
 	cmd := exec.Command("go", "build", "-o", out, ".")
-	cmd.Dir = filepath.Join(repoRoot, "allkite")
+	cmd.Dir = filepath.Join(repoRoot, "kite")
 	if buildOut, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("building kite: %v\n%s", err, buildOut)
 	}

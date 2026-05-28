@@ -10,7 +10,7 @@ edition: ai
 
 Starkite-AI does **not** ship a packaged REPL or a blocking `agent.run()` facade. Instead, scripts build agents by composing [`ai.chat()`](../../references/api/ai.md#aichatkwargs) + [`ai.run_until()`](../../references/api/ai.md#airun_untilchat-initial-kwargs) with the existing libkite modules for UI, I/O, and side effects (`io.prompt`, `fs`, `http`, `k8s`, `ssh`, …). This keeps the `ai` module small and gives scripts full control over the UX.
 
-Four patterns, each with a runnable example in [`ai/examples/agent/`](https://github.com/project-starkite/starkite/tree/main/ai/examples/agent):
+Four patterns, each with a runnable example in [`aikite/examples/agent/`](https://github.com/project-starkite/starkite/tree/main/aikite/examples/agent):
 
 ---
 
@@ -56,7 +56,7 @@ def budget_exceeded(resp):
 ai.run_until(chat, "Research X", stop_when=budget_exceeded, max_steps=50)
 ```
 
-Full example: [`ai/examples/agent/autonomous_fix.star`](https://github.com/project-starkite/starkite/tree/main/ai/examples/agent/autonomous_fix.star).
+Full example: [`aikite/examples/agent/autonomous_fix.star`](https://github.com/project-starkite/starkite/tree/main/aikite/examples/agent/autonomous_fix.star).
 
 ---
 
@@ -95,7 +95,7 @@ for _ in range(1000):  # generous cap; user Ctrl-C to exit in practice
 
 The pattern is trivial because `chat.send()` does all the history management. Each turn automatically appends to `chat.history`; the next `send()` sees full context.
 
-Full example: [`ai/examples/agent/interactive_assistant.star`](https://github.com/project-starkite/starkite/tree/main/ai/examples/agent/interactive_assistant.star).
+Full example: [`aikite/examples/agent/interactive_assistant.star`](https://github.com/project-starkite/starkite/tree/main/aikite/examples/agent/interactive_assistant.star).
 
 ---
 
@@ -140,7 +140,7 @@ for q in questions:
 
 Alternative: `chat.reset()` clears history in place without rebuilding — useful if you want to keep the same Chat object but start fresh from turn 1.
 
-Full example: [`ai/examples/agent/history_management.star`](https://github.com/project-starkite/starkite/tree/main/ai/examples/agent/history_management.star).
+Full example: [`aikite/examples/agent/history_management.star`](https://github.com/project-starkite/starkite/tree/main/aikite/examples/agent/history_management.star).
 
 ---
 
@@ -181,7 +181,7 @@ client.close()
 
 No special plumbing is required — MCP tools compose with `ai.chat()` as regular Starlark callables.
 
-Full example: [`ai/examples/agent/mcp_integration.star`](https://github.com/project-starkite/starkite/tree/main/ai/examples/agent/mcp_integration.star).
+Full example: [`aikite/examples/agent/mcp_integration.star`](https://github.com/project-starkite/starkite/tree/main/aikite/examples/agent/mcp_integration.star).
 
 ---
 

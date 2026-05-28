@@ -11,13 +11,13 @@
 
 The repository has been restructured so that every directory and binary name conveys its intent at a glance. Pre-release, no migration aliases.
 
-**Directory layout** — infrastructure packages use a `<descriptor>kite/` form; domain editions are bare nouns:
+**Directory layout** — every module directory ends in `kite`:
 
-- `libkite/` — embeddable Starlark runtime (was `starbase/`, briefly `kitecore/`). Import path `github.com/project-starkite/starkite/libkite`; package `libkite`.
-- `allkite/` — composes every edition into one binary; produces `kite`.
-- `base/` — lean base CLI (was `core/`, briefly `basekite/`); produces `kitecmd`.
-- `cloud/` — base + Kubernetes (was `cloud/`, briefly `cloudkite/`); produces `kitecloud`.
-- `ai/` — base + LLM/MCP (was `ai/`, briefly `aikite/`); produces `kiteai`.
+- `libkite/` — embeddable Starlark runtime. Import path `github.com/project-starkite/starkite/libkite`; package `libkite`.
+- `kite/` — composes every edition into one binary; produces `kite`.
+- `basekite/` — lean base CLI; produces `kitecmd`.
+- `cloudkite/` — base + Kubernetes; produces `kitecloud`.
+- `aikite/` — base + LLM/MCP; produces `kiteai`.
 
 **Binaries** use the `kite<edition>` prefix form (with the all-in-one as plain `kite`):
 
@@ -36,7 +36,7 @@ The repository has been restructured so that every directory and binary name con
 
 - **`kite` (all-in-one edition)** — bundles every module from every edition in one binary. ~92 MB vs. ~26 MB for `kitecmd`. Recommended for new users.
 - **Strict-mode registry** in `libkite` — `Registry.SetStrict(true)` causes module-name, top-level export, and global-alias collisions to surface at startup instead of silently overwriting. The all-edition opts in; the lean editions stay lenient.
-- **Edition-namespace disjointness invariant** — enforced by the all-edition's loader test (`allkite/loader/loader_test.go`). Any future PR that registers a colliding name across editions fails CI.
+- **Edition-namespace disjointness invariant** — enforced by the all-edition's loader test (`kite/loader/loader_test.go`). Any future PR that registers a colliding name across editions fails CI.
 
 ## v0.0.1 — Initial Release
 

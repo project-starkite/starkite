@@ -2,8 +2,18 @@ go 1.26
 
 use ./libkite
 use ./wasm
-use ./base
-use ./cloud
-use ./ai
-use ./allkite
+use ./basekite
+use ./cloudkite
+use ./aikite
+use ./kite
 use ./sandbox/gvisor
+
+// The renamed edition modules are not yet published to the proxy. Resolve the
+// inter-module requires locally until the dependency-ordered republish drops
+// these replaces (see edition-module-rename-proposal.md, Phase B).
+replace github.com/project-starkite/starkite/libkite v0.0.0-00010101000000-000000000000 => ./libkite
+replace github.com/project-starkite/starkite/wasm v0.0.0-00010101000000-000000000000 => ./wasm
+replace github.com/project-starkite/starkite/basekite v0.0.0-00010101000000-000000000000 => ./basekite
+replace github.com/project-starkite/starkite/cloudkite v0.0.0-00010101000000-000000000000 => ./cloudkite
+replace github.com/project-starkite/starkite/aikite v0.0.0-00010101000000-000000000000 => ./aikite
+replace github.com/project-starkite/starkite/sandbox/gvisor v0.0.0-00010101000000-000000000000 => ./sandbox/gvisor

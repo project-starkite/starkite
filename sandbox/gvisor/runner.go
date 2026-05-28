@@ -1,7 +1,7 @@
 //go:build !linux
 
 // Package gvisor on non-Linux platforms exposes a Runner that always returns
-// the standard platform error. This lets allkite import the package
+// the standard platform error. This lets kite import the package
 // unconditionally; the build tag ensures no gVisor code is compiled in.
 package gvisor
 

@@ -32,7 +32,7 @@ Starkite ships as four independent binaries that share the same script language 
 
 `kite` is the recommended starter — it's a strict superset of the lean editions. Install `kitecmd` if you want a smaller binary or smaller attack surface under `--permissions=strict`.
 
-> **Naming convention.** Source directories follow two shapes: infrastructure packages (`libkite/`, `allkite/`) use a `<descriptor>kite/` suffix form; domain editions (`base/`, `cloud/`, `ai/`) are bare nouns. Binaries use `kite<edition>` prefix form (`kitecmd`, `kitecloud`, `kiteai`), with the all-in-one as the unadorned `kite`.
+> **Naming convention.** Source directory names end in `kite`: `libkite/` (embeddable runtime), `basekite/` / `cloudkite/` / `aikite/` (editions), and `kite/` (the all-in-one). Binaries use the `kite<edition>` prefix form (`kitecmd`, `kitecloud`, `kiteai`), with the all-in-one as the unadorned `kite`.
 
 ## Installation
 

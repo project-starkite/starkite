@@ -304,7 +304,7 @@ rt.UnregisterSignalHandler("SIGINT")
 ```go
 import (
     "github.com/project-starkite/starkite/libkite"
-    cloudloader "github.com/project-starkite/starkite/cloud/loader"
+    cloudloader "github.com/project-starkite/starkite/cloudkite/loader"
 )
 
 registry := cloudloader.NewCloudRegistry(nil)   // base + k8s
@@ -318,7 +318,7 @@ Pulls in `k8s.io/client-go` and Kubernetes dependencies — about 37 MB added to
 ```go
 import (
     "github.com/project-starkite/starkite/libkite"
-    ailoader "github.com/project-starkite/starkite/ai/loader"
+    ailoader "github.com/project-starkite/starkite/aikite/loader"
 )
 
 registry := ailoader.NewAIRegistry(nil)         // base + genai + mcp

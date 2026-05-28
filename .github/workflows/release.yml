@@ -93,7 +93,7 @@ jobs:
           GIT_COMMIT: ${{ github.sha }}
         run: |
           set -euo pipefail
-          DIGEST=$(ko build ./allkite \
+          DIGEST=$(ko build ./kite \
             --bare \
             --tags="${{ steps.meta.outputs.tag }},latest" \
             --platform=linux/amd64,linux/arm64 \
