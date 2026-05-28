@@ -3,6 +3,12 @@ module github.com/project-starkite/starkite/allkite
 go 1.26
 
 require (
+	github.com/project-starkite/starkite/ai v0.0.0-20260528171905-d3a8d1f4fbd2
+	github.com/project-starkite/starkite/base v0.0.0-20260528171905-d3a8d1f4fbd2
+	github.com/project-starkite/starkite/cloud v0.0.0-20260528171905-d3a8d1f4fbd2
+	github.com/project-starkite/starkite/libkite v0.0.0-20260528171905-d3a8d1f4fbd2
+	github.com/project-starkite/starkite/sandbox/gvisor v0.0.0-20260528171905-d3a8d1f4fbd2
+	github.com/project-starkite/starkite/wasm v0.0.0-20260528171905-d3a8d1f4fbd2
 	github.com/spf13/cobra v1.10.2
 )
 

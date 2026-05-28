@@ -3,6 +3,9 @@ module github.com/project-starkite/starkite/cloud
 go 1.26
 
 require (
+	github.com/project-starkite/starkite/base v0.0.0-20260528171905-d3a8d1f4fbd2
+	github.com/project-starkite/starkite/libkite v0.0.0-20260528171905-d3a8d1f4fbd2
+	github.com/project-starkite/starkite/wasm v0.0.0-20260528171905-d3a8d1f4fbd2
 	github.com/spf13/cobra v1.10.2
 	github.com/vladimirvivien/startype v0.7.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
@@ -40,7 +43,6 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
-	github.com/project-starkite/starkite/libkite v0.0.0-20260527011535-40f754bda80b // indirect
 	github.com/spf13/pflag v1.0.9 // indirect
 	github.com/tetratelabs/wabin v0.0.0-20230304001439-f6f874872834 // indirect
 	github.com/tetratelabs/wazero v1.9.0 // indirect
