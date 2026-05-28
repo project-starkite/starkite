@@ -6,7 +6,7 @@ weight: 50
 
 # Kubernetes
 
-Starkite's cloud edition ships the `k8s` module — full Kubernetes resource management, controller-runtime, and admission webhooks — plus the `kite kube` subcommand for artifact generation. Install with `kitecmd edition use cloud`, or use the all-in-one `kite` binary.
+Starkite's cloud edition ships the `k8s` module — full Kubernetes resource management, controller-runtime, and admission webhooks — plus the `kite kube` subcommand for artifact generation. This module is included in the default `kite` binary — nothing extra to install. For a smaller, Kubernetes-only footprint, the lean `kitecloud` edition ships just this (`kite edition use cloud`).
 
 <div class="grid cards" markdown>
 
@@ -44,14 +44,18 @@ Starkite's cloud edition ships the `k8s` module — full Kubernetes resource man
 
 </div>
 
-## Install the cloud edition
+## Getting the Kubernetes module
+
+The default `kite` binary already includes the `k8s` module and `kite kube` subcommand — nothing extra to install. See [Install](../getting-started/install.md).
+
+For a smaller, Kubernetes-only footprint, the lean `kitecloud` edition ships just this:
 
 ```bash
 # From source — produces ./bin/kitecloud
 make build-cloud
 
 # Or via the edition manager (downloads from GitHub Releases)
-kitecmd edition use cloud
+kite edition use cloud
 ```
 
-If the all-in-one `kite` binary is already installed, the cloud module is bundled in — no separate install needed. See [Editions](../concepts/editions.md) for the full edition model and switching commands.
+See [Editions](../concepts/editions.md) for the full edition model and switching commands.

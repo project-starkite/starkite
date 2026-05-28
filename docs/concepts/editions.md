@@ -6,14 +6,16 @@ weight: 10
 
 # Editions
 
-Starkite is distributed as four independent binaries. Every edition speaks the same language and ships the same base modules; the differences are the privileged surface each one exposes. This page covers the four editions, when to pick each, and the `kite edition` subcommand for switching.
+The default binary is **`kite`**, the all-in-one edition — it bundles every module and is what all examples and documentation use. Reach for a lean edition only when binary size or attack surface is a real constraint. Every edition speaks the same language and ships the same base modules; the lean ones simply omit privileged surface. This page covers all four, when a lean edition is worth it, and the `kite edition` subcommand for switching.
 
 | Binary | Modules | Use when |
 |---|---|---|
-| `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | want everything in one binary — recommended for new users |
+| `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | **the default** — everything in one binary |
 | `kitecmd` | base only | system scripts, CI tasks, general automation |
 | `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
 | `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
+
+The lean editions (`kitecmd` / `kitecloud` / `kiteai`) are a strict subset of `kite`, packaged smaller for space-conscious targets — init containers, edge nodes, CI runners.
 
 ## Per-edition Go modules
 

@@ -6,7 +6,7 @@ weight: 60
 
 # AI
 
-Starkite's AI edition ships two modules: [`ai`](../references/api/ai.md) for multi-provider LLM access (Anthropic, OpenAI, Google AI, Ollama) and [`mcp`](../references/api/mcp.md) for the Model Context Protocol — both a server (`mcp.serve()`) and a client (`mcp.connect()`). Install with `kitecmd edition use ai`, or use the all-in-one `kite` binary.
+Starkite's AI edition ships two modules: [`ai`](../references/api/ai.md) for multi-provider LLM access (Anthropic, OpenAI, Google AI, Ollama) and [`mcp`](../references/api/mcp.md) for the Model Context Protocol — both a server (`mcp.serve()`) and a client (`mcp.connect()`). These modules are included in the default `kite` binary — nothing extra to install. For a smaller, AI-only footprint, the lean `kiteai` edition ships just these (`kite edition use ai`).
 
 <div class="grid cards" markdown>
 
@@ -55,7 +55,7 @@ print(resp.text)
 ```
 
 ```bash
-kiteai run hello-ai.star
+kite run hello-ai.star
 ```
 
 With Anthropic, set `ANTHROPIC_API_KEY` first:
@@ -87,17 +87,21 @@ resp = ai.generate("...")
 ai.config(api_keys = {"openai": env("MY_OPENAI_KEY")})
 ```
 
-## Install the AI edition
+## Getting the AI modules
+
+The default `kite` binary already includes the `ai` and `mcp` modules — nothing extra to install. See [Install](../getting-started/install.md).
+
+For a smaller, AI-only footprint, the lean `kiteai` edition ships just these:
 
 ```bash
 # From source — produces ./bin/kiteai
 make build-ai
 
 # Or via the edition manager (downloads from GitHub Releases)
-kitecmd edition use ai
+kite edition use ai
 ```
 
-If you already have the all-in-one `kite` binary, the AI modules are bundled in — no separate install needed. See [Editions](../concepts/editions.md) for the full edition model.
+See [Editions](../concepts/editions.md) for the full edition model.
 
 ## Compose with base modules
 

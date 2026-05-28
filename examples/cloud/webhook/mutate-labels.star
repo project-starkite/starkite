@@ -1,8 +1,8 @@
-#!/usr/bin/env kitecloud
+#!/usr/bin/env kite
 # mutate-labels.star — Inject default labels into all deployments
 #
 # Usage:
-#   kitecloud run mutate-labels.star \
+#   kite run mutate-labels.star \
 #       --var tls_cert=/tmp/cert.pem --var tls_key=/tmp/key.pem
 
 def mutate(obj):

@@ -6,7 +6,7 @@ Kubernetes admission webhook examples using `k8s.webhook()`.
 
 - A running Kubernetes cluster (e.g., `kind create cluster`)
 - TLS certificates (self-signed for testing, cert-manager for production)
-- The `kitecloud` binary
+- The `kite` binary (or the lean `kitecloud` edition)
 
 ## Examples
 
@@ -20,7 +20,7 @@ openssl req -x509 -newkey rsa:2048 -keyout /tmp/key.pem -out /tmp/cert.pem \
     -days 1 -nodes -subj '/CN=localhost'
 
 # Run locally
-kitecloud run validate-replicas.star \
+kite run validate-replicas.star \
     --var tls_cert=/tmp/cert.pem \
     --var tls_key=/tmp/key.pem
 ```
@@ -30,7 +30,7 @@ kitecloud run validate-replicas.star \
 Injects a `managed-by: starkite` label into all deployments.
 
 ```bash
-kitecloud run mutate-labels.star \
+kite run mutate-labels.star \
     --var tls_cert=/tmp/cert.pem \
     --var tls_key=/tmp/key.pem
 ```
@@ -39,7 +39,7 @@ kitecloud run mutate-labels.star \
 
 ```bash
 # Generate YAML manifests
-kitecloud kube gen-webhook-artifacts \
+kite kube gen-webhook-artifacts \
     --webhook validate-replicas.star \
     --name replicas-webhook \
     --image myregistry/replicas-webhook:v1 \
@@ -47,7 +47,7 @@ kitecloud kube gen-webhook-artifacts \
     --rule "group=apps resource=deployments operations=CREATE,UPDATE" > deploy.yaml
 
 # Generate Starlark deployment script
-kitecloud kube gen-webhook-artifacts \
+kite kube gen-webhook-artifacts \
     --webhook validate-replicas.star \
     --name replicas-webhook \
     --image myregistry/replicas-webhook:v1 \

@@ -10,18 +10,22 @@ Starkite ships as a single, dependency-free binary per edition. Pick a path that
 
 === "From Source"
 
-    The repository is a Go workspace with one module per edition. Build the editions needed — local builds land in `./bin/`:
+    The repository is a Go workspace with one module per edition. Build the default `kite` binary — local builds land in `./bin/`:
 
     ```bash
     git clone https://github.com/project-starkite/starkite.git
     cd starkite
 
-    make build              # all four binaries → ./bin/
-    # or:
-    make build-all          # ./bin/kite       (all-in-one)
+    make build-all          # ./bin/kite — the default all-in-one
+    ```
+
+    The lean editions are optional, for space-conscious targets:
+
+    ```bash
     make build-base         # ./bin/kitecmd    (base only)
     make build-cloud        # ./bin/kitecloud  (base + k8s)
     make build-ai           # ./bin/kiteai     (base + LLM/MCP)
+    make build              # all four at once
     ```
 
     Move the binary onto `PATH`:

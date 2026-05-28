@@ -21,7 +21,7 @@
 
 ## Editions
 
-Starkite ships as four independent binaries that share the same script language and core modules. Pick the one that matches what you want to automate.
+The default binary is **`kite`**, the all-in-one edition — it bundles every module and is what all examples and documentation use. The lean editions are smaller subsets of the same binary, for space-conscious targets.
 
 | Binary | Adds on top of base | Use when |
 |---|---|---|
@@ -30,7 +30,7 @@ Starkite ships as four independent binaries that share the same script language 
 | `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
 | `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
 
-`kite` is the recommended starter — it's a strict superset of the lean editions. Install `kitecmd` if you want a smaller binary or smaller attack surface under `--permissions=strict`.
+Use `kite` unless binary size or attack surface is a real constraint — init containers, edge nodes, or CI runners under `--permissions=strict`. The lean editions (`kitecmd` / `kitecloud` / `kiteai`) are a strict subset for those targets.
 
 > **Naming convention.** Source directory names end in `kite`: `libkite/` (embeddable runtime), `basekite/` / `cloudkite/` / `aikite/` (editions), and `kite/` (the all-in-one). Binaries use the `kite<edition>` prefix form (`kitecmd`, `kitecloud`, `kiteai`), with the all-in-one as the unadorned `kite`.
 
@@ -44,12 +44,12 @@ Or build from source — the repository is a Go workspace with one module per ed
 git clone https://github.com/project-starkite/starkite.git
 cd starkite
 
-make build              # builds all four binaries into ./bin/
-# or:
-make build-all          # ./bin/kite       (all-in-one)
-make build-base         # ./bin/kitecmd   (base only)
+make build-all          # ./bin/kite — the default all-in-one
+# lean editions (optional, smaller footprint):
+make build-base         # ./bin/kitecmd    (base only)
 make build-cloud        # ./bin/kitecloud  (base + k8s)
 make build-ai           # ./bin/kiteai     (base + LLM/MCP)
+make build              # all four at once
 ```
 
 Move the binary onto your `PATH`:

@@ -5,8 +5,8 @@ weight: 7
 edition: ai
 ---
 
-!!! note "AI edition only"
-    The patterns in this guide use the `ai` module (and sometimes `mcp`), available only in the `kiteai` edition. See [AI Edition](../index.md).
+!!! note "Needs the AI modules"
+    The patterns in this guide use the `ai` module (and sometimes `mcp`), included in the default `kite` binary and in the lean `kiteai` edition. See [AI Edition](../index.md).
 
 Starkite-AI does **not** ship a packaged REPL or a blocking `agent.run()` facade. Instead, scripts build agents by composing [`ai.chat()`](../../references/api/ai.md#aichatkwargs) + [`ai.run_until()`](../../references/api/ai.md#airun_untilchat-initial-kwargs) with the existing libkite modules for UI, I/O, and side effects (`io.prompt`, `fs`, `http`, `k8s`, `ssh`, …). This keeps the `ai` module small and gives scripts full control over the UX.
 

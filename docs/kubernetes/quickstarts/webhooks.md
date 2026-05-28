@@ -17,7 +17,7 @@ Reject Deployments with too many replicas or missing labels.
 **Source:** [`examples/cloud/webhook/validate-replicas.star`](https://github.com/project-starkite/starkite/blob/main/examples/cloud/webhook/validate-replicas.star)
 
 ```python
-#!/usr/bin/env kitecloud
+#!/usr/bin/env kite
 
 def validate(obj):
     replicas = obj.spec.replicas
@@ -50,7 +50,7 @@ Inject default labels into every Deployment.
 **Source:** [`examples/cloud/webhook/mutate-labels.star`](https://github.com/project-starkite/starkite/blob/main/examples/cloud/webhook/mutate-labels.star)
 
 ```python
-#!/usr/bin/env kitecloud
+#!/usr/bin/env kite
 
 def mutate(obj):
     labels = obj["metadata"]["labels"]

@@ -1,12 +1,12 @@
 # Cloud Examples
 
-Kubernetes scripting examples for starkite's cloud edition. Each script generates
+Kubernetes scripting examples. Each script generates
 YAML or interacts with a cluster programmatically — no Helm, no Kustomize, just
 Starlark.
 
 ## Prerequisites
 
-- **starkite** (cloud edition) — `kite version` should show `cloud` in the build tags
+- **starkite** — the default `kite` binary (the lean `kitecloud` edition works too); any build with the `k8s` module
 - **kubectl** — configured with cluster access
 - A running Kubernetes cluster (kind, minikube, EKS, GKE, etc.)
 

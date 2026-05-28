@@ -1,8 +1,8 @@
-#!/usr/bin/env kitecloud
+#!/usr/bin/env kite
 # validate-replicas.star — Reject deployments with more than 10 replicas
 #
 # Usage:
-#   kitecloud run validate-replicas.star
+#   kite run validate-replicas.star
 #
 # Requires TLS certificates mounted at /certs/ (or override paths below)
 

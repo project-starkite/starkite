@@ -18,16 +18,16 @@ For the deep dive, see [Language](../concepts/language.md) and the [Starlark spe
 
 ## Editions
 
-Starkite ships as four independent binaries that share the same script language and core modules:
+The default binary is **`kite`**, the all-in-one edition — it bundles every module and is what these guides use. The lean editions are smaller subsets for space-conscious targets:
 
 | Binary | Modules | Use when |
 |---|---|---|
-| `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | want everything in one binary — recommended for new users |
+| `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | **the default** — everything in one binary |
 | `kitecmd` | base only | system scripts, CI tasks, general automation |
 | `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
 | `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
 
-A single host can install one, two, or all four. `kite` is a strict superset of the lean editions. See [Editions](../concepts/editions.md) for the full picture.
+Start with `kite`. Reach for a lean edition only when binary size or attack surface matters. See [Editions](../concepts/editions.md) for the full picture.
 
 ## Where next
 

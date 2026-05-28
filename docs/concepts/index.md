@@ -14,7 +14,7 @@ Five core concepts:
 
     ---
 
-    Four binaries (`kite`, `kitecmd`, `kitecloud`, `kiteai`) that share the same language and base modules. Each edition exposes a different privileged-module surface.
+    The default `kite` binary (all-in-one) bundles every module; the lean editions (`kitecmd`, `kitecloud`, `kiteai`) are smaller subsets. All share the same language and base modules.
 
     [:octicons-arrow-right-24: Read more](editions.md)
 

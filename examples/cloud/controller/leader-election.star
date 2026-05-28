@@ -1,9 +1,9 @@
-#!/usr/bin/env kitecloud
+#!/usr/bin/env kite
 # leader-election.star — Demonstrates leader election for HA controllers
 #
 # Run two copies in separate terminals to see leader election in action:
-#   Terminal 1: kitecloud run leader-election.star --var id=replica-1
-#   Terminal 2: kitecloud run leader-election.star --var id=replica-2
+#   Terminal 1: kite run leader-election.star --var id=replica-1
+#   Terminal 2: kite run leader-election.star --var id=replica-2
 #
 # Only one will print reconcile messages (the leader).
 # Kill the leader — the other takes over within ~15 seconds.

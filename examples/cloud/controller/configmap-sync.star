@@ -1,9 +1,9 @@
-#!/usr/bin/env kitecloud
+#!/usr/bin/env kite
 # configmap-sync.star — Watches ConfigMaps and logs all changes
 #
 # Usage:
-#   kitecloud run examples/cloud/controller/configmap-sync.star
-#   kitecloud run examples/cloud/controller/configmap-sync.star --var namespace=my-ns
+#   kite run examples/cloud/controller/configmap-sync.star
+#   kite run examples/cloud/controller/configmap-sync.star --var namespace=my-ns
 
 ns = var_str("namespace", "default")
 

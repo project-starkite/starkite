@@ -12,16 +12,16 @@ The `edition` subcommand adds Kubernetes or LLM functionality to a `kitecmd` ins
 
 | Subcommand | Purpose |
 |------------|---------|
-| `kitecmd edition use <name>` | Switch active edition. Downloads the binary if not installed. |
-| `kitecmd edition remove <name>` | Remove an installed edition. Aliases: `rm`, `uninstall`. |
-| `kitecmd edition status` | Show the active edition and list installed editions. |
+| `kite edition use <name>` | Switch active edition. Downloads the binary if not installed. |
+| `kite edition remove <name>` | Remove an installed edition. Aliases: `rm`, `uninstall`. |
+| `kite edition status` | Show the active edition and list installed editions. |
 
-## `kitecmd edition use <name>`
+## `kite edition use <name>`
 
 Switch the active edition. If the edition binary isn't installed, it is downloaded from GitHub Releases automatically.
 
 ```bash
-kitecmd edition use cloud
+kite edition use cloud
 ```
 
 ### Flags
@@ -35,33 +35,33 @@ kitecmd edition use cloud
 
 ```bash
 # Switch to cloud edition (downloads if not installed)
-kitecmd edition use cloud
+kite edition use cloud
 
 # Install cloud from a locally built binary
-kitecmd edition use cloud --from ./bin/kitecloud
+kite edition use cloud --from ./bin/kitecloud
 
 # Replace an existing ai edition install with a local build
-kitecmd edition use ai --from ./bin/kiteai --force
+kite edition use ai --from ./bin/kiteai --force
 
 # Switch back to the base edition
-kitecmd edition use base
+kite edition use base
 ```
 
-## `kitecmd edition remove <name>`
+## `kite edition remove <name>`
 
 Remove an installed edition. The base edition cannot be removed.
 
 ```bash
-kitecmd edition remove cloud
-kitecmd edition rm ai
+kite edition remove cloud
+kite edition rm ai
 ```
 
-## `kitecmd edition status`
+## `kite edition status`
 
 Show the current active edition, the base binary's version, and every installed edition with its on-disk size.
 
 ```bash
-kitecmd edition status
+kite edition status
 # Current edition: ai
 # Version:         0.1.0-dev
 # Binary edition:  base

@@ -15,7 +15,7 @@ The example below enforces a maximum replica count on Deployments labeled `enfor
 ## Script
 
 ```python
-#!/usr/bin/env kitecloud
+#!/usr/bin/env kite
 # deployment-scaler.star — enforces max replicas on labeled deployments
 
 max_replicas = var_int("max_replicas", 3)

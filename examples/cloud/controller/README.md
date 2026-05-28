@@ -5,7 +5,7 @@ These examples demonstrate building Kubernetes controllers with starkite's `k8s.
 ## Prerequisites
 
 - A running Kubernetes cluster (e.g., `kind create cluster`)
-- The `kitecloud` binary (`go build -o kitecloud ./cmd/cloud/starkite/`)
+- The `kite` binary (`make build-all`), or the lean `kitecloud` edition
 
 ## Examples
 
@@ -14,7 +14,7 @@ These examples demonstrate building Kubernetes controllers with starkite's `k8s.
 Defines a `MyApp` CustomResourceDefinition using `k8s.obj.crd()`. This file is loaded by other scripts to share the CRD definition.
 
 ```bash
-kitecloud run resource.star
+kite run resource.star
 ```
 
 This prints the generated CRD YAML, useful for review or piping to `kubectl apply -f -`.
@@ -25,35 +25,35 @@ Deploys a complete controller stack programmatically: CRD, namespace, RBAC, and 
 
 ```bash
 # Deploy with defaults
-kitecloud run deploy-controller.star
+kite run deploy-controller.star
 
 # Override image and replicas
-kitecloud run deploy-controller.star --var image=myregistry/controller:v1.2.0 --var replicas=3
+kite run deploy-controller.star --var image=myregistry/controller:v1.2.0 --var replicas=3
 ```
 
 The script loads the CRD from `resource.star`, then creates all supporting resources (namespace, ServiceAccount, ClusterRole, ClusterRoleBinding) and the controller Deployment in sequence.
 
-### Generating artifacts with `kitecloud kube gen-controller-artifacts`
+### Generating artifacts with `kite kube gen-controller-artifacts`
 
-For teams that prefer static YAML, `kitecloud` can generate manifests from a Starlark definition:
+For teams that prefer static YAML, `kite` can generate manifests from a Starlark definition:
 
 ```bash
 # Generate YAML manifests to stdout
-kitecloud kube gen-controller-artifacts \
+kite kube gen-controller-artifacts \
     --controller controller.star \
     --resource resource.star \
     --image myregistry/myapp-controller:v1 \
     --namespace myapp-system > deploy.yaml
 
 # Generate a Starlark deploy script
-kitecloud kube gen-controller-artifacts \
+kite kube gen-controller-artifacts \
     --controller controller.star \
     --resource resource.star \
     --image myregistry/myapp-controller:v1 \
     --output script > deploy-controller.star
 
 # Also generate a Dockerfile
-kitecloud kube gen-controller-artifacts \
+kite kube gen-controller-artifacts \
     --controller controller.star \
     --image myregistry/myapp-controller:v1 \
     --dockerfile Dockerfile > deploy.yaml
@@ -70,8 +70,8 @@ kitecloud kube gen-controller-artifacts \
 Watches ConfigMaps in a namespace and logs create/update/delete events.
 
 ```bash
-kitecloud run configmap-sync.star
-kitecloud run configmap-sync.star --var namespace=my-ns
+kite run configmap-sync.star
+kite run configmap-sync.star --var namespace=my-ns
 ```
 
 Then in another terminal:
@@ -85,8 +85,8 @@ kubectl delete configmap test
 Enforces a maximum replica count on deployments labeled `enforce-max-replicas=true`.
 
 ```bash
-kitecloud run deployment-scaler.star
-kitecloud run deployment-scaler.star --var max_replicas=5
+kite run deployment-scaler.star
+kite run deployment-scaler.star --var max_replicas=5
 ```
 
 Then in another terminal:
