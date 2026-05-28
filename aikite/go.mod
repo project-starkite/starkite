@@ -7,9 +7,9 @@ require (
 	github.com/google/jsonschema-go v0.4.2
 	github.com/modelcontextprotocol/go-sdk v1.5.0
 	github.com/openai/openai-go v1.12.0
-	github.com/project-starkite/starkite/basekite v0.0.0-00010101000000-000000000000
-	github.com/project-starkite/starkite/libkite v0.0.0-00010101000000-000000000000
-	github.com/project-starkite/starkite/wasm v0.0.0-00010101000000-000000000000
+	github.com/project-starkite/starkite/basekite v0.0.0-20260528215212-f0fd159a6053
+	github.com/project-starkite/starkite/libkite v0.0.0-20260528215212-f0fd159a6053
+	github.com/project-starkite/starkite/wasm v0.0.0-20260528215212-f0fd159a6053
 	github.com/spf13/cobra v1.10.2
 	github.com/vladimirvivien/startype v0.7.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35

@@ -31,8 +31,8 @@ github.com/mohae/deepcopy v0.0.0-20170308212314-bb9b5e7adda9 h1:Sha2bQdoWE5YQPTl
 github.com/mohae/deepcopy v0.0.0-20170308212314-bb9b5e7adda9/go.mod h1:TaXosZuwdSHYgviHp1DAtfrULt5eUgsSMsZf+YrPgl8=
 github.com/opencontainers/runtime-spec v1.1.0-rc.1 h1:wHa9jroFfKGQqFHj0I1fMRKLl0pfj+ynAqBxo3v6u9w=
 github.com/opencontainers/runtime-spec v1.1.0-rc.1/go.mod h1:jwyrGlmzljRJv/Fgzds9SsS/C5hL+LL3ko9hs6T5lQ0=
-github.com/project-starkite/starkite/libkite v0.0.0-20260528171905-d3a8d1f4fbd2 h1:svhpqpmDR5eu7XzYmVbLMd4Fl2fOHFOKLlCRNSOPLW8=
-github.com/project-starkite/starkite/libkite v0.0.0-20260528171905-d3a8d1f4fbd2/go.mod h1:qX7iK5Ju735hO/UvlPuB9yIqTxPqDXrRtBPjjSt9nCg=
+github.com/project-starkite/starkite/libkite v0.0.0-20260528215212-f0fd159a6053 h1:7pDVFngU5ZpOyVVz7FWip5gTDGHp26J8LvWeqzpbG2w=
+github.com/project-starkite/starkite/libkite v0.0.0-20260528215212-f0fd159a6053/go.mod h1:qX7iK5Ju735hO/UvlPuB9yIqTxPqDXrRtBPjjSt9nCg=
 github.com/rogpeppe/go-internal v1.9.0 h1:73kH8U+JUqXU8lRuOHeVHaa/SZPifC7BkcraZVejAe8=
 github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/fJaraNFVN+nFs=
 github.com/vishvananda/netlink v1.1.1-0.20211118161826-650dca95af54 h1:8mhqcHPqTMhSPoslhGYihEgSfc77+7La1P6kiB6+9So=

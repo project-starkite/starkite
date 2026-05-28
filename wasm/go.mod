@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/extism/go-sdk v1.7.1
-	github.com/project-starkite/starkite/libkite v0.0.0-00010101000000-000000000000
+	github.com/project-starkite/starkite/libkite v0.0.0-20260528215212-f0fd159a6053
 	github.com/vladimirvivien/startype v0.7.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	gopkg.in/yaml.v3 v3.0.1
