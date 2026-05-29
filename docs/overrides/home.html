@@ -67,7 +67,7 @@
   .tx-hero__logo {
     display: block;
     max-height: 160px;
-    margin: 0 auto 1.5rem;
+    margin: 0 0 1.5rem 0;
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.45));
   }
   .tx-hero .tx-hero__headline {
@@ -566,13 +566,15 @@
 
 <section class="tx-container">
   <div class="md-grid md-typeset">
+   <img src="assets/images/starkite-logo.svg" alt="Starkite" class="tx-hero__logo">
     <div class="tx-hero">
-      <img src="assets/images/starkite-logo.svg" alt="Starkite" class="tx-hero__logo">
       <div class="tx-hero__split">
         <div class="tx-hero__left">
           <h1 class="tx-hero__headline">Scripting runtime for <span class="tx-hero__accent">awesome automation</span></h1>
-          <p class="tx-hero__subhead">A secure runtime for system, infrastructure, and AI agent automation.</p>
-          <p class="tx-hero__desc">Starkite is a modern scripting runtime for automation using the Starlark language. It is shipped as a single static binary with zero setup or additional toolchain to install.</p>
+          <p class="tx-hero__subhead">
+            Create secure system and infrastructure automation scripts using the Starlark language.</p>
+          <p class="tx-hero__desc">
+            Starkite is shipped as a single static binary with near-zero setup, making it ideal an ideal runtime for automating operational and agentic AI workloads.</p>
         </div>
         <div class="tx-hero__right">
           <div class="example-tabs">
@@ -726,11 +728,7 @@ sandbox:
   <div id="content-go" class="install-content active">
     <pre><code># Default — the all-in-one kite binary
 go install github.com/project-starkite/starkite/kite@latest
-
-# Lean editions (optional, smaller footprint)
-# go install github.com/project-starkite/starkite/basekite@latest
-# go install github.com/project-starkite/starkite/cloudkite@latest
-# go install github.com/project-starkite/starkite/aikite@latest</code></pre>
+</code></pre>
   </div>
 
   <div id="content-binary" class="install-content">
