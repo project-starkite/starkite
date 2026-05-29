@@ -57,4 +57,3 @@ def main():
 
     printf("\nAll modules working!\n")
 
-main()

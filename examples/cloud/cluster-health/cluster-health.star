@@ -150,4 +150,3 @@ def main():
     else:
         printf("ALL CLEAR: %d nodes, %d deployments healthy\n", len(nodes), total_deps)
 
-main()

@@ -146,6 +146,7 @@ func runScript(cmd *cobra.Command, args []string) error {
 		VarStore:     varStore,
 		Permissions:  perms,
 		Registry:     registry,
+		EntryPoint:   "main",
 	}
 
 	// Create and run the runtime

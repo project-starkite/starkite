@@ -152,4 +152,3 @@ def main():
 
     printf("\nDebug session complete.\n")
 
-main()

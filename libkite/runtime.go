@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"os"
 	"sort"
 	"strings"
@@ -45,6 +46,9 @@ type Runtime struct {
 
 	// Module cache for external modules
 	moduleCache *ModuleCache
+
+	// logger receives runtime session diagnostics.
+	logger *slog.Logger
 }
 
 // New creates a Runtime with the given config.
@@ -68,6 +72,10 @@ func New(config *Config) (*Runtime, error) {
 		ctx:            ctx,
 		cancel:         cancel,
 		moduleCache:    NewModuleCache(),
+		logger:         config.Logger,
+	}
+	if rt.logger == nil {
+		rt.logger = slog.New(slog.NewTextHandler(os.Stderr, nil))
 	}
 
 	// Create permission checker if permissions are configured
@@ -244,16 +252,43 @@ func (rt *Runtime) Execute(ctx context.Context, code string) error {
 		scriptPath = "<script>"
 	}
 
+	opts := &syntax.FileOptions{}
+
+	// Parse once so the file can be inspected for an explicit entry-point call
+	// and then executed without reparsing.
+	file, err := opts.Parse(scriptPath, code, 0)
+	if err != nil {
+		return err
+	}
+	callsEntry := rt.config.EntryPoint != "" && topLevelCallsFunc(file, rt.config.EntryPoint)
+
 	stop := watchCtx(ctx, rt.thread)
 	defer stop()
 
-	_, err := starlark.ExecFileOptions(
-		&syntax.FileOptions{},
-		rt.thread,
-		scriptPath,
-		code,
-		rt.predecl,
-	)
+	prog, err := starlark.FileProgram(file, rt.predecl.Has)
+	if err != nil {
+		return err
+	}
+
+	// Init runs the top-level code and returns the (unfrozen) globals.
+	globals, err := prog.Init(rt.thread, rt.predecl)
+
+	// Auto-invoke the entry point before the globals freeze, so it observes the
+	// same mutable top-level state an explicit call would. Skipped when the
+	// script already calls it, when none is configured, or when the binding is
+	// not callable.
+	if err == nil && rt.config.EntryPoint != "" {
+		if fn, ok := globals[rt.config.EntryPoint].(starlark.Callable); ok {
+			if callsEntry {
+				rt.logger.Info("skipping automatic entry-point invocation: script calls it at top level",
+					"entrypoint", rt.config.EntryPoint, "script", scriptPath)
+			} else {
+				_, err = starlark.Call(rt.thread, fn, nil, nil)
+			}
+		}
+	}
+
+	globals.Freeze()
 
 	// Run deferred functions in LIFO order
 	rt.runDeferred()
@@ -272,6 +307,27 @@ func (rt *Runtime) Execute(ctx context.Context, code string) error {
 	}
 
 	return nil
+}
+
+// topLevelCallsFunc reports whether the file has a top-level statement that is
+// a bare call to the named function, e.g. `main()`. It inspects only direct
+// top-level statements; calls nested in control flow or made through an alias
+// are not detected.
+func topLevelCallsFunc(file *syntax.File, name string) bool {
+	for _, stmt := range file.Stmts {
+		exprStmt, ok := stmt.(*syntax.ExprStmt)
+		if !ok {
+			continue
+		}
+		call, ok := exprStmt.X.(*syntax.CallExpr)
+		if !ok {
+			continue
+		}
+		if ident, ok := call.Fn.(*syntax.Ident); ok && ident.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 // unwrapExit walks the error chain for *exitError and returns its code.

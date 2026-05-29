@@ -1,6 +1,8 @@
 package libkite
 
 import (
+	"log/slog"
+
 	"go.starlark.net/starlark"
 )
 
@@ -51,6 +53,16 @@ type Config struct {
 	// VarStore provides access to variables.
 	// Uses the VarStore interface for loose coupling.
 	VarStore VarStore
+
+	// EntryPoint names a function the runtime invokes automatically once the
+	// script's top-level code finishes, when the script defines it as a
+	// callable and does not call it itself. Empty disables automatic
+	// invocation. The CLI sets this to "main".
+	EntryPoint string
+
+	// Logger receives runtime session diagnostics, such as a skipped automatic
+	// entry-point invocation. If nil, a text logger to stderr is used.
+	Logger *slog.Logger
 }
 
 // ConfigOption is a functional option for Config.
@@ -151,6 +163,20 @@ func WithTestMode(testMode bool) ConfigOption {
 func WithVarStore(vs VarStore) ConfigOption {
 	return func(c *Config) {
 		c.VarStore = vs
+	}
+}
+
+// WithEntryPoint sets the automatic entry-point function name.
+func WithEntryPoint(name string) ConfigOption {
+	return func(c *Config) {
+		c.EntryPoint = name
+	}
+}
+
+// WithLogger sets the logger for runtime session diagnostics.
+func WithLogger(l *slog.Logger) ConfigOption {
+	return func(c *Config) {
+		c.Logger = l
 	}
 }
 

@@ -199,5 +199,3 @@ def main():
         print("---")
         print(yaml.encode(manifest))
 
-# Run main
-main()

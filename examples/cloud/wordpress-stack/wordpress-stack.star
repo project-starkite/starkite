@@ -256,4 +256,3 @@ def main():
         printf("  Access:      kubectl port-forward svc/wordpress 8080:80 -n %s\n", ns)
         printf("               then open http://localhost:8080\n")
 
-main()

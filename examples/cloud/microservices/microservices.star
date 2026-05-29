@@ -139,4 +139,3 @@ def main():
     # --- Output YAML -------------------------------------------------------------
     print(k8s.yaml(resources))
 
-main()

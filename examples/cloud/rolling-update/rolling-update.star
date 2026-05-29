@@ -109,4 +109,3 @@ def main():
 
     printf("\nSuccessfully updated %s to %s.\n", name, new_image)
 
-main()

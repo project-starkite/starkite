@@ -185,5 +185,3 @@ def main():
     print("Health check complete!")
     print("=" * 60)
 
-# Run main
-main()

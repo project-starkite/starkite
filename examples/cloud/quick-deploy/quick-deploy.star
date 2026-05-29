@@ -59,4 +59,3 @@ def main():
 
     printf("\nDone. %s is running in namespace %s.\n", name, ns)
 
-main()

@@ -58,4 +58,3 @@ def main():
         printf("# --- %s ---\n", ns)
         print(k8s.yaml([dep, svc]))
 
-main()

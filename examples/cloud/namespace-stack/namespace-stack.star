@@ -62,4 +62,3 @@ def main():
         "roleRef": {"kind": "ClusterRole", "name": "admin", "apiGroup": "rbac.authorization.k8s.io"},
     }))
 
-main()

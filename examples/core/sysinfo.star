@@ -63,5 +63,3 @@ def main():
     printf("Report generated at: %s\n", time.format(time.now(), time.RFC3339))
     print("=" * 60)
 
-# Run main
-main()

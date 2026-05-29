@@ -50,4 +50,3 @@ def main():
 
     print(k8s.yaml(resources))
 
-main()

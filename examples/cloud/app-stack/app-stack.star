@@ -118,4 +118,3 @@ def main():
         printf("Deployment did not become ready: %s\n", result["message"])
         fail("deployment failed")
 
-main()

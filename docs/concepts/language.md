@@ -6,7 +6,30 @@ weight: 40
 
 # Language
 
-Starkite scripts are Starlark — a deterministic, Python-derived language — extended with two conventions that show up across every module: a layered variable-injection system, and the `try_` prefix for error handling. This page covers both. For Starlark's syntax and semantics, see the upstream [Starlark spec](https://github.com/bazelbuild/starlark/blob/master/spec.md).
+Starkite scripts are Starlark — a deterministic, Python-derived language — extended with conventions that show up across every module: an automatic `main()` entry point, a layered variable-injection system, and the `try_` prefix for error handling. This page covers each. For Starlark's syntax and semantics, see the upstream [Starlark spec](https://github.com/bazelbuild/starlark/blob/master/spec.md).
+
+## Entry point
+
+A script may define a `main` function as its entry point. After the script's top-level code runs, the runtime calls `main()` automatically:
+
+```python
+def main():
+    print("hello")
+```
+
+`kite run hello.star` prints `hello` — no explicit call needed.
+
+Defining `main` is optional. A script that does not define it runs entirely at the top level, as before.
+
+If a script both defines `main` and calls it at the top level, the runtime detects the explicit call and does not call `main` a second time. It records a notice on stderr so the skipped invocation is visible:
+
+```
+level=INFO msg="skipping automatic entry-point invocation: script calls it at top level" entrypoint=main script=hello.star
+```
+
+The detection is syntactic — it recognizes a direct top-level call such as `main()`. A call reached through an alias or nested inside control flow is not detected and would run `main` twice.
+
+Automatic invocation applies only to the entry script. A `main` defined in a module loaded with `load()` is never called automatically. `main` must be callable with no arguments; script inputs come from the [variable-injection system](#variable-injection).
 
 ## Variable Injection
 

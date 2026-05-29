@@ -149,6 +149,7 @@ func runWatchedScript(scriptPath string, perms *libkite.PermissionConfig) {
 		VarStore:     varStore,
 		Permissions:  perms,
 		Registry:     registry,
+		EntryPoint:   "main",
 	}
 
 	// Create and run the runtime
