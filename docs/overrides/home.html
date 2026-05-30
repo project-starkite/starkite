@@ -724,9 +724,7 @@ sandbox:
   </div>
 
   <div id="content-go" class="install-content active">
-    <pre><code># Default — the all-in-one kite binary
-go install github.com/project-starkite/starkite/kite@latest
-</code></pre>
+    <pre><code>go install github.com/project-starkite/starkite/kite@latest</code></pre>
   </div>
 
   <div id="content-binary" class="install-content">
@@ -743,7 +741,7 @@ Invoke-WebRequest -Uri "https://github.com/project-starkite/starkite/releases/la
   <div id="content-source" class="install-content">
     <pre><code>git clone https://github.com/project-starkite/starkite.git
 cd starkite
-make build-all          # builds ./bin/kite (all-in-one)
+make kite          # builds ./bin/kite (all-in-one)
 sudo install -m 0755 ./bin/kite /usr/local/bin/kite</code></pre>
   </div>
 </div>

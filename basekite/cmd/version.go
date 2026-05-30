@@ -24,23 +24,34 @@ var versionCmd = &cobra.Command{
 			return
 		}
 
+		// "all" is the default full binary, not an edition; only the lean
+		// distributions (base/cloud/ai) are annotated.
+		edition := version.EditionName()
+		lean := edition != "all"
+
 		if versionJSON {
 			info := map[string]string{
 				"version": version.Version,
-				"edition": version.EditionName(),
 				"commit":  version.GitCommit,
 				"built":   version.BuildTime,
 				"go":      runtime.Version(),
 				"os":      runtime.GOOS,
 				"arch":    runtime.GOARCH,
 			}
+			if lean {
+				info["edition"] = edition
+			}
 			data, _ := json.MarshalIndent(info, "", "  ")
 			fmt.Println(string(data))
 			return
 		}
 
-		fmt.Printf("kite version %s (%s)\n", version.Version, version.EditionName())
-		fmt.Printf("  edition: %s\n", version.EditionName())
+		if lean {
+			fmt.Printf("kite version %s (%s)\n", version.Version, edition)
+			fmt.Printf("  edition: %s\n", edition)
+		} else {
+			fmt.Printf("kite version %s\n", version.Version)
+		}
 		fmt.Printf("  commit:  %s\n", version.GitCommit)
 		fmt.Printf("  built:   %s\n", version.BuildTime)
 		fmt.Printf("  go:      %s\n", runtime.Version())

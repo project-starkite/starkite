@@ -44,12 +44,12 @@ Or build from source — the repository is a Go workspace with one module per ed
 git clone https://github.com/project-starkite/starkite.git
 cd starkite
 
-make build-all          # ./bin/kite — the default all-in-one
+make kite               # ./bin/kite — the default all-in-one
 # lean editions (optional, smaller footprint):
 make build-base         # ./bin/kitecmd    (base only)
 make build-cloud        # ./bin/kitecloud  (base + k8s)
 make build-ai           # ./bin/kiteai     (base + LLM/MCP)
-make build              # all four at once
+make all                # all four at once
 ```
 
 Move the binary onto your `PATH`:
@@ -62,7 +62,7 @@ Or run it as a container — the all-in-one `kite` is published as a signed
 distroless image:
 
 ```bash
-docker run --rm ghcr.io/project-starkite/kite:latest exec 'print(hostname())'
+docker run --rm ghcr.io/project-starkite/starkite:latest exec 'print(hostname())'
 ```
 
 See [Container install](docs/getting-started/install/container.md) for

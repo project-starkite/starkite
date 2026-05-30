@@ -62,7 +62,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: kite
-          image: ghcr.io/project-starkite/kite:v0.1.0
+          image: ghcr.io/project-starkite/starkite:v0.1.0
           args: ["run", "/scripts/main.star"]
           volumeMounts:
             - name: scripts
@@ -78,7 +78,7 @@ For a one-off run:
 
 ```bash
 kubectl run --rm -it kite \
-  --image=ghcr.io/project-starkite/kite:latest \
+  --image=ghcr.io/project-starkite/starkite:latest \
   -- exec 'print("hi")'
 ```
 

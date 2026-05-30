@@ -119,6 +119,6 @@ checksum:
 
 release:
   github:
-    owner: vladimirvivien
+    owner: project-starkite
     name: starkite
   prerelease: auto

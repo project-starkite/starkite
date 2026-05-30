@@ -5,7 +5,7 @@ These examples demonstrate building Kubernetes controllers with starkite's `k8s.
 ## Prerequisites
 
 - A running Kubernetes cluster (e.g., `kind create cluster`)
-- The `kite` binary (`make build-all`), or the lean `kitecloud` edition
+- The `kite` binary (`make kite`), or the lean `kitecloud` edition (`make build-cloud`)
 
 ## Examples
 

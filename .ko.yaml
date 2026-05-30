@@ -2,7 +2,7 @@
 # https://ko.build/configuration/
 #
 # Build:
-#   KO_DOCKER_REPO=ghcr.io/project-starkite/kite \
+#   KO_DOCKER_REPO=ghcr.io/project-starkite/starkite \
 #     ko build ./kite --bare --tags=v0.1.0,latest --sbom=spdx
 #
 # The repository is set per-invocation; the resulting image is published as

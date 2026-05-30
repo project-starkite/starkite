@@ -4,19 +4,17 @@ package version
 import "fmt"
 
 var (
-	// Version is the starkite version, set at build time
+	// Version is the starkite version, set at build time.
 	Version = "0.0.1"
 
-	// GitCommit is the git commit hash, set at build time
+	// GitCommit is the git commit hash, set at build time.
 	GitCommit = "unknown"
 
-	// BuildDate is the build date, set at build time
-	BuildDate = "unknown"
+	// BuildTime is the build timestamp, set at build time. The initializer must
+	// be a string constant so the linker's -X flag can override it.
+	BuildTime = "unknown"
 
-	// BuildTime is an alias for BuildDate (for backward compatibility)
-	BuildTime = BuildDate
-
-	// Edition is the edition name, set by cloud binary or build-time ldflags
+	// Edition is the edition name, set by the edition's main or build-time ldflags.
 	Edition = ""
 )
 
@@ -33,7 +31,11 @@ func IsBaseEdition() bool {
 	return Edition == "" || Edition == "base"
 }
 
-// String returns the version string including edition.
+// String returns the version string. The all-in-one edition is the default and
+// is not annotated; lean editions append their name.
 func String() string {
-	return fmt.Sprintf("%s (%s) (commit: %s)", Version, EditionName(), GitCommit)
+	if edition := EditionName(); edition != "all" {
+		return fmt.Sprintf("%s (%s) (commit: %s)", Version, edition, GitCommit)
+	}
+	return fmt.Sprintf("%s (commit: %s)", Version, GitCommit)
 }

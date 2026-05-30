@@ -195,7 +195,7 @@ func extractCRDYAML(resourceFile string) (string, error) {
 
 func writeDockerfile(filename string) error {
 	var b strings.Builder
-	b.WriteString("FROM ghcr.io/project-starkite/kite:latest\n")
+	b.WriteString("FROM ghcr.io/project-starkite/starkite:latest\n")
 	b.WriteString(fmt.Sprintf("COPY %s /app/\n", genController))
 	if genResource != "" {
 		b.WriteString(fmt.Sprintf("COPY %s /app/\n", genResource))
@@ -318,7 +318,7 @@ func runGenWebhookArtifacts(cmd *cobra.Command, args []string) error {
 	// Dockerfile
 	if whDockerfile != "" {
 		var b strings.Builder
-		b.WriteString("FROM ghcr.io/project-starkite/kite:latest\n")
+		b.WriteString("FROM ghcr.io/project-starkite/starkite:latest\n")
 		b.WriteString(fmt.Sprintf("COPY %s /app/\n", whWebhook))
 		b.WriteString(fmt.Sprintf("CMD [\"kite\", \"run\", \"/app/%s\"]\n", whWebhook))
 		if err := os.WriteFile(whDockerfile, []byte(b.String()), 0644); err != nil {
