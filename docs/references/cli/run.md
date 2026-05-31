@@ -50,4 +50,4 @@ kite deploy.star --sandbox --permissions=strict   # both layers
 
 For shebang scripts (`./script.star` via `#!/usr/bin/env kite`), set
 `STARKITE_SECURITY_SANDBOX` instead of passing `--sandbox`. See the
-[Sandbox guide](../../concepts/sandbox.md) for profile details.
+[Sandbox guide](../../fundamentals/security/sandbox.md) for profile details.

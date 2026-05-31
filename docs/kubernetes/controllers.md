@@ -111,7 +111,7 @@ Add `--resource <path>` to also generate a CRD when the controller manages a cus
 
 ## See also
 
-- [`k8s` reference](../../references/api/k8s.md) — `control`, `obj.crd`, owned-resource watches, leader election
-- [`kite kube` reference](../../references/cli/kube.md) — `gen-controller-artifacts` flags
+- [`k8s` reference](../references/api/k8s.md) — `control`, `obj.crd`, owned-resource watches, leader election
+- [`kite kube` reference](../references/cli/kube.md) — `gen-controller-artifacts` flags
 - [Webhooks](webhooks.md) — admission webhooks built on the same blocking-server pattern
 - More controller examples: [`examples/cloud/controller/`](https://github.com/project-starkite/starkite/tree/main/examples/cloud/controller) — `configmap-sync.star` (event logging), `leader-election.star` (HA), `deploy-controller.star` (full programmatic install)

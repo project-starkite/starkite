@@ -75,5 +75,5 @@ System Information Report
 
 ## See also
 
-- [`os` reference](../../references/api/os.md) — `exec`, `try_exec`, `env`, `setenv`, `which`
-- [Language: error handling](../../concepts/language.md#error-handling) — the `try_` pattern and `Result` type
+- [`os` reference](../references/api/os.md) — `exec`, `try_exec`, `env`, `setenv`, `which`
+- [Language: error handling](../fundamentals/language.md#error-handling) — the `try_` pattern and `Result` type

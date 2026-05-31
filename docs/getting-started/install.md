@@ -71,7 +71,7 @@ kite version v0.1.0
 
 The `kite` binary is published as an OCI container image at `ghcr.io/project-starkite/starkite`. The image is built with [ko](https://ko.build/) on a [Chainguard distroless](https://www.chainguard.dev/chainguard-images) base.
 
-For running scripts from the image, see the [Container quickstart](quickstarts/container.md).
+For running scripts from the image, see the [Container quickstart](#container).
 
 ## Pull the image
 

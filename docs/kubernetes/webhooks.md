@@ -124,6 +124,6 @@ When both `validate` and `mutate` are passed to the same `k8s.webhook()` call, v
 
 ## See also
 
-- [`k8s` reference](../../references/api/k8s.md) — `webhook`, `control`, AttrDict semantics
-- [`kite kube` reference](../../references/cli/kube.md) — `gen-webhook-artifacts` flags
+- [`k8s` reference](../references/api/k8s.md) — `webhook`, `control`, AttrDict semantics
+- [`kite kube` reference](../references/cli/kube.md) — `gen-webhook-artifacts` flags
 - [Controllers](controllers.md) — same blocking-server pattern, watch-driven instead of HTTP-driven

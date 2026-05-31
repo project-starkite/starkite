@@ -5,7 +5,7 @@ weight: 27
 ---
 
 !!! note "Cloud functionality"
-    The `k8s` module is available in `kite` (all-in-one) and `kitecloud`. It is **not** available in `kitecmd` or `kiteai`. See [Cloud Edition](../../kubernetes/index.md).
+    The `k8s` module is available in `kite` (all-in-one) and `kitecloud`. It is **not** available in `kitecmd` or `kiteai`. See [Cloud Edition](../../kubernetes/connect.md).
 
 The `k8s` module provides full Kubernetes resource management — CRUD, high-level workloads, watches, logs, exec, port-forward, node operations, metrics, controllers, admission webhooks, and typed object constructors.
 
@@ -325,7 +325,7 @@ obj["spec"]["replicas"] = 3
 
 Nested maps share the same underlying data — mutations via bracket notation on a nested AttrDict propagate to the parent object automatically.
 
-See the [webhooks guide](../../kubernetes/quickstarts/webhooks.md) for a full end-to-end workflow including `gen-webhook-artifacts`.
+See the [webhooks guide](../../kubernetes/webhooks.md) for a full end-to-end workflow including `gen-webhook-artifacts`.
 
 ## Object constructors
 

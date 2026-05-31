@@ -59,29 +59,43 @@ extra_css:
 
 nav:
   - Home: index.md
-  - Getting Started:
-      - Overview: getting-started/index.md
-      - Install: getting-started/install.md
-      - Quickstarts:
-          - First script:                 getting-started/quickstarts/first-script.md
-          - Execute commands:             getting-started/quickstarts/exec.md
-          - HTTP client/server:           getting-started/quickstarts/http.md
-          - Remote SSH commands:          getting-started/quickstarts/ssh.md
-          - Use the kite CLI:             getting-started/quickstarts/cli.md
-          - Script permissions: getting-started/quickstarts/permission.md
-          - Execution sandbox:         getting-started/quickstarts/sandbox.md
-          - Run from container:           getting-started/quickstarts/container.md
-          - Kubernetes support:         getting-started/quickstarts/kubernetes.md
-          - Build an MCP agent:           getting-started/quickstarts/mcp.md
-      - Examples:
-          - Starkite examples: getting-started/examples/index.md
-  - Concepts:
-      - Overview: concepts/index.md
-      - Editions: concepts/editions.md
-      - Permission: concepts/permission.md
-      - Sandbox: concepts/sandbox.md
-      - Language: concepts/language.md
-      - Modules: concepts/modules.md
+  - Docs:
+      - Getting started:
+          - Welcome to Starkite: getting-started/index.md
+          - Installation:        getting-started/install.md
+          - First script:        getting-started/first-script.md
+          - Use the CLI:         getting-started/cli.md
+      - Fundamentals:
+          - Language:       fundamentals/language.md
+          - Modules:        fundamentals/modules.md
+          - Configuration:  fundamentals/configuration.md
+          - Security:
+              - Permission: fundamentals/security/permission.md
+              - Sandbox:    fundamentals/security/sandbox.md
+          - Testing:        fundamentals/testing.md
+          - Editions:       fundamentals/editions.md
+          - Running scripts: fundamentals/running.md
+      - Core Modules:
+          - System & processes: core-modules/system.md
+          - Logging:            core-modules/logging.md
+          - JSON & YAML:        core-modules/json-yaml.md
+          - Files:              core-modules/files.md
+          - SSH:                core-modules/ssh.md
+          - HTTP:
+              - Clients: core-modules/http/clients.md
+              - Servers: core-modules/http/servers.md
+      - Kubernetes:
+          - Connect to cluster:    kubernetes/connect.md
+          - Piping to kubectl:     kubernetes/kubectl.md
+          - Retrieving objects:    kubernetes/retrieving.md
+          - Object representation: kubernetes/objects.md
+          - Deploying resources:   kubernetes/deploying.md
+          - Controller loops:      kubernetes/controllers.md
+          - Admission webhooks:    kubernetes/webhooks.md
+      - AI Support:
+          - Building agents:       ai/agents.md
+          - Creating MCP servers:  ai/mcp.md
+          - CLI tool provider:     ai/cli-tool.md
   - References:
       - Overview: references/index.md
       - CLI:
@@ -130,22 +144,8 @@ nav:
           - k8s: references/api/k8s.md
           - ai: references/api/ai.md
           - mcp: references/api/mcp.md
-  - Kubernetes:
-      - Overview: kubernetes/index.md
-      - Quickstarts:
-          - Deploy:                      kubernetes/quickstarts/deploy.md
-          - Rolling update:              kubernetes/quickstarts/rolling-update.md
-          - Cluster health audit:        kubernetes/quickstarts/cluster-health.md
-          - Multi-environment manifests: kubernetes/quickstarts/multi-env.md
-          - Full app stack:              kubernetes/quickstarts/app-stack.md
-          - Webhooks:                    kubernetes/quickstarts/webhooks.md
-          - Controllers:                 kubernetes/quickstarts/controllers.md
-  - AI Agents:
-      - Overview: ai/index.md
-      - Guides:
-          - Agents: ai/guides/agents.md
-          - MCP: ai/guides/mcp.md
-      - Examples: ai/examples.md
+  - Examples:
+      - Overview: examples/index.md
 copyright: >-
   Copyright &copy; 2026 The Starkite Authors.<br>
   Kubernetes&reg; is a registered trademark of The Linux Foundation

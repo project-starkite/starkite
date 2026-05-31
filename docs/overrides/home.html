@@ -698,8 +698,8 @@ sandbox:
       </div>
       <div class="tx-hero__ctas">
         <a href="getting-started/" class="md-button">Get Started</a>
-        <a href="kubernetes/" class="md-button md-button--primary">Kubernetes</a>
-        <a href="ai/" class="md-button md-button--primary">AI Agents</a>
+        <a href="kubernetes/connect/" class="md-button md-button--primary">Kubernetes</a>
+        <a href="ai/agents/" class="md-button md-button--primary">AI Agents</a>
       </div>
     </div>
   </div>
@@ -832,7 +832,7 @@ http.serve({
   <div class="feature-section__split">
     <div class="feature-section__text">
       <p>The Kubernetes API is built in across three tiers: <code>k8s.list</code>/<code>apply</code>/<code>watch</code> for direct resource control, <code>k8s.deploy</code>/<code>expose</code>/<code>rollout</code> for kubectl-equivalent verbs, and typed constructors for programmatic manifest composition. Scripts run as long-lived controllers via <code>k8s.control</code> or as admission webhooks via <code>k8s.webhook</code>. The <code>kite kube</code> subcommand generates the corresponding deployment manifests for either.</p>
-      <a href="kubernetes/" class="feature-section__cta">Explore Kubernetes</a>
+      <a href="kubernetes/connect/" class="feature-section__cta">Explore Kubernetes</a>
     </div>
     <div class="feature-section__code">
       <pre><code class="language-python">#!/usr/bin/env kite
@@ -862,7 +862,7 @@ k8s.webhook("/validate",
   <div class="feature-section__split">
     <div class="feature-section__text">
       <p>Two patterns support agentic workflows. Any Starlark function can be exposed as an MCP tool that external agents — Claude, Cursor, IDE assistants — invoke without glue code. Alternatively, an agent can be composed entirely in Starlark using multi-provider LLM clients (Gemini, GPT, Claude), built-in tool calling, and structured output.</p>
-      <a href="ai/" class="feature-section__cta">Build agents</a>
+      <a href="ai/agents/" class="feature-section__cta">Build agents</a>
     </div>
     <div class="feature-section__code">
       <pre><code class="language-python">#!/usr/bin/env kite
@@ -896,7 +896,7 @@ mcp.serve(
   <div class="feature-section__split">
     <div class="feature-section__text">
       <p>Two layers of defense apply to every script. Permission profiles gate module calls at the API layer under a deny-by-default policy (<code>os.exec</code> denied, <code>fs.read</code> allowed). gVisor sandboxing isolates the script at the syscall layer with no host filesystem access and no outbound network. Named profiles are defined in <code>~/.starkite/security.yaml</code> and apply to any invocation via a single command-line flag.</p>
-      <a href="concepts/permission/" class="feature-section__cta">Read the security model</a>
+      <a href="fundamentals/security/permission/" class="feature-section__cta">Read the security model</a>
     </div>
     <div class="feature-section__code">
       <pre><code class="language-bash"># Named profile from ~/.starkite/security.yaml
@@ -953,8 +953,8 @@ Time:  9ms
   <h2 class="section-divider__title">Ready to Start? <em>Learn more.</em></h2>
   <div class="section-divider__ctas">
     <a href="getting-started/" class="md-button md-button--primary">Get Started</a>
-    <a href="kubernetes/" class="md-button">Kubernetes</a>
-    <a href="ai/" class="md-button">AI Agents</a>
+    <a href="kubernetes/connect/" class="md-button">Kubernetes</a>
+    <a href="ai/agents/" class="md-button">AI Agents</a>
   </div>
 </div>
 

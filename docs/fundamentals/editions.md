@@ -35,13 +35,13 @@ See [References > API](../references/api/index.md) for the full catalog.
 
 The `k8s` module exposes the full Kubernetes API as a three-tier surface (CRUD, kubectl-equivalent, type-safe constructors), plus `k8s.control()` for controller runtime, `k8s.webhook()` for admission webhooks, and `k8s.obj.crd()` for CRD scaffolding. The `kite kube` subcommand generates controller/webhook artifacts from scripts.
 
-See [Kubernetes](../kubernetes/index.md) for the working guides.
+See [Kubernetes](../kubernetes/connect.md) for the working guides.
 
 ## What `kiteai` adds
 
 The `genai` module wraps Firebase Genkit Go with multi-provider chat, streaming, tools, and structured output across Anthropic, OpenAI, and Gemini. The `mcp` module provides both an MCP server (`mcp.serve()`) and client (`mcp.connect()`) on top of the Model Context Protocol Go SDK.
 
-See [AI](../ai/index.md) for the working guides.
+See [AI](../ai/agents.md) for the working guides.
 
 ## List and switch editions
 

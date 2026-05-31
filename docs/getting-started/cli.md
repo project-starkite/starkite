@@ -90,4 +90,4 @@ $ kite watch examples/core/hello.star
 
 ## See also
 
-- [CLI reference](../../references/cli/index.md) — every subcommand, every flag, every exit code
+- [CLI reference](../references/cli/index.md) — every subcommand, every flag, every exit code

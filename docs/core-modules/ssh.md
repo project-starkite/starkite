@@ -62,5 +62,5 @@ Expected output (host-specific values differ):
 
 ## See also
 
-- [`ssh` reference](../../references/api/ssh.md) — connection options, `exec`, `upload`, `download`, sudo, jump hosts
-- [`table` reference](../../references/api/table.md) — ASCII tables for tabular output
+- [`ssh` reference](../references/api/ssh.md) — connection options, `exec`, `upload`, `download`, sudo, jump hosts
+- [`table` reference](../references/api/table.md) — ASCII tables for tabular output

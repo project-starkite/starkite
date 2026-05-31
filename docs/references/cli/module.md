@@ -117,4 +117,4 @@ kite module info helm
 
 ## Related
 
-- [Modules concept](../../concepts/modules.md) — auto-loading and `load()`
+- [Modules concept](../../fundamentals/modules.md) — auto-loading and `load()`

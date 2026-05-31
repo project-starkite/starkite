@@ -8,7 +8,7 @@ weight: 30
 
 `libkite` is the embeddable Starlark runtime that powers starkite. A Go program imports it as a library to add scriptable automation: the host owns the control flow (HTTP handler, agent loop, CLI tool, …) while `.star` scripts define the bodies of actions. Modules, permissions, signal handling, and cancellation are all available to the host.
 
-This page is the reference for the public Go API. For runtime semantics, see [Language](../concepts/language.md), [Permission](../concepts/permission.md), and [Modules](../concepts/modules.md).
+This page is the reference for the public Go API. For runtime semantics, see [Language](../fundamentals/language.md), [Permission](../fundamentals/security/permission.md), and [Modules](../fundamentals/modules.md).
 
 ## Installation
 
@@ -239,7 +239,7 @@ config.Permissions = &libkite.PermissionConfig{
 }
 ```
 
-Rule grammar: see [Permission](../concepts/permission.md).
+Rule grammar: see [Permission](../fundamentals/security/permission.md).
 
 ## Custom modules
 

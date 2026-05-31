@@ -6,9 +6,9 @@ edition: ai
 ---
 
 !!! note "Needs the AI modules"
-    The patterns in this guide use the `ai` module (and sometimes `mcp`), included in the default `kite` binary and in the lean `kiteai` edition. See [AI Edition](../index.md).
+    The patterns in this guide use the `ai` module (and sometimes `mcp`), included in the default `kite` binary and in the lean `kiteai` edition. See [AI Edition](../fundamentals/editions.md).
 
-Starkite-AI does **not** ship a packaged REPL or a blocking `agent.run()` facade. Instead, scripts build agents by composing [`ai.chat()`](../../references/api/ai.md#aichatkwargs) + [`ai.run_until()`](../../references/api/ai.md#airun_untilchat-initial-kwargs) with the existing libkite modules for UI, I/O, and side effects (`io.prompt`, `fs`, `http`, `k8s`, `ssh`, …). This keeps the `ai` module small and gives scripts full control over the UX.
+Starkite-AI does **not** ship a packaged REPL or a blocking `agent.run()` facade. Instead, scripts build agents by composing [`ai.chat()`](../references/api/ai.md#aichatkwargs) + [`ai.run_until()`](../references/api/ai.md#airun_untilchat-initial-kwargs) with the existing libkite modules for UI, I/O, and side effects (`io.prompt`, `fs`, `http`, `k8s`, `ssh`, …). This keeps the `ai` module small and gives scripts full control over the UX.
 
 Four patterns, each with a runnable example in [`aikite/examples/agent/`](https://github.com/project-starkite/starkite/tree/main/aikite/examples/agent):
 
@@ -103,7 +103,7 @@ Full example: [`aikite/examples/agent/interactive_assistant.star`](https://githu
 
 **When to use:** long-running agents where the conversation will eventually exceed the model's context window. The fix is periodic summarization: every N turns, compress the full history into a short summary and rebuild the chat with that summary as a seed.
 
-**Primitives:** [`chat.history`](../../references/api/ai.md#chat-methods-and-attributes) (read snapshot), `ai.generate()` (for the cheap summarizer model), and [`ai.chat(history=...)`](../../references/api/ai.md#aichatkwargs) (rebuild with a seed).
+**Primitives:** [`chat.history`](../references/api/ai.md#chat-methods-and-attributes) (read snapshot), `ai.generate()` (for the cheap summarizer model), and [`ai.chat(history=...)`](../references/api/ai.md#aichatkwargs) (rebuild with a seed).
 
 ```python
 MAX_TURNS_BEFORE_SUMMARIZE = 10
@@ -148,7 +148,7 @@ Full example: [`aikite/examples/agent/history_management.star`](https://github.c
 
 **When to use:** the agent needs tools that live in an external MCP server (filesystem access, database queries, SaaS APIs, etc.). Don't reimplement — connect and wrap.
 
-**Primitives:** [`mcp.connect()`](../../references/api/mcp.md#mcpconnect) to open a session, then a small Starlark `def` that wraps each remote tool as a local callable for [`ai.chat(tools=...)`](../../references/api/ai.md#aichatkwargs).
+**Primitives:** [`mcp.connect()`](../references/api/mcp.md#mcpconnect) to open a session, then a small Starlark `def` that wraps each remote tool as a local callable for [`ai.chat(tools=...)`](../references/api/ai.md#aichatkwargs).
 
 ```python
 # 1. Connect to an MCP server (stdio subprocess or HTTP)
@@ -187,7 +187,7 @@ Full example: [`aikite/examples/agent/mcp_integration.star`](https://github.com/
 
 ## Go embedders
 
-If you're driving the LLM loop from Go rather than Starlark, the mirror of these patterns lives in the [embedding guide](../../references/embedding.md#calling-starlark-functions-from-go). The Go host owns the LLM client and tool schemas; libkite executes the bodies of tools via `Runtime.Call(ctx, name, args, kwargs)`. Same underlying story — different driver.
+If you're driving the LLM loop from Go rather than Starlark, the mirror of these patterns lives in the [embedding guide](../references/embedding.md#calling-starlark-functions-from-go). The Go host owns the LLM client and tool schemas; libkite executes the bodies of tools via `Runtime.Call(ctx, name, args, kwargs)`. Same underlying story — different driver.
 
 ---
 
@@ -195,10 +195,10 @@ If you're driving the LLM loop from Go rather than Starlark, the mirror of these
 
 | Scenario | Pattern |
 |----------|---------|
-| Agent runs headless until satisfied | [1 — run_until](#pattern-1--autonomous-run-to-completion) |
-| User types questions, agent replies | [2 — REPL](#pattern-2--user-in-the-loop-repl) |
-| Conversation grows longer than context window | [3 — history management](#pattern-3--history-management-for-long-runs) |
-| Tools live in an existing MCP server | [4 — MCP integration](#pattern-4--mcp-integration) |
-| Go code orchestrates, Starlark provides tool bodies | [Embedding guide — Calling from Go](../../references/embedding.md#calling-starlark-functions-from-go) |
+| Agent runs headless until satisfied | [1 — run_until](#pattern-1-autonomous-run-to-completion) |
+| User types questions, agent replies | [2 — REPL](#pattern-2-user-in-the-loop-repl) |
+| Conversation grows longer than context window | [3 — history management](#pattern-3-history-management-for-long-runs) |
+| Tools live in an existing MCP server | [4 — MCP integration](#pattern-4-mcp-integration) |
+| Go code orchestrates, Starlark provides tool bodies | [Embedding guide — Calling from Go](../references/embedding.md#calling-starlark-functions-from-go) |
 
 The patterns compose. A production agent often combines Pattern 1 (autonomous loop) with Pattern 3 (summarization) and Pattern 4 (MCP tools) in a single script.

@@ -1,10 +1,10 @@
 ---
-title: "Deploy"
+title: "Deploying resources"
 description: "Deploy, scale, and autoscale an app — the fastest path from nothing to a running workload"
-weight: 10
+weight: 50
 ---
 
-# Deploy
+# Deploying resources
 
 The shortest path from a container image to a running, scaling workload. The script reads variables for namespace, image, name, and replicas; deploys a Deployment + ClusterIP Service in one call; scales the Deployment up; attaches an HPA; then prints pod resource usage. No raw YAML.
 
@@ -65,5 +65,6 @@ kite run examples/cloud/quick-deploy/quick-deploy.star --dry-run
 
 ## See also
 
-- [`k8s` reference](../../references/api/k8s.md) — full Tier 1/2/3 API
-- [Multi-env manifests](multi-env.md) — Tier 3 typed constructors for per-environment generation
+- [`k8s` reference](../references/api/k8s.md) — full Tier 1/2/3 API
+- [Object representation](objects.md) — Tier 3 typed constructors for per-environment generation
+- [Kubernetes examples](../examples/index.md#kubernetes) — rolling updates, multi-env manifests, full stacks

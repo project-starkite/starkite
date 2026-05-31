@@ -6,7 +6,7 @@ edition: ai
 ---
 
 !!! note "AI functionality"
-    The `ai` module is built into the default `kite` binary (all-in-one) and the lean `kiteai` edition. It is **not** in `kitecmd` or `kitecloud`. See [AI Edition](../../ai/index.md) for setup.
+    The `ai` module is built into the default `kite` binary (all-in-one) and the lean `kiteai` edition. It is **not** in `kitecmd` or `kitecloud`. See [AI Edition](../../ai/agents.md) for setup.
 
 The `ai` module wraps Firebase Genkit to provide one-shot generation, multi-turn chat, tool calling, and autonomous agent loops across Anthropic, OpenAI, Google AI, and Ollama.
 
@@ -231,7 +231,7 @@ print(resp.text)
 | `max_steps` | int | Max turns (default 10). Safety cap; prevents runaway loops from unbounded spend |
 | `follow_up` | string | User message sent on every turn after the first (default `"continue"`) |
 
-See the [agents guide](../../ai/guides/agents.md) for patterns built around `ai.run_until`.
+See the [agents guide](../../ai/agents.md) for patterns built around `ai.run_until`.
 
 ## Examples
 
