@@ -118,22 +118,23 @@ func (rt *Runtime) resolveModulePath(module string) (string, error) {
 // resolveModulePathFrom resolves a module reference to its directory.
 //
 // A module is always a directory containing module.yaml and one or more .star
-// files. A reference ending in ".star" is an intra-module file load (a module's
-// own files loading each other relative to the caller) and resolves to that
-// file; every other reference resolves to a module directory.
+// files. Resolution by reference shape:
+//
+//   - ends in ".star": an intra-module file load (a module's own files loading
+//     each other relative to the caller) — resolves to that file.
+//   - starts with "./", "../", or "/": an explicit relative or absolute module
+//     directory path.
+//   - otherwise ("name" or "namespace/name"): an installed module reference,
+//     searched under the module directories.
 func (rt *Runtime) resolveModulePathFrom(module, callerPath string) (string, error) {
-	// Intra-module file reference: load("./other.star", ...) between a module's
-	// own files. Resolve to the file relative to the caller.
 	if strings.HasSuffix(module, ".star") {
 		return rt.resolvePathFrom(module, callerPath)
 	}
-
-	// Explicit directory path.
-	if strings.Contains(module, "/") {
+	if strings.HasPrefix(module, "./") || strings.HasPrefix(module, "../") || filepath.IsAbs(module) {
 		return rt.resolvePathFrom(module, callerPath)
 	}
 
-	// Bare name: search module directories for a module directory.
+	// Installed reference ("name" or "namespace/name"): search module dirs.
 	searchPaths := rt.getModuleSearchPathsFrom(module, callerPath)
 	for _, searchPath := range searchPaths {
 		moduleDir := filepath.Join(searchPath, module)
@@ -231,9 +232,10 @@ func (rt *Runtime) getModuleSearchPathsFrom(module, callerPath string) []string 
 		}
 	}
 
-	// 4. User modules directory: ~/.starkite/modules/
+	// 4. Installed modules: ~/.starkite/modules/starlark/ (namespaced as
+	//    <namespace>/<name>, so a load("namespace/name") resolves here).
 	if home, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, filepath.Join(home, ".starkite", "modules"))
+		paths = append(paths, filepath.Join(home, ".starkite", "modules", "starlark"))
 	}
 
 	return paths

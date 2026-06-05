@@ -12,9 +12,13 @@ import (
 const ManifestFile = "module.yaml"
 
 // ModuleManifest describes a module. Every module is a directory containing a
-// module.yaml plus one or more .star files; the manifest names the module, its
-// entry point, and the permissions its code is allowed to use.
+// module.yaml plus one or more .star files; the manifest is the single source
+// of truth for the module's identity, independent of where the module lives.
 type ModuleManifest struct {
+	// Namespace and Name together identify the module as "namespace/name".
+	// Namespace is optional in the manifest when it can be resolved from the
+	// install source; Name is always required.
+	Namespace   string `yaml:"namespace,omitempty"`
 	Name        string `yaml:"name"`
 	Version     string `yaml:"version,omitempty"`
 	Description string `yaml:"description,omitempty"`
@@ -38,6 +42,15 @@ func (m *ModuleManifest) EntryFile() string {
 		return "main.star"
 	}
 	return m.Entry
+}
+
+// QualifiedName returns the module's "namespace/name" identity, or just "name"
+// when no namespace is set.
+func (m *ModuleManifest) QualifiedName() string {
+	if m.Namespace == "" {
+		return m.Name
+	}
+	return m.Namespace + "/" + m.Name
 }
 
 // LoadModuleManifest reads and validates the module.yaml in dirPath. A module

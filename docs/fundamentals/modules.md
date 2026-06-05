@@ -32,16 +32,45 @@ Which modules are auto-loaded depends on the edition:
 
 See [Editions](editions.md) for the full edition model.
 
-## Loading script modules
+## What a module is
 
-`load()` imports another `.star` file as a module. A file's public functions are bound to a single name derived from the filename, accessed as `name.function()`. Paths resolve relative to the calling script's directory:
+A module is a **directory** containing a `module.yaml` manifest and one or more `.star` files. The manifest declares the module's identity and configuration:
+
+```yaml
+# helpers/module.yaml
+namespace: acme
+name: helpers
+version: 0.1.0
+```
 
 ```python
-# helpers.star defines deploy() and rollback()
-load("helpers.star", "helpers")
+# helpers/main.star
+def deploy(env): ...
+def rollback(env): ...
+def _private(): ...     # not exported
+```
+
+The directory's public symbols (everything not starting with `_`) merge into one module. The entry file is `main.star` by default; override it with `entry:` in the manifest.
+
+## Loading script modules
+
+`load()` imports a module and binds its public symbols under a single name, accessed as `name.function()`:
+
+```python
+# a local module directory (relative to the calling script)
+load("./helpers", "helpers")
 
 def main():
     helpers.deploy("production")
 ```
 
-The imported name comes from the filename (`helpers.star` → `helpers`); rename it with Starlark's aliasing syntax: `load("helpers.star", h = "helpers")`. Functions whose names start with `_` are private and are not exported.
+Rename the binding with Starlark's aliasing syntax: `load("./helpers", h = "helpers")`.
+
+An **installed** module is loaded by its `namespace/name`:
+
+```python
+load("acme/slack", "slack")     # installed via: kite module install ...
+
+def main():
+    slack.post("#deploys", "shipped")
+```

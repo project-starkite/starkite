@@ -81,6 +81,50 @@ func TestInferModuleName(t *testing.T) {
 	}
 }
 
+func TestInferNamespaceName(t *testing.T) {
+	tests := []struct {
+		repo          string
+		wantNamespace string
+		wantName      string
+	}{
+		{"github.com/user/starkite-helm", "user", "starkite-helm"},
+		{"git@github.com:user/repo.git", "user", "repo"},
+		{"https://github.com/user/mymodule.git", "user", "mymodule"},
+		{"gitlab.com/org/subgroup/module", "subgroup", "module"},
+		{"git.internal.example/team/repo", "team", "repo"},
+		{"file:///path/to/repo", "to", "repo"},
+		{"simple-name", "", "simple-name"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.repo, func(t *testing.T) {
+			ns, name := InferNamespaceName(tt.repo)
+			if ns != tt.wantNamespace || name != tt.wantName {
+				t.Errorf("InferNamespaceName(%q) = (%q, %q), want (%q, %q)",
+					tt.repo, ns, name, tt.wantNamespace, tt.wantName)
+			}
+		})
+	}
+}
+
+// writeStarlarkModule creates an installed-layout starlark module fixture at
+// <starlarkDir>/<namespace>/<name> with a module.yaml and a main.star.
+func writeStarlarkModule(t *testing.T, mgr *Manager, namespace, name string) string {
+	t.Helper()
+	dir := filepath.Join(mgr.StarlarkDir(), namespace, name)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("create module dir: %v", err)
+	}
+	manifest := "namespace: " + namespace + "\nname: " + name + "\nversion: 0.1.0\n"
+	if err := os.WriteFile(filepath.Join(dir, "module.yaml"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write module.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.star"), []byte("def main(): pass\n"), 0o644); err != nil {
+		t.Fatalf("write main.star: %v", err)
+	}
+	return dir
+}
+
 func TestManagerNew(t *testing.T) {
 	t.Run("default directory", func(t *testing.T) {
 		mgr, err := New("")
@@ -143,14 +187,7 @@ func TestManagerList(t *testing.T) {
 	})
 
 	t.Run("with starlark modules", func(t *testing.T) {
-		// Create a fake starlark module
-		moduleDir := filepath.Join(mgr.StarlarkDir(), "test-module")
-		if err := os.MkdirAll(moduleDir, 0755); err != nil {
-			t.Fatalf("failed to create module dir: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(moduleDir, "main.star"), []byte("# test"), 0644); err != nil {
-			t.Fatalf("failed to create main.star: %v", err)
-		}
+		writeStarlarkModule(t, mgr, "acme", "test-module")
 
 		modules, err := mgr.List()
 		if err != nil {
@@ -161,6 +198,9 @@ func TestManagerList(t *testing.T) {
 		}
 		if modules[0].Name != "test-module" {
 			t.Errorf("expected module name 'test-module', got %q", modules[0].Name)
+		}
+		if modules[0].Namespace != "acme" {
+			t.Errorf("expected namespace 'acme', got %q", modules[0].Namespace)
 		}
 		if modules[0].Type != "starlark" {
 			t.Errorf("expected type 'starlark', got %q", modules[0].Type)
@@ -183,21 +223,17 @@ func TestManagerGet(t *testing.T) {
 	})
 
 	t.Run("found starlark", func(t *testing.T) {
-		// Create a fake starlark module
-		moduleDir := filepath.Join(mgr.StarlarkDir(), "my-module")
-		if err := os.MkdirAll(moduleDir, 0755); err != nil {
-			t.Fatalf("failed to create module dir: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(moduleDir, "main.star"), []byte("# test"), 0644); err != nil {
-			t.Fatalf("failed to create main.star: %v", err)
-		}
+		moduleDir := writeStarlarkModule(t, mgr, "acme", "my-module")
 
-		info, err := mgr.Get("my-module")
+		info, err := mgr.Get("acme/my-module")
 		if err != nil {
 			t.Fatalf("Get() failed: %v", err)
 		}
 		if info.Name != "my-module" {
 			t.Errorf("expected name 'my-module', got %q", info.Name)
+		}
+		if info.Namespace != "acme" {
+			t.Errorf("expected namespace 'acme', got %q", info.Namespace)
 		}
 		if info.Type != "starlark" {
 			t.Errorf("expected type 'starlark', got %q", info.Type)
@@ -223,15 +259,9 @@ func TestManagerRemove(t *testing.T) {
 	})
 
 	t.Run("remove starlark", func(t *testing.T) {
-		moduleDir := filepath.Join(mgr.StarlarkDir(), "remove-me")
-		if err := os.MkdirAll(moduleDir, 0755); err != nil {
-			t.Fatalf("failed to create module dir: %v", err)
-		}
-		if err := os.WriteFile(filepath.Join(moduleDir, "main.star"), []byte("# test"), 0644); err != nil {
-			t.Fatalf("failed to create main.star: %v", err)
-		}
+		moduleDir := writeStarlarkModule(t, mgr, "acme", "remove-me")
 
-		err := mgr.Remove("remove-me")
+		err := mgr.Remove("acme/remove-me")
 		if err != nil {
 			t.Fatalf("Remove() failed: %v", err)
 		}
@@ -352,10 +382,8 @@ func TestManagerListIncludesWasm(t *testing.T) {
 		t.Fatalf("New() failed: %v", err)
 	}
 
-	// Create a starlark module
-	starlarkDir := filepath.Join(mgr.StarlarkDir(), "helm")
-	os.MkdirAll(starlarkDir, 0755)
-	os.WriteFile(filepath.Join(starlarkDir, "main.star"), []byte("# helm"), 0644)
+	// Create a starlark module (installed layout: namespace/name)
+	writeStarlarkModule(t, mgr, "acme", "helm")
 
 	// Create a WASM module
 	createFakeWasmModule(t, mgr.WasmDir(), "echo", "1.0.0", []string{"echo", "add"}, []string{"log"})

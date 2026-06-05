@@ -50,31 +50,30 @@ Examples:
 var moduleInstallCmd = &cobra.Command{
 	Use:   "install <source>",
 	Short: "Install a module from a git repository or local path",
-	Long: `Install a module from a git repository or local path.
+	Long: `Install a module from a git repository or local directory.
+
+A module's identity (namespace/name) comes from its module.yaml. A source is
+host-agnostic — any git host works, not just well-known ones.
 
 For starlark modules, supported source formats:
-  github.com/user/repo          HTTPS clone from GitHub
-  gitlab.com/user/repo          HTTPS clone from GitLab
-  bitbucket.org/user/repo       HTTPS clone from Bitbucket
-  user/repo                     Short form for github.com/user/repo
-  github.com/user/repo@v1.0.0   Specific tag/version
-  github.com/user/repo@main     Specific branch
-  github.com/user/repo@abc1234  Specific commit
-  git@github.com:user/repo.git  SSH clone
+  host.tld/org/repo           HTTPS clone from any git host (gitlab, internal, …)
+  host.tld/org/repo@v1.0.0    Specific tag, branch, or commit
+  git@host.tld:org/repo.git   SSH clone
+  https://host.tld/org/repo   Full URL
+  ./path/to/module            Local directory (copied, not cloned)
+
+When the manifest omits a namespace, it falls back to the source's org; for a
+local directory install --as <namespace>/<name> may be required.
 
 For WASM modules, source can be a local directory containing a module.yaml
 and .wasm file, or a git repository. Use --type wasm to force WASM install.
 
-The module name is inferred from the repository name or manifest, but can
-be overridden with --as flag.
-
 Examples:
-  kite module install github.com/user/kite-helm
-  kite module install user/helm-module --as helm
-  kite module install github.com/user/kite-helm@v1.0.0
-  kite module install --force github.com/user/kite-helm
+  kite module install gitlab.com/acme/kite-helm
+  kite module install git.internal/acme/kite-helm@v1.0.0
+  kite module install ./my-module
+  kite module install ./my-module --as acme/helm
   kite module install --type wasm ./path/to/echo
-  kite module install --type wasm github.com/user/wasm-plugin
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: runModuleInstall,
@@ -181,7 +180,11 @@ func runModuleInstall(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Installed %s", info.Name)
+	qualified := info.Name
+	if info.Namespace != "" {
+		qualified = info.Namespace + "/" + info.Name
+	}
+	fmt.Printf("Installed %s", qualified)
 	if info.Version != "" {
 		fmt.Printf(" (%s)", info.Version)
 	}
@@ -257,7 +260,7 @@ func runModuleList(cmd *cobra.Command, args []string) error {
 	if len(modules) == 0 {
 		fmt.Println("No modules installed.")
 		fmt.Println("\nInstall modules with:")
-		fmt.Println("  kite module install github.com/user/repo")
+		fmt.Println("  kite module install host.tld/org/repo")
 		return nil
 	}
 
@@ -276,7 +279,11 @@ func runModuleList(cmd *cobra.Command, args []string) error {
 		} else {
 			source = shortenRepoURL(source)
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", m.Name, m.Type, version, source)
+		name := m.Name
+		if m.Namespace != "" {
+			name = m.Namespace + "/" + m.Name
+		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", name, m.Type, version, source)
 	}
 
 	w.Flush()

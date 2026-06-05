@@ -122,9 +122,13 @@ func GitGetRemoteURL(repoPath string) (string, error) {
 	return strings.TrimSpace(stdout.String()), nil
 }
 
-// normalizeRepoURL converts short repository references to full URLs.
+// normalizeRepoURL converts a repository reference to a clonable URL. It does
+// not assume any particular git host: a reference must already carry an explicit
+// scheme, a git@ form, a local path, or a "host/org/repo" shape. A bare
+// "org/repo" with no host is ambiguous and is left unchanged so the git clone
+// fails with a clear error rather than silently defaulting to a host.
 func normalizeRepoURL(repo string) string {
-	// Already a full URL
+	// Already a full URL or scp-like git@ form.
 	if strings.HasPrefix(repo, "https://") ||
 		strings.HasPrefix(repo, "http://") ||
 		strings.HasPrefix(repo, "git@") ||
@@ -133,26 +137,19 @@ func normalizeRepoURL(repo string) string {
 		return repo
 	}
 
-	// Local path (absolute or relative)
+	// Local path (absolute or relative) — git can clone it directly.
 	if strings.HasPrefix(repo, "/") || strings.HasPrefix(repo, "./") || strings.HasPrefix(repo, "../") {
-		return repo // Git can clone local paths directly
+		return repo
 	}
 
-	// Check for known hosts and convert to HTTPS URL
-	knownHosts := []string{"github.com", "gitlab.com", "bitbucket.org"}
-	for _, host := range knownHosts {
-		if strings.HasPrefix(repo, host+"/") {
-			return "https://" + repo
-		}
+	// "host/org/repo" — a dotted first segment looks like a hostname, so add
+	// the https scheme. Works for any host, not just well-known ones.
+	if firstSeg, _, ok := strings.Cut(repo, "/"); ok && strings.Contains(firstSeg, ".") {
+		return "https://" + repo
 	}
 
-	// Assume it's a short GitHub reference: user/repo -> https://github.com/user/repo
-	if strings.Count(repo, "/") == 1 && !strings.Contains(repo, ".") {
-		return "https://github.com/" + repo
-	}
-
-	// Default: assume HTTPS
-	return "https://" + repo
+	// Anything else (e.g. bare "org/repo") is ambiguous; return as-is.
+	return repo
 }
 
 // GitAvailable checks if git is available in PATH.

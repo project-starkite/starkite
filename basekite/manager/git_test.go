@@ -24,16 +24,17 @@ func TestNormalizeRepoURL(t *testing.T) {
 		{"./relative/path", "./relative/path"},
 		{"../parent/path", "../parent/path"},
 
-		// Known hosts
+		// Any "host/org/repo" (dotted first segment) gets an https scheme —
+		// host-agnostic, not limited to well-known hosts.
 		{"github.com/user/repo", "https://github.com/user/repo"},
 		{"gitlab.com/user/repo", "https://gitlab.com/user/repo"},
 		{"bitbucket.org/user/repo", "https://bitbucket.org/user/repo"},
-
-		// Short GitHub reference
-		{"user/repo", "https://github.com/user/repo"},
-
-		// Unknown host (defaults to HTTPS)
+		{"git.internal.example/team/repo", "https://git.internal.example/team/repo"},
 		{"example.com/user/repo", "https://example.com/user/repo"},
+
+		// Bare "org/repo" with no host is ambiguous and left unchanged so the
+		// clone fails clearly instead of defaulting to a host.
+		{"user/repo", "user/repo"},
 	}
 
 	for _, tt := range tests {
