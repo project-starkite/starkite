@@ -6,11 +6,11 @@ weight: 50
 
 # Modules
 
-Every capability in a starkite script — filesystem, HTTP, SSH, Kubernetes, LLMs — is exposed as a **module**. This page covers how built-in modules are auto-loaded into every script, and how `load()` pulls symbols from other `.star` files in the same project.
+Every capability in a starkite script — filesystem, HTTP, SSH, Kubernetes, LLMs — is exposed as a **module**. Built-in modules are auto-loaded into every script; `load()` pulls in other `.star` files from the same project.
 
 For the per-module API catalog, see [References > API](../references/api/index.md).
 
-## Auto-Loaded Modules
+## Auto-loaded modules
 
 Unlike standard Starlark, starkite modules do not require `load()` statements. Every built-in module is injected into the global scope before the script runs:
 
@@ -32,12 +32,16 @@ Which modules are auto-loaded depends on the edition:
 
 See [Editions](editions.md) for the full edition model.
 
-## Loading Script Modules
+## Loading script modules
 
-`load()` imports symbols from other `.star` files in the same project. Paths are resolved relative to the calling script's directory:
+`load()` imports another `.star` file as a module. A file's public functions are bound to a single name derived from the filename, accessed as `name.function()`. Paths resolve relative to the calling script's directory:
 
 ```python
-load("helpers.star", "deploy", "rollback")
+# helpers.star defines deploy() and rollback()
+load("helpers.star", "helpers")
 
-deploy("production")
+def main():
+    helpers.deploy("production")
 ```
+
+The imported name comes from the filename (`helpers.star` → `helpers`); rename it with Starlark's aliasing syntax: `load("helpers.star", h = "helpers")`. Functions whose names start with `_` are private and are not exported.

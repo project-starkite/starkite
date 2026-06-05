@@ -180,19 +180,27 @@
   }
 }
 
-/* Sidebar nav: make subsection headings (e.g. "CLI", "API" under References)
-   darker, larger, and bolder so they stand out from leaf links. Targets only
-   the primary (left) nav. Section labels render as <label class="md-nav__link">
-   (toggles for nested sections); leaf links render as <a class="md-nav__link">. */
-.md-nav--primary label.md-nav__link {
+/* Sidebar nav: top-level group headers (Fundamentals, Core Modules, …) are
+   `navigation.sections` items — render them as bold heading labels. These are
+   the only labels that should read as section titles. */
+.md-nav--primary .md-nav__item--section > label.md-nav__link {
   color: var(--md-default-fg-color);
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
 
-[data-md-color-scheme="slate"] .md-nav--primary label.md-nav__link {
+[data-md-color-scheme="slate"] .md-nav--primary .md-nav__item--section > label.md-nav__link {
   color: var(--md-default-fg-color);
+}
+
+/* Nested subsection toggles that are NOT top-level sections (e.g. Security,
+   HTTP) render as normal nav links, not headings — only the chevron marks them
+   as expandable. `navigation.expand` keeps their children visible inline. */
+.md-nav--primary .md-nav__item--nested:not(.md-nav__item--section) > label.md-nav__link {
+  font-weight: 400;
+  font-size: inherit;
+  letter-spacing: normal;
 }
 
 /* Mobile-drawer subsection title (visible when the nav slides out on small
@@ -201,4 +209,15 @@
   color: var(--md-default-fg-color);
   font-size: 0.82rem;
   font-weight: 700;
+}
+
+/* On desktop (tabs visible), `navigation.tabs` lifts the active tab's label
+   ("Docs") to the top of the left sidebar. The header tab already names the
+   section, so the lifted label is redundant and crowds the top — hide it, the
+   way Deno/Bun do. Only at the tabs breakpoint; the mobile drawer keeps the
+   label for back-navigation. */
+@media screen and (min-width: 76.25em) {
+  .md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link {
+    display: none;
+  }
 }

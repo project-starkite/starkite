@@ -1,12 +1,12 @@
 ---
 title: "Language"
-description: "Starkite language features — variable injection and the try_ error pattern"
+description: "The Starlark language, the main() entry point, and the try_ error pattern"
 weight: 40
 ---
 
 # Language
 
-Starkite scripts are Starlark — a deterministic, Python-derived language — extended with conventions that show up across every module: an automatic `main()` entry point, a layered variable-injection system, and the `try_` prefix for error handling. This page covers each. For Starlark's syntax and semantics, see the upstream [Starlark spec](https://github.com/bazelbuild/starlark/blob/master/spec.md).
+Starkite scripts are Starlark — a deterministic, Python-derived language — extended with two conventions used across every module: an automatic `main()` entry point and the `try_` prefix for error handling. Script inputs come from the variable-injection system — see [Configuration](configuration.md). For Starlark's syntax and semantics, see the upstream [Starlark spec](https://github.com/bazelbuild/starlark/blob/master/spec.md).
 
 ## Entry point
 
@@ -19,7 +19,7 @@ def main():
 
 `kite run hello.star` prints `hello` — no explicit call needed.
 
-Defining `main` is optional. A script that does not define it runs entirely at the top level, as before.
+Defining `main` is optional. A script that does not define it runs entirely at the top level.
 
 If a script both defines `main` and calls it at the top level, the runtime detects the explicit call and does not call `main` a second time. It records a notice on stderr so the skipped invocation is visible:
 
@@ -29,104 +29,9 @@ level=INFO msg="skipping automatic entry-point invocation: script calls it at to
 
 The detection is syntactic — it recognizes a direct top-level call such as `main()`. A call reached through an alias or nested inside control flow is not detected and would run `main` twice.
 
-Automatic invocation applies only to the entry script. A `main` defined in a module loaded with `load()` is never called automatically. `main` must be callable with no arguments; script inputs come from the [variable-injection system](#variable-injection).
+Automatic invocation applies only to the entry script. A `main` defined in a module loaded with `load()` is never called automatically. `main` must be callable with no arguments; script inputs come from the [variable-injection system](configuration.md).
 
-## Variable Injection
-
-Starkite resolves variables from five sources, highest priority first:
-
-1. **CLI flags** — `--var key=value`
-2. **Variable files** — `--var-file=values.yaml`
-3. **Default config** — `~/.starkite/config.yaml` or `./config.yaml`
-4. **Environment** — `STARKITE_VAR_key=value`
-5. **Script default** — `var_str("key", "default")`
-
-### Variable Functions
-
-| Function | Returns | Description |
-|----------|---------|-------------|
-| `var_str(name, default="")` | string | String variable |
-| `var_int(name, default=0)` | int | Integer variable |
-| `var_bool(name, default=False)` | bool | Boolean variable |
-| `var_float(name, default=0.0)` | float | Float variable |
-| `var_list(name, default=[])` | list | List variable (auto-detects JSON from CLI) |
-| `var_dict(name, default={})` | dict | Dict variable (auto-detects JSON from CLI) |
-| `var_names()` | list | Sorted list of all variable names |
-
-### Config File Format
-
-`~/.starkite/config.yaml` (and `./config.yaml` in the working directory) holds defaults for the starkite runtime. Four top-level keys are **reserved** — parsed specially and **not** accessible via `var_*`:
-
-| Reserved key | Purpose |
-|---|---|
-| `project` | Project metadata (name, version). Read by tooling; not user variables. |
-| `defaults` | Runtime defaults (log_level, timeout). Read by the runtime; not user variables. |
-| `providers` | Provider-specific defaults (`ssh`, etc.). Read by the relevant module at construction time; not user variables. |
-| `active_edition` | The active edition for `kite edition use`. |
-
-Every **other** top-level key becomes a user variable accessible via `var_*`. Nested maps flatten into dot-notation:
-
-```yaml
-# ~/.starkite/config.yaml
-
-# Reserved sections (not accessible via var_*)
-project:
-  name: my-project
-  version: 0.1.0
-
-defaults:
-  log_level: info
-  timeout: 300
-
-providers:
-  ssh:
-    user: deploy
-    private_key_file: ~/.ssh/id_rsa
-
-# User variables (accessible via var_*)
-environment: dev
-replicas: 3
-labels:
-  app: myapp
-  team: platform
-```
-
-### Access Patterns
-
-```python
-# Top-level variables
-env = var_str("environment", "dev")
-count = var_int("replicas", 3)
-
-# Nested user variables (dot notation flattens automatically)
-app = var_str("labels.app")               # "myapp"
-labels = var_dict("labels", {})           # {"app": "myapp", "team": "platform"}
-
-# Lists
-regions = var_list("regions", ["us-east-1"])
-
-# Enumerate every defined variable
-for name in var_names():
-    print(name, "=", var_str(name))
-```
-
-Reserved keys (`project.name`, `providers.ssh.user`, etc.) do not appear in `var_names()` and `var_str("providers.ssh.user")` returns the default. Provider config is read by the relevant module's factory (`ssh.config(...)`), not via `var_*`.
-
-### Environment Variables
-
-Environment variables prefixed with `STARKITE_VAR_` are picked up automatically. Underscores in the name become dots:
-
-```bash
-export STARKITE_VAR_DATABASE_HOST=pg.local
-export STARKITE_VAR_DATABASE_PORT=5432
-```
-
-```python
-host = var_str("database.host")   # "pg.local"
-port = var_int("database.port")   # 5432
-```
-
-## Error Handling
+## Error handling
 
 Every starkite function that can fail has a `try_` variant that returns a `Result` instead of raising. The `Result` type has three attributes:
 
@@ -136,23 +41,26 @@ Every starkite function that can fail has a `try_` variant that returns a `Resul
 | `value` | any | Return value on success |
 | `error` | string | Error message on failure |
 
-### The try_ Pattern
+### The try_ pattern
 
 ```python
-# Without try_ — raises on failure
-content = read_text("/etc/hosts")
+def main():
+    # Without try_ — raises on failure
+    content = read_text("/etc/hosts")
 
-# With try_ — returns Result
-result = fs.path("/etc/missing").try_read_text()
-if result.ok:
-    print(result.value)
-else:
-    print("Error:", result.error)
+    # With try_ — returns a Result instead of raising
+    result = fs.path("/etc/missing").try_read_text()
+    if result.ok:
+        print(result.value)
+    else:
+        print("Error:", result.error)
 ```
 
-### Constructing Results
+Starlark allows `if`/`for` only inside a function, so error-handling logic lives in `main()` (or any `def`), not at the top level.
 
-The `Result()` built-in constructs Result values, which is useful with `retry`:
+### Constructing results
+
+The `Result()` built-in constructs Result values for use with `retry`:
 
 ```python
 def check_service():
@@ -164,30 +72,32 @@ def check_service():
 result = retry.do(check_service, max_attempts=5, delay="2s")
 ```
 
-### Object Method Variants
+### Object method variants
 
-Objects support `try_` on their methods too:
+Objects support `try_` on their methods:
 
 ```python
 # File objects
-f = json.file("config.json")
-result = f.try_decode()
+config = json.file("config.json").try_decode()
 
 # Path objects
-p = fs.path("/tmp/data.txt")
-result = p.try_read_text()
+data = fs.path("/tmp/data.txt").try_read_text()
 
 # HTTP
-url = http.url("https://api.example.com/data")
-result = url.try_get()
+page = http.url("https://api.example.com/data").try_get()
 ```
 
-### Module-Level Factories
+Each call returns a `Result` with `ok` / `value` / `error`.
 
-Factory functions also have `try_` variants:
+### Module-level factories
+
+Factory functions have `try_` variants, but a factory only builds the object — it does not touch the file, so a missing path is not reported until the read. Guard the read, not the factory:
 
 ```python
-result = json.try_file("maybe-missing.json")
-if result.ok:
-    data = result.value.decode()
+def main():
+    result = json.file("maybe-missing.json").try_decode()
+    if result.ok:
+        data = result.value
+    else:
+        print("Error:", result.error)
 ```
