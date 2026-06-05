@@ -1,6 +1,6 @@
 # wrapper - A module that loads another module (dependency chain)
 
-load("./greeter.star", "greeter")
+load("../greeter", "greeter")
 
 def greet_upper(name):
     """Greet someone in uppercase using the greeter module."""

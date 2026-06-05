@@ -115,27 +115,30 @@ func (rt *Runtime) resolveModulePath(module string) (string, error) {
 	return rt.resolveModulePathFrom(module, "")
 }
 
-// resolveModulePathFrom resolves a module name with a caller path for relative resolution.
+// resolveModulePathFrom resolves a module reference to its directory.
+//
+// A module is always a directory containing module.yaml and one or more .star
+// files. A reference ending in ".star" is an intra-module file load (a module's
+// own files loading each other relative to the caller) and resolves to that
+// file; every other reference resolves to a module directory.
 func (rt *Runtime) resolveModulePathFrom(module, callerPath string) (string, error) {
-	// If it's an explicit path (contains "/" or ends with ".star"), resolve directly
-	if strings.Contains(module, "/") || strings.HasSuffix(module, ".star") {
+	// Intra-module file reference: load("./other.star", ...) between a module's
+	// own files. Resolve to the file relative to the caller.
+	if strings.HasSuffix(module, ".star") {
 		return rt.resolvePathFrom(module, callerPath)
 	}
 
-	// Otherwise, search module directories
+	// Explicit directory path.
+	if strings.Contains(module, "/") {
+		return rt.resolvePathFrom(module, callerPath)
+	}
+
+	// Bare name: search module directories for a module directory.
 	searchPaths := rt.getModuleSearchPathsFrom(module, callerPath)
-
 	for _, searchPath := range searchPaths {
-		// Single-file module: <name>.star
-		singleFile := filepath.Join(searchPath, module+".star")
-		if fileExists(singleFile) {
-			return singleFile, nil
-		}
-
-		// Multi-file module: directory containing main.star or <name>.star
 		moduleDir := filepath.Join(searchPath, module)
 		if isModuleDir(moduleDir) {
-			return moduleDir, nil // return directory — loadModuleFromPath routes via IsDir()
+			return moduleDir, nil
 		}
 	}
 
@@ -236,18 +239,20 @@ func (rt *Runtime) getModuleSearchPathsFrom(module, callerPath string) []string 
 	return paths
 }
 
-// loadModuleFromPath loads a module from a resolved path.
+// loadModuleFromPath loads a module from a resolved path. A directory is a
+// module (manifest + .star files); a .star file is an intra-module file load.
 func (rt *Runtime) loadModuleFromPath(modulePath string, config *starlark.Dict) (starlark.StringDict, error) {
-	// Check if it's a directory (multi-file module) or single file
 	info, err := os.Stat(modulePath)
 	if err != nil {
 		return nil, err
 	}
 
 	if info.IsDir() {
-		return rt.loadMultiFileModule(modulePath, config)
+		return rt.loadModuleDir(modulePath, config)
 	}
 
+	// A bare .star file reached here only via an intra-module relative load
+	// (a module's own files loading each other); load it as a single file.
 	return rt.loadSingleFileModule(modulePath, config)
 }
 
@@ -289,53 +294,40 @@ func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict) 
 	return globals, nil
 }
 
-// loadMultiFileModule loads all .star files in a module directory.
-func (rt *Runtime) loadMultiFileModule(dirPath string, config *starlark.Dict) (starlark.StringDict, error) {
-	// First, load main.star if it exists
-	mainPath := filepath.Join(dirPath, "main.star")
-	if !fileExists(mainPath) {
-		// Try module name as entry point
-		moduleName := filepath.Base(dirPath)
-		mainPath = filepath.Join(dirPath, moduleName+".star")
-		if !fileExists(mainPath) {
-			return nil, fmt.Errorf("no entry point found in module directory %s (expected main.star or %s.star)", dirPath, moduleName)
-		}
-	}
-
-	// Load the main file
-	globals, err := rt.loadSingleFileModule(mainPath, config)
+// loadModuleDir loads a module directory: a required module.yaml manifest plus
+// one or more .star files. The manifest's entry file loads first; the public
+// symbols of every other .star file in the directory merge into the module.
+func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict) (starlark.StringDict, error) {
+	manifest, err := LoadModuleManifest(dirPath)
 	if err != nil {
 		return nil, err
 	}
 
-	// Scan for additional .star files and merge their exports
+	entryPath := filepath.Join(dirPath, manifest.EntryFile())
+	globals, err := rt.loadSingleFileModule(entryPath, config)
+	if err != nil {
+		return nil, err
+	}
+
+	// Merge the public symbols of the directory's other .star files.
 	entries, err := os.ReadDir(dirPath)
 	if err != nil {
 		return nil, err
 	}
-
 	for _, entry := range entries {
-		if entry.IsDir() {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".star") {
 			continue
 		}
-		name := entry.Name()
-		if !strings.HasSuffix(name, ".star") {
+		fullPath := filepath.Join(dirPath, entry.Name())
+		if fullPath == entryPath {
 			continue
-		}
-		fullPath := filepath.Join(dirPath, name)
-		if fullPath == mainPath {
-			continue // Already loaded
 		}
 
-		// Load additional file
 		additionalGlobals, err := rt.loadSingleFileModule(fullPath, config)
 		if err != nil {
 			return nil, fmt.Errorf("error loading %s: %w", fullPath, err)
 		}
-
-		// Merge public symbols into globals
 		for k, v := range additionalGlobals {
-			// Private symbols from additional files are not merged
 			if !strings.HasPrefix(k, "_") {
 				globals[k] = v
 			}
@@ -390,9 +382,8 @@ func dirExists(path string) bool {
 	return err == nil && info.IsDir()
 }
 
-// isModuleDir checks if a path is a module directory (contains main.star or <name>.star).
+// isModuleDir reports whether path is a module directory: a directory
+// containing a module.yaml manifest.
 func isModuleDir(path string) bool {
-	return dirExists(path) &&
-		(fileExists(filepath.Join(path, "main.star")) ||
-			fileExists(filepath.Join(path, filepath.Base(path)+".star")))
+	return dirExists(path) && fileExists(filepath.Join(path, ManifestFile))
 }

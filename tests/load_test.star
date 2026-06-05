@@ -6,7 +6,7 @@
 
 # Load a single-file module by explicit path
 # The module exports a 'greeter' symbol (derived from filename)
-load("./modules/greeter.star", "greeter")
+load("./modules/greeter", "greeter")
 
 # Load a multi-file module by name (from ./modules/)
 # The module exports a 'mymodule' symbol (derived from directory name)
@@ -14,13 +14,13 @@ load("./modules/greeter.star", "greeter")
 load("mymodule", mymod = "mymodule")
 
 # Load a module that itself loads another module (dependency chain)
-load("./modules/wrapper.star", "wrapper")
+load("./modules/wrapper", "wrapper")
 
 # Load a module that uses built-in modules
-load("./modules/builtins_user.star", "builtins_user")
+load("./modules/builtins_user", "builtins_user")
 
 # Load the counter module twice to test caching
-load("./modules/counter.star", "counter")
+load("./modules/counter", "counter")
 
 # =============================================================================
 # SINGLE-FILE MODULE LOADING

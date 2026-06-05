@@ -542,10 +542,16 @@ func (m *Manager) Remove(name string) error {
 
 // validateModule checks if the module has a valid structure.
 func (m *Manager) validateModule(modulePath, name string) error {
-	// Check for entry point
+	// A module must carry a module.yaml manifest.
+	manifestPath := filepath.Join(modulePath, "module.yaml")
+	if !fileExists(manifestPath) {
+		return fmt.Errorf("module is missing module.yaml at its root")
+	}
+
+	// The manifest's entry file (default main.star) must exist.
 	entryPoint := m.findEntryPoint(modulePath, name)
 	if entryPoint == "" {
-		return fmt.Errorf("no entry point found (expected main.star or %s.star)", name)
+		return fmt.Errorf("no entry .star file found (expected main.star or %s.star)", name)
 	}
 
 	return nil
