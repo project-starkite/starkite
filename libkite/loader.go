@@ -300,12 +300,11 @@ func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict) 
 // one or more .star files. The manifest's entry file loads first; the public
 // symbols of every other .star file in the directory merge into the module.
 func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict) (starlark.StringDict, error) {
-	manifest, err := LoadModuleManifest(dirPath)
-	if err != nil {
+	if _, err := LoadModuleManifest(dirPath); err != nil {
 		return nil, err
 	}
 
-	entryPath := filepath.Join(dirPath, manifest.EntryFile())
+	entryPath := filepath.Join(dirPath, EntryFile)
 	globals, err := rt.loadSingleFileModule(entryPath, config)
 	if err != nil {
 		return nil, err

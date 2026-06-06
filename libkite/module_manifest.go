@@ -11,6 +11,11 @@ import (
 // ManifestFile is the required manifest at the root of every module directory.
 const ManifestFile = "module.yaml"
 
+// EntryFile is the fixed entry point of every module directory. Its public
+// symbols, together with those of the directory's other .star files, form the
+// module. The entry point is not configurable.
+const EntryFile = "main.star"
+
 // ModuleManifest describes a module. Every module is a directory containing a
 // module.yaml plus one or more .star files; the manifest is the single source
 // of truth for the module's identity, independent of where the module lives.
@@ -23,10 +28,6 @@ type ModuleManifest struct {
 	Version     string `yaml:"version,omitempty"`
 	Description string `yaml:"description,omitempty"`
 
-	// Entry is the .star file loaded first; its directory's other .star files
-	// merge their public symbols into the module. Defaults to "main.star".
-	Entry string `yaml:"entry,omitempty"`
-
 	// Permissions lists the capability rules the module's code may use, in the
 	// same grammar as a permission profile (e.g. "http.client(api.slack.com:*)").
 	// It can only narrow the runtime ceiling, never widen it.
@@ -34,14 +35,6 @@ type ModuleManifest struct {
 
 	// MinStarkite is the minimum starkite version the module requires.
 	MinStarkite string `yaml:"min_starkite,omitempty"`
-}
-
-// EntryFile returns the manifest's entry .star filename, defaulting to main.star.
-func (m *ModuleManifest) EntryFile() string {
-	if m.Entry == "" {
-		return "main.star"
-	}
-	return m.Entry
 }
 
 // QualifiedName returns the module's "namespace/name" identity, or just "name"
@@ -73,9 +66,9 @@ func LoadModuleManifest(dirPath string) (*ModuleManifest, error) {
 		return nil, fmt.Errorf("%s missing required field: name", ManifestFile)
 	}
 
-	entry := filepath.Join(dirPath, m.EntryFile())
+	entry := filepath.Join(dirPath, EntryFile)
 	if !fileExists(entry) {
-		return nil, fmt.Errorf("module %q entry file %q not found", m.Name, m.EntryFile())
+		return nil, fmt.Errorf("module %q is missing its %s entry file", m.Name, EntryFile)
 	}
 
 	return &m, nil

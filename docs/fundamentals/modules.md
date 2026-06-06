@@ -50,7 +50,7 @@ def rollback(env): ...
 def _private(): ...     # not exported
 ```
 
-The directory's public symbols (everything not starting with `_`) merge into one module. The entry file is `main.star` by default; override it with `entry:` in the manifest.
+The directory's public symbols (everything not starting with `_`) merge into one module. The entry file is always `main.star`.
 
 ## Loading script modules
 

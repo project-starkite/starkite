@@ -273,51 +273,39 @@ func TestManagerRemove(t *testing.T) {
 	})
 }
 
-func TestFindEntryPoint(t *testing.T) {
+func TestValidateModule(t *testing.T) {
 	tmpDir := t.TempDir()
 	mgr, _ := New(tmpDir)
 
-	t.Run("main.star", func(t *testing.T) {
-		moduleDir := filepath.Join(tmpDir, "mod1")
-		os.MkdirAll(moduleDir, 0755)
-		os.WriteFile(filepath.Join(moduleDir, "main.star"), []byte("# main"), 0644)
+	t.Run("valid: manifest + main.star", func(t *testing.T) {
+		dir := filepath.Join(tmpDir, "ok")
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "module.yaml"), []byte("name: ok\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, "main.star"), []byte("# main"), 0o644)
 
-		entryPoint := mgr.findEntryPoint(moduleDir, "mod1")
-		if entryPoint != filepath.Join(moduleDir, "main.star") {
-			t.Errorf("expected main.star, got %q", entryPoint)
+		if err := mgr.validateModule(dir, "ok"); err != nil {
+			t.Errorf("expected valid module, got error: %v", err)
 		}
 	})
 
-	t.Run("name.star", func(t *testing.T) {
-		moduleDir := filepath.Join(tmpDir, "mod2")
-		os.MkdirAll(moduleDir, 0755)
-		os.WriteFile(filepath.Join(moduleDir, "mod2.star"), []byte("# mod2"), 0644)
+	t.Run("missing module.yaml", func(t *testing.T) {
+		dir := filepath.Join(tmpDir, "no-manifest")
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "main.star"), []byte("# main"), 0o644)
 
-		entryPoint := mgr.findEntryPoint(moduleDir, "mod2")
-		if entryPoint != filepath.Join(moduleDir, "mod2.star") {
-			t.Errorf("expected mod2.star, got %q", entryPoint)
+		if err := mgr.validateModule(dir, "no-manifest"); err == nil {
+			t.Error("expected error for missing module.yaml")
 		}
 	})
 
-	t.Run("any .star file", func(t *testing.T) {
-		moduleDir := filepath.Join(tmpDir, "mod3")
-		os.MkdirAll(moduleDir, 0755)
-		os.WriteFile(filepath.Join(moduleDir, "helper.star"), []byte("# helper"), 0644)
+	t.Run("missing main.star entry", func(t *testing.T) {
+		dir := filepath.Join(tmpDir, "no-entry")
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "module.yaml"), []byte("name: no-entry\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, "helper.star"), []byte("# helper"), 0o644)
 
-		entryPoint := mgr.findEntryPoint(moduleDir, "mod3")
-		if entryPoint != filepath.Join(moduleDir, "helper.star") {
-			t.Errorf("expected helper.star, got %q", entryPoint)
-		}
-	})
-
-	t.Run("no .star file", func(t *testing.T) {
-		moduleDir := filepath.Join(tmpDir, "mod4")
-		os.MkdirAll(moduleDir, 0755)
-		os.WriteFile(filepath.Join(moduleDir, "README.md"), []byte("# readme"), 0644)
-
-		entryPoint := mgr.findEntryPoint(moduleDir, "mod4")
-		if entryPoint != "" {
-			t.Errorf("expected empty string, got %q", entryPoint)
+		if err := mgr.validateModule(dir, "no-entry"); err == nil {
+			t.Error("expected error: entry must be main.star, not an arbitrary .star")
 		}
 	})
 }

@@ -489,7 +489,7 @@ func (m *Manager) starlarkInfo(namespace, name, modulePath string) *ModuleInfo {
 		info.Version = manifest.Version
 		info.Description = manifest.Description
 		info.Permissions = manifest.Permissions
-		info.EntryPoint = filepath.Join(modulePath, manifest.EntryFile())
+		info.EntryPoint = filepath.Join(modulePath, libkite.EntryFile)
 	}
 	if prov, err := ReadProvenance(modulePath); err == nil && prov != nil {
 		info.Repository = prov.Source
@@ -661,50 +661,16 @@ func pruneEmptyDir(dir string) {
 	}
 }
 
-// validateModule checks if the module has a valid structure.
+// validateModule checks that the module has a valid structure: a module.yaml
+// manifest and the fixed main.star entry file at its root.
 func (m *Manager) validateModule(modulePath, name string) error {
-	// A module must carry a module.yaml manifest.
-	manifestPath := filepath.Join(modulePath, "module.yaml")
-	if !fileExists(manifestPath) {
-		return fmt.Errorf("module is missing module.yaml at its root")
+	if !fileExists(filepath.Join(modulePath, metadataFile)) {
+		return fmt.Errorf("module is missing %s at its root", metadataFile)
 	}
-
-	// The manifest's entry file (default main.star) must exist.
-	entryPoint := m.findEntryPoint(modulePath, name)
-	if entryPoint == "" {
-		return fmt.Errorf("no entry .star file found (expected main.star or %s.star)", name)
+	if !fileExists(filepath.Join(modulePath, libkite.EntryFile)) {
+		return fmt.Errorf("module is missing its %s entry file", libkite.EntryFile)
 	}
-
 	return nil
-}
-
-// findEntryPoint finds the module's entry point file.
-func (m *Manager) findEntryPoint(modulePath, name string) string {
-	// Check for main.star
-	mainPath := filepath.Join(modulePath, "main.star")
-	if fileExists(mainPath) {
-		return mainPath
-	}
-
-	// Check for <name>.star
-	namedPath := filepath.Join(modulePath, name+".star")
-	if fileExists(namedPath) {
-		return namedPath
-	}
-
-	// Check for any .star file
-	entries, err := os.ReadDir(modulePath)
-	if err != nil {
-		return ""
-	}
-
-	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ".star") {
-			return filepath.Join(modulePath, entry.Name())
-		}
-	}
-
-	return ""
 }
 
 // ParseSource parses a module source string into repository and version.
