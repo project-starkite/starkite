@@ -242,46 +242,41 @@ func TestCategoryRule_TrustedAllowsEverything(t *testing.T) {
 	}
 }
 
-// TestCategoryRule_StrictBlocksNonFS: strict blocks every gated module other
-// than fs. Working-tree fs is allowed (covered by the dedicated strict test
-// in libkite/permissions_test.go); fs operations outside $CWD are also
-// blocked, exercised here with explicit outside-cwd paths.
-func TestCategoryRule_StrictBlocksNonFS(t *testing.T) {
+// TestCategoryRule_AllowNetLadder: allow-net grants fs/env and low-level
+// protocol networking, but blocks the higher-tier capabilities that only
+// allow-local/allow-all confer (serve, higher-level services, exec).
+func TestCategoryRule_AllowNetLadder(t *testing.T) {
 	thread := &starlark.Thread{Name: "test"}
-	checker, _ := libkite.NewPermissionChecker(libkite.StrictPermissions())
+	checker, _ := libkite.NewPermissionChecker(libkite.AllowNetPermissions())
 	libkite.SetPermissions(thread, checker)
 
-	// fs operations outside $CWD are blocked.
-	for _, c := range []struct{ cat, fn, res string }{
-		{"read", "read_file", "/etc/passwd"},
-		{"write", "write", "/etc/hosts"},
-		{"delete", "remove", "/etc/foo"},
+	// allow-net grants fs/env and low-level protocols.
+	for _, c := range []struct{ mod, cat, fn, res string }{
+		{"fs", "read", "read_file", "/etc/passwd"},
+		{"os", "env", "env", "PATH"},
+		{"http", "client", "get", "https://x"},
+		{"ssh", "connect", "config", ""},
+		{"ssh", "transfer", "upload", ""},
 	} {
-		if err := libkite.Check(thread, "fs", c.cat, c.fn, c.res); err == nil {
-			t.Errorf("strict should block fs.%s.%s outside $CWD", c.cat, c.fn)
+		if err := libkite.Check(thread, c.mod, c.cat, c.fn, c.res); err != nil {
+			t.Errorf("allow-net should allow %s.%s.%s: %v", c.mod, c.cat, c.fn, err)
 		}
 	}
 
-	// All non-fs gated operations are blocked.
+	// Higher-tier capabilities are blocked at allow-net.
 	for _, c := range []struct{ mod, cat, fn string }{
 		{"os", "exec", "exec"},
-		{"os", "env", "env"},
 		{"os", "process", "chdir"},
-		{"http", "client", "get"},
 		{"http", "server", "serve"},
-		{"ssh", "connect", "exec"},
-		{"ssh", "transfer", "upload"},
 		{"k8s", "read", "read"},
 		{"k8s", "write", "write"},
 		{"k8s", "exec", "exec"},
-		{"k8s", "config", "config"},
 		{"ai", "generate", "generate"},
 		{"mcp", "client", "connect"},
 		{"mcp", "server", "serve"},
-		{"io", "prompt", "prompt"},
 	} {
 		if err := libkite.Check(thread, c.mod, c.cat, c.fn, "anything"); err == nil {
-			t.Errorf("strict should block %s.%s.%s", c.mod, c.cat, c.fn)
+			t.Errorf("allow-net should block %s.%s.%s", c.mod, c.cat, c.fn)
 		}
 	}
 }

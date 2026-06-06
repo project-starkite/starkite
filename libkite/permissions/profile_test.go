@@ -18,10 +18,8 @@ func TestLoadProfile_BuiltIns(t *testing.T) {
 	}{
 		{ProfileAllowAll, libkite.DefaultAllow, []string{"*.*"}},
 		{ProfileDenyAll, libkite.DefaultDeny, nil},
-		{ProfileStrict, libkite.DefaultDeny, []string{
-			"fs.read($CWD/**)",
-			"fs.write($CWD/**)",
-			"fs.delete($CWD/**)",
+		{ProfileAllowFS, libkite.DefaultDeny, []string{
+			"fs.read", "fs.write", "fs.delete", "os.env", "io.prompt",
 		}},
 	}
 	for _, tt := range tests {

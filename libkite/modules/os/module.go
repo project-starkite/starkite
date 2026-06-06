@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"os/user"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -284,10 +285,6 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 		}
 	}
 
-	if err := libkite.Check(thread, "os", "exec", "exec", cmdStr); err != nil {
-		return nil, err
-	}
-
 	m.mu.RLock()
 	shell := m.shell
 	workDir := m.workDir
@@ -303,6 +300,15 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 	}
 	if s, ok := starlark.AsString(cwdStr); ok && s != "" {
 		workDir = s
+	}
+
+	// Permission is checked against the resolved path of the binary being run,
+	// not the raw command string — so rules can scope exec by location, e.g.
+	// os.exec($CWD/**). resolveExecTarget returns an absolute path when the
+	// binary can be located, else the bare command token.
+	execTarget := resolveExecTarget(cmdStr, workDir, baseEnv)
+	if err := libkite.Check(thread, "os", "exec", "exec", execTarget); err != nil {
+		return nil, err
 	}
 	if s, ok := starlark.AsString(timeoutStr); ok && s != "" {
 		d, err := time.ParseDuration(s)
@@ -362,6 +368,52 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 		}
 	}
 	return res, nil
+}
+
+// resolveExecTarget returns the filesystem path that a command's permission
+// check should be matched against: the resolved location of the binary the
+// command runs. The first shell token is taken as the binary; an absolute or
+// path-qualified token is cleaned (relative to workDir), and a bare name is
+// looked up on PATH (honoring a PATH override in env). When the binary cannot
+// be located, the bare command token is returned so a denial still names
+// something meaningful.
+func resolveExecTarget(cmdStr, workDir string, env map[string]string) string {
+	fields := strings.Fields(cmdStr)
+	if len(fields) == 0 {
+		return cmdStr
+	}
+	bin := fields[0]
+
+	// The command runs in workDir, or the process cwd when workDir is unset.
+	// Resolve relative binary paths against that same directory so the
+	// permission check matches the location the command actually runs from.
+	baseDir := workDir
+	if baseDir == "" {
+		baseDir, _ = os.Getwd()
+	}
+
+	// Path-qualified (absolute or contains a separator): clean it, resolving
+	// relative paths against the base directory.
+	if strings.ContainsRune(bin, filepath.Separator) || filepath.IsAbs(bin) {
+		if !filepath.IsAbs(bin) && baseDir != "" {
+			bin = filepath.Join(baseDir, bin)
+		}
+		return filepath.Clean(bin)
+	}
+
+	// Bare name: resolve on PATH (prefer an explicit PATH override in env).
+	if p := env["PATH"]; p != "" {
+		for _, dir := range filepath.SplitList(p) {
+			cand := filepath.Join(dir, bin)
+			if fi, err := os.Stat(cand); err == nil && !fi.IsDir() {
+				return cand
+			}
+		}
+	}
+	if resolved, err := exec.LookPath(bin); err == nil {
+		return resolved
+	}
+	return bin
 }
 
 // execCmd runs a command and returns the output as a string.

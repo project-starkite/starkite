@@ -85,7 +85,7 @@ func WithTrusted() ConfigOption {
 // WithSandboxed sets sandboxed permissions (safe modules only).
 func WithSandboxed() ConfigOption {
 	return func(c *Config) {
-		c.Permissions = StrictPermissions()
+		c.Permissions = DenyAllPermissions()
 	}
 }
 

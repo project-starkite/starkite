@@ -25,12 +25,19 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 )
 
-// Built-in profile names.
+// Built-in profile names — the capability ladder, each a superset of the prior.
 const (
-	ProfileAllowAll = "allow-all"
-	ProfileStrict   = "strict"
-	ProfileDenyAll  = "deny-all"
+	ProfileDenyAll    = "deny-all"
+	ProfileAllowFS    = "allow-fs"
+	ProfileAllowNet   = "allow-net"
+	ProfileAllowLocal = "allow-local"
+	ProfileAllowAll   = "allow-all"
 )
+
+// builtinProfiles lists the built-in names for error messages.
+var builtinProfiles = []string{
+	ProfileDenyAll, ProfileAllowFS, ProfileAllowNet, ProfileAllowLocal, ProfileAllowAll,
+}
 
 // UserSecurityFile is the default location for user permission profiles,
 // relative to the user's home directory.
@@ -73,12 +80,16 @@ func LoadProfile(value string) (*libkite.PermissionConfig, error) {
 
 	// (1) Built-ins
 	switch value {
-	case ProfileAllowAll:
-		return libkite.AllowAllPermissions(), nil
-	case ProfileStrict:
-		return libkite.StrictPermissions(), nil
 	case ProfileDenyAll:
 		return libkite.DenyAllPermissions(), nil
+	case ProfileAllowFS:
+		return libkite.AllowFSPermissions(), nil
+	case ProfileAllowNet:
+		return libkite.AllowNetPermissions(), nil
+	case ProfileAllowLocal:
+		return libkite.AllowLocalPermissions(), nil
+	case ProfileAllowAll:
+		return libkite.AllowAllPermissions(), nil
 	}
 
 	// (2) Inline rules
@@ -222,8 +233,8 @@ func loadNamed(name string) (*libkite.PermissionConfig, error) {
 		// Surface a nicer message when the file simply doesn't exist.
 		var pathErr *os.PathError
 		if errors.As(err, &pathErr) && errors.Is(pathErr.Err, os.ErrNotExist) {
-			return nil, fmt.Errorf("permissions: unknown profile %q (built-ins: %s, %s, %s; %s does not exist)",
-				name, ProfileAllowAll, ProfileStrict, ProfileDenyAll, path)
+			return nil, fmt.Errorf("permissions: unknown profile %q (built-ins: %s; %s does not exist)",
+				name, strings.Join(builtinProfiles, ", "), path)
 		}
 		return nil, err
 	}
@@ -234,8 +245,8 @@ func loadNamed(name string) (*libkite.PermissionConfig, error) {
 		for n := range sf.Permissions {
 			names = append(names, n)
 		}
-		return nil, fmt.Errorf("permissions: profile %q not found in %s (defined: %v; built-ins: %s, %s, %s)",
-			name, path, names, ProfileAllowAll, ProfileStrict, ProfileDenyAll)
+		return nil, fmt.Errorf("permissions: profile %q not found in %s (defined: %v; built-ins: %s)",
+			name, path, names, strings.Join(builtinProfiles, ", "))
 	}
 	return spec.toConfig()
 }

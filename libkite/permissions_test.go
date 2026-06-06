@@ -138,48 +138,35 @@ func TestPermissionChecker(t *testing.T) {
 		}
 	})
 
-	t.Run("strict allows working-tree fs, blocks the rest", func(t *testing.T) {
-		checker, err := NewPermissionChecker(StrictPermissions())
+	t.Run("allow-fs allows local fs/env, blocks net and exec", func(t *testing.T) {
+		checker, err := NewPermissionChecker(AllowFSPermissions())
 		if err != nil {
 			t.Fatalf("NewPermissionChecker: %v", err)
 		}
 
-		cwd, _ := filepath.Abs(".")
-
-		// Working-tree fs operations are allowed.
-		for _, c := range []struct{ cat, fn, res string }{
-			{"read", "read_file", cwd + "/data.json"},
-			{"write", "write", cwd + "/out.txt"},
-			{"delete", "remove", cwd + "/tmp/x"},
+		// Local fs (anywhere), env, and prompt are allowed.
+		for _, c := range []struct{ mod, cat, fn, res string }{
+			{"fs", "read", "read_file", "/etc/passwd"},
+			{"fs", "write", "write", "/tmp/out.txt"},
+			{"fs", "delete", "remove", "/tmp/x"},
+			{"os", "env", "env", "PATH"},
+			{"io", "prompt", "prompt", ""},
 		} {
-			if err := checker.Check("fs", c.cat, c.fn, c.res); err != nil {
-				t.Errorf("strict should allow fs.%s.%s under $CWD: %v", c.cat, c.fn, err)
+			if err := checker.Check(c.mod, c.cat, c.fn, c.res); err != nil {
+				t.Errorf("allow-fs should allow %s.%s.%s: %v", c.mod, c.cat, c.fn, err)
 			}
 		}
 
-		// Outside-cwd fs operations are blocked.
-		for _, c := range []struct{ cat, fn, res string }{
-			{"read", "read_file", "/etc/passwd"},
-			{"write", "write", "/etc/hosts"},
-			{"delete", "remove", "/etc/foo"},
-		} {
-			if err := checker.Check("fs", c.cat, c.fn, c.res); err == nil {
-				t.Errorf("strict should block fs.%s.%s outside $CWD", c.cat, c.fn)
-			}
-		}
-
-		// Non-fs gated operations are all blocked.
+		// Network, exec, and higher-level services are blocked.
 		for _, c := range []struct{ mod, cat, fn string }{
 			{"os", "exec", "exec"},
-			{"os", "env", "env"},
 			{"http", "client", "get"},
 			{"ssh", "connect", "config"},
-			{"k8s", "write", "write"},
+			{"k8s", "read", "read"},
 			{"ai", "generate", "generate"},
-			{"io", "prompt", "prompt"},
 		} {
 			if err := checker.Check(c.mod, c.cat, c.fn, "anything"); err == nil {
-				t.Errorf("strict should block %s.%s.%s", c.mod, c.cat, c.fn)
+				t.Errorf("allow-fs should block %s.%s.%s", c.mod, c.cat, c.fn)
 			}
 		}
 	})
@@ -245,18 +232,17 @@ func TestCheckWithThread(t *testing.T) {
 		}
 	})
 
-	t.Run("with strict checker", func(t *testing.T) {
+	t.Run("with deny-all checker", func(t *testing.T) {
 		thread := &starlark.Thread{Name: "test"}
-		checker, _ := NewPermissionChecker(StrictPermissions())
+		checker, _ := NewPermissionChecker(DenyAllPermissions())
 		SetPermissions(thread, checker)
 
-		// outside-$CWD path → blocked
+		// deny-all blocks every gated operation.
 		if err := Check(thread, "fs", "read", "read_file", "/etc/passwd"); err == nil {
-			t.Error("strict should block fs.read outside $CWD")
+			t.Error("deny-all should block fs.read")
 		}
-		// non-fs gated op → blocked
 		if err := Check(thread, "os", "exec", "exec", "ls"); err == nil {
-			t.Error("strict should block os.exec")
+			t.Error("deny-all should block os.exec")
 		}
 	})
 }

@@ -373,18 +373,47 @@ func DenyAllPermissions() *PermissionConfig {
 	}
 }
 
-// StrictPermissions returns a working-tree-only config: filesystem read,
-// write, and delete are permitted under $CWD; everything else (exec,
-// network, env, ssh, k8s, ai, mcp, io) is denied.
-func StrictPermissions() *PermissionConfig {
-	return &PermissionConfig{
-		Allow: []string{
-			"fs.read($CWD/**)",
-			"fs.write($CWD/**)",
-			"fs.delete($CWD/**)",
-		},
-		Default: DefaultDeny,
-	}
+// The five built-in profiles form a strict capability ladder; each is a
+// superset of the one below. All use DefaultDeny (allow-list semantics) — a
+// capability is granted only if it appears in the allow set.
+
+// allow-fs: local filesystem and environment, no network or exec.
+var allowFSRules = []string{
+	"fs.read", "fs.write", "fs.delete",
+	"os.env",
+	"io.prompt",
+}
+
+// allow-net: allow-fs plus low-level protocol networking.
+var allowNetRules = append(append([]string{}, allowFSRules...),
+	"http.client",
+	"ssh.connect", "ssh.transfer",
+)
+
+// allow-local: allow-net plus serve, $CWD-scoped exec, and higher-level
+// networked services (ai, k8s, mcp). Withholds unrestricted exec, k8s.exec,
+// and process control — that is the line to allow-all.
+var allowLocalRules = append(append([]string{}, allowNetRules...),
+	"http.server",
+	"os.exec($CWD/**)",
+	"ai.generate",
+	"k8s.read", "k8s.write", "k8s.config",
+	"mcp.client", "mcp.server",
+)
+
+// AllowFSPermissions returns the allow-fs profile.
+func AllowFSPermissions() *PermissionConfig {
+	return &PermissionConfig{Allow: append([]string{}, allowFSRules...), Default: DefaultDeny}
+}
+
+// AllowNetPermissions returns the allow-net profile.
+func AllowNetPermissions() *PermissionConfig {
+	return &PermissionConfig{Allow: append([]string{}, allowNetRules...), Default: DefaultDeny}
+}
+
+// AllowLocalPermissions returns the allow-local profile.
+func AllowLocalPermissions() *PermissionConfig {
+	return &PermissionConfig{Allow: append([]string{}, allowLocalRules...), Default: DefaultDeny}
 }
 
 // AllowPermissions creates a permissive config with specific denials.
