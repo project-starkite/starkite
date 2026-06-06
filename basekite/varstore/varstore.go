@@ -12,6 +12,8 @@ import (
 	"sync"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/project-starkite/starkite/libkite/permissions"
 )
 
 // Priority levels for variable resolution (highest to lowest):
@@ -48,6 +50,10 @@ type Vars struct {
 
 	// Active edition from config file
 	ActiveEdition string
+
+	// Permissions profiles defined in config.yaml's `permissions:` map,
+	// keyed by profile name.
+	Permissions map[string]permissions.ProfileSpec
 }
 
 // New creates a new Vars instance.
@@ -119,6 +125,12 @@ func (v *Vars) parseConfigFile(data []byte) error {
 			if s, ok := value.(string); ok {
 				v.ActiveEdition = s
 			}
+		case "permissions":
+			specs, err := decodePermissions(value)
+			if err != nil {
+				return fmt.Errorf("config permissions: %w", err)
+			}
+			v.Permissions = specs
 		default:
 			// Flatten nested maps with dot notation
 			v.flattenAndStore(key, value, v.defaultVars)
@@ -126,6 +138,20 @@ func (v *Vars) parseConfigFile(data []byte) error {
 	}
 
 	return nil
+}
+
+// decodePermissions converts the raw `permissions:` config section into typed
+// profile specs by round-tripping through YAML.
+func decodePermissions(value interface{}) (map[string]permissions.ProfileSpec, error) {
+	raw, err := yaml.Marshal(value)
+	if err != nil {
+		return nil, err
+	}
+	var specs map[string]permissions.ProfileSpec
+	if err := yaml.Unmarshal(raw, &specs); err != nil {
+		return nil, err
+	}
+	return specs, nil
 }
 
 // flattenAndStore flattens nested maps into dot-notation keys.

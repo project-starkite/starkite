@@ -10,11 +10,13 @@ import (
 	"time"
 
 	"github.com/project-starkite/starkite/basekite/edition"
+	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/basekite/version"
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 var (
@@ -29,12 +31,33 @@ var (
 	// Permission flags
 	permissionsMode string
 
+	// permissionProfileFlags are boolean aliases for --permissions=<name>,
+	// one per built-in profile (e.g. --allow-fs == --permissions=allow-fs).
+	// Cobra enforces that at most one — including --permissions — is set.
+	permissionProfileFlags = []string{
+		"deny-all", "allow-fs", "allow-net", "allow-local", "allow-all",
+	}
+
 	// Sandbox flag (Linux: gVisor; other OSes return a friendly error).
 	// Set via --sandbox on the CLI; STARKITE_SECURITY_SANDBOX env var
 	// is the alternative entry point for shebang-launched scripts (and
 	// works for CLI invocations too). The flag wins when both are set.
 	sandboxMode string
 )
+
+// permissionAlias is a bool-style pflag.Value that sets the shared
+// --permissions target to a fixed profile name when its flag is present, so
+// --allow-fs is exactly --permissions=allow-fs. Mutual exclusion with
+// --permissions and the other aliases is enforced by MarkFlagsMutuallyExclusive.
+type permissionAlias struct{ profile string }
+
+func (permissionAlias) String() string   { return "" }
+func (permissionAlias) Type() string     { return "bool" }
+func (permissionAlias) IsBoolFlag() bool { return true }
+func (a permissionAlias) Set(string) error {
+	permissionsMode = a.profile
+	return nil
+}
 
 var rootCmd = &cobra.Command{
 	Use:   "kite [script.star]",
@@ -80,7 +103,15 @@ func init() {
 	rootCmd.PersistentFlags().StringArrayVar(&varFiles, "var-file", nil, "Load variables from YAML file: --var-file=values.yaml")
 
 	// Permission flags
-	rootCmd.PersistentFlags().StringVar(&permissionsMode, "permissions", "", "Permission profile (e.g. \"strict\")")
+	rootCmd.PersistentFlags().StringVar(&permissionsMode, "permissions", "",
+		"Permission profile: a built-in (deny-all|allow-fs|allow-net|allow-local|allow-all), "+
+			"a named/config profile, inline rules (allow:…;deny:…), or a file path")
+
+	// Boolean aliases for the built-in profiles, e.g. --allow-fs == --permissions=allow-fs.
+	for _, p := range permissionProfileFlags {
+		rootCmd.PersistentFlags().Var(permissionAlias{p}, p, fmt.Sprintf("Alias for --permissions=%s", p))
+		rootCmd.PersistentFlags().Lookup(p).NoOptDefVal = "true" // usable as a bare flag
+	}
 
 	// Sandbox flag — Linux only; non-Linux returns a clear error.
 	// `--sandbox` (no value) resolves to the built-in "default" profile;
@@ -96,8 +127,27 @@ func init() {
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		applyEnvDefaults()
-		return nil
+		return checkPermissionFlagConflict(rootCmd.PersistentFlags())
 	}
+}
+
+// checkPermissionFlagConflict rejects setting more than one permission selector
+// — the profile aliases (--allow-fs, …) and --permissions all target the same
+// value, so combining them is contradictory.
+func checkPermissionFlagConflict(flags *pflag.FlagSet) error {
+	var set []string
+	if flags.Lookup("permissions").Changed {
+		set = append(set, "--permissions")
+	}
+	for _, p := range permissionProfileFlags {
+		if flags.Lookup(p).Changed {
+			set = append(set, "--"+p)
+		}
+	}
+	if len(set) > 1 {
+		return fmt.Errorf("only one permission flag may be set; got %s", strings.Join(set, " and "))
+	}
+	return nil
 }
 
 // applyEnvDefaults applies STARKITE_* environment variables for any flag
@@ -255,26 +305,21 @@ func PrintDebug(format string, args ...interface{}) {
 	}
 }
 
-// GetPermissions resolves --permissions to a PermissionConfig. See
-// libkite/permissions/profile.go for the resolution order. Returns nil for
-// the empty case (trust mode); errors are surfaced to stderr and abort the
-// run via Execute().
-func GetPermissions() (*libkite.PermissionConfig, error) {
-	return permissions.LoadProfile(permissionsMode)
+// configPermissions returns the permission profiles defined in config.yaml's
+// `permissions:` map, or nil if none are configured.
+func configPermissions() map[string]permissions.ProfileSpec {
+	vs := varstore.New()
+	if err := vs.LoadDefaults(); err != nil {
+		return nil
+	}
+	return vs.Permissions
 }
 
-// resolvePermissionsForScript resolves the permissions to apply when running
-// a specific script file. The CLI flag wins; if no flag is set, the script's
-// `# permissions: <value>` frontmatter (if present) is used.
-func resolvePermissionsForScript(scriptPath string) (*libkite.PermissionConfig, error) {
-	if permissionsMode != "" {
-		return permissions.LoadProfile(permissionsMode)
-	}
-	value, err := permissions.ParseFrontmatterPermissions(scriptPath)
-	if err != nil {
-		return nil, err
-	}
-	return permissions.LoadProfile(value)
+// GetPermissions resolves the --permissions flag against the config-defined
+// profiles. With no flag, it falls back to the configured `default` profile, or
+// deny-all. Used by commands without a single script file (exec, repl, test).
+func GetPermissions() (*libkite.PermissionConfig, error) {
+	return permissions.Resolve(permissionsMode, configPermissions())
 }
 
 // GetSandbox resolves the sandbox profile from two equivalent inputs:

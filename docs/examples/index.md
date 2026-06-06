@@ -97,4 +97,4 @@ OS-level isolation with `--sandbox` (Linux only). See the [Sandbox guide](../fun
 |---------|-------------|
 | [default-http-fetch.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/default-http-fetch.star) | HTTPS fetch under the default profile |
 | [strict-compute.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/strict-compute.star) | Offline compute over `$CWD` |
-| [defense-in-depth.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/defense-in-depth.star) | Compose `--sandbox=strict` with `--permissions=strict` |
+| [defense-in-depth.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/defense-in-depth.star) | Compose `--sandbox=strict` with `--permissions=allow-fs` |

@@ -113,7 +113,29 @@ func (c *PermissionChecker) Check(module, category, function, resource string) e
 		Resource: resource,
 		Reason:   "no matching allow rule",
 		Allowed:  c.allowedPatterns(),
+		Suggest:  suggestProfile(module, category, function, resource),
 	}
+}
+
+// allows reports whether the operation is permitted, without constructing a
+// PermissionError. It is used to compute opt-up suggestions against the
+// built-in ladder profiles, avoiding the recursion that calling Check would
+// trigger (Check builds the suggestion, which would call Check again).
+func (c *PermissionChecker) allows(module, category, function, resource string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
+	for _, rule := range c.deny {
+		if rule.Matches(module, category, function, resource) {
+			return false
+		}
+	}
+	for _, rule := range c.allow {
+		if rule.Matches(module, category, function, resource) {
+			return true
+		}
+	}
+	return c.default_ == DefaultAllow
 }
 
 // allowedPatterns returns the raw allow patterns for error messages.
@@ -377,9 +399,12 @@ func DenyAllPermissions() *PermissionConfig {
 // superset of the one below. All use DefaultDeny (allow-list semantics) — a
 // capability is granted only if it appears in the allow set.
 
-// allow-fs: local filesystem and environment, no network or exec.
+// allow-fs: read any file; create/modify/delete only within the working tree
+// ($CWD); environment and interactive prompts. No network or exec.
 var allowFSRules = []string{
-	"fs.read", "fs.write", "fs.delete",
+	"fs.read",
+	"fs.write($CWD/**)",
+	"fs.delete($CWD/**)",
 	"os.env",
 	"io.prompt",
 }
@@ -414,6 +439,31 @@ func AllowNetPermissions() *PermissionConfig {
 // AllowLocalPermissions returns the allow-local profile.
 func AllowLocalPermissions() *PermissionConfig {
 	return &PermissionConfig{Allow: append([]string{}, allowLocalRules...), Default: DefaultDeny}
+}
+
+// suggestProfile returns the lowest built-in profile on the capability ladder
+// that would actually grant this specific call, for prescriptive denial
+// messages. It tests the real profiles (resource-scoped rules included), so
+// e.g. exec of a $CWD binary suggests allow-local while exec of a system
+// binary suggests allow-all. The names match the built-in profile constants in
+// libkite/permissions.
+func suggestProfile(module, category, function, resource string) string {
+	ladder := []struct {
+		name string
+		cfg  *PermissionConfig
+	}{
+		{"allow-fs", AllowFSPermissions()},
+		{"allow-net", AllowNetPermissions()},
+		{"allow-local", AllowLocalPermissions()},
+		{"allow-all", AllowAllPermissions()},
+	}
+	for _, p := range ladder {
+		c, err := NewPermissionChecker(p.cfg)
+		if err == nil && c.allows(module, category, function, resource) {
+			return p.name
+		}
+	}
+	return "allow-all"
 }
 
 // AllowPermissions creates a permissive config with specific denials.

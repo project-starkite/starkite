@@ -10,8 +10,8 @@
 #      involvement.
 #
 # Run:
-#   kite strict-compute.star --sandbox=strict
-#   STARKITE_SECURITY_SANDBOX=strict ./strict-compute.star
+#   kite strict-compute.star --sandbox=strict --permissions=allow-local
+#   STARKITE_SECURITY_SANDBOX=strict ./strict-compute.star --permissions=allow-local
 
 # (1) Compute over project files.
 def transform_items(values):

@@ -53,7 +53,8 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--debug` | Enable debug logging | `false` |
 | `--dry-run` | Preview commands without executing | `false` |
 | `--timeout seconds` | Script execution timeout | `300` |
-| `--permissions profile` | Permission profile (e.g. `strict`); empty = trust mode | `""` |
+| `--permissions value` | Permission profile (built-in `deny-all`/`allow-fs`/`allow-net`/`allow-local`/`allow-all`, a named config profile, inline rules, or a profile file path); unset resolves to the config `default` profile or `deny-all` | `""` |
+| `--deny-all`, `--allow-fs`, `--allow-net`, `--allow-local`, `--allow-all` | Boolean aliases for `--permissions=<profile>`. Set at most one; not combinable with `--permissions` | `false` |
 | `--sandbox[=profile]` | OS-level sandbox profile (Linux only). Bare `--sandbox` selects `default`; see [Sandbox guide](../../fundamentals/security/sandbox.md). | `""` |
 
 ## Environment Variables

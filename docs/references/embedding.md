@@ -55,9 +55,9 @@ func main() {
 
 | Constructor | Permission default |
 |---|---|
-| `libkite.New(cfg)` | as configured (nil → allow-all) |
+| `libkite.New(cfg)` | as configured (`Permissions` nil → all allowed) |
 | `libkite.NewTrusted(cfg, opts...)` | allow-all |
-| `libkite.NewSandboxed(cfg, opts...)` | strict |
+| `libkite.NewSandboxed(cfg, opts...)` | deny-all |
 
 All three accept a `*Config` plus optional `ConfigOption` functions. Either may be `nil`.
 
@@ -106,7 +106,7 @@ The all-in-one `kite` binary uses strict mode to enforce edition-namespace disjo
 ```go
 type Config struct {
     Registry    *Registry            // module registry (nil = empty)
-    Permissions *PermissionConfig    // permission policy (nil = allow-all)
+    Permissions *PermissionConfig    // permission policy (nil = all allowed)
     Globals     map[string]interface{} // global variables injected into every script
     Print       func(*starlark.Thread, string) // override print output
     ScriptPath  string               // script path for error messages
@@ -125,7 +125,7 @@ Every `Config` field has a corresponding `With*` option:
 | `WithRegistry(r)` | `Registry` |
 | `WithPermissions(p)` | `Permissions` |
 | `WithTrusted()` | `Permissions = AllowAllPermissions()` |
-| `WithSandboxed()` | `Permissions = StrictPermissions()` |
+| `WithSandboxed()` | `Permissions = DenyAllPermissions()` |
 | `WithGlobals(g)` | `Globals` |
 | `WithPrint(fn)` | `Print` |
 | `WithScriptPath(p)` | `ScriptPath` |
@@ -223,8 +223,11 @@ for {
 
 | Helper | Effect |
 |---|---|
-| `libkite.AllowAllPermissions()` | every operation allowed (trust mode) |
-| `libkite.StrictPermissions()` | filesystem under `$CWD` only; everything else denied |
+| `libkite.DenyAllPermissions()` | compute, print, and log only; no fs, network, or exec |
+| `libkite.AllowFSPermissions()` | read any file; write/delete within `$CWD`; `os.env`, `io.prompt` |
+| `libkite.AllowNetPermissions()` | adds `http.client` and all `ssh` |
+| `libkite.AllowLocalPermissions()` | adds `http.server`, `os.exec` under `$CWD`, `ai.generate`, `k8s.read`/`write`/`config`, `mcp.client`/`server` |
+| `libkite.AllowAllPermissions()` | every operation allowed, including unrestricted `os.exec`, `k8s.exec`, and `os.process` |
 | `&libkite.PermissionConfig{Allow: …, Deny: …, Default: …}` | custom rules |
 
 ```go

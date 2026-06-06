@@ -206,7 +206,7 @@ STARKITE_SECURITY_SANDBOX=k8s-deploy ./deploy.star
 The sandbox and `--permissions` are independent. They compose:
 
 ```bash
-kite untrusted.star --sandbox=strict --permissions=strict
+kite untrusted.star --sandbox=strict --permissions=allow-fs
 ```
 
 `--permissions` enforces allow/deny rules on Starlark API calls (exec, network, filesystem, k8s, …) inside one process. The sandbox confines the OS view (filesystem visibility, process isolation, network reach) at the kernel level via gVisor. A bypass in one is contained by the other. See [Permission](permission.md).

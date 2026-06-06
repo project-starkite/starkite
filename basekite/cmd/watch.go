@@ -10,6 +10,7 @@ import (
 	"github.com/fsnotify/fsnotify"
 	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/spf13/cobra"
 )
 
@@ -66,7 +67,7 @@ func watchScript(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to watch directory: %w", err)
 	}
 
-	perms, err := resolvePermissionsForScript(absPath)
+	perms, err := permissions.Resolve(permissionsMode, configPermissions())
 	if err != nil {
 		return err
 	}

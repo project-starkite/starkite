@@ -1,8 +1,10 @@
 package libkite
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
+	"strings"
 	"sync"
 	"testing"
 
@@ -138,22 +140,36 @@ func TestPermissionChecker(t *testing.T) {
 		}
 	})
 
-	t.Run("allow-fs allows local fs/env, blocks net and exec", func(t *testing.T) {
+	t.Run("allow-fs reads anywhere, writes only under $CWD, blocks net and exec", func(t *testing.T) {
 		checker, err := NewPermissionChecker(AllowFSPermissions())
 		if err != nil {
 			t.Fatalf("NewPermissionChecker: %v", err)
 		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatalf("Getwd: %v", err)
+		}
 
-		// Local fs (anywhere), env, and prompt are allowed.
+		// Read anywhere; write/delete inside $CWD; env and prompt.
 		for _, c := range []struct{ mod, cat, fn, res string }{
 			{"fs", "read", "read_file", "/etc/passwd"},
-			{"fs", "write", "write", "/tmp/out.txt"},
-			{"fs", "delete", "remove", "/tmp/x"},
+			{"fs", "write", "write", filepath.Join(cwd, "out.txt")},
+			{"fs", "delete", "remove", filepath.Join(cwd, "sub/x")},
 			{"os", "env", "env", "PATH"},
 			{"io", "prompt", "prompt", ""},
 		} {
 			if err := checker.Check(c.mod, c.cat, c.fn, c.res); err != nil {
-				t.Errorf("allow-fs should allow %s.%s.%s: %v", c.mod, c.cat, c.fn, err)
+				t.Errorf("allow-fs should allow %s.%s.%s(%s): %v", c.mod, c.cat, c.fn, c.res, err)
+			}
+		}
+
+		// Writes/deletes outside $CWD are blocked (read stays unrestricted).
+		for _, c := range []struct{ mod, cat, fn, res string }{
+			{"fs", "write", "write", "/tmp/out.txt"},
+			{"fs", "delete", "remove", "/etc/hosts"},
+		} {
+			if err := checker.Check(c.mod, c.cat, c.fn, c.res); err == nil {
+				t.Errorf("allow-fs should block %s.%s.%s(%s) outside $CWD", c.mod, c.cat, c.fn, c.res)
 			}
 		}
 
@@ -248,6 +264,7 @@ func TestCheckWithThread(t *testing.T) {
 }
 
 func TestPermissionError(t *testing.T) {
+	// A deny-rule block names module.category and carries no opt-up hint.
 	err := &PermissionError{
 		Module:   "fs",
 		Category: "read",
@@ -255,20 +272,25 @@ func TestPermissionError(t *testing.T) {
 		Resource: "/etc/passwd",
 		Reason:   "blocked by deny rule",
 	}
-	expected := `permission denied: fs.read_file("/etc/passwd") - blocked by deny rule`
+	expected := `permission denied: fs.read read_file("/etc/passwd") - blocked by deny rule`
 	if err.Error() != expected {
 		t.Errorf("Error() = %q, want %q", err.Error(), expected)
 	}
 
+	// A missing-grant denial includes a prescriptive opt-up suggestion.
 	err2 := &PermissionError{
 		Module:   "os",
 		Category: "exec",
 		Function: "exec",
 		Reason:   "no matching allow rule",
+		Suggest:  "allow-local",
 	}
-	expected2 := "permission denied: os.exec - no matching allow rule"
-	if err2.Error() != expected2 {
-		t.Errorf("Error() = %q, want %q", err2.Error(), expected2)
+	msg := err2.Error()
+	if !strings.HasPrefix(msg, "permission denied: os.exec exec - no matching allow rule") {
+		t.Errorf("Error() = %q, missing capability prefix", msg)
+	}
+	if !strings.Contains(msg, "--permissions=allow-local") {
+		t.Errorf("Error() = %q, missing opt-up suggestion", msg)
 	}
 }
 

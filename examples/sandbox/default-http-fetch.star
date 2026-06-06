@@ -5,8 +5,8 @@
 # provides the CA roots).
 #
 # Run:
-#   kite default-http-fetch.star --sandbox
-#   STARKITE_SECURITY_SANDBOX=default ./default-http-fetch.star
+#   kite default-http-fetch.star --sandbox --permissions=allow-net
+#   STARKITE_SECURITY_SANDBOX=default ./default-http-fetch.star --permissions=allow-net
 
 resp = http.url("https://example.com").get()
 print("status: %d" % resp.status_code)

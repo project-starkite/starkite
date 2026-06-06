@@ -1,8 +1,42 @@
 package varstore
 
 import (
+	"reflect"
 	"testing"
 )
+
+func TestParseConfigFile_Permissions(t *testing.T) {
+	v := New()
+	cfg := []byte(`permissions:
+  default:
+    allow: [fs.read, os.env]
+  deploy:
+    allow: [fs.read, fs.write, "os.exec($CWD/**)"]
+    deny: [fs.delete]
+`)
+	if err := v.parseConfigFile(cfg); err != nil {
+		t.Fatalf("parseConfigFile: %v", err)
+	}
+
+	def, ok := v.Permissions["default"]
+	if !ok {
+		t.Fatal("default profile not parsed")
+	}
+	if !reflect.DeepEqual(def.Allow, []string{"fs.read", "os.env"}) {
+		t.Errorf("default.allow = %v", def.Allow)
+	}
+
+	deploy, ok := v.Permissions["deploy"]
+	if !ok {
+		t.Fatal("deploy profile not parsed")
+	}
+	if !reflect.DeepEqual(deploy.Allow, []string{"fs.read", "fs.write", "os.exec($CWD/**)"}) {
+		t.Errorf("deploy.allow = %v", deploy.Allow)
+	}
+	if !reflect.DeepEqual(deploy.Deny, []string{"fs.delete"}) {
+		t.Errorf("deploy.deny = %v", deploy.Deny)
+	}
+}
 
 func TestTryParseJSON_PlainString(t *testing.T) {
 	result := tryParseJSON("hello")

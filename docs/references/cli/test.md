@@ -66,7 +66,7 @@ kite test ./tests/math_test.star       # Run single file
 kite test ./tests/ --verbose           # Verbose output
 kite test ./tests/ --run string        # Filter by name
 kite test ./tests/ --parallel 4        # Parallel execution
-kite test ./tests/ --permissions=strict
+kite test ./tests/ --permissions=allow-fs
 kite test ./tests/ --sandbox=strict    # Linux: each test file gets its own sandbox
 ```
 

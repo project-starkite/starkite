@@ -43,11 +43,15 @@
 //
 // # Permissions
 //
-// The permission system controls which operations scripts can perform:
+// The permission system controls which operations scripts can perform. The
+// built-in profiles form a capability ladder, each a superset of the prior:
 //
-//   - AllowAllPermissions() - Allow all operations (default for CLI tools)
-//   - StrictPermissions() - Allow only safe operations (no I/O)
-//   - Custom PermissionConfig - Fine-grained control with allow/deny rules
+//   - DenyAllPermissions()   - pure compute only; no fs, net, or exec
+//   - AllowFSPermissions()   - read any file; write within $CWD; env
+//   - AllowNetPermissions()  - adds http.client and ssh
+//   - AllowLocalPermissions()- adds serve, $CWD-scoped exec, ai/k8s/mcp
+//   - AllowAllPermissions()  - unrestricted, including arbitrary exec
+//   - Custom PermissionConfig - fine-grained control with allow/deny rules
 //
 // Permission rules use the format: "module.function" or "module.function(resource)"
 //

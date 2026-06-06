@@ -66,6 +66,20 @@ func (m *Module) Aliases() starlark.StringDict {
 
 func (m *Module) FactoryMethod() string { return "path" }
 
+// checkPath resolves a path to an absolute path for permission checks so that
+// $CWD-scoped rules (e.g. fs.write($CWD/**)) match relative paths. The on-disk
+// operation and the path shown to the user keep the original value; only the
+// permission resource is normalized.
+func checkPath(path string) string {
+	if path == "" {
+		return path
+	}
+	if abs, err := filepath.Abs(path); err == nil {
+		return abs
+	}
+	return path
+}
+
 // pathFactory creates a new Path object.
 // Usage: fs.path("/etc/hostname") or path("/etc/hostname")
 func (m *Module) pathFactory(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -90,7 +104,7 @@ func (m *Module) readFile(thread *starlark.Thread, fn *starlark.Builtin, args st
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(thread, "fs", "read", "read_file", p.Path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", checkPath(p.Path)); err != nil {
 		return nil, err
 	}
 	data, err := os.ReadFile(p.Path)
@@ -132,7 +146,7 @@ func (m *Module) write(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		}
 	}
 
-	if err := libkite.Check(thread, "fs", "write", "write", path); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", checkPath(path)); err != nil {
 		return nil, err
 	}
 
@@ -153,7 +167,7 @@ func (m *Module) readBytes(thread *starlark.Thread, fn *starlark.Builtin, args s
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(thread, "fs", "read", "read_bytes", p.Path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_bytes", checkPath(p.Path)); err != nil {
 		return nil, err
 	}
 
@@ -175,7 +189,7 @@ func (m *Module) exists(thread *starlark.Thread, fn *starlark.Builtin, args star
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(thread, "fs", "read", "exists", p.Path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "exists", checkPath(p.Path)); err != nil {
 		return nil, err
 	}
 	_, err := os.Stat(p.Path)
@@ -193,7 +207,7 @@ func (m *Module) glob(thread *starlark.Thread, fn *starlark.Builtin, args starla
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(thread, "fs", "read", "glob", p.Pattern); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "glob", checkPath(p.Pattern)); err != nil {
 		return nil, err
 	}
 	matches, err := filepath.Glob(p.Pattern)

@@ -2,7 +2,10 @@
 // and a permission system for sandboxing untrusted scripts.
 package libkite
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // Exit codes for libkite scripts.
 const (
@@ -24,16 +27,25 @@ type PermissionError struct {
 	Resource string   // Resource if applicable (path, URL, command)
 	Reason   string   // Why it was denied
 	Allowed  []string // What patterns would allow this (for helpful errors)
+	Suggest  string   // Lowest built-in profile that would grant the capability
 }
 
-// Error implements the error interface.
+// Error implements the error interface. The message names the required
+// module.category capability and, when the denial is a missing grant (rather
+// than an explicit deny rule), prescribes how to opt up.
 func (e *PermissionError) Error() string {
+	target := e.Module + "." + e.Category
+	var b strings.Builder
 	if e.Resource != "" {
-		return fmt.Sprintf("permission denied: %s.%s(%q) - %s",
-			e.Module, e.Function, e.Resource, e.Reason)
+		fmt.Fprintf(&b, "permission denied: %s %s(%q) - %s", target, e.Function, e.Resource, e.Reason)
+	} else {
+		fmt.Fprintf(&b, "permission denied: %s %s - %s", target, e.Function, e.Reason)
 	}
-	return fmt.Sprintf("permission denied: %s.%s - %s",
-		e.Module, e.Function, e.Reason)
+	if e.Suggest != "" {
+		fmt.Fprintf(&b, "\n  grant %q with --permissions=%s (or higher), or an allow rule in ~/.starkite/config.yaml",
+			target, e.Suggest)
+	}
+	return b.String()
 }
 
 // IsPermissionError returns true if err is a PermissionError.

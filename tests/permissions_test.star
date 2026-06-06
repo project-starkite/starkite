@@ -1,18 +1,18 @@
 # Permission System Integration Tests
 #
-# These tests verify the permission system works correctly when executed
-# with different permission modes. Run with:
+# These tests exercise gated capabilities across the module surface. The test
+# runner applies one profile to the whole file via --permissions. Run with:
 #
-#   kite test ./tests/permissions_test.star                        # Default trust mode - all 16 tests pass
-#   kite test ./tests/permissions_test.star --permissions=strict   # Working-tree fs allowed; non-fs gated ops blocked
-#   kite test ./tests/permissions_test.star --permissions=deny-all # Every gated op blocked
+#   kite test ./tests/permissions_test.star --permissions=allow-all   # every test passes
+#   kite test ./tests/permissions_test.star --permissions=allow-fs    # only fs/env tests pass
+#   kite test ./tests/permissions_test.star --permissions=deny-all    # only pure-compute tests pass
 #
-# Under --permissions=strict (since Phase 2b):
-#   - $CWD-scoped fs reads/writes/deletes still pass
-#   - exec, env, http, ssh, k8s, ai, mcp, io, /tmp/ paths still fail
-#
-# Under --permissions=deny-all:
-#   - Every gated op blocked, including the $CWD fs ones
+# The capability ladder, each profile a superset of the prior:
+#   deny-all     pure compute, print, log — no fs, net, or exec
+#   allow-fs     + fs.read (any file), fs.write/delete ($CWD only), os.env, io.prompt
+#   allow-net    + http.client, ssh
+#   allow-local  + http.server, $CWD-scoped os.exec, ai/k8s/mcp
+#   allow-all    + unrestricted os.exec, k8s.exec, process control
 
 # Test 1: Pure utility modules should always work
 def test_pure_utilities():
@@ -78,11 +78,9 @@ def test_core_info():
     u = username()
     assert(len(u) > 0, "username() should return non-empty string")
 
-# Test 5: Environment variables (when allowed)
-# Note: Under --permissions=strict, env() will fail
+# Test 5: Environment variables — gated under os.env (allow-fs and up)
 def test_env_access():
-    """Environment access works in trusted mode"""
-    # This test only passes in trusted mode
+    """Environment access requires allow-fs or higher"""
     home = env("HOME")
     assert(len(home) > 0, "HOME should be set")
 
@@ -90,27 +88,22 @@ def test_env_access():
     path = env("PATH")
     assert(len(path) > 0, "PATH should be set")
 
-# Test 6: File read (when allowed)
-# Note: Under --permissions=strict this PASSES (path is under $CWD).
-# Under --permissions=deny-all it fails.
+# Test 6: File read — gated under fs.read (allow-fs and up)
 def test_file_read():
-    """File read works in trust and strict (path under $CWD)"""
+    """File read requires allow-fs or higher"""
     # Read this test file itself
     content = read_text("tests/permissions_test.star")
     assert("Permission System Integration Tests" in content, "should read this file")
 
-# Test 7: Command execution (when allowed)
-# Note: Under --permissions=strict, exec will fail
+# Test 7: Command execution — system binary requires allow-all
 def test_exec():
-    """Command execution works in trusted mode"""
+    """Command execution of a system binary requires allow-all"""
     output = exec("echo hello")
     assert("hello" in output, "should capture output")
 
-# Test 8: File existence check (when allowed)
-# Note: Under --permissions=strict this PASSES (path is under $CWD).
-# Under --permissions=deny-all it fails.
+# Test 8: File existence check — gated under fs.read (allow-fs and up)
 def test_file_exists():
-    """File existence check works in trust and strict (path under $CWD)"""
+    """File existence check requires allow-fs or higher"""
     assert(exists("tests/permissions_test.star"), "this file should exist")
     assert(not exists("nonexistent-file-12345.txt"), "nonexistent file should not exist")
 
@@ -143,38 +136,33 @@ def test_concur():
 
 # --- Category coverage tests ---
 #
-# Each test below exercises one gated category. Under --permissions=strict
-# they should all fail with a permission error (proving the category is
-# correctly gated). Under default trusted mode they should all pass.
+# Each test below exercises one gated category. It passes only when the
+# active profile grants that category, proving the category is correctly gated.
 
-# Test 11: fs.write category outside $CWD
-# Note: Path is under /tmp/, so it fails under both strict and deny-all
-# (strict only allows $CWD-scoped writes).
+# Test 11: fs.write category. The path is under /tmp (outside $CWD), so it
+# requires allow-all; allow-fs only permits writes within $CWD.
 def test_fs_write_category():
-    """fs.write outside $CWD is gated under strict and deny-all"""
+    """fs.write outside $CWD requires allow-all"""
     tmp_path = path("/tmp/starkite_perm_write_test")
     tmp_path.write_text("hello")
     assert(tmp_path.exists(), "file should have been written")
     tmp_path.remove()
 
-# Test 12: fs.delete category outside $CWD
-# Note: Path is under /tmp/, so it fails under both strict and deny-all.
+# Test 12: fs.delete category. Path under /tmp (outside $CWD) → requires allow-all.
 def test_fs_delete_category():
-    """fs.delete outside $CWD is gated under strict and deny-all"""
+    """fs.delete outside $CWD requires allow-all"""
     tmp_path = path("/tmp/starkite_perm_delete_test")
     tmp_path.write_text("temp")
     tmp_path.remove()
     assert(not tmp_path.exists(), "file should have been deleted")
 
-# Test 13: os.env category — setenv specifically
-# Note: Under --permissions=strict, setenv will fail
+# Test 13: os.env category — setenv (requires allow-fs or higher)
 def test_os_env_setenv():
     """os.env category covers both env and setenv"""
     setenv("STARKITE_TEST_VAR", "value")
     assert(env("STARKITE_TEST_VAR") == "value", "setenv should have stuck")
 
-# Test 14: os.process category — chdir
-# Note: Under --permissions=strict, chdir will fail
+# Test 14: os.process category — chdir (requires allow-all)
 def test_os_process_chdir():
     """os.process category covers chdir/exit"""
     original = cwd()
@@ -183,25 +171,22 @@ def test_os_process_chdir():
     chdir(original)
 
 # Test 15: http.client category — url construction triggers no permission
-# but the .get() method is gated. We can't make a real network call here
-# but we can verify http.config (which is gated under client category).
-# Note: Under --permissions=strict, http.config will fail
+# but the .get() method is gated. Verify http.config, gated under the client
+# category (requires allow-net or higher).
 def test_http_client_config():
     """http.client category gates http.config"""
-    http.config(timeout="5s")  # should not raise under trust
+    http.config(timeout="5s")
 
-# Test 16: http.server category — server construction
-# Note: Under --permissions=strict, http.server() will fail
+# Test 16: http.server category — server construction (requires allow-local or higher)
 def test_http_server_construct():
     """http.server category is distinct from http.client"""
-    srv = http.server(port=0)  # port 0 = OS picks a free port; doesn't auto-start
+    srv = http.server(port=0)
     assert(srv != None, "server should construct")
 
-# Test 17: $CWD-scoped fs round-trip — exercises strict's allow rules end-to-end.
-# Passes under trust AND strict; fails under deny-all.
-def test_strict_allows_cwd_fs():
-    """Strict permits read/write/delete inside $CWD"""
-    p = path(cwd()) / "starkite_strict_roundtrip.tmp"
+# Test 17: $CWD fs round-trip — read/write/delete in one test (requires allow-fs).
+def test_cwd_fs_roundtrip():
+    """fs read/write/delete inside $CWD requires allow-fs or higher"""
+    p = path(cwd()) / "starkite_cwd_roundtrip.tmp"
     p.write_text("ok")
     assert(p.exists(), "should write under $CWD")
     assert(p.read_text() == "ok", "should read under $CWD")

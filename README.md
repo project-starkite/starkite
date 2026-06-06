@@ -30,7 +30,7 @@ The default binary is **`kite`**, the all-in-one edition — it bundles every mo
 | `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
 | `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
 
-Use `kite` unless binary size or attack surface is a real constraint — init containers, edge nodes, or CI runners under `--permissions=strict`. The lean editions (`kitecmd` / `kitecloud` / `kiteai`) are a strict subset for those targets.
+Use `kite` unless binary size or attack surface is a real constraint — init containers, edge nodes, or CI runners under a restricted profile such as `--permissions=allow-fs`. The lean editions (`kitecmd` / `kitecloud` / `kiteai`) are a strict subset for those targets.
 
 > **Naming convention.** Source directory names end in `kite`: `libkite/` (embeddable runtime), `basekite/` / `cloudkite/` / `aikite/` (editions), and `kite/` (the all-in-one). Binaries use the `kite<edition>` prefix form (`kitecmd`, `kitecloud`, `kiteai`), with the all-in-one as the unadorned `kite`.
 
@@ -156,35 +156,33 @@ See the [API reference](https://starkite.dev/references/api/) for full module do
 
 ## Permission Sandbox
 
-starkite controls script privileges via CLI flags:
+starkite controls script privileges via CLI flags. The default is `deny-all` — a script runs with pure compute plus `print`/`log` until granted more:
 
 ```bash
-kite run script.star                        # Trust mode (default): allow all operations
-kite run script.star --permissions=strict   # Restrict to safe operations only
+kite run script.star                          # deny-all (default)
+kite run script.star --permissions=allow-fs   # read any file; write within $CWD; env
+kite run script.star --permissions=allow-local # serve, $CWD exec, k8s, ai
+kite run script.star --permissions=allow-all  # unrestricted
 ```
 
-The `strict` profile blocks command execution, file I/O, and network access — only safe operations like string manipulation, JSON/YAML encoding, and math are allowed.
+The five built-in profiles form a capability ladder, each a superset of the prior: `deny-all` ⊂ `allow-fs` ⊂ `allow-net` ⊂ `allow-local` ⊂ `allow-all`.
 
-For fine-grained control, configure allow/deny rules in `config.yaml`:
+For fine-grained control, define named profiles in `config.yaml` and select one with `--permissions=<name>`:
 
 ```yaml
-# config.yaml
-project:
-  name: my-project
-
+# ~/.starkite/config.yaml
 permissions:
-  default: deny
-  allow:
-    - "fs.read_text(./data/**)"
-    - "http.get"
-    - "strings.*"
-    - "json.*"
-  deny:
-    - "os.exec"
-    - "ssh.*"
+  default: { allow: ["fs.read", "http.client"] }   # this machine's everyday ceiling
+  deploy:
+    allow:
+      - fs.read($CWD/**)
+      - http.client
+      - k8s.write
+    deny:
+      - os.exec
 ```
 
-Deny rules take precedence over allow rules. Modules enforce permissions internally — a sandboxed script that calls `fs.write_file()` without a matching allow rule gets a permission error. See the [permissions reference](https://starkite.dev/fundamentals/security/permissions/) for details.
+Each profile is allow-list only; `deny` rules carve out exceptions and take precedence. An unspecified `--permissions` resolves to the `default` profile if defined, else `deny-all`. See the [permissions reference](https://starkite.dev/fundamentals/security/permissions/) for details.
 
 ## Error Handling
 

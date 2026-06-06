@@ -1,8 +1,9 @@
 #!/bin/bash
-# Backward Compatibility Verification Script
+# Core Functionality Verification Script
 #
-# This script verifies that all existing starkite functionality works unchanged
-# after the starbase permission system integration.
+# Smoke-tests core starkite functionality under the permission model. Gated
+# operations are run with an explicit --permissions profile; the default is
+# deny-all.
 #
 # Usage: ./tests/verify_backward_compat.sh [/path/to/kite]
 
@@ -21,12 +22,12 @@ fail_count=0
 
 pass() {
     echo -e "${GREEN}✓${NC} $1"
-    ((pass_count++))
+    pass_count=$((pass_count + 1))
 }
 
 fail() {
     echo -e "${RED}✗${NC} $1"
-    ((fail_count++))
+    fail_count=$((fail_count + 1))
 }
 
 info() {
@@ -34,7 +35,7 @@ info() {
 }
 
 echo "=========================================="
-echo "Starbase Backward Compatibility Tests"
+echo "Starkite Core Functionality Tests"
 echo "=========================================="
 echo "Using: $KITE"
 echo ""
@@ -86,7 +87,7 @@ fi
 # --------------------------------------------
 info "Test 3: os.exec command execution"
 
-if $KITE exec 'r = exec("echo hello"); print(r.stdout)' 2>&1 | grep -q "hello"; then
+if $KITE exec 'print(exec("echo hello"))' --permissions=allow-all 2>&1 | grep -q "hello"; then
     pass "os.exec execution"
 else
     fail "os.exec execution"
@@ -100,7 +101,7 @@ info "Test 4: File I/O operations"
 TMPFILE=$(mktemp /tmp/kite_test_XXXXXX.txt)
 echo "test content" > "$TMPFILE"
 
-if $KITE exec "content = read_text(\"$TMPFILE\"); print(content)" 2>&1 | grep -q "test content"; then
+if $KITE exec "content = read_text(\"$TMPFILE\"); print(content)" --permissions=allow-fs 2>&1 | grep -q "test content"; then
     pass "File read"
 else
     fail "File read"
@@ -163,7 +164,7 @@ rm -rf "$TMPDIR"
 info "Test 7: Factory modules"
 
 # http.config configures the HTTP client
-if $KITE exec 'http.config(timeout=5000); print("http factory ok")' 2>&1 | grep -q "http factory ok"; then
+if $KITE exec 'http.config(timeout="5s"); print("http factory ok")' --permissions=allow-net 2>&1 | grep -q "http factory ok"; then
     pass "http.config() factory"
 else
     fail "http.config() factory"
@@ -175,7 +176,7 @@ fi
 info "Test 8: --dry-run mode"
 
 # In dry-run mode, exec should not actually run commands
-if $KITE exec 'r = exec("echo should_not_appear"); print("dry-run:", r.ok)' --dry-run 2>&1 | grep -q "dry-run: True"; then
+if $KITE exec 'exec("echo should_not_appear"); print("dry-run ran")' --dry-run --permissions=allow-all 2>&1 | grep -q "dry-run ran"; then
     pass "DryRun mode"
 else
     fail "DryRun mode"
@@ -186,48 +187,47 @@ fi
 # --------------------------------------------
 info "Test 9: --var flag"
 
-if $KITE exec 'v = var("myvar"); print("myvar:", v)' --var myvar=hello 2>&1 | grep -q "myvar: hello"; then
+if $KITE exec 'print("myvar:", var_str("myvar"))' --var myvar=hello 2>&1 | grep -q "myvar: hello"; then
     pass "--var flag"
 else
     fail "--var flag"
 fi
 
 # --------------------------------------------
-# Test 10: Strict profile blocks exec
+# Test 10: deny-all blocks exec
 # --------------------------------------------
-info "Test 10: --permissions=strict blocks exec"
+info "Test 10: --permissions=deny-all blocks exec"
 
-if $KITE exec 'exec("echo test")' --permissions=strict 2>&1 | grep -q "permission denied"; then
-    pass "--permissions=strict blocks exec"
+if $KITE exec 'exec("echo test")' --permissions=deny-all 2>&1 | grep -q "permission denied"; then
+    pass "--permissions=deny-all blocks exec"
 else
-    fail "--permissions=strict blocks exec"
+    fail "--permissions=deny-all blocks exec"
 fi
 
 # --------------------------------------------
-# Test 11: Strict profile allows safe modules
+# Test 11: deny-all allows pure-compute modules
 # --------------------------------------------
-info "Test 11: --permissions=strict allows safe modules"
+info "Test 11: --permissions=deny-all allows pure-compute modules"
 
-if $KITE exec 'print(strings.upper("hello"))' --permissions=strict 2>&1 | grep -q "HELLO"; then
-    pass "--permissions=strict allows strings"
+if $KITE exec 'print("hello".upper())' --permissions=deny-all 2>&1 | grep -q "HELLO"; then
+    pass "--permissions=deny-all allows strings"
 else
-    fail "--permissions=strict allows strings"
+    fail "--permissions=deny-all allows strings"
 fi
 
 # --------------------------------------------
-# Test 12: Default (no --permissions) allows everything
+# Test 12: Default (no --permissions) is deny-all
 # --------------------------------------------
-info "Test 12: default trust mode allows everything"
+info "Test 12: default mode (no flag) blocks exec"
 
-if $KITE exec 'r = exec("echo trusted"); print(r.stdout)' 2>&1 | grep -q "trusted"; then
-    pass "default trust mode allows exec"
+if $KITE exec 'exec("echo nope")' 2>&1 | grep -q "permission denied"; then
+    pass "default deny-all blocks exec"
 else
-    fail "default trust mode allows exec"
+    fail "default deny-all blocks exec"
 fi
 
 # --------------------------------------------
-# Test 13: Unknown profile errors with helpful message (Phase 2b: was a
-# stderr warning + fallback in Phase 2a; now a hard error from LoadProfile).
+# Test 13: Unknown profile errors with a helpful message.
 # --------------------------------------------
 info "Test 13: unknown --permissions value errors out"
 
@@ -238,7 +238,7 @@ else
 fi
 
 # --------------------------------------------
-# Test 13b: deny-all blocks every gated op (Phase 2b)
+# Test 13b: deny-all blocks every gated op
 # --------------------------------------------
 info "Test 13b: --permissions=deny-all blocks fs reads even under \$CWD"
 
@@ -249,18 +249,18 @@ else
 fi
 
 # --------------------------------------------
-# Test 13c: strict allows fs read under \$CWD (Phase 2b semantic change)
+# Test 13c: allow-fs allows fs read
 # --------------------------------------------
-info "Test 13c: --permissions=strict allows fs read under \$CWD"
+info "Test 13c: --permissions=allow-fs allows fs read"
 
-if $KITE exec 'print(read_text("README.md")[:20])' --permissions=strict 2>&1 | grep -q "starkite\|#"; then
-    pass "--permissions=strict allows \$CWD fs read"
+if $KITE exec 'print(read_text("README.md")[:40])' --permissions=allow-fs 2>&1 | grep -qE "align|starkite|#"; then
+    pass "--permissions=allow-fs allows fs read"
 else
-    fail "--permissions=strict allows \$CWD fs read"
+    fail "--permissions=allow-fs allows fs read"
 fi
 
 # --------------------------------------------
-# Test 13d: inline rule syntax (Phase 2b)
+# Test 13d: inline rule syntax
 # --------------------------------------------
 info "Test 13d: inline rules --permissions=allow:os.exec"
 
@@ -298,7 +298,7 @@ if ! $KITE exec 'u = uuid.v4(); print(len(u))' 2>&1 | grep -q "36"; then
 fi
 
 # hash
-if ! $KITE exec 'h = hash.sha256("test"); print(len(h))' 2>&1 | grep -q "64"; then
+if ! $KITE exec 'h = hash.text("test").sha256(); print(len(h))' 2>&1 | grep -q "64"; then
     TESTS_PASSED=false
 fi
 
@@ -313,7 +313,7 @@ fi
 # --------------------------------------------
 info "Test 15: Environment access"
 
-if $KITE exec 'h = env("HOME"); print("home:", h)' 2>&1 | grep -q "home: /"; then
+if $KITE exec 'h = env("HOME"); print("home:", h)' --permissions=allow-fs 2>&1 | grep -q "home: /"; then
     pass "Environment access"
 else
     fail "Environment access"

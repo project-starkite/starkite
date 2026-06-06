@@ -19,7 +19,7 @@ func TestLoadProfile_BuiltIns(t *testing.T) {
 		{ProfileAllowAll, libkite.DefaultAllow, []string{"*.*"}},
 		{ProfileDenyAll, libkite.DefaultDeny, nil},
 		{ProfileAllowFS, libkite.DefaultDeny, []string{
-			"fs.read", "fs.write", "fs.delete", "os.env", "io.prompt",
+			"fs.read", "fs.write($CWD/**)", "fs.delete($CWD/**)", "os.env", "io.prompt",
 		}},
 	}
 	for _, tt := range tests {
@@ -130,7 +130,6 @@ func TestLoadProfile_FilePath(t *testing.T) {
 	path := filepath.Join(dir, "team.yaml")
 	content := []byte(`permissions:
   team:
-    default: deny
     allow:
       - fs.read
       - http.client
@@ -146,6 +145,9 @@ func TestLoadProfile_FilePath(t *testing.T) {
 	if !reflect.DeepEqual(cfg.Allow, []string{"fs.read", "http.client"}) {
 		t.Errorf("Allow = %v", cfg.Allow)
 	}
+	if cfg.Default != libkite.DefaultDeny {
+		t.Errorf("Default = %v, want DefaultDeny", cfg.Default)
+	}
 }
 
 func TestLoadProfile_FilePathWithFragment(t *testing.T) {
@@ -153,10 +155,9 @@ func TestLoadProfile_FilePathWithFragment(t *testing.T) {
 	path := filepath.Join(dir, "security.yaml")
 	content := []byte(`permissions:
   team:
-    default: deny
     allow: [fs.read]
   dev:
-    default: allow
+    allow: [fs.read, fs.write]
     deny: [fs.delete]
 `)
 	if err := os.WriteFile(path, content, 0o644); err != nil {
@@ -167,8 +168,8 @@ func TestLoadProfile_FilePathWithFragment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadProfile fragment: %v", err)
 	}
-	if cfg.Default != libkite.DefaultAllow {
-		t.Errorf("dev.default = %v, want allow", cfg.Default)
+	if cfg.Default != libkite.DefaultDeny {
+		t.Errorf("dev.default = %v, want deny", cfg.Default)
 	}
 	if !reflect.DeepEqual(cfg.Deny, []string{"fs.delete"}) {
 		t.Errorf("Deny = %v", cfg.Deny)
@@ -185,52 +186,13 @@ func TestLoadProfile_FilePathWithFragment(t *testing.T) {
 	}
 }
 
-func TestLoadProfile_NamedUserProfile(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-
-	starkiteDir := filepath.Join(dir, ".starkite")
-	if err := os.MkdirAll(starkiteDir, 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	content := []byte(`permissions:
-  team:
-    default: deny
-    allow: [fs.read, http.client]
-`)
-	if err := os.WriteFile(filepath.Join(starkiteDir, "security.yaml"), content, 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	cfg, err := LoadProfile("team")
-	if err != nil {
-		t.Fatalf("LoadProfile(team): %v", err)
-	}
-	if !reflect.DeepEqual(cfg.Allow, []string{"fs.read", "http.client"}) {
-		t.Errorf("Allow = %v", cfg.Allow)
-	}
-
-	// Unknown name → helpful error mentioning built-ins.
-	_, err = LoadProfile("nonexistent-profile-xyz")
+func TestLoadProfile_UnknownNameErrors(t *testing.T) {
+	_, err := LoadProfile("nonexistent-profile-xyz")
 	if err == nil {
 		t.Fatal("expected error for unknown name")
 	}
 	if !strings.Contains(err.Error(), "allow-all") || !strings.Contains(err.Error(), "deny-all") {
 		t.Errorf("error should mention built-in names; got %q", err.Error())
-	}
-}
-
-func TestLoadProfile_NamedNoSecurityFile(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("HOME", dir)
-	// No security.yaml created.
-
-	_, err := LoadProfile("team")
-	if err == nil {
-		t.Fatal("expected error when security.yaml does not exist")
-	}
-	if !strings.Contains(err.Error(), "does not exist") {
-		t.Errorf("error should mention missing file; got %q", err.Error())
 	}
 }
 
@@ -245,24 +207,63 @@ func TestLoadProfile_InvalidYAML(t *testing.T) {
 	}
 }
 
-func TestLoadProfile_InvalidDefault(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "bad.yaml")
-	content := []byte(`permissions:
-  team:
-    default: maybe
-    allow: [fs.read]
-`)
-	if err := os.WriteFile(path, content, 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
+func TestResolve(t *testing.T) {
+	defined := map[string]ProfileSpec{
+		"default": {Allow: []string{"fs.read"}},
+		"team":    {Allow: []string{"fs.read", "http.client"}},
 	}
-	_, err := LoadProfile(path)
-	if err == nil {
-		t.Fatal("expected error for invalid default value")
-	}
-	if !strings.Contains(err.Error(), "invalid default") {
-		t.Errorf("error should mention 'invalid default'; got %q", err.Error())
-	}
+
+	t.Run("empty falls back to default profile", func(t *testing.T) {
+		cfg, err := Resolve("", defined)
+		if err != nil {
+			t.Fatalf("Resolve(\"\"): %v", err)
+		}
+		if !reflect.DeepEqual(cfg.Allow, []string{"fs.read"}) {
+			t.Errorf("Allow = %v, want [fs.read]", cfg.Allow)
+		}
+	})
+
+	t.Run("empty with no default falls back to deny-all", func(t *testing.T) {
+		cfg, err := Resolve("", nil)
+		if err != nil {
+			t.Fatalf("Resolve(\"\", nil): %v", err)
+		}
+		if cfg.Default != libkite.DefaultDeny || len(cfg.Allow) != 0 {
+			t.Errorf("want deny-all, got %+v", cfg)
+		}
+	})
+
+	t.Run("named config profile", func(t *testing.T) {
+		cfg, err := Resolve("team", defined)
+		if err != nil {
+			t.Fatalf("Resolve(team): %v", err)
+		}
+		if !reflect.DeepEqual(cfg.Allow, []string{"fs.read", "http.client"}) {
+			t.Errorf("Allow = %v", cfg.Allow)
+		}
+	})
+
+	t.Run("built-in wins over config", func(t *testing.T) {
+		cfg, err := Resolve(ProfileAllowAll, defined)
+		if err != nil {
+			t.Fatalf("Resolve(allow-all): %v", err)
+		}
+		if cfg.Default != libkite.DefaultAllow {
+			t.Errorf("Default = %v, want DefaultAllow", cfg.Default)
+		}
+	})
+
+	t.Run("default name undefined errors", func(t *testing.T) {
+		if _, err := Resolve("default", nil); err == nil {
+			t.Error("Resolve(\"default\", nil) should error: named profile not defined")
+		}
+	})
+
+	t.Run("unknown name errors", func(t *testing.T) {
+		if _, err := Resolve("nope", defined); err == nil {
+			t.Error("Resolve of undefined name should error")
+		}
+	})
 }
 
 func TestIsInline(t *testing.T) {
@@ -299,72 +300,5 @@ func TestIsFilePath(t *testing.T) {
 		if got := isFilePath(in); got != want {
 			t.Errorf("isFilePath(%q) = %v, want %v", in, got, want)
 		}
-	}
-}
-
-func TestParseFrontmatterPermissions(t *testing.T) {
-	tests := []struct {
-		name    string
-		script  string
-		want    string
-		wantErr bool
-	}{
-		{
-			name:   "absent",
-			script: "print('hello')\n",
-			want:   "",
-		},
-		{
-			name:   "simple comment",
-			script: "# permissions: strict\nprint('hi')\n",
-			want:   "strict",
-		},
-		{
-			name:   "after shebang",
-			script: "#!/usr/bin/env kite\n# permissions: deny-all\nprint('hi')\n",
-			want:   "deny-all",
-		},
-		{
-			name:   "tight spacing",
-			script: "#permissions:strict\n",
-			want:   "strict",
-		},
-		{
-			name:   "inline value",
-			script: "# permissions: allow:fs.read,deny:os.exec\nprint('hi')\n",
-			want:   "allow:fs.read,deny:os.exec",
-		},
-		{
-			name:   "skipped after first non-comment line",
-			script: "x = 1\n# permissions: strict\n",
-			want:   "",
-		},
-		{
-			name:   "blank lines allowed in header",
-			script: "#!/usr/bin/env kite\n\n# some comment\n\n# permissions: strict\n",
-			want:   "strict",
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
-			path := filepath.Join(dir, "script.star")
-			if err := os.WriteFile(path, []byte(tt.script), 0o644); err != nil {
-				t.Fatalf("WriteFile: %v", err)
-			}
-			got, err := ParseFrontmatterPermissions(path)
-			if tt.wantErr {
-				if err == nil {
-					t.Errorf("expected error, got %q", got)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("unexpected error: %v", err)
-			}
-			if got != tt.want {
-				t.Errorf("got %q, want %q", got, tt.want)
-			}
-		})
 	}
 }

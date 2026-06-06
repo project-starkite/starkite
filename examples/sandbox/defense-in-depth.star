@@ -1,17 +1,17 @@
 #!/usr/bin/env kite
 # defense-in-depth.star — composes the strict sandbox profile with the
-# strict permissions profile.
+# deny-all permissions profile.
 #
 # Two independent layers:
-#   --permissions=strict  blocks Starlark module calls (exec, file writes
-#                         outside $CWD, network) at the API level.
-#   --sandbox=strict      confines the OS view (no /etc/*, no $HOME, no
-#                         outbound network) at the kernel level via gVisor.
+#   --permissions=deny-all  blocks every gated module call (exec, file I/O,
+#                           network) at the API level.
+#   --sandbox=strict        confines the OS view (no /etc/*, no $HOME, no
+#                           outbound network) at the kernel level via gVisor.
 #
 # A breach in either layer is contained by the other.
 #
 # Run:
-#   kite defense-in-depth.star --sandbox=strict --permissions=strict
+#   kite defense-in-depth.star --sandbox=strict --permissions=deny-all
 
 # Pure compute is allowed under both layers.
 data = {"items": [1, 2, 3], "label": "demo"}
@@ -22,7 +22,7 @@ decoded = json.decode(serialized)
 assert(decoded["label"] == "demo", "round-trip mismatch")
 print("decoded: label=%s items=%d" % (decoded["label"], len(decoded["items"])))
 
-# These would fail under --permissions=strict (API-level block):
+# These would fail under --permissions=deny-all (API-level block):
 # os.exec("echo blocked")               # permission denied: os.exec not allowed
 # http.url("https://example.com").get() # permission denied: http.client not allowed
 

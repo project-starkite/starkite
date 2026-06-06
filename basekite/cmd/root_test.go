@@ -1,6 +1,11 @@
 package cmd
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"github.com/spf13/pflag"
+)
 
 // resetDefaults resets flag variables and Changed state to defaults.
 func resetDefaults() {
@@ -67,4 +72,67 @@ func TestEnvTimeoutInvalid(t *testing.T) {
 	if timeout != 300 {
 		t.Errorf("expected timeout=300 (default) for invalid env, got %d", timeout)
 	}
+}
+
+// buildPermissionFlagSet mirrors the production registration of --permissions
+// and the boolean profile aliases on a throwaway flag set, parses the given
+// args (the alias Set writes the shared permissionsMode), and returns it so the
+// conflict check can be exercised.
+func buildPermissionFlagSet(t *testing.T, args []string) *pflag.FlagSet {
+	t.Helper()
+	permissionsMode = ""
+	fs := pflag.NewFlagSet("x", pflag.ContinueOnError)
+	fs.StringVar(&permissionsMode, "permissions", "", "")
+	for _, p := range permissionProfileFlags {
+		fs.Var(permissionAlias{p}, p, "")
+		fs.Lookup(p).NoOptDefVal = "true"
+	}
+	if err := fs.Parse(args); err != nil {
+		t.Fatalf("parse %v: %v", args, err)
+	}
+	return fs
+}
+
+func TestPermissionAliasFlags(t *testing.T) {
+	t.Run("alias sets permissions value", func(t *testing.T) {
+		fs := buildPermissionFlagSet(t, []string{"--allow-fs"})
+		if err := checkPermissionFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if permissionsMode != "allow-fs" {
+			t.Errorf("permissionsMode = %q, want allow-fs", permissionsMode)
+		}
+	})
+
+	t.Run("deny-all alias", func(t *testing.T) {
+		fs := buildPermissionFlagSet(t, []string{"--deny-all"})
+		if err := checkPermissionFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if permissionsMode != "deny-all" {
+			t.Errorf("permissionsMode = %q, want deny-all", permissionsMode)
+		}
+	})
+
+	t.Run("two aliases conflict", func(t *testing.T) {
+		fs := buildPermissionFlagSet(t, []string{"--allow-fs", "--allow-net"})
+		err := checkPermissionFlagConflict(fs)
+		if err == nil {
+			t.Fatal("expected conflict error for two aliases")
+		}
+		if !strings.Contains(err.Error(), "--allow-fs") || !strings.Contains(err.Error(), "--allow-net") {
+			t.Errorf("error should name both flags; got %q", err.Error())
+		}
+	})
+
+	t.Run("alias plus --permissions conflict", func(t *testing.T) {
+		fs := buildPermissionFlagSet(t, []string{"--allow-fs", "--permissions=allow-all"})
+		err := checkPermissionFlagConflict(fs)
+		if err == nil {
+			t.Fatal("expected conflict error for alias + --permissions")
+		}
+		if !strings.Contains(err.Error(), "--permissions") || !strings.Contains(err.Error(), "--allow-fs") {
+			t.Errorf("error should name both flags; got %q", err.Error())
+		}
+	})
 }

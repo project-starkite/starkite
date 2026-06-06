@@ -47,8 +47,8 @@ kite exec 'print(json.encode({"host": os.hostname()}))'
 Because the host agent may run untrusted logic, constrain what the tool can do with the [permission engine](../fundamentals/security/permission.md) and, on Linux, the [sandbox](../fundamentals/security/sandbox.md):
 
 ```bash
-# Restrict to safe operations only
-kite run untrusted.star --permissions=strict
+# Restrict to compute, print, and log only
+kite run untrusted.star --permissions=deny-all
 
 # OS-level isolation on Linux
 kite run untrusted.star --sandbox

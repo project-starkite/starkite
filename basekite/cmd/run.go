@@ -7,6 +7,7 @@ import (
 
 	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/spf13/cobra"
 )
 
@@ -132,7 +133,7 @@ func runScript(cmd *cobra.Command, args []string) error {
 	// Create registry with all modules
 	registry := NewRegistry(moduleConfig)
 
-	perms, err := resolvePermissionsForScript(scriptPath)
+	perms, err := permissions.Resolve(permissionsMode, varStore.Permissions)
 	if err != nil {
 		return err
 	}
