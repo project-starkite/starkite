@@ -56,8 +56,9 @@ func (rt *Runtime) loadExternalModuleFrom(module string, config *starlark.Dict, 
 		return nil, fmt.Errorf("circular dependency detected loading module %s", module)
 	}
 
-	// Load the module (may be single file or multi-file)
-	exports, err := rt.loadModuleFromPath(modulePath, config)
+	// Load the module (may be single file or multi-file). The origin labels the
+	// module thread so a denial inside it is attributed to this module.
+	exports, err := rt.loadModuleFromPath(modulePath, config, deriveModuleName(module, modulePath))
 	if err != nil {
 		rt.moduleCache.StopLoading(modulePath)
 		return nil, err
@@ -243,23 +244,24 @@ func (rt *Runtime) getModuleSearchPathsFrom(module, callerPath string) []string 
 
 // loadModuleFromPath loads a module from a resolved path. A directory is a
 // module (manifest + .star files); a .star file is an intra-module file load.
-func (rt *Runtime) loadModuleFromPath(modulePath string, config *starlark.Dict) (starlark.StringDict, error) {
+func (rt *Runtime) loadModuleFromPath(modulePath string, config *starlark.Dict, origin string) (starlark.StringDict, error) {
 	info, err := os.Stat(modulePath)
 	if err != nil {
 		return nil, err
 	}
 
 	if info.IsDir() {
-		return rt.loadModuleDir(modulePath, config)
+		return rt.loadModuleDir(modulePath, config, origin)
 	}
 
 	// A bare .star file reached here only via an intra-module relative load
 	// (a module's own files loading each other); load it as a single file.
-	return rt.loadSingleFileModule(modulePath, config)
+	return rt.loadSingleFileModule(modulePath, config, origin)
 }
 
-// loadSingleFileModule loads a single .star file.
-func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict) (starlark.StringDict, error) {
+// loadSingleFileModule loads a single .star file. origin labels the module
+// thread for denial attribution.
+func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict, origin string) (starlark.StringDict, error) {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read module file: %w", err)
@@ -277,10 +279,11 @@ func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict) 
 		},
 	}
 
-	// Propagate permissions to module thread
+	// Propagate permissions to module thread; label it for denial attribution.
 	if rt.permissions != nil {
 		SetPermissions(moduleThread, rt.permissions)
 	}
+	SetModuleOrigin(moduleThread, origin)
 
 	globals, err := starlark.ExecFileOptions(
 		&syntax.FileOptions{},
@@ -299,13 +302,13 @@ func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict) 
 // loadModuleDir loads a module directory: a required module.yaml manifest plus
 // one or more .star files. The manifest's entry file loads first; the public
 // symbols of every other .star file in the directory merge into the module.
-func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict) (starlark.StringDict, error) {
+func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict, origin string) (starlark.StringDict, error) {
 	if _, err := LoadModuleManifest(dirPath); err != nil {
 		return nil, err
 	}
 
 	entryPath := filepath.Join(dirPath, EntryFile)
-	globals, err := rt.loadSingleFileModule(entryPath, config)
+	globals, err := rt.loadSingleFileModule(entryPath, config, origin)
 	if err != nil {
 		return nil, err
 	}
@@ -324,7 +327,7 @@ func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict) (starlar
 			continue
 		}
 
-		additionalGlobals, err := rt.loadSingleFileModule(fullPath, config)
+		additionalGlobals, err := rt.loadSingleFileModule(fullPath, config, origin)
 		if err != nil {
 			return nil, fmt.Errorf("error loading %s: %w", fullPath, err)
 		}

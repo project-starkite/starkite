@@ -28,18 +28,25 @@ type PermissionError struct {
 	Reason   string   // Why it was denied
 	Allowed  []string // What patterns would allow this (for helpful errors)
 	Suggest  string   // Lowest built-in profile that would grant the capability
+	Origin   string   // Loaded module whose code triggered the denial, if any
 }
 
 // Error implements the error interface. The message names the required
 // module.category capability and, when the denial is a missing grant (rather
-// than an explicit deny rule), prescribes how to opt up.
+// than an explicit deny rule), prescribes how to opt up. When the call
+// originated inside a loaded module, the message attributes it to that module.
 func (e *PermissionError) Error() string {
 	target := e.Module + "." + e.Category
 	var b strings.Builder
-	if e.Resource != "" {
-		fmt.Fprintf(&b, "permission denied: %s %s(%q) - %s", target, e.Function, e.Resource, e.Reason)
+	if e.Origin != "" {
+		fmt.Fprintf(&b, "permission denied (module %q): ", e.Origin)
 	} else {
-		fmt.Fprintf(&b, "permission denied: %s %s - %s", target, e.Function, e.Reason)
+		b.WriteString("permission denied: ")
+	}
+	if e.Resource != "" {
+		fmt.Fprintf(&b, "%s %s(%q) - %s", target, e.Function, e.Resource, e.Reason)
+	} else {
+		fmt.Fprintf(&b, "%s %s - %s", target, e.Function, e.Reason)
 	}
 	if e.Suggest != "" {
 		fmt.Fprintf(&b, "\n  grant %q with --permissions=%s (or higher), or an allow rule in ~/.starkite/config.yaml",

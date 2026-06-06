@@ -13,6 +13,10 @@ import (
 // permissionKey is the thread.Local key for the permission checker.
 const permissionKey = "libkite.permissions"
 
+// moduleOriginKey is the thread.Local key holding the label of the loaded
+// module whose code the thread runs, for denial attribution.
+const moduleOriginKey = "libkite.moduleOrigin"
+
 // PermissionDefault specifies default behavior when no rule matches.
 type PermissionDefault int
 
@@ -356,7 +360,46 @@ func Check(thread *starlark.Thread, module, category, function, resource string)
 		return nil
 	}
 
-	return checker.Check(module, category, function, resource)
+	err := checker.Check(module, category, function, resource)
+	// Attribute a denial to the loaded module whose code is running, if any.
+	if pe, ok := err.(*PermissionError); ok {
+		pe.Origin = attributeModule(thread)
+	}
+	return err
+}
+
+// attributeModule identifies the loaded module responsible for the current
+// call, for denial attribution. A module's exported function executes on the
+// caller's thread, so the call stack is the reliable signal: the innermost
+// frame whose source file differs from the entry script belongs to a loaded
+// module. The module-origin thread local is the fallback for denials raised
+// while a module's top-level code runs (during load). Returns "" for calls
+// made directly by the entry script.
+func attributeModule(thread *starlark.Thread) string {
+	if stack := thread.CallStack(); len(stack) > 0 {
+		entryFile := stack[0].Pos.Filename()
+		for i := len(stack) - 1; i >= 0; i-- {
+			f := stack[i].Pos.Filename()
+			// Skip non-file frames (builtins are "<builtin>") and the entry script.
+			if !strings.HasSuffix(f, ".star") || f == entryFile {
+				continue
+			}
+			return moduleLabelFromFile(f)
+		}
+	}
+	origin, _ := thread.Local(moduleOriginKey).(string)
+	return origin
+}
+
+// moduleLabelFromFile derives a module label from a source file path: the
+// directory name for a multi-file module's main.star, otherwise the file's base
+// name without the .star suffix.
+func moduleLabelFromFile(path string) string {
+	base := filepath.Base(path)
+	if base == EntryFile {
+		return filepath.Base(filepath.Dir(path))
+	}
+	return strings.TrimSuffix(base, ".star")
 }
 
 // SetPermissions stores the permission checker in thread.Local.
@@ -364,6 +407,15 @@ func Check(thread *starlark.Thread, module, category, function, resource string)
 func SetPermissions(thread *starlark.Thread, checker *PermissionChecker) {
 	if thread != nil && checker != nil {
 		thread.SetLocal(permissionKey, checker)
+	}
+}
+
+// SetModuleOrigin labels a thread with the loaded module whose code it runs, so
+// a denial raised on that thread can be attributed to the module. The entry
+// script's thread carries no origin.
+func SetModuleOrigin(thread *starlark.Thread, origin string) {
+	if thread != nil && origin != "" {
+		thread.SetLocal(moduleOriginKey, origin)
 	}
 }
 

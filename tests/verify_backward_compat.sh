@@ -271,6 +271,32 @@ else
 fi
 
 # --------------------------------------------
+# Test 13e: a loaded module is bound by the runtime permission, and a denial
+# inside it is attributed to the module.
+# --------------------------------------------
+info "Test 13e: loaded module bound by runtime permission + attributed"
+
+MODDIR=$(mktemp -d /tmp/kite_test_XXXXXX)
+printf 'def reach():\n    return exec("uname -s")\n' > "$MODDIR/mod.star"
+printf 'load("mod.star", "mod")\nprint(mod.reach())\n' > "$MODDIR/host.star"
+
+# Under allow-fs the module's exec is denied, naming the module.
+# load("mod.star") resolves relative to host.star's directory.
+if $KITE run "$MODDIR/host.star" --allow-fs 2>&1 | grep -q 'permission denied (module "mod")'; then
+    pass "loaded module denial is bound and attributed"
+else
+    fail "loaded module denial is bound and attributed"
+fi
+
+# Under allow-all the same module call succeeds.
+if $KITE run "$MODDIR/host.star" --allow-all 2>&1 | grep -qE "Linux|Darwin"; then
+    pass "loaded module call succeeds under allow-all"
+else
+    fail "loaded module call succeeds under allow-all"
+fi
+rm -rf "$MODDIR"
+
+# --------------------------------------------
 # Test 14: Built-in modules work
 # --------------------------------------------
 info "Test 14: Built-in modules"

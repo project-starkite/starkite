@@ -74,3 +74,7 @@ load("acme/slack", "slack")     # installed via: kite module install ...
 def main():
     slack.post("#deploys", "shipped")
 ```
+
+## Module permissions
+
+A loaded module runs under the same runtime permission as the entry script — it declares no capabilities of its own, and importing it grants no authority. A dependency that needs more than the run was granted fails at the gated call, naming the module; the run is then restarted at a higher profile. See [Permission](security/permission.md#loaded-modules).

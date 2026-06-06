@@ -188,6 +188,22 @@ These categories go through the permission check. Anything not listed (string ma
 | `mcp` | `client`, `server` | MCP connections + servers |
 | `io` | `prompt` | interactive prompts |
 
+## Loaded modules
+
+Code reached through `load()` — a local directory module or an installed module — runs under the **same runtime permission as the entry script**. A module declares nothing about its own capabilities; downloading or importing it grants no authority.
+
+A dependency that needs more than the entry script was granted fails at the gated call, and the run is restarted at a higher profile. For example, a script run with `--allow-fs` that loads a module which calls `k8s.read`:
+
+```
+kite deploy.star --allow-fs
+#   deploy.star reads/writes local files   → allowed
+#   the loaded module calls k8s.read(...)    → denied (k8s is allow-local)
+# re-run granting the capability the dependency needs:
+kite deploy.star --allow-local
+```
+
+A denial raised inside a loaded module names that module (see below).
+
 ## Composing with `--sandbox`
 
 `--permissions` and `--sandbox` are independent, composable layers. Combined, they provide defense in depth:
@@ -210,3 +226,9 @@ os.exec("uname -s")
 ```
 
 The suggested profile is the lowest built-in tier that would actually grant the specific call: exec of a `$CWD` binary suggests `allow-local`, exec of a system binary suggests `allow-all`. A denial by an explicit `deny` rule names that rule instead.
+
+When the call originates inside a `load()`'d module, the message attributes it to that module:
+
+```
+# Error: permission denied (module "deploy-helpers"): k8s.read read("pods") - no matching allow rule
+```
