@@ -1,0 +1,134 @@
+// Package resolver resolves a module's declared dependency closure into the
+// version-addressed cache and records it in mod.lock. It bridges the manager
+// (which fetches and stores modules) and libkite (which defines the lock format
+// and verifies cached trees); libkite cannot import the manager, so the driver
+// lives here.
+package resolver
+
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	"github.com/project-starkite/starkite/basekite/manager"
+	"github.com/project-starkite/starkite/libkite"
+)
+
+// Resolver resolves and fetches module dependencies into a manager-backed cache.
+type Resolver struct {
+	mgr *manager.Manager
+}
+
+// New returns a Resolver backed by mgr's module cache.
+func New(mgr *manager.Manager) *Resolver {
+	return &Resolver{mgr: mgr}
+}
+
+// EnsureClosure resolves the full transitive dependency closure of the module at
+// dir into the cache and returns the resolved lock, without writing it. An
+// existing dir/mod.lock pins revisions for incremental, cache-first resolution:
+// a locked dependency whose cached tree still verifies is reused without
+// re-fetching; anything else is fetched from its declared source.
+func (r *Resolver) EnsureClosure(dir string) (*libkite.Lock, error) {
+	manifest, err := libkite.LoadModuleManifest(dir)
+	if err != nil {
+		return nil, err
+	}
+	existing, err := libkite.LoadLock(dir)
+	if err != nil {
+		return nil, err
+	}
+
+	lock := &libkite.Lock{Modules: map[string]libkite.LockedModule{}}
+	if err := r.resolveDeps(manifest.Dependencies, existing, lock); err != nil {
+		return nil, err
+	}
+	return lock, nil
+}
+
+// Sync resolves the closure of the module at dir and writes dir/mod.lock. Use it
+// for a working module directory the caller owns; for an immutable cache module,
+// use EnsureClosure so the cached tree is not mutated.
+func (r *Resolver) Sync(dir string) (*libkite.Lock, error) {
+	lock, err := r.EnsureClosure(dir)
+	if err != nil {
+		return nil, err
+	}
+	// A module with no dependencies and no prior lock needs no lockfile; don't
+	// create an empty one. A now-empty closure with a prior lock is still saved
+	// so the removal is recorded.
+	if len(lock.Modules) == 0 {
+		if existing, _ := libkite.LoadLock(dir); existing == nil {
+			return lock, nil
+		}
+	}
+	if err := lock.Save(dir); err != nil {
+		return nil, err
+	}
+	return lock, nil
+}
+
+// resolveDeps walks declared dependencies, adding each to lock before recursing
+// into its own dependencies. Adding before recursing both deduplicates the
+// closure and breaks dependency cycles.
+func (r *Resolver) resolveDeps(deps map[string]string, existing, lock *libkite.Lock) error {
+	for identity, source := range deps {
+		if _, done := lock.Modules[identity]; done {
+			continue
+		}
+		locked, moduleDir, err := r.resolveOne(identity, source, existing)
+		if err != nil {
+			return fmt.Errorf("resolving dependency %q: %w", identity, err)
+		}
+		lock.Modules[identity] = locked
+
+		sub, err := libkite.LoadModuleManifest(moduleDir)
+		if err != nil {
+			return fmt.Errorf("reading dependency %q manifest: %w", identity, err)
+		}
+		if err := r.resolveDeps(sub.Dependencies, existing, lock); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// resolveOne resolves a single declared dependency to a locked entry and its
+// cache directory. A locked, present, and verified revision is reused; otherwise
+// the dependency is fetched from source. The fetched module's identity must
+// match the declared key.
+func (r *Resolver) resolveOne(identity, source string, existing *libkite.Lock) (libkite.LockedModule, string, error) {
+	if existing != nil {
+		if prev, ok := existing.Modules[identity]; ok && prev.Source == source {
+			dir := r.cacheDir(identity, prev.Rev)
+			if isDir(dir) && libkite.VerifyTree(dir, prev.Hash) == nil {
+				return prev, dir, nil
+			}
+		}
+	}
+
+	info, err := r.mgr.Install(source, manager.InstallOptions{})
+	if err != nil {
+		return libkite.LockedModule{}, "", err
+	}
+	if got := info.Namespace + "/" + info.Name; got != identity {
+		return libkite.LockedModule{}, "", fmt.Errorf("declared as %q but resolves to %q", identity, got)
+	}
+	hash, err := libkite.HashModuleTree(info.Path)
+	if err != nil {
+		return libkite.LockedModule{}, "", err
+	}
+	return libkite.LockedModule{Source: source, Rev: info.Rev, Hash: hash}, info.Path, nil
+}
+
+// cacheDir returns the version-addressed cache path for an identity at a revision.
+func (r *Resolver) cacheDir(identity, rev string) string {
+	ns, name, _ := strings.Cut(identity, "/")
+	return filepath.Join(r.mgr.ModulesDir(), ns, name+"@"+rev)
+}
+
+func isDir(path string) bool {
+	info, err := os.Stat(path)
+	return err == nil && info.IsDir()
+}

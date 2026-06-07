@@ -99,13 +99,16 @@ func deriveModuleName(module, modulePath string) string {
 	// Extract from path: /path/to/module.star -> module
 	// or /path/to/module/main.star -> module
 	base := filepath.Base(modulePath)
-	if base == "main.star" {
-		// Multi-file module: use directory name
-		return filepath.Base(filepath.Dir(modulePath))
+	if base == EntryFile {
+		// Multi-file module: use the directory name, less any version-addressed
+		// "@rev" suffix from the cache layout.
+		name, _ := SplitModuleRev(filepath.Base(filepath.Dir(modulePath)))
+		return name
 	}
-	// Directory path — use directory name
+	// Directory path — use the directory name, less any "@rev" suffix.
 	if info, err := os.Stat(modulePath); err == nil && info.IsDir() {
-		return base
+		name, _ := SplitModuleRev(base)
+		return name
 	}
 	// Single file: remove .star extension
 	return strings.TrimSuffix(base, ".star")

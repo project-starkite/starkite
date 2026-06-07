@@ -42,6 +42,11 @@ func watchScript(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return err
 	}
+	if isModule {
+		if err := resolveModuleDeps(filepath.Dir(entry)); err != nil {
+			return fmt.Errorf("failed to resolve dependencies: %w", err)
+		}
+	}
 	absPath, err := filepath.Abs(entry)
 	if err != nil {
 		return fmt.Errorf("failed to resolve path: %w", err)

@@ -333,6 +333,31 @@ $KITE module remove t/execmod >/dev/null 2>&1 || true
 rm -rf "$RUNDIR"
 
 # --------------------------------------------
+# Test 13g: kite run resolves a declared dependency and writes mod.lock
+# --------------------------------------------
+info "Test 13g: declared dependency resolution + mod.lock"
+
+DEPDIR=$(mktemp -d /tmp/kite_test_XXXXXX)
+mkdir -p "$DEPDIR/leaf" "$DEPDIR/app"
+printf 'namespace: dep\nname: leaf\nversion: 0.1.0\n' > "$DEPDIR/leaf/mod.yaml"
+printf 'def greet():\n    return "hi from leaf"\n' > "$DEPDIR/leaf/main.star"
+printf 'namespace: dep\nname: app\nversion: 0.1.0\ndependencies:\n  dep/leaf: %s\n' "$DEPDIR/leaf" > "$DEPDIR/app/mod.yaml"
+printf 'load("dep/leaf", "leaf")\n\ndef main():\n    print(leaf.greet())\n' > "$DEPDIR/app/main.star"
+
+if $KITE run "$DEPDIR/app" --allow-all 2>&1 | grep -q "hi from leaf"; then
+    pass "kite run resolves and loads a declared dependency"
+else
+    fail "kite run resolves and loads a declared dependency"
+fi
+
+if [ -f "$DEPDIR/app/mod.lock" ] && grep -q "dep/leaf" "$DEPDIR/app/mod.lock"; then
+    pass "mod.lock written with resolved dependency"
+else
+    fail "mod.lock written with resolved dependency"
+fi
+rm -rf "$DEPDIR"
+
+# --------------------------------------------
 # Test 14: Built-in modules work
 # --------------------------------------------
 info "Test 14: Built-in modules"

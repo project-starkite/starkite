@@ -86,6 +86,38 @@ kite module install ./my-module --as acme/tools # local directory, custom identi
 
 Run an installed module directly with `kite run @acme/slack`. See [`kite module`](../references/cli/module.md) for `list`, `update`, `remove`, and `info`.
 
+## Declaring dependencies
+
+A module declares the modules it loads in its `mod.yaml` `dependencies` map, keyed by each dependency's `namespace/name` identity and valued by its source (a git reference or a local path, optionally `source@version`):
+
+```yaml
+# app/mod.yaml
+namespace: acme
+name: app
+version: 0.1.0
+dependencies:
+  acme/slack: gitlab.com/acme/slack@v1.2.0
+  acme/leaf: ../leaf            # a local directory
+```
+
+Running the module resolves this set: each declared dependency — and, transitively, the dependencies it declares — is fetched into the global cache and recorded in a generated `mod.lock` beside `mod.yaml`. The lockfile pins every resolved module to a source, an immutable revision, and a content hash:
+
+```yaml
+# app/mod.lock (generated; commit it)
+version: 1
+modules:
+  acme/slack:
+    source: gitlab.com/acme/slack@v1.2.0
+    rev: 9f3c1ab
+    hash: sha256:...
+  acme/leaf:
+    source: ../leaf
+    rev: 5a7c2ff8977db0d3
+    hash: sha256:...
+```
+
+`mod.lock` is committed and reviewable: a changed dependency produces a diff. On later runs, resolution is cache-first and incremental — a locked dependency whose cached tree still verifies is reused without re-fetching, and a hash mismatch is an error. The cache is version-addressed (`<namespace>/<name>@<rev>/`) and write-once, so projects pinning different revisions coexist.
+
 ## Module permissions
 
 A loaded module runs under the same runtime permission as the entry script — it declares no capabilities of its own, and importing it grants no authority. A dependency that needs more than the run was granted fails at the gated call, naming the module; the run is then restarted at a higher profile. See [Permission](security/permission.md#loaded-modules).

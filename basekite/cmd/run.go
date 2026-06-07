@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/libkite"
@@ -67,6 +68,18 @@ func runScript(cmd *cobra.Command, args []string) error {
 		return &libkite.ScriptError{
 			Message:  err.Error(),
 			ExitCode: libkite.ExitFileError,
+		}
+	}
+
+	// Resolve the module's declared dependency closure into the cache (and write
+	// mod.lock for an owned module) before execution, so load() of a declared
+	// dependency resolves.
+	if isModule {
+		if err := resolveModuleDeps(filepath.Dir(scriptPath)); err != nil {
+			return &libkite.ScriptError{
+				Message:  fmt.Sprintf("failed to resolve dependencies: %v", err),
+				ExitCode: libkite.ExitFileError,
+			}
 		}
 	}
 

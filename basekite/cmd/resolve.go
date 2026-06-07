@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/project-starkite/starkite/basekite/manager"
+	"github.com/project-starkite/starkite/basekite/resolver"
 	"github.com/project-starkite/starkite/libkite"
 )
 
@@ -52,4 +53,39 @@ func resolveRunTarget(arg string) (entryPath string, isModule bool, err error) {
 
 	// Loose script file.
 	return arg, false, nil
+}
+
+// resolveModuleDeps resolves the dependency closure of a module directory before
+// it runs, fetching any declared dependencies into the global cache. A working
+// directory the user owns has its mod.lock written (Sync); an immutable cache
+// module (an installed @namespace/name) is resolved read-only (EnsureClosure).
+func resolveModuleDeps(moduleDir string) error {
+	mgr, err := manager.New("")
+	if err != nil {
+		return err
+	}
+	r := resolver.New(mgr)
+	if withinDir(mgr.ModulesDir(), moduleDir) {
+		_, err = r.EnsureClosure(moduleDir)
+		return err
+	}
+	_, err = r.Sync(moduleDir)
+	return err
+}
+
+// withinDir reports whether path is root or lies inside it.
+func withinDir(root, path string) bool {
+	absRoot, err := filepath.Abs(root)
+	if err != nil {
+		return false
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return false
+	}
+	rel, err := filepath.Rel(absRoot, absPath)
+	if err != nil {
+		return false
+	}
+	return rel == "." || !strings.HasPrefix(rel, "..")
 }
