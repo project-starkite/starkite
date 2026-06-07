@@ -60,12 +60,12 @@ func init() {
 }
 
 func runScript(cmd *cobra.Command, args []string) error {
-	scriptPath := args[0]
-
-	// Check if file exists
-	if _, err := os.Stat(scriptPath); os.IsNotExist(err) {
+	// Resolve the run target: a script file, a directory module, or an
+	// installed @namespace/name. Module runs require a main() entry point.
+	scriptPath, isModule, err := resolveRunTarget(args[0])
+	if err != nil {
 		return &libkite.ScriptError{
-			Message:  fmt.Sprintf("script file not found: %s", scriptPath),
+			Message:  err.Error(),
 			ExitCode: libkite.ExitFileError,
 		}
 	}
@@ -77,7 +77,7 @@ func runScript(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	// Read script content
+	// Read the resolved entry file.
 	content, err := os.ReadFile(scriptPath)
 	if err != nil {
 		return &libkite.ScriptError{
@@ -140,14 +140,15 @@ func runScript(cmd *cobra.Command, args []string) error {
 
 	// Create runtime configuration
 	cfg := &libkite.Config{
-		ScriptPath:   scriptPath,
-		OutputFormat: outputFormat,
-		Debug:        debugMode,
-		DryRun:       dryRun,
-		VarStore:     varStore,
-		Permissions:  perms,
-		Registry:     registry,
-		EntryPoint:   "main",
+		ScriptPath:        scriptPath,
+		OutputFormat:      outputFormat,
+		Debug:             debugMode,
+		DryRun:            dryRun,
+		VarStore:          varStore,
+		Permissions:       perms,
+		Registry:          registry,
+		EntryPoint:        "main",
+		RequireEntryPoint: isModule,
 	}
 
 	// Create and run the runtime

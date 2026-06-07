@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -205,15 +206,13 @@ func Execute() int {
 		}
 	}
 
-	// Handle shebang: if first arg looks like a script, insert "run" command
+	// Implicit run: if the first arg is a run target (a .star file, an existing
+	// file, a module directory, or an @namespace/name reference) rather than a
+	// flag or subcommand, insert "run".
 	if len(os.Args) > 1 {
 		firstArg := os.Args[1]
-		// Check if it's not a flag and looks like a script file
-		if !strings.HasPrefix(firstArg, "-") {
-			if strings.HasSuffix(firstArg, ".star") || isScriptFile(firstArg) {
-				// Insert "run" as the command
-				os.Args = append([]string{os.Args[0], "run"}, os.Args[1:]...)
-			}
+		if !strings.HasPrefix(firstArg, "-") && looksLikeRunTarget(firstArg) {
+			os.Args = append([]string{os.Args[0], "run"}, os.Args[1:]...)
 		}
 	}
 
@@ -231,13 +230,23 @@ func Execute() int {
 	return 0
 }
 
-// isScriptFile checks if the path is an existing file (for shebang support)
-func isScriptFile(path string) bool {
-	info, err := os.Stat(path)
+// looksLikeRunTarget reports whether arg is something `kite run` can execute —
+// a .star file, an existing file, a module directory (contains a manifest), or
+// an @namespace/name reference — so it can be run without an explicit "run".
+func looksLikeRunTarget(arg string) bool {
+	if strings.HasPrefix(arg, "@") || strings.HasSuffix(arg, ".star") {
+		return true
+	}
+	info, err := os.Stat(arg)
 	if err != nil {
 		return false
 	}
-	return !info.IsDir()
+	if !info.IsDir() {
+		return true
+	}
+	// A directory is a run target only when it is a module.
+	_, err = os.Stat(filepath.Join(arg, libkite.ManifestFile))
+	return err == nil
 }
 
 // exitCodeFromError extracts an exit code from an error

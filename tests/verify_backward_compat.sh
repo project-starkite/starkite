@@ -113,8 +113,8 @@ rm -f "$TMPFILE"
 # --------------------------------------------
 info "Test 5: kite test (test runner)"
 
-TMPDIR=$(mktemp -d /tmp/kite_test_XXXXXX)
-cat > "$TMPDIR/sample_test.star" << 'EOF'
+TMPD=$(mktemp -d /tmp/kite_test_XXXXXX)
+cat > "$TMPD/sample_test.star" << 'EOF'
 def test_addition():
     assert(1 + 1 == 2, "math works")
 
@@ -122,41 +122,41 @@ def test_strings():
     assert("hello".upper() == "HELLO", "string methods work")
 EOF
 
-if $KITE test "$TMPDIR" 2>&1 | grep -q "passed"; then
+if $KITE test "$TMPD" 2>&1 | grep -q "passed"; then
     pass "Test runner"
 else
     fail "Test runner"
 fi
-rm -rf "$TMPDIR"
+rm -rf "$TMPD"
 
 # --------------------------------------------
 # Test 6: External module loading
 # --------------------------------------------
 info "Test 6: External module loading via load()"
 
-TMPDIR=$(mktemp -d /tmp/kite_test_XXXXXX)
-mkdir -p "$TMPDIR/modules"
+TMPD=$(mktemp -d /tmp/kite_test_XXXXXX)
+mkdir -p "$TMPD/modules"
 
 # Create a simple module
-cat > "$TMPDIR/modules/mylib.star" << 'EOF'
+cat > "$TMPD/modules/mylib.star" << 'EOF'
 def greet(name):
     return "Hello, " + name + "!"
 EOF
 
 # Create script that uses the module
-cat > "$TMPDIR/main.star" << 'EOF'
+cat > "$TMPD/main.star" << 'EOF'
 load("./modules/mylib.star", "mylib")
 result = mylib.greet("World")
 print(result)
 assert(result == "Hello, World!", "module should work")
 EOF
 
-if $KITE run "$TMPDIR/main.star" 2>&1 | grep -q "Hello, World"; then
+if $KITE run "$TMPD/main.star" 2>&1 | grep -q "Hello, World"; then
     pass "External module loading"
 else
     fail "External module loading"
 fi
-rm -rf "$TMPDIR"
+rm -rf "$TMPD"
 
 # --------------------------------------------
 # Test 7: Factory modules (http.config, ssh.config)
@@ -295,6 +295,42 @@ else
     fail "loaded module call succeeds under allow-all"
 fi
 rm -rf "$MODDIR"
+
+# --------------------------------------------
+# Test 13f: kite run forms — directory module, library error, @namespace/name
+# --------------------------------------------
+info "Test 13f: kite run directory module / library / @namespace"
+
+RUNDIR=$(mktemp -d /tmp/kite_test_XXXXXX)
+mkdir -p "$RUNDIR/execmod" "$RUNDIR/libmod"
+printf 'namespace: t\nname: execmod\n' > "$RUNDIR/execmod/mod.yaml"
+printf 'def main():\n    print("ran execmod")\n' > "$RUNDIR/execmod/main.star"
+printf 'namespace: t\nname: libmod\n' > "$RUNDIR/libmod/mod.yaml"
+printf 'def helper():\n    return 1\n' > "$RUNDIR/libmod/main.star"
+
+# Directory module with main() runs.
+if $KITE run "$RUNDIR/execmod" --allow-all 2>&1 | grep -q "ran execmod"; then
+    pass "kite run ./dir (executable module)"
+else
+    fail "kite run ./dir (executable module)"
+fi
+
+# Directory module without main() is a library — not runnable.
+if $KITE run "$RUNDIR/libmod" --allow-all 2>&1 | grep -q "library"; then
+    pass "kite run ./dir (library) errors"
+else
+    fail "kite run ./dir (library) errors"
+fi
+
+# Install as a namespaced module and run via @namespace/name.
+$KITE module install "$RUNDIR/execmod" --as t/execmod --force >/dev/null 2>&1 || true
+if $KITE run @t/execmod --allow-all 2>&1 | grep -q "ran execmod"; then
+    pass "kite run @namespace/name"
+else
+    fail "kite run @namespace/name"
+fi
+$KITE module remove t/execmod >/dev/null 2>&1 || true
+rm -rf "$RUNDIR"
 
 # --------------------------------------------
 # Test 14: Built-in modules work

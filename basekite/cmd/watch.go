@@ -37,17 +37,14 @@ func init() {
 }
 
 func watchScript(cmd *cobra.Command, args []string) error {
-	scriptPath := args[0]
-
-	// Resolve absolute path
-	absPath, err := filepath.Abs(scriptPath)
+	// Resolve the run target (file, directory module, or @namespace/name).
+	entry, isModule, err := resolveRunTarget(args[0])
+	if err != nil {
+		return err
+	}
+	absPath, err := filepath.Abs(entry)
 	if err != nil {
 		return fmt.Errorf("failed to resolve path: %w", err)
-	}
-
-	// Check if file exists
-	if _, err := os.Stat(absPath); os.IsNotExist(err) {
-		return fmt.Errorf("script file not found: %s", absPath)
 	}
 
 	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
@@ -72,12 +69,12 @@ func watchScript(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	fmt.Printf("Watching %s for changes...\n", scriptPath)
+	fmt.Printf("Watching %s for changes...\n", absPath)
 	fmt.Println("Press Ctrl+C to stop")
 	fmt.Println()
 
 	// Run script initially
-	runWatchedScript(absPath, perms)
+	runWatchedScript(absPath, perms, isModule)
 
 	// Debounce timer
 	var debounceTimer *time.Timer
@@ -106,7 +103,7 @@ func watchScript(cmd *cobra.Command, args []string) error {
 			}
 			debounceTimer = time.AfterFunc(debounceDelay, func() {
 				fmt.Println("\n--- File changed, re-executing ---")
-				runWatchedScript(absPath, perms)
+				runWatchedScript(absPath, perms, isModule)
 			})
 
 		case err, ok := <-watcher.Errors:
@@ -118,7 +115,7 @@ func watchScript(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func runWatchedScript(scriptPath string, perms *libkite.PermissionConfig) {
+func runWatchedScript(scriptPath string, perms *libkite.PermissionConfig, isModule bool) {
 	// Read script content
 	content, err := os.ReadFile(scriptPath)
 	if err != nil {
@@ -143,14 +140,15 @@ func runWatchedScript(scriptPath string, perms *libkite.PermissionConfig) {
 
 	// Create runtime configuration
 	cfg := &libkite.Config{
-		ScriptPath:   scriptPath,
-		OutputFormat: outputFormat,
-		Debug:        debugMode,
-		DryRun:       dryRun,
-		VarStore:     varStore,
-		Permissions:  perms,
-		Registry:     registry,
-		EntryPoint:   "main",
+		ScriptPath:        scriptPath,
+		OutputFormat:      outputFormat,
+		Debug:             debugMode,
+		DryRun:            dryRun,
+		VarStore:          varStore,
+		Permissions:       perms,
+		Registry:          registry,
+		EntryPoint:        "main",
+		RequireEntryPoint: isModule,
 	}
 
 	// Create and run the runtime

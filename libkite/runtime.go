@@ -262,6 +262,14 @@ func (rt *Runtime) Execute(ctx context.Context, code string) error {
 	}
 	callsEntry := rt.config.EntryPoint != "" && topLevelCallsFunc(file, rt.config.EntryPoint)
 
+	// A module run requires an entry point; a library (no main) is not runnable.
+	if rt.config.RequireEntryPoint && rt.config.EntryPoint != "" && !topLevelDefinesFunc(file, rt.config.EntryPoint) {
+		return &ScriptError{
+			Message:  fmt.Sprintf("%s is a library (defines no %s()) and cannot be run directly", scriptPath, rt.config.EntryPoint),
+			ExitCode: ExitScriptError,
+		}
+	}
+
 	stop := watchCtx(ctx, rt.thread)
 	defer stop()
 
@@ -324,6 +332,16 @@ func topLevelCallsFunc(file *syntax.File, name string) bool {
 			continue
 		}
 		if ident, ok := call.Fn.(*syntax.Ident); ok && ident.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// topLevelDefinesFunc reports whether the file defines a top-level `def name`.
+func topLevelDefinesFunc(file *syntax.File, name string) bool {
+	for _, stmt := range file.Stmts {
+		if def, ok := stmt.(*syntax.DefStmt); ok && def.Name.Name == name {
 			return true
 		}
 	}

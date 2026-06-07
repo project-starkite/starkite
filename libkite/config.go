@@ -60,6 +60,12 @@ type Config struct {
 	// invocation. The CLI sets this to "main".
 	EntryPoint string
 
+	// RequireEntryPoint makes a missing EntryPoint a hard error: the file must
+	// define EntryPoint, otherwise it is a library and not directly runnable.
+	// The CLI sets this for module runs (a directory or @namespace/name), not
+	// for loose script files.
+	RequireEntryPoint bool
+
 	// Logger receives runtime session diagnostics, such as a skipped automatic
 	// entry-point invocation. If nil, a text logger to stderr is used.
 	Logger *slog.Logger

@@ -75,6 +75,17 @@ def main():
     slack.post("#deploys", "shipped")
 ```
 
+## Installing modules
+
+`kite module install` fetches a module from a git host or a local directory into the global cache (`~/.starkite/modules/`), where it loads by its `namespace/name`:
+
+```bash
+kite module install gitlab.com/acme/slack       # → load("acme/slack", "slack")
+kite module install ./my-module --as acme/tools # local directory, custom identity
+```
+
+Run an installed module directly with `kite run @acme/slack`. See [`kite module`](../references/cli/module.md) for `list`, `update`, `remove`, and `info`.
+
 ## Module permissions
 
 A loaded module runs under the same runtime permission as the entry script — it declares no capabilities of its own, and importing it grants no authority. A dependency that needs more than the run was granted fails at the gated call, naming the module; the run is then restarted at a higher profile. See [Permission](security/permission.md#loaded-modules).
