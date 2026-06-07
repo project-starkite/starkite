@@ -148,14 +148,18 @@ func (rt *Runtime) resolveModulePathFrom(module, callerPath string) (string, err
 		}
 	}
 
-	return resolveInstalledModule(module)
+	return rt.resolveInstalledModule(module)
 }
 
 // resolveInstalledModule resolves "namespace/name" to its directory in the
-// version-addressed global cache (~/.starkite/modules/<ns>/<name>@<rev>). With
-// exactly one installed revision it resolves to that; multiple revisions
-// require a mod.lock to disambiguate (a later step), and none is "not installed".
-func resolveInstalledModule(module string) (string, error) {
+// version-addressed global cache (~/.starkite/modules/<ns>/<name>@<rev>).
+//
+// When the run's mod.lock pins this identity, resolution is lock-driven: it
+// returns the locked revision exactly, ignoring any other cached revisions —
+// this is what makes a locked build reproducible. Without a lock entry it falls
+// back to the single installed revision; multiple revisions are ambiguous and
+// require a mod.lock to disambiguate, and none is "not installed".
+func (rt *Runtime) resolveInstalledModule(module string) (string, error) {
 	ns, name, ok := strings.Cut(module, "/")
 	if !ok {
 		return "", fmt.Errorf("module %q not found", module)
@@ -165,6 +169,17 @@ func resolveInstalledModule(module string) (string, error) {
 		return "", err
 	}
 	nsDir := filepath.Join(home, ".starkite", "modules", ns)
+
+	if lock := rt.activeLock(); lock != nil {
+		if locked, ok := lock.Modules[module]; ok && locked.Rev != "" {
+			dir := filepath.Join(nsDir, name+"@"+locked.Rev)
+			if isModuleDir(dir) {
+				return dir, nil
+			}
+			return "", fmt.Errorf("module %q is locked to revision %s, which is not installed; resolve dependencies (kite run on the owning module) or reinstall it", module, locked.Rev)
+		}
+	}
+
 	entries, err := os.ReadDir(nsDir)
 	if err != nil {
 		return "", fmt.Errorf("module %q not installed", module)

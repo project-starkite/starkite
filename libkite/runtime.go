@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -47,8 +48,28 @@ type Runtime struct {
 	// Module cache for external modules
 	moduleCache *ModuleCache
 
+	// lock is the mod.lock governing this run, loaded lazily from the entry's
+	// directory. When present it pins installed dependency revisions for
+	// reproducible resolution.
+	lock     *Lock
+	lockOnce sync.Once
+
 	// logger receives runtime session diagnostics.
 	logger *slog.Logger
+}
+
+// activeLock returns the mod.lock for this run, loaded once from the directory of
+// the entry script. Returns nil when there is no entry path or no lockfile.
+func (rt *Runtime) activeLock() *Lock {
+	rt.lockOnce.Do(func() {
+		if rt.config == nil || rt.config.ScriptPath == "" {
+			return
+		}
+		if l, err := LoadLock(filepath.Dir(rt.config.ScriptPath)); err == nil {
+			rt.lock = l
+		}
+	})
+	return rt.lock
 }
 
 // New creates a Runtime with the given config.

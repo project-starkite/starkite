@@ -113,6 +113,7 @@ nav:
           - module: references/cli/module.md
           - update: references/cli/update.md
           - kube: references/cli/kube.md
+      - Module manifest (mod.yaml): references/manifest.md
       - Embedding: references/embedding.md
       - API:
           - Overview: references/api/index.md

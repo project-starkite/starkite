@@ -591,6 +591,33 @@ fi
 rm -rf "$GHOME" "$GREPO" "$BADSRC"
 
 # --------------------------------------------
+# Test 13m: mod.lock pins a dependency revision (reproducibility)
+# A run stays on the locked revision even when a newer one is cached.
+# --------------------------------------------
+info "Test 13m: mod.lock pins the dependency revision"
+
+LHOME=$(mktemp -d /tmp/kite_test_XXXXXX)
+LWORK=$(mktemp -d /tmp/kite_test_XXXXXX)
+LK(){ HOME="$LHOME" $KITE "$@"; }
+mkdir -p "$LWORK/leaf" "$LWORK/app"
+printf 'namespace: acme\nname: leaf\nversion: 0.1.0\n' > "$LWORK/leaf/mod.yaml"
+printf 'def greet():\n    return "v1"\n' > "$LWORK/leaf/main.star"
+printf 'namespace: acme\nname: app\nversion: 0.1.0\ndependencies:\n  acme/leaf: %s\n' "$LWORK/leaf" > "$LWORK/app/mod.yaml"
+printf 'load("acme/leaf", "leaf")\n\ndef main():\n    print(leaf.greet())\n' > "$LWORK/app/main.star"
+
+LK run --permissions=allow-all "$LWORK/app" >/dev/null 2>&1   # first run writes mod.lock pinning v1
+# Publish a newer leaf revision into the cache.
+printf 'def greet():\n    return "v2-NEWER"\n' > "$LWORK/leaf/main.star"
+LK module install "$LWORK/leaf" --as acme/leaf >/dev/null 2>&1
+OUT=$(LK run --permissions=allow-all "$LWORK/app" 2>&1)
+if [ "$OUT" = "v1" ]; then
+    pass "load() honors mod.lock (stays on pinned rev despite newer cached rev)"
+else
+    fail "load() honors mod.lock (got '$OUT', want v1)"
+fi
+rm -rf "$LHOME" "$LWORK"
+
+# --------------------------------------------
 # Test 14: Built-in modules work
 # --------------------------------------------
 info "Test 14: Built-in modules"

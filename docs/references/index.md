@@ -26,4 +26,12 @@ Canonical lookup catalog. For background and onboarding, see [Getting started](.
 
     [:octicons-arrow-right-24: Browse API](api/index.md)
 
+-   :material-file-document-outline:{ .lg .middle } __Module manifest__
+
+    ---
+
+    The `mod.yaml` schema — identity fields and declared dependencies.
+
+    [:octicons-arrow-right-24: mod.yaml reference](manifest.md)
+
 </div>
