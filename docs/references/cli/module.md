@@ -14,9 +14,10 @@ Installed modules live under `~/.starkite/modules/` and are discovered automatic
 |------------|---------|
 | `kite module install <source>` | Install from a git repo or local path |
 | `kite module list` | List installed modules |
-| `kite module update <name>` | Pull the latest version of an installed starlark module |
+| `kite module update <name>` | Fetch the latest revision of an installed module into the cache |
 | `kite module remove <name>` | Delete an installed module. Aliases: `rm`, `uninstall` |
 | `kite module info <name>` | Show detailed info about an installed module |
+| `kite module verify [name]` | Re-hash installed modules and check them against their recorded hash |
 
 ## `kite module install <source>`
 
@@ -73,7 +74,9 @@ kite module list
 
 ## `kite module update <name>`
 
-Updates an installed module by pulling the latest from its git repository.
+Fetches the latest revision of an installed module from its recorded source and
+adds it to the cache. Cached revisions are immutable, so an update installs a new
+revision alongside any existing one.
 
 ```bash
 kite module update helm
@@ -101,6 +104,24 @@ kite module info helm
 # Repository:  github.com/user/kite-helm
 # Description: Helm chart operations for starkite
 ```
+
+## `kite module verify [name]`
+
+Re-hashes installed modules and compares each against the content hash recorded
+at install, detecting on-disk tampering or corruption. With no argument every
+installed module is checked; with a `namespace/name` only that module. Exits
+non-zero if any module fails.
+
+```bash
+kite module verify              # check every installed module
+kite module verify acme/helm    # check one module
+# ok    acme/helm
+# FAIL  acme/tools  content hash mismatch for ...: locked sha256:…, on disk sha256:…
+```
+
+This is the full-content check. At run time, `kite run` verifies a locked
+dependency the fast way — a stat-only fingerprint comparison — and falls back to
+a full re-hash only when the fingerprint no longer matches.
 
 ## Related
 

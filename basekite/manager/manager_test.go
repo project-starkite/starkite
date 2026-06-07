@@ -262,6 +262,50 @@ func TestManagerRemove(t *testing.T) {
 	})
 }
 
+func TestManagerVerify(t *testing.T) {
+	cacheRoot := filepath.Join(t.TempDir(), "cache")
+	mgr, err := New(cacheRoot)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	src := filepath.Join(t.TempDir(), "src")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatalf("mkdir src: %v", err)
+	}
+	os.WriteFile(filepath.Join(src, "mod.yaml"), []byte("namespace: acme\nname: tool\nversion: 0.1.0\n"), 0o644)
+	os.WriteFile(filepath.Join(src, "main.star"), []byte("def main():\n    pass\n"), 0o644)
+
+	info, err := mgr.Install(src, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	t.Run("intact module verifies", func(t *testing.T) {
+		results, err := mgr.Verify("acme/tool")
+		if err != nil {
+			t.Fatalf("Verify: %v", err)
+		}
+		if len(results) != 1 || !results[0].OK {
+			t.Fatalf("expected one passing result, got %+v", results)
+		}
+	})
+
+	t.Run("tampered module fails", func(t *testing.T) {
+		// Modify a tracked file after install; the recorded hash no longer matches.
+		if err := os.WriteFile(filepath.Join(info.Path, "main.star"), []byte("def main():\n    print('tampered')\n"), 0o644); err != nil {
+			t.Fatalf("tamper: %v", err)
+		}
+		results, err := mgr.Verify("acme/tool")
+		if err != nil {
+			t.Fatalf("Verify: %v", err)
+		}
+		if len(results) != 1 || results[0].OK {
+			t.Fatalf("expected failure for tampered module, got %+v", results)
+		}
+	})
+}
+
 func TestValidateModule(t *testing.T) {
 	tmpDir := t.TempDir()
 	mgr, _ := New(tmpDir)

@@ -140,6 +140,18 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		}
 	}
 
+	// Compute the portable content hash and a machine-local stat fingerprint of
+	// the installed tree for later verification. Both exclude the receipt itself,
+	// so they are stable once written.
+	hash, err := libkite.HashModuleTree(destPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to hash installed module: %w", err)
+	}
+	fingerprint, err := libkite.FingerprintTree(destPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fingerprint installed module: %w", err)
+	}
+
 	// Record an install receipt — never overwrite the author's mod.yaml.
 	prov := &Provenance{
 		Namespace:     namespace,
@@ -147,6 +159,8 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		Source:        repo,
 		Version:       version,
 		Rev:           rev,
+		Hash:          hash,
+		Fingerprint:   fingerprint,
 		InstalledFrom: source,
 	}
 	if err := WriteProvenance(destPath, prov); err != nil {
@@ -157,6 +171,7 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		Namespace:   namespace,
 		Name:        name,
 		Rev:         rev,
+		Hash:        hash,
 		Type:        "starlark",
 		Path:        destPath,
 		Repository:  repo,
@@ -242,7 +257,9 @@ type ModuleInfo struct {
 	Name      string
 	// Rev is the immutable revision the cache directory is keyed by: the commit
 	// SHA for a git source, or the content hash for a local source.
-	Rev         string
+	Rev string
+	// Hash is the portable content hash of the installed tree ("sha256:...").
+	Hash        string
 	Type        string // "starlark"
 	Path        string
 	Repository  string
@@ -307,6 +324,7 @@ func (m *Manager) starlarkInfo(namespace, dirName, modulePath string) *ModuleInf
 	}
 	if prov, err := ReadProvenance(modulePath); err == nil && prov != nil {
 		info.Repository = prov.Source
+		info.Hash = prov.Hash
 		if info.Version == "" {
 			info.Version = prov.Version
 		}
@@ -413,6 +431,59 @@ func (m *Manager) Remove(ref string) error {
 	// Prune the namespace directory if now empty.
 	pruneEmptyDir(filepath.Join(m.rootDir, ns))
 	return nil
+}
+
+// VerifyResult reports the integrity check for one installed module.
+type VerifyResult struct {
+	Identity string
+	Path     string
+	OK       bool
+	Reason   string // populated when OK is false
+}
+
+// Verify re-hashes installed modules and compares against the content hash
+// recorded at install, detecting on-disk tampering or corruption. With an empty
+// ref it checks every installed module; otherwise it checks the single
+// "namespace/name". This is the full-content check; the run-time fast path uses
+// the stat fingerprint instead.
+func (m *Manager) Verify(ref string) ([]VerifyResult, error) {
+	var targets []*ModuleInfo
+	if ref == "" {
+		all, err := m.List()
+		if err != nil {
+			return nil, err
+		}
+		targets = all
+	} else {
+		info, err := m.Get(ref)
+		if err != nil {
+			return nil, err
+		}
+		targets = []*ModuleInfo{info}
+	}
+
+	results := make([]VerifyResult, 0, len(targets))
+	for _, info := range targets {
+		identity := info.Name
+		if info.Namespace != "" {
+			identity = info.Namespace + "/" + info.Name
+		}
+		res := VerifyResult{Identity: identity, Path: info.Path, OK: true}
+
+		prov, err := ReadProvenance(info.Path)
+		switch {
+		case err != nil:
+			res.OK, res.Reason = false, fmt.Sprintf("cannot read receipt: %v", err)
+		case prov == nil || prov.Hash == "":
+			res.OK, res.Reason = false, "no recorded hash; reinstall to record one"
+		default:
+			if vErr := libkite.VerifyTree(info.Path, prov.Hash); vErr != nil {
+				res.OK, res.Reason = false, vErr.Error()
+			}
+		}
+		results = append(results, res)
+	}
+	return results, nil
 }
 
 // pruneEmptyDir removes dir if it contains no entries.

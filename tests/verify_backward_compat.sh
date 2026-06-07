@@ -358,6 +358,36 @@ fi
 rm -rf "$DEPDIR"
 
 # --------------------------------------------
+# Test 13h: kite module verify detects intact vs tampered modules
+# --------------------------------------------
+info "Test 13h: kite module verify"
+
+VERDIR=$(mktemp -d /tmp/kite_test_XXXXXX)
+mkdir -p "$VERDIR/src"
+printf 'namespace: ver\nname: tool\nversion: 0.1.0\n' > "$VERDIR/src/mod.yaml"
+printf 'def main():\n    pass\n' > "$VERDIR/src/main.star"
+$KITE module install "$VERDIR/src" --as ver/tool --force >/dev/null 2>&1 || true
+
+if $KITE module verify ver/tool 2>&1 | grep -q "ok"; then
+    pass "verify passes for an intact module"
+else
+    fail "verify passes for an intact module"
+fi
+
+# Tamper with the installed copy and confirm verify fails (non-zero exit).
+INSTALLED=$($KITE module info ver/tool 2>/dev/null | awk '/^Path:/ {print $2}')
+if [ -n "$INSTALLED" ]; then
+    printf 'def main():\n    print("tampered")\n' > "$INSTALLED/main.star"
+fi
+if $KITE module verify ver/tool >/dev/null 2>&1; then
+    fail "verify fails for a tampered module"
+else
+    pass "verify fails for a tampered module"
+fi
+$KITE module remove ver/tool >/dev/null 2>&1 || true
+rm -rf "$VERDIR"
+
+# --------------------------------------------
 # Test 14: Built-in modules work
 # --------------------------------------------
 info "Test 14: Built-in modules"

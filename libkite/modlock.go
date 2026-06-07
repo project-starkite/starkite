@@ -81,6 +81,47 @@ func HashModuleTree(dir string) (string, error) {
 	return "sha256:" + hex.EncodeToString(sum[:]), nil
 }
 
+// FingerprintTree returns a machine-local fingerprint of dir computed from file
+// metadata only — relative path, size, and modification time — without reading
+// any file contents. It is a fast change-detector: an unchanged tree yields the
+// same fingerprint, so a match lets a caller skip a full content re-hash. It is
+// not portable across machines (mtimes differ) and is never recorded in
+// mod.lock. The same VCS/lock/receipt entries excluded from the content hash are
+// excluded here.
+func FingerprintTree(dir string) (string, error) {
+	var lines []string
+	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if excludedFromHash[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if excludedFromHash[d.Name()] {
+			return nil
+		}
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		info, err := d.Info()
+		if err != nil {
+			return err
+		}
+		lines = append(lines, fmt.Sprintf("%s %d %d", filepath.ToSlash(rel), info.Size(), info.ModTime().UnixNano()))
+		return nil
+	})
+	if err != nil {
+		return "", err
+	}
+	sort.Strings(lines)
+	sum := sha256.Sum256([]byte(strings.Join(lines, "\n")))
+	return "fp1:" + hex.EncodeToString(sum[:]), nil
+}
+
 func hashFile(path string) (string, error) {
 	f, err := os.Open(path)
 	if err != nil {

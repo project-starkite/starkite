@@ -29,6 +29,14 @@ type Provenance struct {
 	// Rev is the immutable revision the cache directory is keyed by: the commit
 	// SHA for a git source, or the content hash for a local source.
 	Rev string
+	// Hash is the portable content hash of the installed tree ("sha256:..."),
+	// the same value recorded in mod.lock.
+	Hash string
+	// Fingerprint is a machine-local, stat-only fingerprint of the installed tree
+	// ("fp1:..."). A later run that finds a matching fingerprint can trust Hash
+	// without re-reading every file. It is not portable and is never written to
+	// mod.lock.
+	Fingerprint string
 	// InstalledFrom is the original source string the user supplied.
 	InstalledFrom string
 }

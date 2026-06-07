@@ -102,7 +102,7 @@ func (r *Resolver) resolveOne(identity, source string, existing *libkite.Lock) (
 	if existing != nil {
 		if prev, ok := existing.Modules[identity]; ok && prev.Source == source {
 			dir := r.cacheDir(identity, prev.Rev)
-			if isDir(dir) && libkite.VerifyTree(dir, prev.Hash) == nil {
+			if isDir(dir) && verifyCached(dir, prev.Hash) == nil {
 				return prev, dir, nil
 			}
 		}
@@ -115,11 +115,27 @@ func (r *Resolver) resolveOne(identity, source string, existing *libkite.Lock) (
 	if got := info.Namespace + "/" + info.Name; got != identity {
 		return libkite.LockedModule{}, "", fmt.Errorf("declared as %q but resolves to %q", identity, got)
 	}
-	hash, err := libkite.HashModuleTree(info.Path)
-	if err != nil {
-		return libkite.LockedModule{}, "", err
+	hash := info.Hash
+	if hash == "" {
+		if hash, err = libkite.HashModuleTree(info.Path); err != nil {
+			return libkite.LockedModule{}, "", err
+		}
 	}
 	return libkite.LockedModule{Source: source, Rev: info.Rev, Hash: hash}, info.Path, nil
+}
+
+// verifyCached confirms that the cached tree at dir matches wantHash. It takes a
+// fast stat-only path when the install receipt's fingerprint still matches the
+// tree (the tree is unchanged, so the receipt's recorded hash is trusted),
+// falling back to a full content re-hash otherwise.
+func verifyCached(dir, wantHash string) error {
+	if prov, err := manager.ReadProvenance(dir); err == nil && prov != nil &&
+		prov.Hash == wantHash && prov.Fingerprint != "" {
+		if fp, err := libkite.FingerprintTree(dir); err == nil && fp == prov.Fingerprint {
+			return nil
+		}
+	}
+	return libkite.VerifyTree(dir, wantHash)
 }
 
 // cacheDir returns the version-addressed cache path for an identity at a revision.

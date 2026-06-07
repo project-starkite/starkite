@@ -121,6 +121,34 @@ func TestResolveIdentityMismatch(t *testing.T) {
 	}
 }
 
+func TestVerifyCached(t *testing.T) {
+	root := t.TempDir()
+	src := filepath.Join(root, "src")
+	writeModuleSource(t, src, "acme", "leaf", nil)
+
+	cacheRoot := filepath.Join(t.TempDir(), "cache")
+	mgr, err := manager.New(cacheRoot)
+	if err != nil {
+		t.Fatalf("manager.New: %v", err)
+	}
+	info, err := mgr.Install(src, manager.InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	if err := verifyCached(info.Path, info.Hash); err != nil {
+		t.Fatalf("intact cached tree should verify: %v", err)
+	}
+
+	// Tamper with a tracked file; verification must fail.
+	if err := os.WriteFile(filepath.Join(info.Path, "main.star"), []byte("def main():\n    print('x')\n"), 0o644); err != nil {
+		t.Fatalf("tamper: %v", err)
+	}
+	if err := verifyCached(info.Path, info.Hash); err == nil {
+		t.Fatal("tampered cached tree should fail verification")
+	}
+}
+
 func keys(m map[string]libkite.LockedModule) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {

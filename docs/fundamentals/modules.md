@@ -84,7 +84,7 @@ kite module install gitlab.com/acme/slack       # → load("acme/slack", "slack"
 kite module install ./my-module --as acme/tools # local directory, custom identity
 ```
 
-Run an installed module directly with `kite run @acme/slack`. See [`kite module`](../references/cli/module.md) for `list`, `update`, `remove`, and `info`.
+Run an installed module directly with `kite run @acme/slack`. See [`kite module`](../references/cli/module.md) for `list`, `update`, `remove`, `info`, and `verify`.
 
 ## Declaring dependencies
 

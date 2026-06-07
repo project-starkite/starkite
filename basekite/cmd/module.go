@@ -115,6 +115,19 @@ Displays the module's name, version, repository, and entry point.
 	RunE: runModuleInfo,
 }
 
+var moduleVerifyCmd = &cobra.Command{
+	Use:   "verify [name]",
+	Short: "Verify installed modules against their recorded hash",
+	Long: `Re-hash installed modules and compare against the content hash recorded
+at install, detecting on-disk tampering or corruption.
+
+With no argument, every installed module is checked. With a namespace/name, only
+that module is checked. Exits non-zero if any module fails.
+`,
+	Args: cobra.MaximumNArgs(1),
+	RunE: runModuleVerify,
+}
+
 // Flags
 var (
 	moduleInstallAs    string
@@ -132,6 +145,7 @@ func init() {
 	moduleCmd.AddCommand(moduleUpdateCmd)
 	moduleCmd.AddCommand(moduleRemoveCmd)
 	moduleCmd.AddCommand(moduleInfoCmd)
+	moduleCmd.AddCommand(moduleVerifyCmd)
 
 	// Add to root
 	rootCmd.AddCommand(moduleCmd)
@@ -288,6 +302,41 @@ func runModuleInfo(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Entry point: %s\n", info.EntryPoint)
 	}
 
+	return nil
+}
+
+func runModuleVerify(cmd *cobra.Command, args []string) error {
+	var ref string
+	if len(args) == 1 {
+		ref = args[0]
+	}
+
+	mgr, err := manager.New("")
+	if err != nil {
+		return fmt.Errorf("failed to initialize module manager: %w", err)
+	}
+
+	results, err := mgr.Verify(ref)
+	if err != nil {
+		return err
+	}
+	if len(results) == 0 {
+		fmt.Println("No modules installed.")
+		return nil
+	}
+
+	failed := 0
+	for _, r := range results {
+		if r.OK {
+			fmt.Printf("ok\t%s\n", r.Identity)
+			continue
+		}
+		failed++
+		fmt.Printf("FAIL\t%s\t%s\n", r.Identity, r.Reason)
+	}
+	if failed > 0 {
+		return fmt.Errorf("%d of %d module(s) failed verification", failed, len(results))
+	}
 	return nil
 }
 

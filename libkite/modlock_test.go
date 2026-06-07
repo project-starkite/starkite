@@ -45,6 +45,40 @@ func TestHashModuleTree(t *testing.T) {
 	}
 }
 
+func TestFingerprintTree(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "main.star"), []byte("def main(): pass\n"), 0o644)
+
+	fp1, err := FingerprintTree(dir)
+	if err != nil {
+		t.Fatalf("FingerprintTree: %v", err)
+	}
+	if !strings.HasPrefix(fp1, "fp1:") {
+		t.Errorf("fingerprint missing fp1: prefix: %q", fp1)
+	}
+
+	// Deterministic for an unchanged tree.
+	fp2, _ := FingerprintTree(dir)
+	if fp1 != fp2 {
+		t.Errorf("fingerprint not stable: %q vs %q", fp1, fp2)
+	}
+
+	// Excluded files do not affect the fingerprint.
+	os.WriteFile(filepath.Join(dir, ".mod.receipt"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(dir, LockFile), []byte("version: 1\n"), 0o644)
+	fp3, _ := FingerprintTree(dir)
+	if fp3 != fp1 {
+		t.Errorf("excluded files changed the fingerprint: %q vs %q", fp3, fp1)
+	}
+
+	// A size change is detected.
+	os.WriteFile(filepath.Join(dir, "main.star"), []byte("def main(): return 1234567890\n"), 0o644)
+	fp4, _ := FingerprintTree(dir)
+	if fp4 == fp1 {
+		t.Error("content size change did not change the fingerprint")
+	}
+}
+
 func TestVerifyTree(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "main.star"), []byte("def main(): pass\n"), 0o644)
