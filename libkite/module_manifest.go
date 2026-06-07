@@ -4,12 +4,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
 
 // ManifestFile is the required manifest at the root of every module directory.
 const ManifestFile = "mod.yaml"
+
+// SplitModuleRev splits a version-addressed cache directory name "<name>@<rev>"
+// into its module name and revision. A name with no "@" yields an empty rev.
+func SplitModuleRev(dirName string) (name, rev string) {
+	if i := strings.LastIndex(dirName, "@"); i > 0 {
+		return dirName[:i], dirName[i+1:]
+	}
+	return dirName, ""
+}
 
 // EntryFile is the fixed entry point of every module directory. Its public
 // symbols, together with those of the directory's other .star files, form the

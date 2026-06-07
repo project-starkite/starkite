@@ -107,10 +107,10 @@ func TestInferNamespaceName(t *testing.T) {
 }
 
 // writeStarlarkModule creates an installed-layout starlark module fixture at
-// <starlarkDir>/<namespace>/<name> with a mod.yaml and a main.star.
+// <modulesDir>/<namespace>/<name>@<rev> with a mod.yaml and a main.star.
 func writeStarlarkModule(t *testing.T, mgr *Manager, namespace, name string) string {
 	t.Helper()
-	dir := filepath.Join(mgr.StarlarkDir(), namespace, name)
+	dir := filepath.Join(mgr.ModulesDir(), namespace, name+"@testrev0001")
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("create module dir: %v", err)
 	}
@@ -136,10 +136,6 @@ func TestManagerNew(t *testing.T) {
 		if mgr.ModulesDir() != expected {
 			t.Errorf("ModulesDir() = %q, want %q", mgr.ModulesDir(), expected)
 		}
-		expectedStarlark := filepath.Join(expected, "starlark")
-		if mgr.StarlarkDir() != expectedStarlark {
-			t.Errorf("StarlarkDir() = %q, want %q", mgr.StarlarkDir(), expectedStarlark)
-		}
 	})
 
 	t.Run("custom directory", func(t *testing.T) {
@@ -155,11 +151,9 @@ func TestManagerNew(t *testing.T) {
 			t.Errorf("ModulesDir() = %q, want %q", mgr.ModulesDir(), customDir)
 		}
 
-		// Root and starlark directories should be created
-		for _, dir := range []string{customDir, mgr.StarlarkDir()} {
-			if _, err := os.Stat(dir); os.IsNotExist(err) {
-				t.Errorf("directory %q was not created", dir)
-			}
+		// The modules root should be created.
+		if _, err := os.Stat(mgr.ModulesDir()); os.IsNotExist(err) {
+			t.Errorf("directory %q was not created", mgr.ModulesDir())
 		}
 	})
 }

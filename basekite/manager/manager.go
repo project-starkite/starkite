@@ -11,10 +11,10 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 )
 
-// Manager handles module installation, updates, and removal.
+// Manager handles module installation, updates, and removal. Installed modules
+// live directly under the modules root as <namespace>/<name>/.
 type Manager struct {
-	rootDir     string // ~/.starkite/modules/
-	starlarkDir string // ~/.starkite/modules/starlark/
+	rootDir string // ~/.starkite/modules/
 }
 
 // New creates a new module manager.
@@ -28,29 +28,16 @@ func New(rootDir string) (*Manager, error) {
 		rootDir = filepath.Join(home, ".starkite", "modules")
 	}
 
-	starlarkDir := filepath.Join(rootDir, "starlark")
-
-	// Ensure all directories exist
-	for _, dir := range []string{rootDir, starlarkDir} {
-		if err := os.MkdirAll(dir, 0755); err != nil {
-			return nil, fmt.Errorf("cannot create directory %s: %w", dir, err)
-		}
+	if err := os.MkdirAll(rootDir, 0755); err != nil {
+		return nil, fmt.Errorf("cannot create directory %s: %w", rootDir, err)
 	}
 
-	return &Manager{
-		rootDir:     rootDir,
-		starlarkDir: starlarkDir,
-	}, nil
+	return &Manager{rootDir: rootDir}, nil
 }
 
 // ModulesDir returns the root modules directory path.
 func (m *Manager) ModulesDir() string {
 	return m.rootDir
-}
-
-// StarlarkDir returns the starlark modules directory path.
-func (m *Manager) StarlarkDir() string {
-	return m.starlarkDir
 }
 
 // Install installs a starlark module from a git repository or a local directory.
@@ -65,7 +52,7 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 	}
 	defer os.RemoveAll(staging)
 
-	var repo, version, sourceNamespace string
+	var repo, version, sourceNamespace, commit string
 	if isLocalPath(source) {
 		// Local directory install — copy the tree.
 		abs, err := filepath.Abs(expandHome(source))
@@ -90,10 +77,11 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		if err := GitClone(repo, version, staging); err != nil {
 			return nil, fmt.Errorf("failed to clone repository: %w", err)
 		}
+		// Capture the commit as the immutable revision (commit-not-tag), even
+		// when a tag or branch was requested.
+		commit, _ = GitGetCurrentCommit(staging)
 		if version == "" {
-			if commit, err := GitGetCurrentCommit(staging); err == nil {
-				version = commit
-			}
+			version = commit
 		}
 		// The installed module is the source tree, not a working clone — drop
 		// the .git directory.
@@ -115,10 +103,27 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		return nil, fmt.Errorf("invalid module structure: %w", err)
 	}
 
-	destPath := filepath.Join(m.starlarkDir, namespace, name)
+	// Key the cache directory by an immutable revision: the commit SHA for a git
+	// source, or the content hash for a local source. The cache is write-once —
+	// a given revision is installed exactly once.
+	rev := commit
+	if rev == "" {
+		h, err := libkite.HashModuleTree(staging)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash module: %w", err)
+		}
+		rev = strings.TrimPrefix(h, "sha256:")
+		if len(rev) > 16 {
+			rev = rev[:16]
+		}
+	}
+
+	destPath := filepath.Join(m.rootDir, namespace, name+"@"+rev)
 	if _, err := os.Stat(destPath); err == nil {
+		// This exact revision is already cached. Reinstalling identical content is
+		// a no-op unless forced.
 		if !opts.Force {
-			return nil, fmt.Errorf("module %q already installed at %s (use --force to overwrite)", namespace+"/"+name, destPath)
+			return m.starlarkInfo(namespace, name+"@"+rev, destPath), nil
 		}
 		if err := os.RemoveAll(destPath); err != nil {
 			return nil, fmt.Errorf("failed to remove existing module: %w", err)
@@ -141,6 +146,7 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		Name:          name,
 		Source:        repo,
 		Version:       version,
+		Rev:           rev,
 		InstalledFrom: source,
 	}
 	if err := WriteProvenance(destPath, prov); err != nil {
@@ -150,11 +156,13 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 	return &ModuleInfo{
 		Namespace:   namespace,
 		Name:        name,
+		Rev:         rev,
 		Type:        "starlark",
 		Path:        destPath,
 		Repository:  repo,
 		Version:     version,
 		Description: manifest.Description,
+		EntryPoint:  filepath.Join(destPath, libkite.EntryFile),
 	}, nil
 }
 
@@ -230,8 +238,11 @@ type InstallOptions struct {
 
 // ModuleInfo holds information about an installed module.
 type ModuleInfo struct {
-	Namespace   string
-	Name        string
+	Namespace string
+	Name      string
+	// Rev is the immutable revision the cache directory is keyed by: the commit
+	// SHA for a git source, or the content hash for a local source.
+	Rev         string
 	Type        string // "starlark"
 	Path        string
 	Repository  string
@@ -246,9 +257,9 @@ func (m *Manager) List() ([]*ModuleInfo, error) {
 }
 
 // listStarlarkModules lists all installed starlark modules. Modules live under
-// starlark/<namespace>/<name>/.
+// <namespace>/<name>/.
 func (m *Manager) listStarlarkModules() ([]*ModuleInfo, error) {
-	nsEntries, err := os.ReadDir(m.starlarkDir)
+	nsEntries, err := os.ReadDir(m.rootDir)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -261,7 +272,7 @@ func (m *Manager) listStarlarkModules() ([]*ModuleInfo, error) {
 		if !ns.IsDir() {
 			continue
 		}
-		nsDir := filepath.Join(m.starlarkDir, ns.Name())
+		nsDir := filepath.Join(m.rootDir, ns.Name())
 		modEntries, err := os.ReadDir(nsDir)
 		if err != nil {
 			continue
@@ -279,11 +290,13 @@ func (m *Manager) listStarlarkModules() ([]*ModuleInfo, error) {
 }
 
 // starlarkInfo builds a ModuleInfo for an installed starlark module by reading
-// its manifest.
-func (m *Manager) starlarkInfo(namespace, name, modulePath string) *ModuleInfo {
+// its manifest. dirName is the cache directory name "<name>@<rev>".
+func (m *Manager) starlarkInfo(namespace, dirName, modulePath string) *ModuleInfo {
+	name, rev := libkite.SplitModuleRev(dirName)
 	info := &ModuleInfo{
 		Namespace: namespace,
 		Name:      name,
+		Rev:       rev,
 		Type:      "starlark",
 		Path:      modulePath,
 	}
@@ -301,69 +314,105 @@ func (m *Manager) starlarkInfo(namespace, name, modulePath string) *ModuleInfo {
 	return info
 }
 
-// Get returns information about a specific module. ref is "namespace/name".
-func (m *Manager) Get(ref string) (*ModuleInfo, error) {
-	if ns, name, ok := strings.Cut(ref, "/"); ok {
-		starlarkPath := filepath.Join(m.starlarkDir, ns, name)
-		if info, err := os.Stat(starlarkPath); err == nil && info.IsDir() {
-			return m.starlarkInfo(ns, name, starlarkPath), nil
-		}
-	}
-
-	return nil, fmt.Errorf("module %q not installed", ref)
-}
-
-// Update updates an installed starlark module to the latest version. ref is
-// "namespace/name".
-func (m *Manager) Update(ref string) (*ModuleInfo, error) {
-	if ns, name, ok := strings.Cut(ref, "/"); ok {
-		starlarkPath := filepath.Join(m.starlarkDir, ns, name)
-		if _, err := os.Stat(starlarkPath); err == nil {
-			return m.updateStarlarkModule(ns, name, starlarkPath)
-		}
-	}
-
-	return nil, fmt.Errorf("module %q not installed", ref)
-}
-
-// updateStarlarkModule updates a starlark module via git pull.
-func (m *Manager) updateStarlarkModule(namespace, name, modulePath string) (*ModuleInfo, error) {
-	if !GitIsRepo(modulePath) {
-		return nil, fmt.Errorf("module %q is not git-managed; reinstall to update", namespace+"/"+name)
-	}
-
-	newVersion, err := GitPull(modulePath)
+// installedRevDirs returns the cache directory names under <rootDir>/<ns> whose
+// module name matches name. Each entry is a version-addressed "<name>@<rev>"
+// directory (or a bare "<name>" for an unversioned install).
+func (m *Manager) installedRevDirs(ns, name string) ([]string, error) {
+	entries, err := os.ReadDir(filepath.Join(m.rootDir, ns))
 	if err != nil {
-		return nil, fmt.Errorf("failed to update module: %w", err)
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
 	}
-
-	if prov, err := ReadProvenance(modulePath); err == nil && prov != nil {
-		prov.Version = newVersion
-		if err := WriteProvenance(modulePath, prov); err != nil {
-			fmt.Fprintf(os.Stderr, "warning: failed to update provenance: %v\n", err)
+	var dirs []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if n, _ := libkite.SplitModuleRev(e.Name()); n == name {
+			dirs = append(dirs, e.Name())
 		}
 	}
-
-	info := m.starlarkInfo(namespace, name, modulePath)
-	info.Version = newVersion
-	return info, nil
+	return dirs, nil
 }
 
-// Remove removes an installed module. ref is "namespace/name".
-func (m *Manager) Remove(ref string) error {
-	if ns, name, ok := strings.Cut(ref, "/"); ok {
-		starlarkPath := filepath.Join(m.starlarkDir, ns, name)
-		if _, err := os.Stat(starlarkPath); err == nil {
-			if err := os.RemoveAll(starlarkPath); err != nil {
-				return err
-			}
-			// Prune the namespace directory if now empty.
-			pruneEmptyDir(filepath.Dir(starlarkPath))
-			return nil
-		}
+// Get returns information about a specific module. ref is "namespace/name". When
+// more than one revision is installed the reference is ambiguous and the caller
+// must pin a revision in mod.lock.
+func (m *Manager) Get(ref string) (*ModuleInfo, error) {
+	ns, name, ok := strings.Cut(ref, "/")
+	if !ok {
+		return nil, fmt.Errorf("module %q not installed", ref)
+	}
+	dirs, err := m.installedRevDirs(ns, name)
+	if err != nil {
+		return nil, err
+	}
+	switch len(dirs) {
+	case 0:
+		return nil, fmt.Errorf("module %q not installed", ref)
+	case 1:
+		return m.starlarkInfo(ns, dirs[0], filepath.Join(m.rootDir, ns, dirs[0])), nil
+	default:
+		return nil, fmt.Errorf("module %q has multiple installed revisions; pin one in mod.lock", ref)
+	}
+}
+
+// Update fetches the latest revision of an installed module and adds it to the
+// cache. ref is "namespace/name". Cached revisions are immutable, so an update
+// installs a new revision alongside any existing ones rather than mutating in
+// place.
+func (m *Manager) Update(ref string) (*ModuleInfo, error) {
+	ns, name, ok := strings.Cut(ref, "/")
+	if !ok {
+		return nil, fmt.Errorf("module %q not installed", ref)
+	}
+	dirs, err := m.installedRevDirs(ns, name)
+	if err != nil {
+		return nil, err
+	}
+	if len(dirs) == 0 {
+		return nil, fmt.Errorf("module %q not installed", ref)
 	}
 
-	return fmt.Errorf("module %q not installed", ref)
+	// Recover the original install source from any installed revision's receipt.
+	var source string
+	for _, d := range dirs {
+		if prov, err := ReadProvenance(filepath.Join(m.rootDir, ns, d)); err == nil && prov != nil {
+			source = prov.InstalledFrom
+			break
+		}
+	}
+	if source == "" {
+		return nil, fmt.Errorf("cannot update %q: no install source recorded; reinstall it", ref)
+	}
+
+	return m.Install(source, InstallOptions{})
+}
+
+// Remove removes an installed module and all of its cached revisions. ref is
+// "namespace/name".
+func (m *Manager) Remove(ref string) error {
+	ns, name, ok := strings.Cut(ref, "/")
+	if !ok {
+		return fmt.Errorf("module %q not installed", ref)
+	}
+	dirs, err := m.installedRevDirs(ns, name)
+	if err != nil {
+		return err
+	}
+	if len(dirs) == 0 {
+		return fmt.Errorf("module %q not installed", ref)
+	}
+	for _, d := range dirs {
+		if err := os.RemoveAll(filepath.Join(m.rootDir, ns, d)); err != nil {
+			return err
+		}
+	}
+	// Prune the namespace directory if now empty.
+	pruneEmptyDir(filepath.Join(m.rootDir, ns))
+	return nil
 }
 
 // pruneEmptyDir removes dir if it contains no entries.

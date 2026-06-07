@@ -58,22 +58,6 @@ func gitCloneAndCheckout(repoURL, version, destPath string) error {
 	return nil
 }
 
-// GitPull pulls the latest changes in a repository.
-// Returns the new commit hash.
-func GitPull(repoPath string) (string, error) {
-	// Pull latest changes
-	pullCmd := exec.Command("git", "-C", repoPath, "pull", "--ff-only")
-	var stderr bytes.Buffer
-	pullCmd.Stderr = &stderr
-
-	if err := pullCmd.Run(); err != nil {
-		return "", fmt.Errorf("git pull failed: %s", stderr.String())
-	}
-
-	// Get current commit hash
-	return GitGetCurrentCommit(repoPath)
-}
-
 // GitGetCurrentCommit returns the current commit hash.
 func GitGetCurrentCommit(repoPath string) (string, error) {
 	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--short", "HEAD")

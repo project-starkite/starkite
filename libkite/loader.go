@@ -135,7 +135,8 @@ func (rt *Runtime) resolveModulePathFrom(module, callerPath string) (string, err
 		return rt.resolvePathFrom(module, callerPath)
 	}
 
-	// Installed reference ("name" or "namespace/name"): search module dirs.
+	// Installed reference ("name" or "namespace/name"): search local module
+	// dirs (plain), then the version-addressed global cache.
 	searchPaths := rt.getModuleSearchPathsFrom(module, callerPath)
 	for _, searchPath := range searchPaths {
 		moduleDir := filepath.Join(searchPath, module)
@@ -144,7 +145,47 @@ func (rt *Runtime) resolveModulePathFrom(module, callerPath string) (string, err
 		}
 	}
 
-	return "", fmt.Errorf("module %q not found in search paths", module)
+	return resolveInstalledModule(module)
+}
+
+// resolveInstalledModule resolves "namespace/name" to its directory in the
+// version-addressed global cache (~/.starkite/modules/<ns>/<name>@<rev>). With
+// exactly one installed revision it resolves to that; multiple revisions
+// require a mod.lock to disambiguate (a later step), and none is "not installed".
+func resolveInstalledModule(module string) (string, error) {
+	ns, name, ok := strings.Cut(module, "/")
+	if !ok {
+		return "", fmt.Errorf("module %q not found", module)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return "", err
+	}
+	nsDir := filepath.Join(home, ".starkite", "modules", ns)
+	entries, err := os.ReadDir(nsDir)
+	if err != nil {
+		return "", fmt.Errorf("module %q not installed", module)
+	}
+	var dirs []string
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		if n, _ := SplitModuleRev(e.Name()); n == name {
+			dir := filepath.Join(nsDir, e.Name())
+			if isModuleDir(dir) {
+				dirs = append(dirs, dir)
+			}
+		}
+	}
+	switch len(dirs) {
+	case 0:
+		return "", fmt.Errorf("module %q not installed", module)
+	case 1:
+		return dirs[0], nil
+	default:
+		return "", fmt.Errorf("module %q has multiple installed revisions; pin one in mod.lock", module)
+	}
 }
 
 // resolvePath resolves an explicit path relative to the current script or working directory.
@@ -233,11 +274,8 @@ func (rt *Runtime) getModuleSearchPathsFrom(module, callerPath string) []string 
 		}
 	}
 
-	// 4. Installed modules: ~/.starkite/modules/starlark/ (namespaced as
-	//    <namespace>/<name>, so a load("namespace/name") resolves here).
-	if home, err := os.UserHomeDir(); err == nil {
-		paths = append(paths, filepath.Join(home, ".starkite", "modules", "starlark"))
-	}
+	// The version-addressed global cache (~/.starkite/modules/<ns>/<name>@<rev>)
+	// is resolved separately by resolveInstalledModule, not as a plain search path.
 
 	return paths
 }

@@ -24,8 +24,11 @@ type Provenance struct {
 	Name      string
 	// Source is the resolved clone URL or local path.
 	Source string
-	// Version is the resolved commit or tag.
+	// Version is the resolved commit or tag (human-facing).
 	Version string
+	// Rev is the immutable revision the cache directory is keyed by: the commit
+	// SHA for a git source, or the content hash for a local source.
+	Rev string
 	// InstalledFrom is the original source string the user supplied.
 	InstalledFrom string
 }
