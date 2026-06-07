@@ -98,7 +98,6 @@ jobs:
       - name: Run sandbox integration tests
         env:
           STARKITE_SANDBOX_INTEGRATION: "1"
-          GOWORK: "off"
         run: go test -v -timeout 5m ./...
         working-directory: tests/sandbox
 
