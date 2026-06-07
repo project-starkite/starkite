@@ -11,7 +11,8 @@ Execute a script file, a module directory, or an installed module.
 ```bash
 kite run <script.star> [flags]    # a loose script file
 kite run ./dir                    # a module directory (runs its main.star)
-kite run @namespace/name          # an installed module (from the global cache)
+kite run @namespace/name          # an installed module (newest revision)
+kite run @namespace/name@rev      # a specific installed revision
 kite <target>                     # shorthand (run is implicit)
 ./script.star                     # via shebang: #!/usr/bin/env kite
 ```
@@ -22,7 +23,8 @@ kite <target>                     # shorthand (run is implicit)
 |--------|-------------|----------|
 | `script.star` | the file itself | — (top-level code runs; `main()` optional) |
 | `./dir` | `dir/main.star` | a `mod.yaml` manifest **and** a `main()` entry point |
-| `@namespace/name` | the installed module's `main.star` | the module installed via `kite module install`; a `main()` entry point |
+| `@namespace/name` | the newest installed revision's `main.star` | the module installed via `kite module install`; a `main()` entry point |
+| `@namespace/name@rev` | the named revision's `main.star` | that revision installed (full id or unambiguous prefix) |
 
 A directory module or `@namespace/name` is **executable** only if its `main.star` defines `main()`. A module without `main()` is a library (loaded via `load()`), and running it directly errors. A loose script file needs no `main()`.
 

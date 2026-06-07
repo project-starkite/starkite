@@ -2,8 +2,10 @@ package manager
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestParseSource(t *testing.T) {
@@ -370,6 +372,182 @@ func TestManagerUpdateAndRevisions(t *testing.T) {
 	if revs, _ := mgr.Revisions("acme/tool"); len(revs) != 0 {
 		t.Errorf("Revisions after remove = %d, want 0", len(revs))
 	}
+}
+
+// initGitRepo creates a local git repository containing a module and returns its
+// path and the short HEAD commit. Tests clone it over file:// to exercise the
+// git install path offline.
+func initGitRepo(t *testing.T, ns, name, body string) (repoDir, commit string) {
+	t.Helper()
+	repoDir = filepath.Join(t.TempDir(), "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatalf("mkdir repo: %v", err)
+	}
+	os.WriteFile(filepath.Join(repoDir, "mod.yaml"), []byte("namespace: "+ns+"\nname: "+name+"\nversion: 0.1.0\n"), 0o644)
+	os.WriteFile(filepath.Join(repoDir, "main.star"), []byte(body), 0o644)
+
+	git := func(args ...string) {
+		cmd := exec.Command("git", args...)
+		cmd.Dir = repoDir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	git("init")
+	git("add", "-A")
+	git("commit", "-m", "init")
+	commit, err := GitGetCurrentCommit(repoDir)
+	if err != nil {
+		t.Fatalf("get commit: %v", err)
+	}
+	return repoDir, commit
+}
+
+func TestManagerInstallFromGit(t *testing.T) {
+	if !GitAvailable() {
+		t.Skip("git not available")
+	}
+	repo, commit := initGitRepo(t, "acme", "leaf", "def main():\n    pass\n")
+	mgr, err := New(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	info, err := mgr.Install("file://"+repo, InstallOptions{})
+	if err != nil {
+		t.Fatalf("install from git: %v", err)
+	}
+	if info.Namespace != "acme" || info.Name != "leaf" {
+		t.Errorf("identity = %s/%s, want acme/leaf", info.Namespace, info.Name)
+	}
+	if info.Rev != commit {
+		t.Errorf("rev = %q, want commit %q", info.Rev, commit)
+	}
+	if filepath.Base(info.Path) != "leaf@"+commit {
+		t.Errorf("cache dir %q should be leaf@%s", filepath.Base(info.Path), commit)
+	}
+	// The working .git directory must not be carried into the cache.
+	if _, err := os.Stat(filepath.Join(info.Path, ".git")); !os.IsNotExist(err) {
+		t.Error(".git was not stripped from the installed module")
+	}
+	if prov, _ := ReadProvenance(info.Path); prov == nil || prov.Source != "file://"+repo {
+		t.Errorf("receipt source = %v, want file://%s", prov, repo)
+	}
+}
+
+func TestManagerInstallFromGitTag(t *testing.T) {
+	if !GitAvailable() {
+		t.Skip("git not available")
+	}
+	repo, _ := initGitRepo(t, "acme", "leaf", "def main():\n    pass\n")
+	tag := exec.Command("git", "-C", repo, "tag", "v1.0.0")
+	if out, err := tag.CombinedOutput(); err != nil {
+		t.Fatalf("git tag: %v\n%s", err, out)
+	}
+
+	mgr, _ := New(filepath.Join(t.TempDir(), "cache"))
+	info, err := mgr.Install("file://"+repo+"@v1.0.0", InstallOptions{})
+	if err != nil {
+		t.Fatalf("install from git tag: %v", err)
+	}
+	if info.Version != "v1.0.0" {
+		t.Errorf("version = %q, want v1.0.0", info.Version)
+	}
+	if info.Rev == "" {
+		t.Error("expected a commit rev for a tag install")
+	}
+}
+
+func TestManagerInstallInvalid(t *testing.T) {
+	mgr, err := New(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+
+	mkdir := func(name string, files map[string]string) string {
+		dir := filepath.Join(t.TempDir(), name)
+		os.MkdirAll(dir, 0o755)
+		for fn, content := range files {
+			os.WriteFile(filepath.Join(dir, fn), []byte(content), 0o644)
+		}
+		return dir
+	}
+
+	tests := []struct {
+		name   string
+		source string
+	}{
+		{"missing mod.yaml", mkdir("a", map[string]string{"main.star": "def main(): pass\n"})},
+		{"missing main.star", mkdir("b", map[string]string{"mod.yaml": "namespace: x\nname: b\n"})},
+		{"mod.yaml missing name", mkdir("c", map[string]string{"mod.yaml": "version: 0.1.0\n", "main.star": "def main(): pass\n"})},
+		{"nonexistent source", filepath.Join(t.TempDir(), "does-not-exist")},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if _, err := mgr.Install(tt.source, InstallOptions{Name: "x/" + tt.name}); err == nil {
+				t.Errorf("expected install of an invalid module to fail")
+			}
+		})
+	}
+}
+
+func TestManagerResolve(t *testing.T) {
+	mgr, _ := New(filepath.Join(t.TempDir(), "cache"))
+	src := writeLocalSource(t, "acme", "tool", "def main():\n    pass\n")
+	first, err := mgr.Install(src, InstallOptions{})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+
+	t.Run("single revision: newest and exact agree", func(t *testing.T) {
+		got, err := mgr.Resolve("acme/tool", "")
+		if err != nil || got.Rev != first.Rev {
+			t.Fatalf("Resolve newest = %v (err %v), want %s", got, err, first.Rev)
+		}
+		if got, err := mgr.Resolve("acme/tool", first.Rev); err != nil || got.Rev != first.Rev {
+			t.Fatalf("Resolve exact = %v (err %v)", got, err)
+		}
+		if got, err := mgr.Resolve("acme/tool", first.Rev[:6]); err != nil || got.Rev != first.Rev {
+			t.Fatalf("Resolve prefix = %v (err %v)", got, err)
+		}
+	})
+
+	// Update to a second revision.
+	os.WriteFile(filepath.Join(src, "main.star"), []byte("def main():\n    print('v2')\n"), 0o644)
+	updated, err := mgr.Update("acme/tool")
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	// Make the updated revision unambiguously newest regardless of filesystem
+	// mtime granularity.
+	future := time.Now().Add(time.Hour)
+	os.Chtimes(updated.Path, future, future)
+
+	t.Run("newest follows the latest revision", func(t *testing.T) {
+		got, err := mgr.Resolve("acme/tool", "")
+		if err != nil || got.Rev != updated.Rev {
+			t.Fatalf("Resolve newest = %v (err %v), want %s", got, err, updated.Rev)
+		}
+	})
+	t.Run("exact still pins the older revision", func(t *testing.T) {
+		got, err := mgr.Resolve("acme/tool", first.Rev)
+		if err != nil || got.Rev != first.Rev {
+			t.Fatalf("Resolve exact older = %v (err %v)", got, err)
+		}
+	})
+	t.Run("unknown revision errors", func(t *testing.T) {
+		if _, err := mgr.Resolve("acme/tool", "zzzzzz"); err == nil {
+			t.Error("expected error for unknown revision")
+		}
+	})
+	t.Run("not installed errors", func(t *testing.T) {
+		if _, err := mgr.Resolve("acme/none", ""); err == nil {
+			t.Error("expected error for uninstalled module")
+		}
+	})
 }
 
 func TestManagerVerify(t *testing.T) {

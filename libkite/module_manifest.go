@@ -61,7 +61,7 @@ func LoadModuleManifest(dirPath string) (*ModuleManifest, error) {
 	data, err := os.ReadFile(manifestPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil, fmt.Errorf("module %q missing %s", filepath.Base(dirPath), ManifestFile)
+			return nil, fmt.Errorf("missing %s", ManifestFile)
 		}
 		return nil, fmt.Errorf("reading %s: %w", ManifestFile, err)
 	}

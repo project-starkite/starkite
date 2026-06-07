@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -395,6 +396,59 @@ func (m *Manager) Revisions(ref string) ([]*ModuleInfo, error) {
 		infos = append(infos, m.starlarkInfo(ns, d, filepath.Join(m.rootDir, ns, d)))
 	}
 	return infos, nil
+}
+
+// Resolve selects a single installed revision of ref ("namespace/name"). With an
+// empty rev it returns the most recently installed revision; otherwise the
+// revision whose id equals rev or is uniquely prefixed by it. It errors when
+// nothing matches or a prefix is ambiguous.
+func (m *Manager) Resolve(ref, rev string) (*ModuleInfo, error) {
+	revs, err := m.Revisions(ref)
+	if err != nil {
+		return nil, err
+	}
+	if len(revs) == 0 {
+		return nil, fmt.Errorf("module %q not installed", ref)
+	}
+
+	if rev == "" {
+		return newestRevision(revs), nil
+	}
+
+	var matches []*ModuleInfo
+	for _, info := range revs {
+		if info.Rev == rev || strings.HasPrefix(info.Rev, rev) {
+			matches = append(matches, info)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return nil, fmt.Errorf("module %q has no installed revision %q", ref, rev)
+	case 1:
+		return matches[0], nil
+	default:
+		return nil, fmt.Errorf("revision %q of %q is ambiguous; use a longer prefix", rev, ref)
+	}
+}
+
+// newestRevision returns the revision whose cache directory was modified most
+// recently — i.e. the most recently installed.
+func newestRevision(revs []*ModuleInfo) *ModuleInfo {
+	newest := revs[0]
+	newestMod := dirModTime(newest.Path)
+	for _, info := range revs[1:] {
+		if t := dirModTime(info.Path); t.After(newestMod) {
+			newest, newestMod = info, t
+		}
+	}
+	return newest
+}
+
+func dirModTime(path string) time.Time {
+	if fi, err := os.Stat(path); err == nil {
+		return fi.ModTime()
+	}
+	return time.Time{}
 }
 
 // Update fetches the latest revision of an installed module and adds it to the

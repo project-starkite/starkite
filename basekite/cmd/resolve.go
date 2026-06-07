@@ -16,24 +16,29 @@ import (
 // A module run requires a `main()` entry point; a loose script file does not.
 //
 // Forms:
-//   - @namespace/name : an installed module, resolved from the global cache.
-//   - ./dir or dir    : a directory module (mod.yaml + main.star).
-//   - file.star       : a loose script file.
+//   - @namespace/name      : an installed module; the newest revision is used.
+//   - @namespace/name@rev  : a specific installed revision (full id or prefix).
+//   - ./dir or dir         : a directory module (mod.yaml + main.star).
+//   - file.star            : a loose script file.
 func resolveRunTarget(arg string) (entryPath string, isModule bool, err error) {
 	// Installed module reference.
 	if strings.HasPrefix(arg, "@") {
 		ref := strings.TrimPrefix(arg, "@")
+		identity, rev := libkite.SplitModuleRev(ref)
 		mgr, mErr := manager.New("")
 		if mErr != nil {
 			return "", false, mErr
 		}
-		info, gErr := mgr.Get(ref)
+		info, gErr := mgr.Resolve(identity, rev)
 		if gErr != nil {
-			return "", false, fmt.Errorf("module %q is not installed; install it with: kite module install <source>", ref)
+			if rev == "" {
+				return "", false, fmt.Errorf("module %q is not installed; install it with: kite module install <source>", identity)
+			}
+			return "", false, gErr
 		}
 		entry := filepath.Join(info.Path, libkite.EntryFile)
 		if st, sErr := os.Stat(entry); sErr != nil || st.IsDir() {
-			return "", false, fmt.Errorf("module %q is a library (no %s) and cannot be run directly", ref, libkite.EntryFile)
+			return "", false, fmt.Errorf("module %q is a library (no %s) and cannot be run directly", identity, libkite.EntryFile)
 		}
 		return entry, true, nil
 	}

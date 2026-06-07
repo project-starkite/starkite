@@ -4,6 +4,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
+
+	"github.com/project-starkite/starkite/basekite/manager"
 )
 
 func TestResolveRunTarget(t *testing.T) {
@@ -69,6 +72,66 @@ func TestResolveRunTarget(t *testing.T) {
 	t.Run("nonexistent path errors", func(t *testing.T) {
 		if _, _, err := resolveRunTarget(filepath.Join(dir, "nope")); err == nil {
 			t.Error("expected error for nonexistent path")
+		}
+	})
+}
+
+func TestResolveRunTargetInstalledRevisions(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	cacheRoot := filepath.Join(home, ".starkite", "modules")
+
+	mgr, err := manager.New(cacheRoot)
+	if err != nil {
+		t.Fatalf("manager.New: %v", err)
+	}
+	src := filepath.Join(t.TempDir(), "src")
+	os.MkdirAll(src, 0o755)
+	os.WriteFile(filepath.Join(src, "mod.yaml"), []byte("namespace: acme\nname: tool\nversion: 0.1.0\n"), 0o644)
+	os.WriteFile(filepath.Join(src, "main.star"), []byte("def main():\n    pass\n"), 0o644)
+
+	first, err := mgr.Install(src, manager.InstallOptions{})
+	if err != nil {
+		t.Fatalf("install: %v", err)
+	}
+	os.WriteFile(filepath.Join(src, "main.star"), []byte("def main():\n    print('v2')\n"), 0o644)
+	updated, err := mgr.Update("acme/tool")
+	if err != nil {
+		t.Fatalf("update: %v", err)
+	}
+	future := time.Now().Add(time.Hour)
+	os.Chtimes(updated.Path, future, future)
+
+	t.Run("bare reference selects newest", func(t *testing.T) {
+		entry, isModule, err := resolveRunTarget("@acme/tool")
+		if err != nil || !isModule {
+			t.Fatalf("resolve @acme/tool: %v (isModule=%v)", err, isModule)
+		}
+		if entry != filepath.Join(updated.Path, "main.star") {
+			t.Errorf("entry = %q, want newest revision %q", entry, updated.Path)
+		}
+	})
+
+	t.Run("@rev pins an exact revision", func(t *testing.T) {
+		entry, _, err := resolveRunTarget("@acme/tool@" + first.Rev)
+		if err != nil {
+			t.Fatalf("resolve @acme/tool@%s: %v", first.Rev, err)
+		}
+		if entry != filepath.Join(first.Path, "main.star") {
+			t.Errorf("entry = %q, want pinned revision %q", entry, first.Path)
+		}
+	})
+
+	t.Run("unknown @rev errors", func(t *testing.T) {
+		if _, _, err := resolveRunTarget("@acme/tool@deadbeef"); err == nil {
+			t.Error("expected error for unknown revision")
+		}
+	})
+
+	t.Run("uninstalled reference errors", func(t *testing.T) {
+		if _, _, err := resolveRunTarget("@acme/missing"); err == nil {
+			t.Error("expected error for uninstalled module")
 		}
 	})
 }

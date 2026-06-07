@@ -516,6 +516,81 @@ fi
 rm -rf "$MODHOME" "$MODSRC"
 
 # --------------------------------------------
+# Test 13l: git install, @rev run selection, invalid-module rejection
+# --------------------------------------------
+info "Test 13l: git install / @rev selection / invalid modules"
+
+GHOME=$(mktemp -d /tmp/kite_test_XXXXXX)
+GREPO=$(mktemp -d /tmp/kite_test_XXXXXX)/repo
+GK(){ HOME="$GHOME" $KITE "$@"; }
+
+if command -v git >/dev/null 2>&1; then
+    mkdir -p "$GREPO"
+    printf 'namespace: acme\nname: leaf\nversion: 0.1.0\n' > "$GREPO/mod.yaml"
+    printf 'def main():\n    print("v1")\n' > "$GREPO/main.star"
+    ( cd "$GREPO" && git init -q && git add -A && \
+      GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@e GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@e \
+      git commit -qm init ) >/dev/null 2>&1
+    COMMIT=$(cd "$GREPO" && git rev-parse --short HEAD)
+
+    if GK module install "file://$GREPO" --as acme/leaf 2>&1 | grep -q "Installed acme/leaf"; then
+        pass "git install from file:// repo"
+    else
+        fail "git install from file:// repo"
+    fi
+    # The installed revision is the commit, and .git is not carried in.
+    if GK module list 2>/dev/null | grep -q "$COMMIT" && \
+       ! ls -a "$GHOME/.starkite/modules/acme/"*/ 2>/dev/null | grep -q '\.git'; then
+        pass "git install records commit rev and strips .git"
+    else
+        fail "git install records commit rev and strips .git"
+    fi
+
+    # Update to a second revision, then select by @rev and newest.
+    printf 'def main():\n    print("v2")\n' > "$GREPO/main.star"
+    ( cd "$GREPO" && git add -A && \
+      GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@e GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@e \
+      git commit -qm v2 ) >/dev/null 2>&1
+    GK module update acme/leaf >/dev/null 2>&1
+    if [ "$(GK run @acme/leaf --allow-all 2>&1)" = "v2" ]; then
+        pass "bare @namespace/name runs the newest revision"
+    else
+        fail "bare @namespace/name runs the newest revision"
+    fi
+    if [ "$(GK run "@acme/leaf@$COMMIT" --allow-all 2>&1)" = "v1" ]; then
+        pass "@namespace/name@rev pins a specific revision"
+    else
+        fail "@namespace/name@rev pins a specific revision"
+    fi
+    if GK run "@acme/leaf@nosuchrev" --allow-all >/dev/null 2>&1; then
+        fail "unknown @rev errors"
+    else
+        pass "unknown @rev errors"
+    fi
+else
+    info "  (git not available — skipping git install / @rev tests)"
+fi
+
+# Invalid module installs are rejected (no git needed).
+BADSRC=$(mktemp -d /tmp/kite_test_XXXXXX)
+mkdir -p "$BADSRC/nomanifest"; printf 'def main(): pass\n' > "$BADSRC/nomanifest/main.star"
+mkdir -p "$BADSRC/noentry"; printf 'namespace: x\nname: noentry\n' > "$BADSRC/noentry/mod.yaml"
+mkdir -p "$BADSRC/noname"; printf 'version: 0.1.0\n' > "$BADSRC/noname/mod.yaml"; printf 'def main(): pass\n' > "$BADSRC/noname/main.star"
+INVALID_OK=true
+for d in nomanifest noentry noname; do
+    if GK module install "$BADSRC/$d" --as "x/$d" >/dev/null 2>&1; then
+        INVALID_OK=false
+    fi
+done
+if [ "$INVALID_OK" = true ]; then
+    pass "invalid modules (no manifest / no entry / no name) are rejected"
+else
+    fail "invalid modules (no manifest / no entry / no name) are rejected"
+fi
+
+rm -rf "$GHOME" "$GREPO" "$BADSRC"
+
+# --------------------------------------------
 # Test 14: Built-in modules work
 # --------------------------------------------
 info "Test 14: Built-in modules"

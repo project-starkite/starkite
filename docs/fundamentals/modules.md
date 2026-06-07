@@ -93,12 +93,26 @@ The `kite module` subcommands manage the global module cache at `~/.starkite/mod
 Fetch a module into the cache, where it then loads by its `namespace/name`:
 
 ```bash
-kite module install gitlab.com/acme/slack       # → load("acme/slack", "slack")
+kite module install gitlab.com/acme/slack        # → load("acme/slack", "slack")
 kite module install gitlab.com/acme/slack@v1.2.0 # pin a tag, branch, or commit
 kite module install ./my-module --as acme/tools  # local directory, custom identity
 ```
 
-A module's identity comes from its `mod.yaml`; for a git source the org supplies a fallback namespace. Reinstalling identical content is a no-op. Run an installed module directly with `kite run @acme/slack`.
+A source is host-agnostic — any git host works, not just well-known ones:
+
+| Source form | Example |
+|-------------|---------|
+| `host/org/repo` | `gitlab.com/acme/slack` (cloned over HTTPS) |
+| `host/org/repo@version` | `git.internal/acme/slack@v1.2.0` (tag, branch, or commit) |
+| SSH | `git@github.com:acme/slack.git` |
+| Full URL | `https://github.com/acme/slack` · `file:///path/to/repo` |
+| Local directory | `./my-module` (copied, not cloned) |
+
+For a git source the installed revision is the resolved commit SHA and the working `.git` directory is dropped; for a local directory it is a content hash. A module's identity comes from its `mod.yaml`; for a git source the org supplies a fallback namespace, and `--as <namespace>/<name>` can set it for a local directory. Reinstalling identical content is a no-op.
+
+Install validates the module: the source must contain a `mod.yaml` with a `name` and a `main.star` entry file, or the install is rejected.
+
+Run an installed module directly with `kite run @acme/slack`. When several revisions are installed, the bare reference runs the newest; pin a specific one with `kite run @acme/slack@<rev>`.
 
 ### list
 
