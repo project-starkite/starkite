@@ -34,10 +34,10 @@ See [Editions](editions.md) for the full edition model.
 
 ## What a module is
 
-A module is a **directory** containing a `module.yaml` manifest and one or more `.star` files. The manifest declares the module's identity and configuration:
+A module is a **directory** containing a `mod.yaml` manifest and one or more `.star` files. The manifest declares the module's identity and configuration:
 
 ```yaml
-# helpers/module.yaml
+# helpers/mod.yaml
 namespace: acme
 name: helpers
 version: 0.1.0

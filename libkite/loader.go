@@ -118,7 +118,7 @@ func (rt *Runtime) resolveModulePath(module string) (string, error) {
 
 // resolveModulePathFrom resolves a module reference to its directory.
 //
-// A module is always a directory containing module.yaml and one or more .star
+// A module is always a directory containing mod.yaml and one or more .star
 // files. Resolution by reference shape:
 //
 //   - ends in ".star": an intra-module file load (a module's own files loading
@@ -299,7 +299,7 @@ func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict, 
 	return globals, nil
 }
 
-// loadModuleDir loads a module directory: a required module.yaml manifest plus
+// loadModuleDir loads a module directory: a required mod.yaml manifest plus
 // one or more .star files. The manifest's entry file loads first; the public
 // symbols of every other .star file in the directory merge into the module.
 func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict, origin string) (starlark.StringDict, error) {
@@ -387,7 +387,7 @@ func dirExists(path string) bool {
 }
 
 // isModuleDir reports whether path is a module directory: a directory
-// containing a module.yaml manifest.
+// containing a mod.yaml manifest.
 func isModuleDir(path string) bool {
 	return dirExists(path) && fileExists(filepath.Join(path, ManifestFile))
 }

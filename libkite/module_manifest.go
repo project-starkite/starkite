@@ -9,7 +9,7 @@ import (
 )
 
 // ManifestFile is the required manifest at the root of every module directory.
-const ManifestFile = "module.yaml"
+const ManifestFile = "mod.yaml"
 
 // EntryFile is the fixed entry point of every module directory. Its public
 // symbols, together with those of the directory's other .star files, form the
@@ -17,8 +17,8 @@ const ManifestFile = "module.yaml"
 const EntryFile = "main.star"
 
 // ModuleManifest describes a module. Every module is a directory containing a
-// module.yaml plus one or more .star files; the manifest is the single source
-// of truth for the module's identity, independent of where the module lives.
+// mod.yaml plus one or more .star files; the manifest is the single source of
+// truth for the module's identity, independent of where the module lives.
 type ModuleManifest struct {
 	// Namespace and Name together identify the module as "namespace/name".
 	// Namespace is optional in the manifest when it can be resolved from the
@@ -28,13 +28,11 @@ type ModuleManifest struct {
 	Version     string `yaml:"version,omitempty"`
 	Description string `yaml:"description,omitempty"`
 
-	// Permissions lists the capability rules the module's code may use, in the
-	// same grammar as a permission profile (e.g. "http.client(api.slack.com:*)").
-	// It can only narrow the runtime ceiling, never widen it.
-	Permissions []string `yaml:"permissions,omitempty"`
-
-	// MinStarkite is the minimum starkite version the module requires.
-	MinStarkite string `yaml:"min_starkite,omitempty"`
+	// Dependencies declares the modules this module loads, mapping each
+	// "namespace/name" identity to its source and version ("source@version").
+	// The source lets the runtime resolve and fetch the dependency; the resolved
+	// revision and content hash are recorded in mod.lock.
+	Dependencies map[string]string `yaml:"dependencies,omitempty"`
 }
 
 // QualifiedName returns the module's "namespace/name" identity, or just "name"
@@ -46,7 +44,7 @@ func (m *ModuleManifest) QualifiedName() string {
 	return m.Namespace + "/" + m.Name
 }
 
-// LoadModuleManifest reads and validates the module.yaml in dirPath. A module
+// LoadModuleManifest reads and validates the mod.yaml in dirPath. A module
 // directory without a valid manifest is not a module.
 func LoadModuleManifest(dirPath string) (*ModuleManifest, error) {
 	manifestPath := filepath.Join(dirPath, ManifestFile)

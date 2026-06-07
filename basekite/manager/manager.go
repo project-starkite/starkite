@@ -54,7 +54,7 @@ func (m *Manager) StarlarkDir() string {
 }
 
 // Install installs a starlark module from a git repository or a local directory.
-// The module's identity (namespace/name) comes from its module.yaml; the install
+// The module's identity (namespace/name) comes from its mod.yaml; the install
 // source only supplies a fallback namespace (the git org) and provenance.
 func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, error) {
 	// Stage the module in a temp dir so its manifest can be read before deciding
@@ -135,7 +135,7 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		}
 	}
 
-	// Record an install receipt — never overwrite the author's module.yaml.
+	// Record an install receipt — never overwrite the author's mod.yaml.
 	prov := &Provenance{
 		Namespace:     namespace,
 		Name:          name,
@@ -155,7 +155,6 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		Repository:  repo,
 		Version:     version,
 		Description: manifest.Description,
-		Permissions: manifest.Permissions,
 	}, nil
 }
 
@@ -178,7 +177,7 @@ func resolveIdentity(manifest *libkite.ModuleManifest, sourceNamespace, asOpt st
 		name = asName
 	}
 	if name == "" {
-		return "", "", fmt.Errorf("module.yaml is missing required field: name")
+		return "", "", fmt.Errorf("mod.yaml is missing required field: name")
 	}
 
 	namespace = manifest.Namespace
@@ -192,7 +191,7 @@ func resolveIdentity(manifest *libkite.ModuleManifest, sourceNamespace, asOpt st
 	}
 
 	if namespace == "" {
-		return "", "", fmt.Errorf("module %q has no namespace; declare it in module.yaml or install with --as <namespace>/<name>", name)
+		return "", "", fmt.Errorf("module %q has no namespace; declare it in mod.yaml or install with --as <namespace>/<name>", name)
 	}
 	return namespace, name, nil
 }
@@ -239,7 +238,6 @@ type ModuleInfo struct {
 	Version     string
 	Description string
 	EntryPoint  string
-	Permissions []string
 }
 
 // List returns all installed modules.
@@ -292,7 +290,6 @@ func (m *Manager) starlarkInfo(namespace, name, modulePath string) *ModuleInfo {
 	if manifest, err := parseStarlarkManifest(modulePath); err == nil {
 		info.Version = manifest.Version
 		info.Description = manifest.Description
-		info.Permissions = manifest.Permissions
 		info.EntryPoint = filepath.Join(modulePath, libkite.EntryFile)
 	}
 	if prov, err := ReadProvenance(modulePath); err == nil && prov != nil {
@@ -376,7 +373,7 @@ func pruneEmptyDir(dir string) {
 	}
 }
 
-// validateModule checks that the module has a valid structure: a module.yaml
+// validateModule checks that the module has a valid structure: a mod.yaml
 // manifest and the fixed main.star entry file at its root.
 func (m *Manager) validateModule(modulePath, name string) error {
 	if !fileExists(filepath.Join(modulePath, metadataFile)) {
@@ -494,7 +491,7 @@ func isLocalPath(source string) bool {
 	return false
 }
 
-// parseStarlarkManifest reads and validates the module.yaml of a starlark
+// parseStarlarkManifest reads and validates the mod.yaml of a starlark
 // module directory, returning its declared identity and configuration.
 func parseStarlarkManifest(dir string) (*libkite.ModuleManifest, error) {
 	return libkite.LoadModuleManifest(dir)

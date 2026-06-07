@@ -10,7 +10,7 @@ import (
 
 // receiptFile is the install receipt written for every installed module. It is
 // a binary, manager-owned record of where and how the module was installed,
-// kept separate from the author-authored module.yaml. The binary format and the
+// kept separate from the author-authored mod.yaml. The binary format and the
 // leading dot signal that it is a managed artifact, not a file to hand-edit.
 const receiptFile = ".mod.receipt"
 

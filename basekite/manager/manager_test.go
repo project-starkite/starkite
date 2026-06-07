@@ -107,7 +107,7 @@ func TestInferNamespaceName(t *testing.T) {
 }
 
 // writeStarlarkModule creates an installed-layout starlark module fixture at
-// <starlarkDir>/<namespace>/<name> with a module.yaml and a main.star.
+// <starlarkDir>/<namespace>/<name> with a mod.yaml and a main.star.
 func writeStarlarkModule(t *testing.T, mgr *Manager, namespace, name string) string {
 	t.Helper()
 	dir := filepath.Join(mgr.StarlarkDir(), namespace, name)
@@ -115,8 +115,8 @@ func writeStarlarkModule(t *testing.T, mgr *Manager, namespace, name string) str
 		t.Fatalf("create module dir: %v", err)
 	}
 	manifest := "namespace: " + namespace + "\nname: " + name + "\nversion: 0.1.0\n"
-	if err := os.WriteFile(filepath.Join(dir, "module.yaml"), []byte(manifest), 0o644); err != nil {
-		t.Fatalf("write module.yaml: %v", err)
+	if err := os.WriteFile(filepath.Join(dir, "mod.yaml"), []byte(manifest), 0o644); err != nil {
+		t.Fatalf("write mod.yaml: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.star"), []byte("def main(): pass\n"), 0o644); err != nil {
 		t.Fatalf("write main.star: %v", err)
@@ -275,7 +275,7 @@ func TestValidateModule(t *testing.T) {
 	t.Run("valid: manifest + main.star", func(t *testing.T) {
 		dir := filepath.Join(tmpDir, "ok")
 		os.MkdirAll(dir, 0o755)
-		os.WriteFile(filepath.Join(dir, "module.yaml"), []byte("name: ok\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, "mod.yaml"), []byte("name: ok\n"), 0o644)
 		os.WriteFile(filepath.Join(dir, "main.star"), []byte("# main"), 0o644)
 
 		if err := mgr.validateModule(dir, "ok"); err != nil {
@@ -283,20 +283,20 @@ func TestValidateModule(t *testing.T) {
 		}
 	})
 
-	t.Run("missing module.yaml", func(t *testing.T) {
+	t.Run("missing mod.yaml", func(t *testing.T) {
 		dir := filepath.Join(tmpDir, "no-manifest")
 		os.MkdirAll(dir, 0o755)
 		os.WriteFile(filepath.Join(dir, "main.star"), []byte("# main"), 0o644)
 
 		if err := mgr.validateModule(dir, "no-manifest"); err == nil {
-			t.Error("expected error for missing module.yaml")
+			t.Error("expected error for missing mod.yaml")
 		}
 	})
 
 	t.Run("missing main.star entry", func(t *testing.T) {
 		dir := filepath.Join(tmpDir, "no-entry")
 		os.MkdirAll(dir, 0o755)
-		os.WriteFile(filepath.Join(dir, "module.yaml"), []byte("name: no-entry\n"), 0o644)
+		os.WriteFile(filepath.Join(dir, "mod.yaml"), []byte("name: no-entry\n"), 0o644)
 		os.WriteFile(filepath.Join(dir, "helper.star"), []byte("# helper"), 0o644)
 
 		if err := mgr.validateModule(dir, "no-entry"); err == nil {

@@ -47,10 +47,10 @@ var moduleInstallCmd = &cobra.Command{
 	Short: "Install a module from a git repository or local path",
 	Long: `Install a module from a git repository or local directory.
 
-A module's identity (namespace/name) comes from its module.yaml. A source is
+A module's identity (namespace/name) comes from its mod.yaml. A source is
 host-agnostic — any git host works, not just well-known ones.
 
-For starlark modules, supported source formats:
+Supported source formats:
   host.tld/org/repo           HTTPS clone from any git host (gitlab, internal, …)
   host.tld/org/repo@v1.0.0    Specific tag, branch, or commit
   git@host.tld:org/repo.git   SSH clone
