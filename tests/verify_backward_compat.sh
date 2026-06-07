@@ -388,6 +388,39 @@ $KITE module remove ver/tool >/dev/null 2>&1 || true
 rm -rf "$VERDIR"
 
 # --------------------------------------------
+# Test 13i: loose `kite run file.star` resolves load()s from cache only
+# --------------------------------------------
+info "Test 13i: loose-file dependency resolution (cache only)"
+
+LOOSEDIR=$(mktemp -d /tmp/kite_test_XXXXXX)
+mkdir -p "$LOOSEDIR/src"
+printf 'namespace: loose\nname: lib\nversion: 0.1.0\n' > "$LOOSEDIR/src/mod.yaml"
+printf 'def hello():\n    return "from loose lib"\n' > "$LOOSEDIR/src/main.star"
+$KITE module install "$LOOSEDIR/src" --as loose/lib --force >/dev/null 2>&1 || true
+
+printf 'load("loose/lib", "lib")\n\ndef main():\n    print(lib.hello())\n' > "$LOOSEDIR/script.star"
+if $KITE run "$LOOSEDIR/script.star" --allow-all 2>&1 | grep -q "from loose lib"; then
+    pass "loose run loads an installed module and writes mod.lock"
+else
+    fail "loose run loads an installed module and writes mod.lock"
+fi
+if [ -f "$LOOSEDIR/mod.lock" ] && grep -q "loose/lib" "$LOOSEDIR/mod.lock"; then
+    pass "mod.lock written beside the loose script"
+else
+    fail "mod.lock written beside the loose script"
+fi
+
+# An uninstalled dependency is an error (no fetch in the loose path).
+printf 'load("loose/missing", "missing")\n\ndef main():\n    pass\n' > "$LOOSEDIR/bad.star"
+if $KITE run "$LOOSEDIR/bad.star" --allow-all >/dev/null 2>&1; then
+    fail "loose run errors on an uninstalled dependency"
+else
+    pass "loose run errors on an uninstalled dependency"
+fi
+$KITE module remove loose/lib >/dev/null 2>&1 || true
+rm -rf "$LOOSEDIR"
+
+# --------------------------------------------
 # Test 14: Built-in modules work
 # --------------------------------------------
 info "Test 14: Built-in modules"

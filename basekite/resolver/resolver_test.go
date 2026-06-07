@@ -121,6 +121,67 @@ func TestResolveIdentityMismatch(t *testing.T) {
 	}
 }
 
+func TestSyncLooseResolvesFromCache(t *testing.T) {
+	root := t.TempDir()
+	srcLeaf := filepath.Join(root, "src-leaf")
+	writeModuleSource(t, srcLeaf, "acme", "leaf", nil)
+
+	r, _ := newResolver(t)
+	if _, err := r.mgr.Install(srcLeaf, manager.InstallOptions{}); err != nil {
+		t.Fatalf("install leaf: %v", err)
+	}
+
+	// A loose script that loads the installed module plus things that must be
+	// ignored: a built-in (bare name), a relative module, and a .star path.
+	scriptDir := filepath.Join(root, "scripts")
+	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
+		t.Fatalf("mkdir scripts: %v", err)
+	}
+	script := filepath.Join(scriptDir, "deploy.star")
+	body := `load("acme/leaf", "leaf")
+load("json", "json")
+load("./helpers", "helpers")
+load("./util.star", "util")
+
+def main():
+    pass
+`
+	if err := os.WriteFile(script, []byte(body), 0o644); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	lock, err := r.SyncLoose(script)
+	if err != nil {
+		t.Fatalf("SyncLoose: %v", err)
+	}
+	if len(lock.Modules) != 1 {
+		t.Fatalf("expected only the installed ref locked, got %v", keys(lock.Modules))
+	}
+	if _, ok := lock.Modules["acme/leaf"]; !ok {
+		t.Errorf("acme/leaf not locked; got %v", keys(lock.Modules))
+	}
+	if _, err := os.Stat(filepath.Join(scriptDir, libkite.LockFile)); err != nil {
+		t.Errorf("mod.lock not written beside script: %v", err)
+	}
+}
+
+func TestSyncLooseUninstalledIsError(t *testing.T) {
+	root := t.TempDir()
+	scriptDir := filepath.Join(root, "scripts")
+	if err := os.MkdirAll(scriptDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	script := filepath.Join(scriptDir, "deploy.star")
+	if err := os.WriteFile(script, []byte("load(\"acme/missing\", \"missing\")\n"), 0o644); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+
+	r, _ := newResolver(t)
+	if _, err := r.SyncLoose(script); err == nil {
+		t.Fatal("expected error for an uninstalled dependency, got nil")
+	}
+}
+
 func TestVerifyCached(t *testing.T) {
 	root := t.TempDir()
 	src := filepath.Join(root, "src")

@@ -73,6 +73,18 @@ func resolveModuleDeps(moduleDir string) error {
 	return err
 }
 
+// resolveLooseDeps resolves the installed modules a loose script file load()s,
+// from the cache only, and writes mod.lock beside it. An uninstalled dependency
+// is an error.
+func resolveLooseDeps(scriptPath string) error {
+	mgr, err := manager.New("")
+	if err != nil {
+		return err
+	}
+	_, err = resolver.New(mgr).SyncLoose(scriptPath)
+	return err
+}
+
 // withinDir reports whether path is root or lies inside it.
 func withinDir(root, path string) bool {
 	absRoot, err := filepath.Abs(root)

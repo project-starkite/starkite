@@ -118,6 +118,8 @@ modules:
 
 `mod.lock` is committed and reviewable: a changed dependency produces a diff. On later runs, resolution is cache-first and incremental — a locked dependency whose cached tree still verifies is reused without re-fetching, and a hash mismatch is an error. The cache is version-addressed (`<namespace>/<name>@<rev>/`) and write-once, so projects pinning different revisions coexist.
 
+A **loose script** run directly (`kite run deploy.star`, not a module directory) has no `mod.yaml` to declare dependencies. The installed modules it `load()`s are resolved from the cache only — nothing is fetched — and recorded in a `mod.lock` written beside the script. An installed reference that is not already installed is an error; install it first with `kite module install`.
+
 ## Module permissions
 
 A loaded module runs under the same runtime permission as the entry script — it declares no capabilities of its own, and importing it grants no authority. A dependency that needs more than the run was granted fails at the gated call, naming the module; the run is then restarted at a higher profile. See [Permission](security/permission.md#loaded-modules).

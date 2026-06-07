@@ -81,6 +81,13 @@ func runScript(cmd *cobra.Command, args []string) error {
 				ExitCode: libkite.ExitFileError,
 			}
 		}
+	} else {
+		if err := resolveLooseDeps(scriptPath); err != nil {
+			return &libkite.ScriptError{
+				Message:  fmt.Sprintf("failed to resolve dependencies: %v", err),
+				ExitCode: libkite.ExitFileError,
+			}
+		}
 	}
 
 	// Sandbox handoff: if STARKITE_SECURITY_SANDBOX is set, hand the

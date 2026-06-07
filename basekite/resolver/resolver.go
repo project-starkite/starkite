@@ -69,6 +69,84 @@ func (r *Resolver) Sync(dir string) (*libkite.Lock, error) {
 	return lock, nil
 }
 
+// SyncLoose resolves the installed modules a loose script file load()s, using
+// the cache only — nothing is fetched. It writes mod.lock beside the file and
+// returns the resolved lock. An installed reference (namespace/name) that is not
+// already in the cache is an error; relative loads, .star paths, and built-in
+// modules are ignored.
+func (r *Resolver) SyncLoose(filePath string) (*libkite.Lock, error) {
+	src, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, err
+	}
+	refs, err := libkite.LoadTargets(filePath, src)
+	if err != nil {
+		return nil, err
+	}
+
+	lock := &libkite.Lock{Modules: map[string]libkite.LockedModule{}}
+	for _, ref := range refs {
+		if !isInstalledRef(ref) {
+			continue
+		}
+		if err := r.lockInstalled(ref, lock); err != nil {
+			return nil, err
+		}
+	}
+
+	dir := filepath.Dir(filePath)
+	if len(lock.Modules) == 0 {
+		if existing, _ := libkite.LoadLock(dir); existing == nil {
+			return lock, nil
+		}
+	}
+	if err := lock.Save(dir); err != nil {
+		return nil, err
+	}
+	return lock, nil
+}
+
+// lockInstalled records an installed module and its transitive declared
+// dependencies in lock, resolving each from the cache only. It errors if a
+// module is not installed.
+func (r *Resolver) lockInstalled(ref string, lock *libkite.Lock) error {
+	if _, done := lock.Modules[ref]; done {
+		return nil
+	}
+	info, err := r.mgr.Get(ref)
+	if err != nil {
+		return fmt.Errorf("module %q is not installed; install it with: kite module install <source>", ref)
+	}
+
+	source := ""
+	if prov, pErr := manager.ReadProvenance(info.Path); pErr == nil && prov != nil {
+		source = prov.InstalledFrom
+	}
+	lock.Modules[ref] = libkite.LockedModule{Source: source, Rev: info.Rev, Hash: info.Hash}
+
+	if sub, mErr := libkite.LoadModuleManifest(info.Path); mErr == nil {
+		for depID := range sub.Dependencies {
+			if err := r.lockInstalled(depID, lock); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// isInstalledRef reports whether a load() reference names an installed
+// "namespace/name" module (as opposed to a relative load, a .star path, or a
+// bare built-in module name).
+func isInstalledRef(ref string) bool {
+	if strings.HasSuffix(ref, ".star") {
+		return false
+	}
+	if strings.HasPrefix(ref, "./") || strings.HasPrefix(ref, "../") || filepath.IsAbs(ref) {
+		return false
+	}
+	return strings.Contains(ref, "/")
+}
+
 // resolveDeps walks declared dependencies, adding each to lock before recursing
 // into its own dependencies. Adding before recursing both deduplicates the
 // closure and breaks dependency cycles.
