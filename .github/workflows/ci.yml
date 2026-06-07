@@ -21,7 +21,6 @@ jobs:
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
-            wasm/go.sum
             sandbox/gvisor/go.sum
 
       - name: Build libkite
@@ -43,10 +42,6 @@ jobs:
       - name: Build kite
         run: go build -v ./...
         working-directory: kite
-
-      - name: Build wasm
-        run: go build -v ./...
-        working-directory: wasm
 
       - name: Build sandbox/gvisor
         run: go build -v ./...
