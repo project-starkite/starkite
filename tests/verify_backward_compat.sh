@@ -421,6 +421,29 @@ $KITE module remove loose/lib >/dev/null 2>&1 || true
 rm -rf "$LOOSEDIR"
 
 # --------------------------------------------
+# Test 13j: kite init scaffolds a runnable module
+# --------------------------------------------
+info "Test 13j: kite init scaffolds a runnable module"
+
+INITDIR=$(mktemp -d /tmp/kite_test_XXXXXX)
+$KITE init "$INITDIR/widget" >/dev/null 2>&1
+SCAFFOLD_OK=true
+for f in mod.yaml main.star mod.lock README.md; do
+    [ -f "$INITDIR/widget/$f" ] || SCAFFOLD_OK=false
+done
+if [ "$SCAFFOLD_OK" = true ]; then
+    pass "init creates main.star, mod.yaml, mod.lock, README.md"
+else
+    fail "init creates main.star, mod.yaml, mod.lock, README.md"
+fi
+if $KITE run "$INITDIR/widget" --allow-all 2>&1 | grep -q "hello from starkite"; then
+    pass "the scaffolded module runs"
+else
+    fail "the scaffolded module runs"
+fi
+rm -rf "$INITDIR"
+
+# --------------------------------------------
 # Test 14: Built-in modules work
 # --------------------------------------------
 info "Test 14: Built-in modules"

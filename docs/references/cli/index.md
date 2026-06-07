@@ -22,7 +22,7 @@ Available in **every** edition (base, cloud, ai, all).
 | [`kite watch`](watch.md) | Watch and re-execute script on file changes |
 | [`kite test`](test.md) | Run test functions in `_test.star` files |
 | [`kite validate`](validate.md) | Validate script syntax without executing |
-| [`kite init`](init.md) | Scaffold a new starkite project |
+| [`kite init`](init.md) | Scaffold a new starkite module |
 
 ### Maintenance
 

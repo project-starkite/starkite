@@ -4,35 +4,40 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 )
 
 var (
+	initName      string
 	initTemplate  string
 	listTemplates bool
 )
 
 var initCmd = &cobra.Command{
 	Use:   "init [directory]",
-	Short: "Initialize a new starkite project",
-	Long: `Initialize a new starkite project with configuration files and optional templates.
+	Short: "Scaffold a new starkite module",
+	Long: `Scaffold a new starkite module: a directory with main.star, mod.yaml,
+mod.lock, and README.md.
+
+The module's name defaults to the target directory's name; override it with
+--name (accepts "name" or "namespace/name"). A --template adds an example
+main.star and any supporting files on top of the base scaffold.
 
 Templates:
-  basic      - Minimal config.yaml only (default)
-  deployment - SSH deployment script with inventory
-  kubernetes - Kubernetes manifest generation
-  backup     - Remote backup collection script
+  basic       Minimal runnable module (default)
+  kubernetes  Kubernetes manifest generation
 
 Examples:
-  # Initialize in current directory
+  # Scaffold in the current directory
   kite init
 
-  # Initialize with deployment template
-  kite init --template=deployment
+  # Scaffold in ./my-module with an explicit identity
+  kite init ./my-module --name acme/my-module
 
-  # Initialize in specific directory
-  kite init ./my-project
+  # Scaffold with a template
+  kite init --template=kubernetes
 
   # List available templates
   kite init --list-templates
@@ -42,7 +47,8 @@ Examples:
 }
 
 func init() {
-	initCmd.Flags().StringVarP(&initTemplate, "template", "t", "basic", "Project template to use")
+	initCmd.Flags().StringVar(&initName, "name", "", "Module identity: \"name\" or \"namespace/name\"")
+	initCmd.Flags().StringVarP(&initTemplate, "template", "t", "basic", "Template overlay to apply")
 	initCmd.Flags().BoolVar(&listTemplates, "list-templates", false, "List available templates")
 	rootCmd.AddCommand(initCmd)
 }
@@ -50,39 +56,41 @@ func init() {
 func runInit(cmd *cobra.Command, args []string) error {
 	if listTemplates {
 		fmt.Println("Available templates:")
-		fmt.Println("  basic       - Minimal starkite.yaml only (default)")
-		fmt.Println("  deployment  - SSH deployment script with inventory")
-		fmt.Println("  kubernetes  - Kubernetes manifest generation")
-		fmt.Println("  backup      - Remote backup collection script")
+		fmt.Println("  basic       Minimal runnable module (default)")
+		fmt.Println("  kubernetes  Kubernetes manifest generation")
 		return nil
 	}
 
-	// Determine target directory
 	dir := "."
 	if len(args) > 0 {
 		dir = args[0]
-		if err := os.MkdirAll(dir, 0755); err != nil {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
 			return fmt.Errorf("failed to create directory: %w", err)
 		}
 	}
 
-	// Get template files
-	tmpl, ok := templates[initTemplate]
+	overlay, ok := templateOverlays[initTemplate]
 	if !ok {
-		return fmt.Errorf("unknown template: %s (use --list-templates to see available)", initTemplate)
+		return fmt.Errorf("unknown template %q (use --list-templates to see available)", initTemplate)
 	}
 
-	// Create files
-	for _, file := range tmpl {
-		path := filepath.Join(dir, file.Name)
+	namespace, name := moduleIdentity(initName, dir)
 
-		// Check if file already exists
+	files := []TemplateFile{
+		{Name: "mod.yaml", Content: modManifest(namespace, name)},
+		{Name: "main.star", Content: overlay.MainStar},
+		{Name: "mod.lock", Content: "version: 1\n"},
+		{Name: "README.md", Content: moduleReadme(namespace, name)},
+	}
+	files = append(files, overlay.Extras...)
+
+	for _, file := range files {
+		path := filepath.Join(dir, file.Name)
 		if _, err := os.Stat(path); err == nil {
 			fmt.Printf("Skipped %s (already exists)\n", path)
 			continue
 		}
-
-		if err := os.WriteFile(path, []byte(file.Content), 0644); err != nil {
+		if err := os.WriteFile(path, []byte(file.Content), 0o644); err != nil {
 			return fmt.Errorf("failed to create %s: %w", path, err)
 		}
 		fmt.Printf("Created %s\n", path)
@@ -91,309 +99,138 @@ func runInit(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// TemplateFile represents a file to create
+// moduleIdentity resolves the module's (namespace, name). An explicit --name of
+// the form "namespace/name" sets both; a bare "name" sets only the name.
+// Without --name, the name defaults to the target directory's base name.
+func moduleIdentity(nameFlag, dir string) (namespace, name string) {
+	if nameFlag != "" {
+		if ns, n, ok := strings.Cut(nameFlag, "/"); ok {
+			return ns, n
+		}
+		return "", nameFlag
+	}
+	base := "module"
+	if abs, err := filepath.Abs(dir); err == nil {
+		base = filepath.Base(abs)
+	}
+	return "", sanitizeName(base)
+}
+
+// sanitizeName lower-cases base and replaces spaces with hyphens, falling back
+// to "module" when nothing usable remains.
+func sanitizeName(base string) string {
+	name := strings.ToLower(strings.ReplaceAll(strings.TrimSpace(base), " ", "-"))
+	if name == "" || name == "." || name == ".." {
+		return "module"
+	}
+	return name
+}
+
+// modManifest renders a mod.yaml with the required name (and namespace when set),
+// plus commented-out optional fields.
+func modManifest(namespace, name string) string {
+	var b strings.Builder
+	if namespace != "" {
+		fmt.Fprintf(&b, "namespace: %s\n", namespace)
+	}
+	fmt.Fprintf(&b, "name: %s\n", name)
+	b.WriteString("version: 0.1.0\n")
+	b.WriteString("\n")
+	b.WriteString("# description: A short summary of this module.\n")
+	b.WriteString("# dependencies:\n")
+	b.WriteString("#   acme/leaf: gitlab.com/acme/leaf@v1.0.0\n")
+	return b.String()
+}
+
+// moduleReadme renders the module's README.md.
+func moduleReadme(namespace, name string) string {
+	identity := name
+	if namespace != "" {
+		identity = namespace + "/" + name
+	}
+	var b strings.Builder
+	fmt.Fprintf(&b, "# %s\n\n", identity)
+	b.WriteString("A starkite module.\n\n")
+	b.WriteString("## Run\n\n")
+	b.WriteString("```bash\n")
+	b.WriteString("kite run .\n")
+	b.WriteString("```\n\n")
+	b.WriteString("## Layout\n\n")
+	b.WriteString("- `main.star` — entry point; defines `main()`\n")
+	b.WriteString("- `mod.yaml` — identity and declared dependencies\n")
+	b.WriteString("- `mod.lock` — resolved dependency lockfile (generated; commit it)\n")
+	return b.String()
+}
+
+// TemplateFile represents a file to create.
 type TemplateFile struct {
 	Name    string
 	Content string
 }
 
-var templates = map[string][]TemplateFile{
+// templateOverlay is the per-template content layered on the base module
+// scaffold: the main.star body and any supporting files.
+type templateOverlay struct {
+	MainStar string
+	Extras   []TemplateFile
+}
+
+var templateOverlays = map[string]templateOverlay{
 	"basic": {
-		{
-			Name: "config.yaml",
-			Content: `# starkite project configuration
-# See: https://github.com/project-starkite/starkite
+		MainStar: `# main.star — module entry point.
 
-project:
-  name: my-project
-  version: 0.1.0
-
-defaults:
-  log_level: info
-  timeout: 300
-
-providers:
-  ssh:
-    # user: deploy
-    # private_key_file: ~/.ssh/id_rsa
-
-# Variables
-# environment: dev
-# replicas: 3
+def main():
+    print("hello from starkite")
 `,
-		},
-	},
-	"deployment": {
-		{
-			Name: "config.yaml",
-			Content: `# starkite project configuration
-
-project:
-  name: my-deployment
-  version: 0.1.0
-
-defaults:
-  log_level: info
-  timeout: 300
-
-providers:
-  ssh:
-    user: deploy
-    private_key_file: ~/.ssh/id_rsa
-
-# Variables
-environment: dev
-app_name: myapp
-`,
-		},
-		{
-			Name: "deploy.star",
-			Content: `#!/usr/bin/env kite run
-# deploy.star - Deployment script
-#
-# Usage:
-#   kite run deploy.star
-#   kite run deploy.star --var environment=prod
-
-# Load inventory
-hosts = inventory.file("hosts.yaml", port = 22)
-
-# Get configuration
-env = var("environment", "dev")
-app = var("app_name", "myapp")
-
-log.info("Starting deployment", app = app, environment = env)
-
-# Filter hosts by environment
-targets = inventory.filter(hosts, group = env)
-if len(targets) == 0:
-    fail("No hosts found for environment: " + env)
-
-log.info("Target hosts", count = len(targets))
-
-# Configure SSH
-ssh_client = ssh.config(
-    user = var("ssh.user", "deploy"),
-    private_key_file = var("ssh.private_key_file", "~/.ssh/id_rsa"),
-    host_list = inventory.addresses(targets)
-)
-
-# Deploy
-results = ssh_client.exec("echo 'Deploying %s to %s'" % (app, env))
-
-for r in results:
-    if r.err:
-        log.error("Failed", host = r.host, error = r.err)
-    else:
-        log.info("Success", host = r.host, output = r.value.strip())
-
-log.info("Deployment complete")
-`,
-		},
-		{
-			Name: "hosts.yaml",
-			Content: `# Inventory file
-# Format: address, name (optional), group (optional)
-
-# Development hosts
-- address: 10.0.1.10
-  name: dev-web-1
-  group: dev
-
-# Staging hosts
-# - address: staging.example.com
-#   name: staging-web-1
-#   group: staging
-
-# Production hosts
-# - address: prod-web-1.example.com
-#   name: prod-web-1
-#   group: prod
-# - address: prod-web-2.example.com
-#   name: prod-web-2
-#   group: prod
-`,
-		},
 	},
 	"kubernetes": {
-		{
-			Name: "config.yaml",
-			Content: `# starkite project configuration
-
-project:
-  name: k8s-manifests
-  version: 0.1.0
-
-defaults:
-  log_level: info
-
-# Variables
-namespace: default
-app_name: myapp
-image_tag: latest
-replicas: 3
-`,
-		},
-		{
-			Name: "manifests.star",
-			Content: `#!/usr/bin/env kite run
-# manifests.star - Generate Kubernetes manifests
+		MainStar: `# main.star — Kubernetes manifest generation.
 #
-# Usage:
-#   kite run manifests.star                           # Print YAML
-#   kite run manifests.star | kubectl apply -f -      # Apply to cluster
-#   kite run manifests.star --var image_tag=v1.0.0    # Custom version
+#   kite run .                        # print YAML
+#   kite run . | kubectl apply -f -   # apply to a cluster
 
-# Configuration
-namespace = var("namespace", "default")
-app_name = var("app_name", "myapp")
-image_tag = var("image_tag", "latest")
-replicas = int(var("replicas", "3"))
-
-# Helper functions
-def labels():
+def _labels(app):
     return {
-        "app.kubernetes.io/name": app_name,
-        "app.kubernetes.io/managed-by": "starkite"
+        "app.kubernetes.io/name": app,
+        "app.kubernetes.io/managed-by": "starkite",
     }
 
-# Deployment manifest
-deployment = {
-    "apiVersion": "apps/v1",
-    "kind": "Deployment",
-    "metadata": {
-        "name": app_name,
-        "namespace": namespace,
-        "labels": labels()
-    },
-    "spec": {
-        "replicas": replicas,
-        "selector": {
-            "matchLabels": {"app.kubernetes.io/name": app_name}
-        },
-        "template": {
-            "metadata": {
-                "labels": labels()
-            },
-            "spec": {
-                "containers": [{
-                    "name": app_name,
-                    "image": "myregistry.io/%s:%s" % (app_name, image_tag),
+def main():
+    namespace = var_str("namespace", "default")
+    app = var_str("app_name", "myapp")
+    image_tag = var_str("image_tag", "latest")
+    replicas = var_int("replicas", 3)
+
+    deployment = {
+        "apiVersion": "apps/v1",
+        "kind": "Deployment",
+        "metadata": {"name": app, "namespace": namespace, "labels": _labels(app)},
+        "spec": {
+            "replicas": replicas,
+            "selector": {"matchLabels": {"app.kubernetes.io/name": app}},
+            "template": {
+                "metadata": {"labels": _labels(app)},
+                "spec": {"containers": [{
+                    "name": app,
+                    "image": "%s:%s" % (app, image_tag),
                     "ports": [{"containerPort": 8080}],
-                    "resources": {
-                        "requests": {"cpu": "100m", "memory": "128Mi"},
-                        "limits": {"cpu": "500m", "memory": "512Mi"}
-                    }
-                }]
-            }
-        }
+                }]},
+            },
+        },
     }
-}
-
-# Service manifest
-service = {
-    "apiVersion": "v1",
-    "kind": "Service",
-    "metadata": {
-        "name": app_name,
-        "namespace": namespace,
-        "labels": labels()
-    },
-    "spec": {
-        "selector": {"app.kubernetes.io/name": app_name},
-        "ports": [{"port": 80, "targetPort": 8080}],
-        "type": "ClusterIP"
+    service = {
+        "apiVersion": "v1",
+        "kind": "Service",
+        "metadata": {"name": app, "namespace": namespace, "labels": _labels(app)},
+        "spec": {
+            "selector": {"app.kubernetes.io/name": app},
+            "ports": [{"port": 80, "targetPort": 8080}],
+        },
     }
-}
-
-# Output YAML
-print("---")
-print(yaml.encode(deployment))
-print("---")
-print(yaml.encode(service))
+    print("---")
+    print(yaml.encode(deployment))
+    print("---")
+    print(yaml.encode(service))
 `,
-		},
-	},
-	"backup": {
-		{
-			Name: "config.yaml",
-			Content: `# starkite project configuration
-
-project:
-  name: backup-collector
-  version: 0.1.0
-
-defaults:
-  log_level: info
-  timeout: 600
-
-providers:
-  ssh:
-    user: backup
-    private_key_file: ~/.ssh/backup_key
-
-# Variables
-backup_dir: /tmp/backups
-`,
-		},
-		{
-			Name: "backup.star",
-			Content: `#!/usr/bin/env kite run
-# backup.star - Collect backups from remote servers
-#
-# Usage:
-#   kite run backup.star
-#   kite run backup.star --var-file=prod-hosts.yaml
-
-# Configuration
-backup_dir = var("backup_dir", "/tmp/backups")
-timestamp = time.format(time.now(), "2006-01-02-150405")
-
-log.info("Starting backup collection", timestamp = timestamp)
-
-# Load inventory
-hosts = inventory.file("hosts.yaml", port = 22)
-
-# Create local backup directory
-os.exec("mkdir -p " + backup_dir)
-
-# Configure SSH
-ssh_client = ssh.config(
-    user = var("ssh.user", "backup"),
-    private_key_file = var("ssh.private_key_file", "~/.ssh/backup_key"),
-    host_list = inventory.addresses(hosts)
-)
-
-# Collect logs from each host
-log.info("Collecting logs from hosts", count = len(hosts))
-
-results = ssh_client.exec("cat /var/log/syslog | tail -1000")
-
-for r in results:
-    if r.err:
-        log.error("Failed to collect", host = r.host, error = r.err)
-    else:
-        # Save to local file
-        filename = "%s/%s-%s.log" % (backup_dir, r.host, timestamp)
-        # Replace : with - in filename for Windows compatibility
-        filename = strings.replace(filename, ":", "-", -1)
-        write_text(filename, r.value)
-        log.info("Saved", host = r.host, file = filename)
-
-log.info("Backup collection complete", directory = backup_dir)
-`,
-		},
-		{
-			Name: "hosts.yaml",
-			Content: `# Backup targets
-- address: server1.example.com
-  name: server1
-  group: web
-
-- address: server2.example.com
-  name: server2
-  group: web
-`,
-		},
 	},
 }
