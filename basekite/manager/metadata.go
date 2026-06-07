@@ -1,6 +1,5 @@
 package manager
 
-// metadataFile is the manifest filename at the root of every module directory.
-// For starlark modules it is the author-authored module.yaml (parsed via
-// libkite.LoadModuleManifest); for WASM modules it is the WASM manifest.
+// metadataFile is the author-authored manifest at the root of every module
+// directory, parsed via libkite.LoadModuleManifest.
 const metadataFile = "module.yaml"

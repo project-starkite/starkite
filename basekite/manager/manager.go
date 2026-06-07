@@ -15,7 +15,6 @@ import (
 type Manager struct {
 	rootDir     string // ~/.starkite/modules/
 	starlarkDir string // ~/.starkite/modules/starlark/
-	wasmDir     string // ~/.starkite/modules/wasm/
 }
 
 // New creates a new module manager.
@@ -30,10 +29,9 @@ func New(rootDir string) (*Manager, error) {
 	}
 
 	starlarkDir := filepath.Join(rootDir, "starlark")
-	wasmDir := filepath.Join(rootDir, "wasm")
 
 	// Ensure all directories exist
-	for _, dir := range []string{rootDir, starlarkDir, wasmDir} {
+	for _, dir := range []string{rootDir, starlarkDir} {
 		if err := os.MkdirAll(dir, 0755); err != nil {
 			return nil, fmt.Errorf("cannot create directory %s: %w", dir, err)
 		}
@@ -42,7 +40,6 @@ func New(rootDir string) (*Manager, error) {
 	return &Manager{
 		rootDir:     rootDir,
 		starlarkDir: starlarkDir,
-		wasmDir:     wasmDir,
 	}, nil
 }
 
@@ -54,11 +51,6 @@ func (m *Manager) ModulesDir() string {
 // StarlarkDir returns the starlark modules directory path.
 func (m *Manager) StarlarkDir() string {
 	return m.starlarkDir
-}
-
-// WasmDir returns the WASM modules directory path.
-func (m *Manager) WasmDir() string {
-	return m.wasmDir
 }
 
 // Install installs a starlark module from a git repository or a local directory.
@@ -241,206 +233,18 @@ type InstallOptions struct {
 type ModuleInfo struct {
 	Namespace   string
 	Name        string
-	Type        string // "starlark" or "wasm"
+	Type        string // "starlark"
 	Path        string
 	Repository  string
 	Version     string
 	Description string
 	EntryPoint  string
-	// WASM-specific (empty for starlark modules)
-	Functions   []string
 	Permissions []string
-	WasmFile    string
 }
 
-// InstallWasm installs a WASM module from a local path or git repository.
-func (m *Manager) InstallWasm(source string, opts InstallOptions) (*ModuleInfo, error) {
-	if isLocalPath(source) {
-		return m.installWasmFromLocal(source, opts)
-	}
-	return m.installWasmFromGit(source, opts)
-}
-
-// installWasmFromLocal installs a WASM module from a local directory or .wasm file.
-func (m *Manager) installWasmFromLocal(source string, opts InstallOptions) (*ModuleInfo, error) {
-	source, err := filepath.Abs(source)
-	if err != nil {
-		return nil, fmt.Errorf("cannot resolve path: %w", err)
-	}
-
-	info, err := os.Stat(source)
-	if err != nil {
-		return nil, fmt.Errorf("source not found: %w", err)
-	}
-
-	var sourceDir string
-	if info.IsDir() {
-		sourceDir = source
-	} else if strings.HasSuffix(source, ".wasm") {
-		sourceDir = filepath.Dir(source)
-	} else {
-		return nil, fmt.Errorf("source must be a directory or .wasm file")
-	}
-
-	// Parse manifest
-	manifestPath := filepath.Join(sourceDir, metadataFile)
-	manifest, err := parseWasmManifest(manifestPath)
-	if err != nil {
-		return nil, fmt.Errorf("invalid WASM module: %w", err)
-	}
-
-	// Verify .wasm file exists in source
-	wasmPath := filepath.Join(sourceDir, manifest.Wasm)
-	if !fileExists(wasmPath) {
-		return nil, fmt.Errorf("WASM file %q not found in %s", manifest.Wasm, sourceDir)
-	}
-
-	name := opts.Name
-	if name == "" {
-		name = manifest.Name
-	}
-
-	destPath := filepath.Join(m.wasmDir, name)
-
-	// Check if already installed
-	if _, err := os.Stat(destPath); err == nil {
-		if !opts.Force {
-			return nil, fmt.Errorf("module %q already installed at %s (use --force to overwrite)", name, destPath)
-		}
-		if err := os.RemoveAll(destPath); err != nil {
-			return nil, fmt.Errorf("failed to remove existing module: %w", err)
-		}
-	}
-
-	// Create destination directory
-	if err := os.MkdirAll(destPath, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create module directory: %w", err)
-	}
-
-	// Copy module.yaml
-	if err := copyFile(manifestPath, filepath.Join(destPath, metadataFile)); err != nil {
-		os.RemoveAll(destPath)
-		return nil, fmt.Errorf("failed to copy manifest: %w", err)
-	}
-
-	// Copy .wasm file
-	if err := copyFile(wasmPath, filepath.Join(destPath, manifest.Wasm)); err != nil {
-		os.RemoveAll(destPath)
-		return nil, fmt.Errorf("failed to copy WASM file: %w", err)
-	}
-
-	// Build function name list
-	var funcNames []string
-	for _, fn := range manifest.Functions {
-		funcNames = append(funcNames, fn.Name)
-	}
-
-	return &ModuleInfo{
-		Name:        name,
-		Type:        "wasm",
-		Path:        destPath,
-		Version:     manifest.Version,
-		Description: manifest.Description,
-		WasmFile:    manifest.Wasm,
-		Functions:   funcNames,
-		Permissions: manifest.Permissions,
-	}, nil
-}
-
-// installWasmFromGit installs a WASM module from a git repository.
-func (m *Manager) installWasmFromGit(source string, opts InstallOptions) (*ModuleInfo, error) {
-	repo, version := ParseSource(source)
-
-	// Clone to a temporary directory
-	tmpDir, err := os.MkdirTemp("", "starkite-wasm-*")
-	if err != nil {
-		return nil, fmt.Errorf("failed to create temp dir: %w", err)
-	}
-	defer os.RemoveAll(tmpDir)
-
-	if err := GitClone(repo, version, tmpDir); err != nil {
-		return nil, fmt.Errorf("failed to clone repository: %w", err)
-	}
-
-	// Parse manifest from cloned repo
-	manifestPath := filepath.Join(tmpDir, metadataFile)
-	manifest, err := parseWasmManifest(manifestPath)
-	if err != nil {
-		return nil, fmt.Errorf("invalid WASM module: %w", err)
-	}
-
-	// Verify .wasm file exists
-	wasmPath := filepath.Join(tmpDir, manifest.Wasm)
-	if !fileExists(wasmPath) {
-		return nil, fmt.Errorf("WASM file %q not found in repository", manifest.Wasm)
-	}
-
-	name := opts.Name
-	if name == "" {
-		name = manifest.Name
-	}
-
-	destPath := filepath.Join(m.wasmDir, name)
-
-	// Check if already installed
-	if _, err := os.Stat(destPath); err == nil {
-		if !opts.Force {
-			return nil, fmt.Errorf("module %q already installed at %s (use --force to overwrite)", name, destPath)
-		}
-		if err := os.RemoveAll(destPath); err != nil {
-			return nil, fmt.Errorf("failed to remove existing module: %w", err)
-		}
-	}
-
-	// Create destination directory
-	if err := os.MkdirAll(destPath, 0755); err != nil {
-		return nil, fmt.Errorf("failed to create module directory: %w", err)
-	}
-
-	// Copy module.yaml
-	if err := copyFile(manifestPath, filepath.Join(destPath, metadataFile)); err != nil {
-		os.RemoveAll(destPath)
-		return nil, fmt.Errorf("failed to copy manifest: %w", err)
-	}
-
-	// Copy .wasm file
-	if err := copyFile(wasmPath, filepath.Join(destPath, manifest.Wasm)); err != nil {
-		os.RemoveAll(destPath)
-		return nil, fmt.Errorf("failed to copy WASM file: %w", err)
-	}
-
-	// Build function name list
-	var funcNames []string
-	for _, fn := range manifest.Functions {
-		funcNames = append(funcNames, fn.Name)
-	}
-
-	return &ModuleInfo{
-		Name:        name,
-		Type:        "wasm",
-		Path:        destPath,
-		Repository:  repo,
-		Version:     manifest.Version,
-		Description: manifest.Description,
-		WasmFile:    manifest.Wasm,
-		Functions:   funcNames,
-		Permissions: manifest.Permissions,
-	}, nil
-}
-
-// List returns all installed modules (starlark and wasm).
+// List returns all installed modules.
 func (m *Manager) List() ([]*ModuleInfo, error) {
-	starlark, err := m.listStarlarkModules()
-	if err != nil {
-		return nil, err
-	}
-
-	wasm, err := m.listWasmModules()
-	if err != nil {
-		return nil, err
-	}
-
-	return append(starlark, wasm...), nil
+	return m.listStarlarkModules()
 }
 
 // listStarlarkModules lists all installed starlark modules. Modules live under
@@ -500,55 +304,8 @@ func (m *Manager) starlarkInfo(namespace, name, modulePath string) *ModuleInfo {
 	return info
 }
 
-// listWasmModules lists all installed WASM modules.
-func (m *Manager) listWasmModules() ([]*ModuleInfo, error) {
-	entries, err := os.ReadDir(m.wasmDir)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, fmt.Errorf("failed to read wasm modules directory: %w", err)
-	}
-
-	var modules []*ModuleInfo
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-
-		name := entry.Name()
-		modulePath := filepath.Join(m.wasmDir, name)
-
-		manifestPath := filepath.Join(modulePath, metadataFile)
-		manifest, err := parseWasmManifest(manifestPath)
-		if err != nil {
-			continue // skip invalid WASM modules
-		}
-
-		var funcNames []string
-		for _, fn := range manifest.Functions {
-			funcNames = append(funcNames, fn.Name)
-		}
-
-		modules = append(modules, &ModuleInfo{
-			Name:        name,
-			Type:        "wasm",
-			Path:        modulePath,
-			Version:     manifest.Version,
-			Description: manifest.Description,
-			WasmFile:    manifest.Wasm,
-			Functions:   funcNames,
-			Permissions: manifest.Permissions,
-		})
-	}
-
-	return modules, nil
-}
-
-// Get returns information about a specific module. ref is "namespace/name" for
-// starlark modules (or a bare name for WASM modules, which are flat).
+// Get returns information about a specific module. ref is "namespace/name".
 func (m *Manager) Get(ref string) (*ModuleInfo, error) {
-	// Starlark: namespace/name.
 	if ns, name, ok := strings.Cut(ref, "/"); ok {
 		starlarkPath := filepath.Join(m.starlarkDir, ns, name)
 		if info, err := os.Stat(starlarkPath); err == nil && info.IsDir() {
@@ -556,38 +313,7 @@ func (m *Manager) Get(ref string) (*ModuleInfo, error) {
 		}
 	}
 
-	// WASM: bare name.
-	wasmPath := filepath.Join(m.wasmDir, ref)
-	if info, err := os.Stat(wasmPath); err == nil && info.IsDir() {
-		return m.getWasmModule(ref, wasmPath)
-	}
-
 	return nil, fmt.Errorf("module %q not installed", ref)
-}
-
-// getWasmModule builds ModuleInfo for a WASM module.
-func (m *Manager) getWasmModule(name, modulePath string) (*ModuleInfo, error) {
-	manifestPath := filepath.Join(modulePath, metadataFile)
-	manifest, err := parseWasmManifest(manifestPath)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read WASM module manifest: %w", err)
-	}
-
-	var funcNames []string
-	for _, fn := range manifest.Functions {
-		funcNames = append(funcNames, fn.Name)
-	}
-
-	return &ModuleInfo{
-		Name:        name,
-		Type:        "wasm",
-		Path:        modulePath,
-		Version:     manifest.Version,
-		Description: manifest.Description,
-		WasmFile:    manifest.Wasm,
-		Functions:   funcNames,
-		Permissions: manifest.Permissions,
-	}, nil
 }
 
 // Update updates an installed starlark module to the latest version. ref is
@@ -598,11 +324,6 @@ func (m *Manager) Update(ref string) (*ModuleInfo, error) {
 		if _, err := os.Stat(starlarkPath); err == nil {
 			return m.updateStarlarkModule(ns, name, starlarkPath)
 		}
-	}
-
-	wasmPath := filepath.Join(m.wasmDir, ref)
-	if _, err := os.Stat(wasmPath); err == nil {
-		return nil, fmt.Errorf("WASM modules cannot be updated; reinstall with --force")
 	}
 
 	return nil, fmt.Errorf("module %q not installed", ref)
@@ -631,8 +352,7 @@ func (m *Manager) updateStarlarkModule(namespace, name, modulePath string) (*Mod
 	return info, nil
 }
 
-// Remove removes an installed module. ref is "namespace/name" for starlark
-// modules (or a bare name for WASM modules).
+// Remove removes an installed module. ref is "namespace/name".
 func (m *Manager) Remove(ref string) error {
 	if ns, name, ok := strings.Cut(ref, "/"); ok {
 		starlarkPath := filepath.Join(m.starlarkDir, ns, name)
@@ -644,11 +364,6 @@ func (m *Manager) Remove(ref string) error {
 			pruneEmptyDir(filepath.Dir(starlarkPath))
 			return nil
 		}
-	}
-
-	wasmPath := filepath.Join(m.wasmDir, ref)
-	if _, err := os.Stat(wasmPath); err == nil {
-		return os.RemoveAll(wasmPath)
 	}
 
 	return fmt.Errorf("module %q not installed", ref)
@@ -774,10 +489,6 @@ func isLocalPath(source string) bool {
 	}
 	// Home directory expansion
 	if strings.HasPrefix(source, "~"+string(filepath.Separator)) || source == "~" {
-		return true
-	}
-	// Bare .wasm file reference
-	if strings.HasSuffix(source, ".wasm") {
 		return true
 	}
 	return false

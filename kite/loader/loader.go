@@ -3,13 +3,10 @@
 package loader
 
 import (
-	stdlog "log"
-
 	ailoader "github.com/project-starkite/starkite/aikite/loader"
 	cloudloader "github.com/project-starkite/starkite/cloudkite/loader"
 	"github.com/project-starkite/starkite/libkite"
 	baseloader "github.com/project-starkite/starkite/libkite/loader"
-	"github.com/project-starkite/starkite/wasm"
 )
 
 // NewAllRegistry creates a registry with base + cloud + ai modules registered.
@@ -22,8 +19,5 @@ func NewAllRegistry(config *libkite.ModuleConfig) *libkite.Registry {
 	baseloader.RegisterAll(r)
 	cloudloader.RegisterCloudModules(r)
 	ailoader.RegisterAIModules(r)
-	if err := wasm.RegisterPlugins(r, ""); err != nil {
-		stdlog.Printf("wasm: plugin discovery error: %v", err)
-	}
 	return r
 }

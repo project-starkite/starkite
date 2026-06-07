@@ -4,10 +4,7 @@ description: "Manage external starkite modules"
 weight: 24
 ---
 
-Manage external starkite modules. Modules come in two types:
-
-- **starlark** — script modules installed from git repositories
-- **wasm** — WebAssembly modules installed from local paths or git
+Manage external starkite modules — Starlark script modules installed from a git repository or a local directory.
 
 Installed modules live under `~/.starkite/modules/` and are discovered automatically at runtime.
 
@@ -23,7 +20,7 @@ Installed modules live under `~/.starkite/modules/` and are discovered automatic
 
 ## `kite module install <source>`
 
-### Source formats (starlark)
+### Source formats
 
 | Source | Meaning |
 |--------|---------|
@@ -35,10 +32,7 @@ Installed modules live under `~/.starkite/modules/` and are discovered automatic
 | `github.com/user/repo@main` | Specific branch |
 | `github.com/user/repo@abc1234` | Specific commit |
 | `git@github.com:user/repo.git` | SSH clone |
-
-### Source formats (WASM)
-
-Local directory containing a `module.yaml` + `.wasm` file, a `.wasm` file directly, or a git repository containing the same. Use `--type wasm` to force WASM detection.
+| `./path/to/module` | Local directory (copied, not cloned) |
 
 ### Flags
 
@@ -46,7 +40,6 @@ Local directory containing a `module.yaml` + `.wasm` file, a `.wasm` file direct
 |------|-------------|
 | `--as <name>` | Install with a custom local name (overrides the repo-derived default) |
 | `--force` | Overwrite an existing installation |
-| `--type` | Module type: `starlark` or `wasm`. Auto-detected when omitted |
 
 ### Examples
 
@@ -63,14 +56,9 @@ kite module install github.com/user/kite-helm@v1.0.0
 # Reinstall, overwriting the existing copy
 kite module install --force github.com/user/kite-helm
 
-# Install a WASM module from a local directory
-kite module install --type wasm ./path/to/echo
-
-# Install a WASM plugin from a git repo
-kite module install --type wasm github.com/user/wasm-plugin
+# Install from a local directory
+kite module install ./path/to/my-module
 ```
-
-Auto-detection picks WASM when the source ends in `.wasm` or a local directory's `module.yaml` contains a `wasm:` field.
 
 ## `kite module list`
 
@@ -81,12 +69,11 @@ kite module list
 # NAME   TYPE      VERSION   SOURCE
 # ----   ----      -------   ------
 # helm   starlark  v1.0.0    github.com/user/kite-helm
-# echo   wasm      -         (local)
 ```
 
 ## `kite module update <name>`
 
-Updates an installed **starlark** module by pulling the latest from its git repository. WASM modules cannot be updated in place — reinstall with `--force` instead.
+Updates an installed module by pulling the latest from its git repository.
 
 ```bash
 kite module update helm
@@ -103,7 +90,7 @@ kite module rm echo
 
 ## `kite module info <name>`
 
-Shows detailed info: name, type, path, version, repository, entry point. For WASM modules, also shows the `.wasm` file, exported functions, and declared permissions.
+Shows detailed info: name, type, path, version, repository, entry point.
 
 ```bash
 kite module info helm

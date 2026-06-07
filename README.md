@@ -16,7 +16,6 @@
 - **SSH operations** — Multi-host concurrent execution, jump hosts, SCP upload/download
 - **Resilience patterns** — Retry with exponential backoff, concurrent map/each/exec
 - **Safe by default** — Permission sandboxing with fine-grained allow/deny rules
-- **WASM extensible** — Extend with WebAssembly plugins written in Go, Rust, or any WASM-compatible language
 - **Built-in test runner** — Test framework with assertions, filtering, and setup/teardown
 
 ## Editions

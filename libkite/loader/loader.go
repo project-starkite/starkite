@@ -66,9 +66,6 @@ func RegisterAll(r *libkite.Registry) {
 	r.Register(ssh.New())
 	r.Register(http.New())
 	r.Register(inventory.New())
-
-	// Note: WASM plugins are registered separately by core/cloud editions
-	// via the wasm package (github.com/project-starkite/starkite/wasm)
 }
 
 // NewDefaultRegistry creates a new registry with all built-in modules registered.

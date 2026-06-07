@@ -1,7 +1,6 @@
 go 1.26
 
 use ./libkite
-use ./wasm
 use ./basekite
 use ./cloudkite
 use ./aikite

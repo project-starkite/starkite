@@ -3,13 +3,10 @@
 package loader
 
 import (
-	stdlog "log"
-
 	"github.com/project-starkite/starkite/aikite/modules/genai"
 	"github.com/project-starkite/starkite/aikite/modules/mcp"
 	"github.com/project-starkite/starkite/libkite"
 	baseloader "github.com/project-starkite/starkite/libkite/loader"
-	"github.com/project-starkite/starkite/wasm"
 )
 
 // RegisterAIModules registers ai-specific modules on an existing registry.
@@ -23,8 +20,5 @@ func NewAIRegistry(config *libkite.ModuleConfig) *libkite.Registry {
 	r := libkite.NewRegistry(config)
 	baseloader.RegisterAll(r)
 	RegisterAIModules(r)
-	if err := wasm.RegisterPlugins(r, ""); err != nil {
-		stdlog.Printf("wasm: plugin discovery error: %v", err)
-	}
 	return r
 }

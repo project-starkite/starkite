@@ -5,7 +5,6 @@ go 1.26
 require (
 	github.com/project-starkite/starkite/basekite v0.0.0-20260528215212-f0fd159a6053
 	github.com/project-starkite/starkite/libkite v0.0.0-20260528215212-f0fd159a6053
-	github.com/project-starkite/starkite/wasm v0.0.0-20260528215212-f0fd159a6053
 	github.com/spf13/cobra v1.10.2
 	github.com/vladimirvivien/startype v0.7.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35

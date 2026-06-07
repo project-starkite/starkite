@@ -440,7 +440,7 @@ func AllowAllPermissions() *PermissionConfig {
 // DenyAllPermissions returns a config that denies every gated operation.
 // Pure utility modules (strings, json, yaml, …) bypass the permission system,
 // so they remain available; any module that calls Check (fs, os, http, ssh,
-// k8s, ai, mcp, io, wasm) is blocked.
+// k8s, ai, mcp, io) is blocked.
 func DenyAllPermissions() *PermissionConfig {
 	return &PermissionConfig{
 		Default: DefaultDeny,

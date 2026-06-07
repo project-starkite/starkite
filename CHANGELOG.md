@@ -46,7 +46,6 @@ The first public release of **starkite** (formerly starctl/crsh), an automation 
 
 - **25+ built-in modules** — os, fs, http (client + server), ssh, json, yaml, csv, gzip, zip, base64, hash, strings, regexp, template, time, uuid, log, fmt, table, concur, retry, io, vars, runtime, inventory, test
 - **Two editions** — Base (default) and Cloud (Kubernetes, Helm, container modules)
-- **WASM plugin system** — extend starkite with WebAssembly modules via `module.yaml` manifests
 - **Permission system** — `--trust` (default, allow all) and `--sandbox` (restrict to safe operations)
 - **Built-in test runner** — `kite test` with parallel execution, filtering, setup/teardown, skip support
 - **Interactive REPL** — `kite repl` for exploratory scripting

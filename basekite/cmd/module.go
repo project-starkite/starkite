@@ -3,7 +3,6 @@ package cmd
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 	"text/tabwriter"
 
@@ -16,22 +15,18 @@ var moduleCmd = &cobra.Command{
 	Short: "Manage external starkite modules",
 	Long: `Manage external starkite modules.
 
-Modules extend starkite with additional functionality. Supported module types:
-  - starlark: Script modules written in Starlark (installed from git)
-  - wasm:     WebAssembly modules (installed from local paths or git)
+Modules are Starlark script modules that extend starkite with additional
+functionality, installed from a git repository or a local directory.
 
 Examples:
-  # Install a starlark module from GitHub
-  kite module install github.com/user/kite-helm
+  # Install a module from a git host
+  kite module install gitlab.com/user/kite-helm
 
   # Install with specific version
-  kite module install github.com/user/kite-helm@v1.0.0
+  kite module install gitlab.com/user/kite-helm@v1.0.0
 
   # Install with custom name
-  kite module install github.com/user/kite-helm --as helm
-
-  # Install a WASM module from a local directory
-  kite module install --type wasm ./path/to/wasm-module
+  kite module install gitlab.com/user/kite-helm --as helm
 
   # List installed modules
   kite module list
@@ -65,15 +60,11 @@ For starlark modules, supported source formats:
 When the manifest omits a namespace, it falls back to the source's org; for a
 local directory install --as <namespace>/<name> may be required.
 
-For WASM modules, source can be a local directory containing a module.yaml
-and .wasm file, or a git repository. Use --type wasm to force WASM install.
-
 Examples:
   kite module install gitlab.com/acme/kite-helm
   kite module install git.internal/acme/kite-helm@v1.0.0
   kite module install ./my-module
   kite module install ./my-module --as acme/helm
-  kite module install --type wasm ./path/to/echo
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: runModuleInstall,
@@ -96,7 +87,6 @@ var moduleUpdateCmd = &cobra.Command{
 	Long: `Update an installed module to the latest version.
 
 This pulls the latest changes from the module's git repository.
-WASM modules cannot be updated; reinstall with --force instead.
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: runModuleUpdate,
@@ -119,8 +109,7 @@ var moduleInfoCmd = &cobra.Command{
 	Short: "Show information about an installed module",
 	Long: `Show detailed information about an installed module.
 
-Displays the module's name, type, version, repository, and entry point.
-For WASM modules, also shows the WASM file, exported functions, and permissions.
+Displays the module's name, version, repository, and entry point.
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: runModuleInfo,
@@ -130,14 +119,12 @@ For WASM modules, also shows the WASM file, exported functions, and permissions.
 var (
 	moduleInstallAs    string
 	moduleInstallForce bool
-	moduleInstallType  string
 )
 
 func init() {
 	// Install flags
 	moduleInstallCmd.Flags().StringVar(&moduleInstallAs, "as", "", "Install with custom name")
 	moduleInstallCmd.Flags().BoolVar(&moduleInstallForce, "force", false, "Overwrite existing module")
-	moduleInstallCmd.Flags().StringVar(&moduleInstallType, "type", "", "Module type: starlark or wasm (auto-detected if omitted)")
 
 	// Add subcommands
 	moduleCmd.AddCommand(moduleInstallCmd)
@@ -163,12 +150,6 @@ func runModuleInstall(cmd *cobra.Command, args []string) error {
 		Force: moduleInstallForce,
 	}
 
-	// Determine if this is a WASM install
-	if detectWasmInstall(source, moduleInstallType) {
-		return runWasmInstall(mgr, source, opts)
-	}
-
-	// Starlark install (requires git)
 	if !manager.GitAvailable() {
 		return fmt.Errorf("git is required but not found in PATH")
 	}
@@ -191,59 +172,6 @@ func runModuleInstall(cmd *cobra.Command, args []string) error {
 	fmt.Printf(" to %s\n", info.Path)
 
 	return nil
-}
-
-func runWasmInstall(mgr *manager.Manager, source string, opts manager.InstallOptions) error {
-	fmt.Printf("Installing WASM module from %s...\n", source)
-
-	info, err := mgr.InstallWasm(source, opts)
-	if err != nil {
-		return err
-	}
-
-	fmt.Printf("Installed %s", info.Name)
-	if info.Version != "" {
-		fmt.Printf(" (%s)", info.Version)
-	}
-	fmt.Printf(" to %s\n", info.Path)
-
-	return nil
-}
-
-// detectWasmInstall determines if the install should use the WASM path.
-func detectWasmInstall(source, typeFlag string) bool {
-	if typeFlag == "wasm" {
-		return true
-	}
-	if typeFlag == "starlark" {
-		return false
-	}
-
-	// Auto-detect: .wasm file extension
-	if strings.HasSuffix(source, ".wasm") {
-		return true
-	}
-
-	// Auto-detect: local directory with a module.yaml containing a "wasm:" field
-	abs, err := filepath.Abs(source)
-	if err != nil {
-		return false
-	}
-	info, err := os.Stat(abs)
-	if err != nil || !info.IsDir() {
-		return false
-	}
-	data, err := os.ReadFile(filepath.Join(abs, "module.yaml"))
-	if err != nil {
-		return false
-	}
-	// Simple heuristic: if module.yaml has a "wasm:" field, it's a WASM module
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(strings.TrimSpace(line), "wasm:") {
-			return true
-		}
-	}
-	return false
 }
 
 func runModuleList(cmd *cobra.Command, args []string) error {
@@ -358,19 +286,6 @@ func runModuleInfo(cmd *cobra.Command, args []string) error {
 	}
 	if info.EntryPoint != "" {
 		fmt.Printf("Entry point: %s\n", info.EntryPoint)
-	}
-
-	// WASM-specific fields
-	if info.Type == "wasm" {
-		if info.WasmFile != "" {
-			fmt.Printf("WASM file:   %s\n", info.WasmFile)
-		}
-		if len(info.Functions) > 0 {
-			fmt.Printf("Functions:   %s\n", strings.Join(info.Functions, ", "))
-		}
-		if len(info.Permissions) > 0 {
-			fmt.Printf("Permissions: %s\n", strings.Join(info.Permissions, ", "))
-		}
 	}
 
 	return nil

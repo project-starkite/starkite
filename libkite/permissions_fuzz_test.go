@@ -21,7 +21,7 @@ func FuzzParseRule(f *testing.F) {
 		"fs.read(foo:)",
 		"fs.read(.env)",
 		"fs.read(/path/with:colon)",
-		"my-mod.wasm(myfn:*)",
+		"my-mod.run(myfn:*)",
 		"http.client(api.example.com)",
 		"fs.read( foo : * )",
 		"fs.read(1foo:*)",
@@ -77,7 +77,7 @@ func FuzzRuleMatches(f *testing.F) {
 		{"fs.read(/data/**)", "fs", "read", "read_file", "/data/sub/file"},
 		{"fs.read(/data/**)", "fs", "read", "read_file", "/etc/passwd"},
 		{"fs.write(read_file,read_bytes:/d/**)", "fs", "write", "read_file", "/d/x"},
-		{"my-mod.wasm", "my-mod", "wasm", "anything", ""},
+		{"my-mod.run", "my-mod", "run", "anything", ""},
 	}
 	for _, s := range seed {
 		f.Add(s.pattern, s.module, s.category, s.function, s.resource)

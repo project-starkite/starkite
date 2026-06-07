@@ -372,13 +372,13 @@ func TestParseRule_EdgeCases(t *testing.T) {
 	})
 
 	t.Run("module name with hyphens", func(t *testing.T) {
-		// WASM module names can contain hyphens.
-		rule, err := ParseRule("my-mod.wasm(myfn:*)")
+		// Module names can contain hyphens.
+		rule, err := ParseRule("my-mod.run(myfn:*)")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if rule.Module != "my-mod" || rule.Category != "wasm" {
-			t.Errorf("Module=%q Category=%q, want my-mod/wasm", rule.Module, rule.Category)
+		if rule.Module != "my-mod" || rule.Category != "run" {
+			t.Errorf("Module=%q Category=%q, want my-mod/run", rule.Module, rule.Category)
 		}
 	})
 
