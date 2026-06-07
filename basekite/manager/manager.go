@@ -377,6 +377,26 @@ func (m *Manager) Get(ref string) (*ModuleInfo, error) {
 	}
 }
 
+// Revisions returns every installed revision of a module identity
+// ("namespace/name"), in directory order. It is empty when none are installed.
+// Revisions of one identity coexist because the cache is version-addressed and
+// write-once.
+func (m *Manager) Revisions(ref string) ([]*ModuleInfo, error) {
+	ns, name, ok := strings.Cut(ref, "/")
+	if !ok {
+		return nil, nil
+	}
+	dirs, err := m.installedRevDirs(ns, name)
+	if err != nil {
+		return nil, err
+	}
+	infos := make([]*ModuleInfo, 0, len(dirs))
+	for _, d := range dirs {
+		infos = append(infos, m.starlarkInfo(ns, d, filepath.Join(m.rootDir, ns, d)))
+	}
+	return infos, nil
+}
+
 // Update fetches the latest revision of an installed module and adds it to the
 // cache. ref is "namespace/name". Cached revisions are immutable, so an update
 // installs a new revision alongside any existing ones rather than mutating in
@@ -433,9 +453,10 @@ func (m *Manager) Remove(ref string) error {
 	return nil
 }
 
-// VerifyResult reports the integrity check for one installed module.
+// VerifyResult reports the integrity check for one installed module revision.
 type VerifyResult struct {
 	Identity string
+	Rev      string
 	Path     string
 	OK       bool
 	Reason   string // populated when OK is false
@@ -443,9 +464,9 @@ type VerifyResult struct {
 
 // Verify re-hashes installed modules and compares against the content hash
 // recorded at install, detecting on-disk tampering or corruption. With an empty
-// ref it checks every installed module; otherwise it checks the single
-// "namespace/name". This is the full-content check; the run-time fast path uses
-// the stat fingerprint instead.
+// ref it checks every installed module; otherwise it checks every revision of
+// the single "namespace/name". This is the full-content check; the run-time fast
+// path uses the stat fingerprint instead.
 func (m *Manager) Verify(ref string) ([]VerifyResult, error) {
 	var targets []*ModuleInfo
 	if ref == "" {
@@ -455,11 +476,14 @@ func (m *Manager) Verify(ref string) ([]VerifyResult, error) {
 		}
 		targets = all
 	} else {
-		info, err := m.Get(ref)
+		revs, err := m.Revisions(ref)
 		if err != nil {
 			return nil, err
 		}
-		targets = []*ModuleInfo{info}
+		if len(revs) == 0 {
+			return nil, fmt.Errorf("module %q not installed", ref)
+		}
+		targets = revs
 	}
 
 	results := make([]VerifyResult, 0, len(targets))
@@ -468,7 +492,7 @@ func (m *Manager) Verify(ref string) ([]VerifyResult, error) {
 		if info.Namespace != "" {
 			identity = info.Namespace + "/" + info.Name
 		}
-		res := VerifyResult{Identity: identity, Path: info.Path, OK: true}
+		res := VerifyResult{Identity: identity, Rev: info.Rev, Path: info.Path, OK: true}
 
 		prov, err := ReadProvenance(info.Path)
 		switch {

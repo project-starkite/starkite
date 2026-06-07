@@ -75,16 +75,79 @@ def main():
     slack.post("#deploys", "shipped")
 ```
 
-## Installing modules
+## Managing modules
 
-`kite module install` fetches a module from a git host or a local directory into the global cache (`~/.starkite/modules/`), where it loads by its `namespace/name`:
+The `kite module` subcommands manage the global module cache at `~/.starkite/modules/`. Installed modules are stored version-addressed as `<namespace>/<name>@<rev>/` — `<rev>` is the commit SHA for a git source or a content hash for a local one — and the cache is write-once, so different revisions of the same module coexist.
+
+| Command | Purpose |
+|---------|---------|
+| `kite module install <source>` | Fetch a module from a git host or local directory into the cache |
+| `kite module list` | List installed modules, one row per revision |
+| `kite module info <name>` | Show details for a module (every installed revision) |
+| `kite module verify [name]` | Re-hash modules and check them against their recorded hash |
+| `kite module update <name>` | Fetch the latest revision and add it to the cache |
+| `kite module remove <name>` | Delete a module and all of its revisions |
+
+### install
+
+Fetch a module into the cache, where it then loads by its `namespace/name`:
 
 ```bash
 kite module install gitlab.com/acme/slack       # → load("acme/slack", "slack")
-kite module install ./my-module --as acme/tools # local directory, custom identity
+kite module install gitlab.com/acme/slack@v1.2.0 # pin a tag, branch, or commit
+kite module install ./my-module --as acme/tools  # local directory, custom identity
 ```
 
-Run an installed module directly with `kite run @acme/slack`. See [`kite module`](../references/cli/module.md) for `list`, `update`, `remove`, `info`, and `verify`.
+A module's identity comes from its `mod.yaml`; for a git source the org supplies a fallback namespace. Reinstalling identical content is a no-op. Run an installed module directly with `kite run @acme/slack`.
+
+### list
+
+```bash
+kite module list
+# NAME        REV               TYPE      VERSION  SOURCE
+# acme/slack  9f3c1ab           starlark  v1.2.0   gitlab.com/acme/slack
+```
+
+Each installed revision is its own row, distinguished by the `REV` column.
+
+### info
+
+```bash
+kite module info acme/slack
+```
+
+Shows name, revision, path, version, source, description, and entry point. When more than one revision is installed, all are listed.
+
+### verify
+
+Re-hash installed modules and compare against the hash recorded at install, detecting on-disk tampering or corruption. With no argument every module is checked; with a `namespace/name`, every revision of that module. Exits non-zero on any failure:
+
+```bash
+kite module verify              # check everything
+kite module verify acme/slack   # check one module
+# ok    acme/slack@9f3c1ab
+```
+
+This is the full-content check. At run time, `kite run` verifies locked dependencies the fast way — a stat-only fingerprint comparison — falling back to a full re-hash only when the fingerprint no longer matches.
+
+### update
+
+Fetch the latest revision from the module's recorded source and add it to the cache. Cached revisions are immutable, so an update installs a new revision alongside any existing one rather than overwriting:
+
+```bash
+kite module update acme/slack
+# Updated acme/slack (a1b2c3d)
+```
+
+### remove
+
+Delete a module and all of its cached revisions:
+
+```bash
+kite module remove acme/slack
+```
+
+See [`kite module`](../references/cli/module.md) for the full flag reference.
 
 ## Declaring dependencies
 

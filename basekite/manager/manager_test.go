@@ -262,6 +262,116 @@ func TestManagerRemove(t *testing.T) {
 	})
 }
 
+// writeLocalSource creates a local module source directory (not in the cache)
+// suitable for mgr.Install.
+func writeLocalSource(t *testing.T, ns, name, body string) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "src")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("mkdir src: %v", err)
+	}
+	os.WriteFile(filepath.Join(dir, "mod.yaml"), []byte("namespace: "+ns+"\nname: "+name+"\nversion: 0.1.0\n"), 0o644)
+	os.WriteFile(filepath.Join(dir, "main.star"), []byte(body), 0o644)
+	return dir
+}
+
+func TestManagerInstall(t *testing.T) {
+	mgr, err := New(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	src := writeLocalSource(t, "acme", "tool", "def main():\n    pass\n")
+
+	info, err := mgr.Install(src, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+	if info.Namespace != "acme" || info.Name != "tool" {
+		t.Errorf("identity = %s/%s, want acme/tool", info.Namespace, info.Name)
+	}
+	if info.Rev == "" || info.Hash == "" {
+		t.Errorf("expected non-empty rev and hash, got rev=%q hash=%q", info.Rev, info.Hash)
+	}
+	if filepath.Base(info.Path) != "tool@"+info.Rev {
+		t.Errorf("install path %q should be version-addressed as tool@%s", info.Path, info.Rev)
+	}
+
+	// The receipt records the same hash.
+	prov, err := ReadProvenance(info.Path)
+	if err != nil || prov == nil {
+		t.Fatalf("ReadProvenance: %v (prov=%v)", err, prov)
+	}
+	if prov.Hash != info.Hash || prov.Rev != info.Rev {
+		t.Errorf("receipt rev/hash %s/%s != info %s/%s", prov.Rev, prov.Hash, info.Rev, info.Hash)
+	}
+
+	// Reinstalling identical content is idempotent: same revision, no error.
+	info2, err := mgr.Install(src, InstallOptions{})
+	if err != nil {
+		t.Fatalf("reinstall: %v", err)
+	}
+	if info2.Rev != info.Rev {
+		t.Errorf("idempotent reinstall produced a new rev: %s vs %s", info2.Rev, info.Rev)
+	}
+}
+
+func TestManagerUpdateAndRevisions(t *testing.T) {
+	mgr, err := New(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	src := writeLocalSource(t, "acme", "tool", "def main():\n    pass\n")
+
+	first, err := mgr.Install(src, InstallOptions{})
+	if err != nil {
+		t.Fatalf("Install: %v", err)
+	}
+
+	if revs, err := mgr.Revisions("acme/tool"); err != nil || len(revs) != 1 {
+		t.Fatalf("Revisions after install = %d (err %v), want 1", len(revs), err)
+	}
+
+	// Change the source and update — a new revision is added alongside the first.
+	os.WriteFile(filepath.Join(src, "main.star"), []byte("def main():\n    print('v2')\n"), 0o644)
+	updated, err := mgr.Update("acme/tool")
+	if err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	if updated.Rev == first.Rev {
+		t.Error("update of changed source should produce a new revision")
+	}
+
+	revs, err := mgr.Revisions("acme/tool")
+	if err != nil || len(revs) != 2 {
+		t.Fatalf("Revisions after update = %d (err %v), want 2", len(revs), err)
+	}
+
+	// With two revisions, Get is ambiguous but Verify checks both.
+	if _, err := mgr.Get("acme/tool"); err == nil {
+		t.Error("Get should error on multiple revisions")
+	}
+	results, err := mgr.Verify("acme/tool")
+	if err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+	if len(results) != 2 {
+		t.Fatalf("Verify checked %d revisions, want 2", len(results))
+	}
+	for _, r := range results {
+		if !r.OK {
+			t.Errorf("revision %s failed verify: %s", r.Rev, r.Reason)
+		}
+	}
+
+	// Remove drops every revision.
+	if err := mgr.Remove("acme/tool"); err != nil {
+		t.Fatalf("Remove: %v", err)
+	}
+	if revs, _ := mgr.Revisions("acme/tool"); len(revs) != 0 {
+		t.Errorf("Revisions after remove = %d, want 0", len(revs))
+	}
+}
+
 func TestManagerVerify(t *testing.T) {
 	cacheRoot := filepath.Join(t.TempDir(), "cache")
 	mgr, err := New(cacheRoot)

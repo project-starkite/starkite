@@ -207,13 +207,17 @@ func runModuleList(cmd *cobra.Command, args []string) error {
 	}
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "NAME\tTYPE\tVERSION\tSOURCE")
-	fmt.Fprintln(w, "----\t----\t-------\t------")
+	fmt.Fprintln(w, "NAME\tREV\tTYPE\tVERSION\tSOURCE")
+	fmt.Fprintln(w, "----\t---\t----\t-------\t------")
 
 	for _, m := range modules {
 		version := m.Version
 		if version == "" {
 			version = "-"
+		}
+		rev := m.Rev
+		if rev == "" {
+			rev = "-"
 		}
 		source := m.Repository
 		if source == "" {
@@ -225,7 +229,7 @@ func runModuleList(cmd *cobra.Command, args []string) error {
 		if m.Namespace != "" {
 			name = m.Namespace + "/" + m.Name
 		}
-		fmt.Fprintf(w, "%s\t%s\t%s\t%s\n", name, m.Type, version, source)
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n", name, rev, m.Type, version, source)
 	}
 
 	w.Flush()
@@ -235,11 +239,6 @@ func runModuleList(cmd *cobra.Command, args []string) error {
 func runModuleUpdate(cmd *cobra.Command, args []string) error {
 	name := args[0]
 
-	// Check if git is available
-	if !manager.GitAvailable() {
-		return fmt.Errorf("git is required but not found in PATH")
-	}
-
 	mgr, err := manager.New("")
 	if err != nil {
 		return fmt.Errorf("failed to initialize module manager: %w", err)
@@ -247,12 +246,23 @@ func runModuleUpdate(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Updating %s...\n", name)
 
+	// A git source needs git; a local source does not. Update reads the recorded
+	// source, so let the install step surface a missing-git error only when the
+	// source actually requires it.
 	info, err := mgr.Update(name)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("Updated %s to %s\n", info.Name, info.Version)
+	ref := info.Name
+	if info.Namespace != "" {
+		ref = info.Namespace + "/" + info.Name
+	}
+	detail := info.Version
+	if detail == "" {
+		detail = info.Rev
+	}
+	fmt.Printf("Updated %s (%s)\n", ref, detail)
 	return nil
 }
 
@@ -280,12 +290,31 @@ func runModuleInfo(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize module manager: %w", err)
 	}
 
-	info, err := mgr.Get(name)
+	revs, err := mgr.Revisions(name)
 	if err != nil {
 		return err
 	}
+	if len(revs) == 0 {
+		return fmt.Errorf("module %q not installed", name)
+	}
 
+	if len(revs) > 1 {
+		fmt.Printf("%s has %d installed revisions:\n\n", name, len(revs))
+	}
+	for i, info := range revs {
+		if i > 0 {
+			fmt.Println()
+		}
+		printModuleInfo(info)
+	}
+	return nil
+}
+
+func printModuleInfo(info *manager.ModuleInfo) {
 	fmt.Printf("Name:        %s\n", info.Name)
+	if info.Rev != "" {
+		fmt.Printf("Revision:    %s\n", info.Rev)
+	}
 	fmt.Printf("Type:        %s\n", info.Type)
 	fmt.Printf("Path:        %s\n", info.Path)
 
@@ -301,8 +330,6 @@ func runModuleInfo(cmd *cobra.Command, args []string) error {
 	if info.EntryPoint != "" {
 		fmt.Printf("Entry point: %s\n", info.EntryPoint)
 	}
-
-	return nil
 }
 
 func runModuleVerify(cmd *cobra.Command, args []string) error {
@@ -327,12 +354,16 @@ func runModuleVerify(cmd *cobra.Command, args []string) error {
 
 	failed := 0
 	for _, r := range results {
+		label := r.Identity
+		if r.Rev != "" {
+			label += "@" + r.Rev
+		}
 		if r.OK {
-			fmt.Printf("ok\t%s\n", r.Identity)
+			fmt.Printf("ok\t%s\n", label)
 			continue
 		}
 		failed++
-		fmt.Printf("FAIL\t%s\t%s\n", r.Identity, r.Reason)
+		fmt.Printf("FAIL\t%s\t%s\n", label, r.Reason)
 	}
 	if failed > 0 {
 		return fmt.Errorf("%d of %d module(s) failed verification", failed, len(results))

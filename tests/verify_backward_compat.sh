@@ -444,6 +444,78 @@ fi
 rm -rf "$INITDIR"
 
 # --------------------------------------------
+# Test 13k: the full kite module subcommand surface
+#   install / list / info / verify / update / remove
+# Runs against an isolated module cache (own $HOME) so the real cache is
+# untouched.
+# --------------------------------------------
+info "Test 13k: kite module install/list/info/verify/update/remove"
+
+MODHOME=$(mktemp -d /tmp/kite_test_XXXXXX)
+MODSRC=$(mktemp -d /tmp/kite_test_XXXXXX)
+printf 'namespace: acme\nname: tool\nversion: 0.1.0\ndescription: a tool\n' > "$MODSRC/mod.yaml"
+printf 'def greet():\n    return "v1"\n' > "$MODSRC/main.star"
+MK(){ HOME="$MODHOME" $KITE "$@"; }
+
+# install
+if MK module install "$MODSRC" --as acme/tool 2>&1 | grep -q "Installed acme/tool"; then
+    pass "module install"
+else
+    fail "module install"
+fi
+
+# list
+if MK module list 2>&1 | grep -q "acme/tool"; then
+    pass "module list shows the module"
+else
+    fail "module list shows the module"
+fi
+
+# info
+if MK module info acme/tool 2>&1 | grep -q "Revision:"; then
+    pass "module info reports a revision"
+else
+    fail "module info reports a revision"
+fi
+
+# verify (intact)
+if MK module verify acme/tool 2>&1 | grep -q "ok"; then
+    pass "module verify passes for an intact module"
+else
+    fail "module verify passes for an intact module"
+fi
+
+# update after source change → a second revision
+printf 'def greet():\n    return "v2"\n' > "$MODSRC/main.star"
+if MK module update acme/tool 2>&1 | grep -q "Updated acme/tool"; then
+    pass "module update"
+else
+    fail "module update"
+fi
+REVCOUNT=$(MK module list 2>/dev/null | grep -c "acme/tool")
+if [ "$REVCOUNT" -eq 2 ]; then
+    pass "update adds a second revision (list shows both)"
+else
+    fail "update adds a second revision (list shows both, got $REVCOUNT)"
+fi
+# info and verify stay usable with multiple revisions
+if MK module info acme/tool >/dev/null 2>&1 && MK module verify acme/tool 2>&1 | grep -q "ok"; then
+    pass "info and verify tolerate multiple revisions"
+else
+    fail "info and verify tolerate multiple revisions"
+fi
+
+# remove (all revisions)
+MK module remove acme/tool >/dev/null 2>&1
+if MK module list 2>&1 | grep -q "No modules installed"; then
+    pass "module remove deletes all revisions"
+else
+    fail "module remove deletes all revisions"
+fi
+
+rm -rf "$MODHOME" "$MODSRC"
+
+# --------------------------------------------
 # Test 14: Built-in modules work
 # --------------------------------------------
 info "Test 14: Built-in modules"
