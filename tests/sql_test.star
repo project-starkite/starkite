@@ -9,8 +9,8 @@ def _setup():
 def test_exec_insert_result():
     db = _setup()
     res = db.exec("INSERT INTO users (name, active) VALUES (?, ?)", "alice", True)
-    assert_equal(res["last_insert_id"], 1)
-    assert_equal(res["rows_affected"], 1)
+    assert_equal(res.last_insert_id, 1)
+    assert_equal(res.rows_affected, 1)
     db.close()
 
 def test_query_returns_list_of_dicts():
@@ -76,5 +76,5 @@ def test_stats_and_driver():
     db = _setup()
     assert_equal(db.driver, "sqlite")
     stats = db.stats()
-    assert_true(stats["max_open"] >= 1)
+    assert_true(stats.max_open >= 1)
     db.close()

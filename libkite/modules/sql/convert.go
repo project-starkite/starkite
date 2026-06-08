@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 // queryArgs splits a method's positional args into the SQL string and its
@@ -134,15 +135,39 @@ func rowsFirst(rows *sql.Rows) (starlark.Value, error) {
 	return dict, nil
 }
 
-// execResultDict builds the {rows_affected, last_insert_id} dict from a Result.
-// last_insert_id is omitted when the driver does not report it (e.g. postgres).
-func execResultDict(res sql.Result) *starlark.Dict {
-	d := starlark.NewDict(2)
+// execResult builds the result struct from a Result. Both fields are always
+// present: last_insert_id is None when the driver does not report it (e.g.
+// postgres, which uses RETURNING instead).
+func execResult(res sql.Result) *starlarkstruct.Struct {
+	rows := starlark.Value(starlark.MakeInt(0))
 	if n, err := res.RowsAffected(); err == nil {
-		d.SetKey(starlark.String("rows_affected"), starlark.MakeInt64(n))
+		rows = starlark.MakeInt64(n)
 	}
+	last := starlark.Value(starlark.None)
 	if id, err := res.LastInsertId(); err == nil {
-		d.SetKey(starlark.String("last_insert_id"), starlark.MakeInt64(id))
+		last = starlark.MakeInt64(id)
 	}
-	return d
+	return starlarkstruct.FromStringDict(starlark.String("sql.result"), starlark.StringDict{
+		"rows_affected":  rows,
+		"last_insert_id": last,
+	})
+}
+
+// dryRunResult is the exec result returned in dry-run mode.
+func dryRunResult() *starlarkstruct.Struct {
+	return starlarkstruct.FromStringDict(starlark.String("sql.result"), starlark.StringDict{
+		"rows_affected":  starlark.MakeInt(0),
+		"last_insert_id": starlark.None,
+	})
+}
+
+// statsStruct builds the connection-pool stats struct.
+func statsStruct(s sql.DBStats) *starlarkstruct.Struct {
+	return starlarkstruct.FromStringDict(starlark.String("sql.stats"), starlark.StringDict{
+		"open":       starlark.MakeInt(s.OpenConnections),
+		"in_use":     starlark.MakeInt(s.InUse),
+		"idle":       starlark.MakeInt(s.Idle),
+		"max_open":   starlark.MakeInt(s.MaxOpenConnections),
+		"wait_count": starlark.MakeInt64(s.WaitCount),
+	})
 }

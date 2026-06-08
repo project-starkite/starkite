@@ -54,6 +54,20 @@ func callMethod(t *testing.T, th *starlark.Thread, v starlark.HasAttrs, name str
 	return res
 }
 
+// structAttr reads a named attribute from a starlarkstruct result.
+func structAttr(t *testing.T, v starlark.Value, name string) starlark.Value {
+	t.Helper()
+	s, ok := v.(starlark.HasAttrs)
+	if !ok {
+		t.Fatalf("value %T is not a struct", v)
+	}
+	a, err := s.Attr(name)
+	if err != nil || a == nil {
+		t.Fatalf("Attr(%q): %v", name, err)
+	}
+	return a
+}
+
 func TestConnectionCRUD(t *testing.T) {
 	th := threadWith(t, libkite.AllowAllPermissions())
 	c := openMem(t, th)
@@ -65,12 +79,11 @@ func TestConnectionCRUD(t *testing.T) {
 	res := callMethod(t, th, c, "exec",
 		starlark.String("INSERT INTO users (name, active) VALUES (?, ?)"),
 		starlark.String("alice"), starlark.Bool(true))
-	d := res.(*starlark.Dict)
-	if id, _, _ := d.Get(starlark.String("last_insert_id")); id.(starlark.Int) != starlark.MakeInt(1) {
-		t.Errorf("last_insert_id = %v, want 1", id)
+	if got := structAttr(t, res, "last_insert_id"); got != starlark.MakeInt(1) {
+		t.Errorf("last_insert_id = %v, want 1", got)
 	}
-	if n, _, _ := d.Get(starlark.String("rows_affected")); n.(starlark.Int) != starlark.MakeInt(1) {
-		t.Errorf("rows_affected = %v, want 1", n)
+	if got := structAttr(t, res, "rows_affected"); got != starlark.MakeInt(1) {
+		t.Errorf("rows_affected = %v, want 1", got)
 	}
 
 	callMethod(t, th, c, "exec",

@@ -117,7 +117,7 @@ func (t *Transaction) execMethod(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, err
 	}
 	if t.dryRun {
-		return execDryRun(), nil
+		return dryRunResult(), nil
 	}
 	if t.done {
 		return nil, fmt.Errorf("sql.exec: transaction already finished")
@@ -126,7 +126,7 @@ func (t *Transaction) execMethod(thread *starlark.Thread, fn *starlark.Builtin, 
 	if err != nil {
 		return nil, t.conn.queryErr("exec", q, err)
 	}
-	return execResultDict(res), nil
+	return execResult(res), nil
 }
 
 func (t *Transaction) commit(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

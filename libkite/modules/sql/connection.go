@@ -134,7 +134,7 @@ func (c *Connection) execMethod(thread *starlark.Thread, fn *starlark.Builtin, a
 		return nil, err
 	}
 	if c.dryRun {
-		return execDryRun(), nil
+		return dryRunResult(), nil
 	}
 	if c.closed {
 		return nil, fmt.Errorf("sql.exec: connection is closed")
@@ -143,7 +143,7 @@ func (c *Connection) execMethod(thread *starlark.Thread, fn *starlark.Builtin, a
 	if err != nil {
 		return nil, c.queryErr("exec", q, err)
 	}
-	return execResultDict(res), nil
+	return execResult(res), nil
 }
 
 func (c *Connection) begin(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -189,22 +189,8 @@ func (c *Connection) closeMethod(thread *starlark.Thread, fn *starlark.Builtin, 
 }
 
 func (c *Connection) stats(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	d := starlark.NewDict(6)
 	if c.dryRun || c.db == nil {
-		return d, nil
+		return statsStruct(sql.DBStats{}), nil
 	}
-	s := c.db.Stats()
-	d.SetKey(starlark.String("open"), starlark.MakeInt(s.OpenConnections))
-	d.SetKey(starlark.String("in_use"), starlark.MakeInt(s.InUse))
-	d.SetKey(starlark.String("idle"), starlark.MakeInt(s.Idle))
-	d.SetKey(starlark.String("max_open"), starlark.MakeInt(s.MaxOpenConnections))
-	d.SetKey(starlark.String("wait_count"), starlark.MakeInt64(s.WaitCount))
-	return d, nil
-}
-
-// execDryRun returns the zero-valued exec result used in dry-run mode.
-func execDryRun() *starlark.Dict {
-	d := starlark.NewDict(1)
-	d.SetKey(starlark.String("rows_affected"), starlark.MakeInt(0))
-	return d
+	return statsStruct(c.db.Stats()), nil
 }
