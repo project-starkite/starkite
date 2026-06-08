@@ -21,6 +21,7 @@ import (
 	"github.com/project-starkite/starkite/libkite/modules/regexp"
 	"github.com/project-starkite/starkite/libkite/modules/retry"
 	"github.com/project-starkite/starkite/libkite/modules/runtime"
+	"github.com/project-starkite/starkite/libkite/modules/sql"
 	"github.com/project-starkite/starkite/libkite/modules/ssh"
 	"github.com/project-starkite/starkite/libkite/modules/strings"
 	"github.com/project-starkite/starkite/libkite/modules/table"
@@ -63,6 +64,7 @@ func RegisterAll(r *libkite.Registry) {
 	r.Register(zip.New())
 
 	// Provider modules (stateful)
+	r.Register(sql.New())
 	r.Register(ssh.New())
 	r.Register(http.New())
 	r.Register(inventory.New())

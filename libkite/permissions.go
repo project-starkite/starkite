@@ -459,12 +459,14 @@ var allowFSRules = []string{
 	"fs.delete($CWD/**)",
 	"os.env",
 	"io.prompt",
+	"sql.open(sqlite:**)", // SQLite is file I/O
 }
 
 // allow-net: allow-fs plus low-level protocol networking.
 var allowNetRules = append(append([]string{}, allowFSRules...),
 	"http.client",
 	"ssh.connect", "ssh.transfer",
+	"sql.open(postgres:**)", "sql.open(mysql:**)", // networked databases
 )
 
 // allow-local: allow-net plus serve, $CWD-scoped exec, and higher-level

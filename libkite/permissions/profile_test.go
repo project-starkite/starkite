@@ -20,6 +20,7 @@ func TestLoadProfile_BuiltIns(t *testing.T) {
 		{ProfileDenyAll, libkite.DefaultDeny, nil},
 		{ProfileAllowFS, libkite.DefaultDeny, []string{
 			"fs.read", "fs.write($CWD/**)", "fs.delete($CWD/**)", "os.env", "io.prompt",
+			"sql.open(sqlite:**)",
 		}},
 	}
 	for _, tt := range tests {
