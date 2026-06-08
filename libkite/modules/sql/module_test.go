@@ -280,6 +280,30 @@ func TestIsRetryable(t *testing.T) {
 	}
 }
 
+func TestAutoCloseOnRunEnd(t *testing.T) {
+	rt, err := libkite.NewTrusted(nil) // trusted → allow-all permissions
+	if err != nil {
+		t.Fatalf("NewTrusted: %v", err)
+	}
+	th := rt.NewThread("sql-autoclose")
+
+	m := New()
+	m.Load(&libkite.ModuleConfig{})
+	v, err := m.open(th, nil, starlark.Tuple{starlark.String("sqlite"), starlark.String(":memory:")}, nil)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	conn := v.(*Connection)
+	if conn.closed {
+		t.Fatal("connection should be open before run end")
+	}
+
+	rt.Close() // simulates run end → registered cleanups run
+	if !conn.closed {
+		t.Error("connection was not auto-closed at run end")
+	}
+}
+
 func TestSqliteFileDSN(t *testing.T) {
 	got := sqliteFileDSN("app.db")
 	if !strings.Contains(got, "busy_timeout") || !strings.Contains(got, "WAL") {

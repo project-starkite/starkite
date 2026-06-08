@@ -124,7 +124,11 @@ func (m *Module) open(thread *starlark.Thread, fn *starlark.Builtin, args starla
 		return nil, fmt.Errorf("sql.open: connection failed: %w", err)
 	}
 
-	return &Connection{db: db, driver: p.Driver, dsn: p.DSN}, nil
+	conn := &Connection{db: db, driver: p.Driver, dsn: p.DSN}
+	// Auto-close at run end so callers need not defer close(); explicit close()
+	// remains available and is idempotent with this.
+	libkite.RegisterCleanup(thread, func() { conn.shutdown() })
+	return conn, nil
 }
 
 // driverRegistered reports whether the named database/sql driver is built in.

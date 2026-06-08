@@ -189,18 +189,25 @@ func (c *Connection) ping(thread *starlark.Thread, fn *starlark.Builtin, args st
 }
 
 func (c *Connection) closeMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := c.shutdown(); err != nil {
+		return nil, fmt.Errorf("sql.close: %w", err)
+	}
+	return starlark.None, nil
+}
+
+// shutdown closes the underlying pool exactly once. Safe to call from both the
+// close() method and runtime auto-cleanup.
+func (c *Connection) shutdown() error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.closed || c.dryRun {
-		return starlark.None, nil
+		return nil
 	}
 	c.closed = true
 	if c.db != nil {
-		if err := c.db.Close(); err != nil {
-			return nil, fmt.Errorf("sql.close: %w", err)
-		}
+		return c.db.Close()
 	}
-	return starlark.None, nil
+	return nil
 }
 
 func (c *Connection) stats(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

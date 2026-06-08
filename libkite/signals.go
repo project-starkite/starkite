@@ -80,15 +80,17 @@ func (rt *Runtime) UnregisterSignalHandler(name string) {
 	rt.signalMu.Unlock()
 }
 
-// runDeferred runs all deferred functions in LIFO order.
+// runDeferred runs Starlark defer() callbacks (LIFO), then Go-side cleanups
+// (e.g. open DB connections). Runs at the end of Execute and on signal.
 func (rt *Runtime) runDeferred() {
 	rt.deferMu.Lock()
-	defer rt.deferMu.Unlock()
+	fns := rt.deferredFuncs
+	rt.deferredFuncs = nil
+	rt.deferMu.Unlock()
 
 	// Run in LIFO order
-	for i := len(rt.deferredFuncs) - 1; i >= 0; i-- {
-		fn := rt.deferredFuncs[i]
-		starlark.Call(rt.thread, fn, nil, nil)
+	for i := len(fns) - 1; i >= 0; i-- {
+		starlark.Call(rt.thread, fns[i], nil, nil)
 	}
-	rt.deferredFuncs = nil
+	rt.runGoCleanups()
 }

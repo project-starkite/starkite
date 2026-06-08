@@ -167,3 +167,10 @@ def test_exec_many_bulk():
     assert_equal(res.rows_affected, 3)
     assert_equal(len(db.query("SELECT * FROM users")), 3)
     db.close()
+
+def test_no_explicit_close_ok():
+    # The connection auto-closes at run end; omitting close() is fine.
+    db = sql.open("sqlite", ":memory:")
+    db.exec("CREATE TABLE t (n INTEGER)")
+    db.exec("INSERT INTO t (n) VALUES (?)", 1)
+    assert_equal(db.query_value("SELECT count(*) FROM t"), 1)

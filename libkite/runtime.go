@@ -41,6 +41,11 @@ type Runtime struct {
 	deferredFuncs []starlark.Callable
 	deferMu       sync.Mutex
 
+	// goCleanups are Go-side cleanups (e.g. open DB connections) run when the
+	// run ends, alongside Starlark defer().
+	goCleanups []func()
+	cleanupMu  sync.Mutex
+
 	// Context for cancellation
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -262,6 +267,35 @@ func GetRuntime(thread *starlark.Thread) *Runtime {
 	}
 	rt, _ := thread.Local(runtimeKey).(*Runtime)
 	return rt
+}
+
+// AddCleanup registers a Go cleanup to run when the run ends (after the script
+// body and Starlark defer()s). Modules use it to auto-release resources such as
+// open database connections.
+func (rt *Runtime) AddCleanup(fn func()) {
+	rt.cleanupMu.Lock()
+	rt.goCleanups = append(rt.goCleanups, fn)
+	rt.cleanupMu.Unlock()
+}
+
+// runGoCleanups runs and clears registered Go cleanups in LIFO order. Safe to
+// call more than once (the second call finds an empty list).
+func (rt *Runtime) runGoCleanups() {
+	rt.cleanupMu.Lock()
+	fns := rt.goCleanups
+	rt.goCleanups = nil
+	rt.cleanupMu.Unlock()
+	for i := len(fns) - 1; i >= 0; i-- {
+		fns[i]()
+	}
+}
+
+// RegisterCleanup registers a Go cleanup with the runtime bound to thread. A
+// no-op if thread has no runtime.
+func RegisterCleanup(thread *starlark.Thread, fn func()) {
+	if rt := GetRuntime(thread); rt != nil {
+		rt.AddCleanup(fn)
+	}
 }
 
 // Execute runs a script. The ctx parameter cancels a running script: when
@@ -736,6 +770,7 @@ func (rt *Runtime) PrintVariables() {
 func (rt *Runtime) Close() {
 	rt.cancel()
 	rt.stopSignalHandling()
+	rt.runGoCleanups()
 	rt.registry.Close()
 }
 
