@@ -15,6 +15,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 
 	gvlog "gvisor.dev/gvisor/pkg/log"
 	"gvisor.dev/gvisor/runsc/config"
@@ -114,8 +115,19 @@ func (Runner) Run(ctx context.Context, spec sandbox.ExecSpec) error {
 	if err := conf.Overlay2.Set("none"); err != nil {
 		return fmt.Errorf("setting overlay2=none: %w", err)
 	}
-	// Verbose gVisor logs are off by default. Users can enable them via
-	// kite's --debug flag once 4c wires that through (today: silent).
+	// Verbose gVisor logs are off by default. Setting STARKITE_SANDBOX_DEBUG to
+	// a directory turns on the sentry/gofer/boot debug logs there — the only way
+	// to diagnose a sandbox that fails to start ("cannot read client sync file").
+	if dbg := os.Getenv("STARKITE_SANDBOX_DEBUG"); dbg != "" {
+		if err := os.MkdirAll(dbg, 0o755); err != nil {
+			return fmt.Errorf("creating sandbox debug dir: %w", err)
+		}
+		conf.Debug = true
+		conf.DebugLogFormat = "text"
+		// A trailing slash makes gVisor treat this as a directory and write
+		// one file per internal command (boot, gofer, …).
+		conf.DebugLog = strings.TrimRight(dbg, "/") + "/"
+	}
 	if err := os.MkdirAll(conf.RootDir, 0o711); err != nil {
 		return fmt.Errorf("creating runsc state dir: %w", err)
 	}

@@ -98,6 +98,9 @@ jobs:
       - name: Run sandbox integration tests
         env:
           STARKITE_SANDBOX_INTEGRATION: "1"
+          # Capture gVisor sentry/gofer/boot logs so a sandbox that fails to
+          # start is diagnosable from the uploaded artifact below.
+          STARKITE_SANDBOX_DEBUG: "/tmp/starkite-sandbox-debug"
         run: go test -v -timeout 5m ./...
         working-directory: tests/sandbox
 
@@ -106,7 +109,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: sandbox-debug-logs
-          path: |
-            /tmp/starkite-sandbox-debug-*.log
-            /tmp/starkite-sandbox-log-*.log
+          path: /tmp/starkite-sandbox-debug/
           if-no-files-found: ignore
