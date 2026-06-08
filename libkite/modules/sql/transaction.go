@@ -52,6 +52,10 @@ func (t *Transaction) method(name string) *starlark.Builtin {
 		return starlark.NewBuiltin("sql.transaction.query", t.query)
 	case "query_row":
 		return starlark.NewBuiltin("sql.transaction.query_row", t.queryRow)
+	case "query_value":
+		return starlark.NewBuiltin("sql.transaction.query_value", t.queryValue)
+	case "query_column":
+		return starlark.NewBuiltin("sql.transaction.query_column", t.queryColumn)
 	case "exec":
 		return starlark.NewBuiltin("sql.transaction.exec", t.execMethod)
 	case "commit":
@@ -63,8 +67,8 @@ func (t *Transaction) method(name string) *starlark.Builtin {
 }
 
 func (t *Transaction) AttrNames() []string {
-	names := []string{"commit", "exec", "query", "query_row", "rollback"}
-	for _, n := range []string{"query", "query_row", "exec"} {
+	names := []string{"commit", "exec", "query", "query_column", "query_row", "query_value", "rollback"}
+	for _, n := range []string{"query", "query_row", "query_value", "query_column", "exec"} {
 		names = append(names, "try_"+n)
 	}
 	sort.Strings(names)
@@ -109,6 +113,44 @@ func (t *Transaction) queryRow(thread *starlark.Thread, fn *starlark.Builtin, ar
 	}
 	defer rows.Close()
 	return rowsFirst(rows)
+}
+
+func (t *Transaction) queryValue(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	q, params, err := queryArgs("sql.query_value", args)
+	if err != nil {
+		return nil, err
+	}
+	if t.dryRun {
+		return starlark.None, nil
+	}
+	if t.done {
+		return nil, fmt.Errorf("sql.query_value: transaction already finished")
+	}
+	rows, err := t.tx.QueryContext(context.Background(), q, params...)
+	if err != nil {
+		return nil, t.conn.queryErr("query_value", q, err)
+	}
+	defer rows.Close()
+	return scanFirstValue(rows)
+}
+
+func (t *Transaction) queryColumn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	q, params, err := queryArgs("sql.query_column", args)
+	if err != nil {
+		return nil, err
+	}
+	if t.dryRun {
+		return starlark.NewList(nil), nil
+	}
+	if t.done {
+		return nil, fmt.Errorf("sql.query_column: transaction already finished")
+	}
+	rows, err := t.tx.QueryContext(context.Background(), q, params...)
+	if err != nil {
+		return nil, t.conn.queryErr("query_column", q, err)
+	}
+	defer rows.Close()
+	return scanColumn(rows)
 }
 
 func (t *Transaction) execMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

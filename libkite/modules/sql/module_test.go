@@ -1,6 +1,8 @@
 package sql
 
 import (
+	"fmt"
+	"strings"
 	"testing"
 
 	"go.starlark.net/starlark"
@@ -176,5 +178,114 @@ func TestSanitizeDSN(t *testing.T) {
 	got := sanitizeDSN("postgres://user:secret@host:5432/db")
 	if got != "postgres://user@host:5432/db" {
 		t.Errorf("sanitizeDSN leaked password: %q", got)
+	}
+}
+
+func TestBatchResultShapes(t *testing.T) {
+	th := threadWith(t, libkite.AllowAllPermissions())
+	c := openMem(t, th)
+	defer c.db.Close()
+	callMethod(t, th, c, "exec", starlark.String("CREATE TABLE t (id INTEGER PRIMARY KEY AUTOINCREMENT, n INTEGER)"))
+
+	m := New()
+	m.Load(&libkite.ModuleConfig{})
+	mk := func(name, q string, args ...starlark.Value) starlark.Value {
+		tup := append(starlark.Tuple{starlark.String(q)}, args...)
+		var kw []starlark.Tuple
+		if name != "" {
+			kw = []starlark.Tuple{{starlark.String("name"), starlark.String(name)}}
+		}
+		v, err := m.stmt(th, nil, tup, kw)
+		if err != nil {
+			t.Fatalf("stmt: %v", err)
+		}
+		return v
+	}
+
+	t.Run("named → dict", func(t *testing.T) {
+		res := callMethod(t, th, c, "batch", starlark.NewList([]starlark.Value{
+			mk("a", "INSERT INTO t (n) VALUES (?)", starlark.MakeInt(1)),
+			mk("b", "INSERT INTO t (n) VALUES (?)", starlark.MakeInt(2)),
+		}))
+		d, ok := res.(*starlark.Dict)
+		if !ok {
+			t.Fatalf("named batch returned %T, want dict", res)
+		}
+		av, _, _ := d.Get(starlark.String("a"))
+		if structAttr(t, av, "rows_affected") != starlark.MakeInt(1) {
+			t.Errorf("a.rows_affected != 1")
+		}
+	})
+
+	t.Run("unnamed → list", func(t *testing.T) {
+		res := callMethod(t, th, c, "batch", starlark.NewList([]starlark.Value{
+			mk("", "INSERT INTO t (n) VALUES (?)", starlark.MakeInt(3)),
+			mk("", "INSERT INTO t (n) VALUES (?)", starlark.MakeInt(4)),
+		}))
+		if _, ok := res.(*starlark.List); !ok {
+			t.Fatalf("unnamed batch returned %T, want list", res)
+		}
+	})
+
+	t.Run("query_value / query_column / exec_many", func(t *testing.T) {
+		if v := callMethod(t, th, c, "query_value", starlark.String("SELECT count(*) FROM t")); v != starlark.MakeInt(4) {
+			t.Errorf("query_value count = %v, want 4", v)
+		}
+		col := callMethod(t, th, c, "query_column", starlark.String("SELECT n FROM t ORDER BY n")).(*starlark.List)
+		if col.Len() != 4 {
+			t.Errorf("query_column len = %d, want 4", col.Len())
+		}
+		em := callMethod(t, th, c, "exec_many", starlark.String("INSERT INTO t (n) VALUES (?)"),
+			starlark.NewList([]starlark.Value{
+				starlark.NewList([]starlark.Value{starlark.MakeInt(10)}),
+				starlark.NewList([]starlark.Value{starlark.MakeInt(11)}),
+			}))
+		if structAttr(t, em, "rows_affected") != starlark.MakeInt(2) {
+			t.Errorf("exec_many rows_affected != 2")
+		}
+	})
+}
+
+func TestBatchRollback(t *testing.T) {
+	th := threadWith(t, libkite.AllowAllPermissions())
+	c := openMem(t, th)
+	defer c.db.Close()
+	callMethod(t, th, c, "exec", starlark.String("CREATE TABLE t (n INTEGER)"))
+
+	m := New()
+	m.Load(&libkite.ModuleConfig{})
+	s1, _ := m.stmt(th, nil, starlark.Tuple{starlark.String("INSERT INTO t (n) VALUES (?)"), starlark.MakeInt(1)}, nil)
+	s2, _ := m.stmt(th, nil, starlark.Tuple{starlark.String("INSERT INTO no_such_table VALUES (?)"), starlark.MakeInt(2)}, nil)
+
+	attr, _ := c.Attr("batch")
+	if _, err := starlark.Call(th, attr.(*starlark.Builtin), starlark.Tuple{starlark.NewList([]starlark.Value{s1, s2})}, nil); err == nil {
+		t.Fatal("expected batch failure")
+	}
+	// first insert must have been rolled back
+	v := callMethod(t, th, c, "query_value", starlark.String("SELECT count(*) FROM t"))
+	if v != starlark.MakeInt(0) {
+		t.Errorf("after failed batch, count = %v, want 0 (rolled back)", v)
+	}
+}
+
+func TestIsRetryable(t *testing.T) {
+	if !isRetryable("sqlite", fmt.Errorf("database is locked")) {
+		t.Error("sqlite 'database is locked' should be retryable")
+	}
+	if isRetryable("sqlite", fmt.Errorf("no such column: x")) {
+		t.Error("a syntax error should not be retryable")
+	}
+	if !isRetryable("postgres", fmt.Errorf("pq: could not serialize (SQLSTATE 40001)")) {
+		t.Error("postgres 40001 should be retryable")
+	}
+}
+
+func TestSqliteFileDSN(t *testing.T) {
+	got := sqliteFileDSN("app.db")
+	if !strings.Contains(got, "busy_timeout") || !strings.Contains(got, "WAL") {
+		t.Errorf("sqliteFileDSN missing pragmas: %q", got)
+	}
+	if again := sqliteFileDSN(got); again != got {
+		t.Errorf("sqliteFileDSN not idempotent: %q", again)
 	}
 }

@@ -116,6 +116,47 @@ func rowsToList(rows *sql.Rows) (*starlark.List, error) {
 	return starlark.NewList(out), nil
 }
 
+// scanFirstValue returns the first column of the first row, or None.
+func scanFirstValue(rows *sql.Rows) (starlark.Value, error) {
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	if !rows.Next() {
+		return starlark.None, rows.Err()
+	}
+	values := make([]any, len(cols))
+	ptrs := make([]any, len(cols))
+	for i := range values {
+		ptrs[i] = &values[i]
+	}
+	if err := rows.Scan(ptrs...); err != nil {
+		return nil, err
+	}
+	return goToStarlark(values[0]), nil
+}
+
+// scanColumn returns the first column of every row as a flat list.
+func scanColumn(rows *sql.Rows) (*starlark.List, error) {
+	cols, err := rows.Columns()
+	if err != nil {
+		return nil, err
+	}
+	var out []starlark.Value
+	for rows.Next() {
+		values := make([]any, len(cols))
+		ptrs := make([]any, len(cols))
+		for i := range values {
+			ptrs[i] = &values[i]
+		}
+		if err := rows.Scan(ptrs...); err != nil {
+			return nil, err
+		}
+		out = append(out, goToStarlark(values[0]))
+	}
+	return starlark.NewList(out), rows.Err()
+}
+
 // rowsFirst returns the first row as a dict, or None when there are no rows.
 func rowsFirst(rows *sql.Rows) (starlark.Value, error) {
 	columns, err := rows.Columns()

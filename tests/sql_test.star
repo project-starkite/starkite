@@ -78,3 +78,92 @@ def test_stats_and_driver():
     stats = db.stats()
     assert_true(stats.max_open >= 1)
     db.close()
+
+# --- Layer 1: managed transaction, batch, read helpers, bulk ---
+
+def test_tx_commit_persists():
+    db = _setup()
+    def work(tx):
+        tx.exec("INSERT INTO users (name) VALUES (?)", "frank")
+    db.tx(work)
+    assert_equal(len(db.query("SELECT * FROM users")), 1)
+    db.close()
+
+def test_tx_rollback_on_error():
+    db = _setup()
+    def work(tx):
+        tx.exec("INSERT INTO users (name) VALUES (?)", "grace")
+        fail("boom")
+    res = db.try_tx(work)
+    assert_true(not res.ok)
+    assert_equal(len(db.query("SELECT * FROM users")), 0)
+    db.close()
+
+def test_tx_returns_callback_value():
+    db = _setup()
+    db.exec("INSERT INTO users (name) VALUES (?)", "heidi")
+    n = db.tx(lambda tx: tx.query_value("SELECT count(*) FROM users"))
+    assert_equal(n, 1)
+    db.close()
+
+def test_batch_named_results():
+    db = _setup()
+    res = db.batch([
+        sql.stmt("INSERT INTO users (name) VALUES (?)", "ann", name="a"),
+        sql.stmt("INSERT INTO users (name) VALUES (?)", "ben", name="b"),
+    ])
+    assert_equal(res["a"].rows_affected, 1)
+    assert_equal(res["b"].last_insert_id, 2)
+    assert_equal(len(db.query("SELECT * FROM users")), 2)
+    db.close()
+
+def test_batch_unnamed_list():
+    db = _setup()
+    res = db.batch([
+        sql.stmt("INSERT INTO users (name) VALUES (?)", "x"),
+        sql.stmt("INSERT INTO users (name) VALUES (?)", "y"),
+    ])
+    assert_equal(len(res), 2)
+    assert_equal(res[0].rows_affected, 1)
+    db.close()
+
+def test_batch_rolls_back_on_failure():
+    db = _setup()
+    res = db.try_batch([
+        sql.stmt("INSERT INTO users (name) VALUES (?)", "ok"),
+        sql.stmt("INSERT INTO no_such_table VALUES (?)", 1),
+    ])
+    assert_true(not res.ok)
+    assert_equal(len(db.query("SELECT * FROM users")), 0)
+    db.close()
+
+def test_query_value_scalar():
+    db = _setup()
+    db.exec("INSERT INTO users (name) VALUES (?)", "a")
+    db.exec("INSERT INTO users (name) VALUES (?)", "b")
+    assert_equal(db.query_value("SELECT count(*) FROM users"), 2)
+    assert_equal(db.query_value("SELECT name FROM users WHERE id = ?", 99), None)
+    db.close()
+
+def test_query_column_flat_list():
+    db = _setup()
+    db.exec("INSERT INTO users (name) VALUES (?)", "a")
+    db.exec("INSERT INTO users (name) VALUES (?)", "b")
+    assert_equal(db.query_column("SELECT name FROM users ORDER BY id"), ["a", "b"])
+    db.close()
+
+def test_query_each_streaming():
+    db = _setup()
+    db.exec("INSERT INTO users (name) VALUES (?)", "a")
+    db.exec("INSERT INTO users (name) VALUES (?)", "b")
+    seen = []
+    db.query_each("SELECT name FROM users ORDER BY id", lambda r: seen.append(r["name"]))
+    assert_equal(seen, ["a", "b"])
+    db.close()
+
+def test_exec_many_bulk():
+    db = _setup()
+    res = db.exec_many("INSERT INTO users (name) VALUES (?)", [["a"], ["b"], ["c"]])
+    assert_equal(res.rows_affected, 3)
+    assert_equal(len(db.query("SELECT * FROM users")), 3)
+    db.close()

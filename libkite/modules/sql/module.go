@@ -53,6 +53,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 		m.config = config
 		members := starlark.StringDict{
 			"open": starlark.NewBuiltin("sql.open", m.open),
+			"stmt": starlark.NewBuiltin("sql.stmt", m.stmt),
 		}
 		m.module = libkite.NewTryModule(string(ModuleName), members)
 	})
@@ -98,9 +99,15 @@ func (m *Module) open(thread *starlark.Thread, fn *starlark.Builtin, args starla
 
 	dsn := p.DSN
 	maxOpen := pool.intOr("max_open", 25)
-	if p.Driver == "sqlite" && isMemoryDSN(dsn) {
-		// Each pooled connection to :memory: is a separate database; pin to one.
-		maxOpen = 1
+	if p.Driver == "sqlite" {
+		if isMemoryDSN(dsn) {
+			// Each pooled connection to :memory: is a separate database; pin to one.
+			maxOpen = 1
+		} else {
+			// Concurrent handlers sharing a file DB need a busy timeout and WAL
+			// to avoid SQLITE_BUSY.
+			dsn = sqliteFileDSN(dsn)
+		}
 	}
 
 	db, err := sql.Open(regName, dsn)
@@ -133,6 +140,19 @@ func driverRegistered(name string) bool {
 // isMemoryDSN reports whether a sqlite DSN names an in-memory database.
 func isMemoryDSN(dsn string) bool {
 	return dsn == ":memory:" || strings.Contains(dsn, ":memory:") || strings.Contains(dsn, "mode=memory")
+}
+
+// sqliteFileDSN adds busy-timeout and WAL pragmas to a sqlite file DSN.
+// modernc.org/sqlite reads _pragma query parameters.
+func sqliteFileDSN(dsn string) string {
+	if strings.Contains(dsn, "_pragma=") {
+		return dsn // caller already set pragmas
+	}
+	sep := "?"
+	if strings.Contains(dsn, "?") {
+		sep = "&"
+	}
+	return dsn + sep + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 }
 
 // sanitizeDSN removes any password from a DSN for permission patterns and logs.

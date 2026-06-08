@@ -56,8 +56,20 @@ func (c *Connection) method(name string) *starlark.Builtin {
 		return starlark.NewBuiltin("sql.connection.query", c.query)
 	case "query_row":
 		return starlark.NewBuiltin("sql.connection.query_row", c.queryRow)
+	case "query_value":
+		return starlark.NewBuiltin("sql.connection.query_value", c.queryValue)
+	case "query_column":
+		return starlark.NewBuiltin("sql.connection.query_column", c.queryColumn)
+	case "query_each":
+		return starlark.NewBuiltin("sql.connection.query_each", c.queryEach)
 	case "exec":
 		return starlark.NewBuiltin("sql.connection.exec", c.execMethod)
+	case "exec_many":
+		return starlark.NewBuiltin("sql.connection.exec_many", c.execMany)
+	case "tx":
+		return starlark.NewBuiltin("sql.connection.tx", c.tx)
+	case "batch":
+		return starlark.NewBuiltin("sql.connection.batch", c.batch)
 	case "begin":
 		return starlark.NewBuiltin("sql.connection.begin", c.begin)
 	case "ping":
@@ -71,8 +83,11 @@ func (c *Connection) method(name string) *starlark.Builtin {
 }
 
 func (c *Connection) AttrNames() []string {
-	names := []string{"begin", "close", "driver", "exec", "ping", "query", "query_row", "stats"}
-	for _, n := range []string{"query", "query_row", "exec", "begin", "ping"} {
+	names := []string{
+		"batch", "begin", "close", "driver", "exec", "exec_many", "ping",
+		"query", "query_column", "query_each", "query_row", "query_value", "stats", "tx",
+	}
+	for _, n := range []string{"query", "query_row", "query_value", "query_column", "exec", "exec_many", "tx", "batch", "begin", "ping"} {
 		names = append(names, "try_"+n)
 	}
 	sort.Strings(names)
