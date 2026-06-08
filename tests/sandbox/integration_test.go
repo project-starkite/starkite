@@ -92,6 +92,10 @@ func TestSandboxPerTestFile(t *testing.T) {
 	out, err := cmd.CombinedOutput()
 	t.Logf("kite test --sandbox=strict (multi-file) output:\n%s", out)
 	if err != nil {
+		if sandboxUnavailable(string(out)) {
+			t.Skipf("host cannot start a gVisor sandbox; skipping. "+
+				"This is a host-capability limitation, not a test failure. Output:\n%s", out)
+		}
 		t.Fatalf("kite test multi failed: %v", err)
 	}
 
@@ -172,6 +176,10 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	out, err := cmd.CombinedOutput()
 	t.Logf("kite test (%s) output:\n%s", label, out)
 	if err != nil {
+		if sandboxUnavailable(string(out)) {
+			t.Skipf("host cannot start a gVisor sandbox (%s); skipping. "+
+				"This is a host-capability limitation, not a test failure. Output:\n%s", label, out)
+		}
 		t.Fatalf("kite test (%s) failed: %v", label, err)
 	}
 
@@ -220,6 +228,25 @@ func unprivilegedUsernsBlocked() string {
 		}
 	}
 	return ""
+}
+
+// sandboxUnavailable reports whether kite's output indicates the host could not
+// start a gVisor sandbox — a host-capability limitation (e.g. restricted
+// cgroups/seccomp/user-namespaces on a CI runner) that the static preflight
+// cannot predict, surfacing only when runsc's sentry fails to boot. Distinct
+// from a genuine in-sandbox test failure, so the caller skips rather than fails.
+func sandboxUnavailable(output string) bool {
+	markers := []string{
+		"cannot create sandbox",
+		"cannot read client sync file",
+		"waiting for sandbox to start",
+	}
+	for _, m := range markers {
+		if strings.Contains(output, m) {
+			return true
+		}
+	}
+	return false
 }
 
 func mustAbs(t *testing.T, rel string) string {
