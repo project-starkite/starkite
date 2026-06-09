@@ -66,6 +66,10 @@ func (c *Connection) method(name string) *starlark.Builtin {
 		return starlark.NewBuiltin("sql.connection.exec", c.execMethod)
 	case "exec_many":
 		return starlark.NewBuiltin("sql.connection.exec_many", c.execMany)
+	case "insert":
+		return starlark.NewBuiltin("sql.connection.insert", c.insert)
+	case "migrate":
+		return starlark.NewBuiltin("sql.connection.migrate", c.migrate)
 	case "tx":
 		return starlark.NewBuiltin("sql.connection.tx", c.tx)
 	case "batch":
@@ -84,10 +88,10 @@ func (c *Connection) method(name string) *starlark.Builtin {
 
 func (c *Connection) AttrNames() []string {
 	names := []string{
-		"batch", "begin", "close", "driver", "exec", "exec_many", "ping",
+		"batch", "begin", "close", "driver", "exec", "exec_many", "insert", "migrate", "ping",
 		"query", "query_column", "query_each", "query_row", "query_value", "stats", "tx",
 	}
-	for _, n := range []string{"query", "query_row", "query_value", "query_column", "exec", "exec_many", "tx", "batch", "begin", "ping"} {
+	for _, n := range []string{"query", "query_row", "query_value", "query_column", "exec", "exec_many", "insert", "migrate", "tx", "batch", "begin", "ping"} {
 		names = append(names, "try_"+n)
 	}
 	sort.Strings(names)

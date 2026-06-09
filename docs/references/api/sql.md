@@ -78,6 +78,25 @@ db.exec_many("INSERT INTO users (name, email) VALUES (?, ?)",
 
 `exec` returns a result with `rows_affected` and `last_insert_id` (the latter is `None` when the driver does not report a generated id — PostgreSQL uses `INSERT … RETURNING`). `exec_many` runs the same statement over many parameter sets in one transaction and returns the total `rows_affected`.
 
+### insert
+
+`insert` builds and runs an `INSERT` from a dict (one row) or a list of dicts (a batch in a single statement):
+
+```python
+db.insert("users", {"name": "alice", "email": "a@x"})    # one row
+db.insert("users", [{"name": "a"}, {"name": "b"}])        # batch
+```
+
+- Columns come from the first row; every row must carry the same columns.
+- One dict returns a result with `last_insert_id`; a batch returns `rows_affected` with `last_insert_id` as `None`.
+- Placeholders are generated for the connection's driver. Override with `placeholder`, the same way hand-written SQL chooses its placeholders:
+
+```python
+db.insert("users", {"name": "a"}, placeholder="$")   # $1, $2 …  ("?" for question-mark style)
+```
+
+Table and column names come from the caller — `insert` does not quote identifiers. A batch is one statement, bounded by the driver's parameter limit; for unbounded bulk loads use `exec_many`.
+
 ## Transactions
 
 ### Managed callback — `tx`
@@ -124,6 +143,27 @@ tx.commit()                        # or tx.rollback()
 ```
 
 `begin` is the manual escape hatch; prefer `tx`/`batch`.
+
+## Schema migrations
+
+`migrate` applies a list of named statements once each, in order, recording applied names in a `schema_migrations` table so re-runs skip them:
+
+```python
+db.migrate([
+    sql.stmt("CREATE TABLE users (id INTEGER PRIMARY KEY, name TEXT)", name="001_users"),
+    sql.stmt("ALTER TABLE users ADD COLUMN email TEXT", name="002_email"),
+])
+```
+
+Each migration requires a `name` — its identifier. Each runs in its own transaction. The return value reports what changed:
+
+```python
+res = db.migrate(migrations)
+res.applied    # names applied this run
+res.skipped    # names already applied
+```
+
+There is no down-migration; reverse a change with another forward migration. The tracking table uses `VARCHAR(255)` so it is portable across SQLite, PostgreSQL, and MySQL.
 
 ## Connection lifecycle
 

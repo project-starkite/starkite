@@ -34,6 +34,22 @@ def test_postgres():
     r = db.try_query("SELECT * FROM sk_t WHERE id = ?")
     assert_true(not r.ok)
 
+    # insert generates $N placeholders for postgres
+    db.exec("DROP TABLE IF EXISTS sk_ins")
+    db.exec("CREATE TABLE sk_ins (id SERIAL PRIMARY KEY, name TEXT, n INT)")
+    assert_equal(db.insert("sk_ins", {"name": "x", "n": 7}).rows_affected, 1)
+    db.insert("sk_ins", [{"name": "a", "n": 1}, {"name": "b", "n": 2}])
+    assert_equal(db.query_value("SELECT count(*) FROM sk_ins"), 3)
+    db.exec("DROP TABLE sk_ins")
+
+    # migrate: tracking table + apply/skip
+    db.exec("DROP TABLE IF EXISTS schema_migrations")
+    migs = [sql.stmt("CREATE TABLE sk_mig (id INT)", name="001_mig")]
+    assert_equal(len(db.migrate(migs).applied), 1)
+    assert_equal(len(db.migrate(migs).skipped), 1)
+    db.exec("DROP TABLE sk_mig")
+    db.exec("DROP TABLE schema_migrations")
+
     db.exec("DROP TABLE sk_t")
     db.close()
 
@@ -57,6 +73,22 @@ def test_mysql():
 
     names = db.query_column("SELECT name FROM sk_t ORDER BY id")
     assert_equal(names, ["alice", "bob", "carol"])
+
+    # insert generates ? placeholders for mysql
+    db.exec("DROP TABLE IF EXISTS sk_ins")
+    db.exec("CREATE TABLE sk_ins (id INT AUTO_INCREMENT PRIMARY KEY, name TEXT, n INT)")
+    assert_equal(db.insert("sk_ins", {"name": "x", "n": 7}).rows_affected, 1)
+    db.insert("sk_ins", [{"name": "a", "n": 1}, {"name": "b", "n": 2}])
+    assert_equal(db.query_value("SELECT count(*) FROM sk_ins"), 3)
+    db.exec("DROP TABLE sk_ins")
+
+    # migrate: VARCHAR(255) tracking table works on mysql
+    db.exec("DROP TABLE IF EXISTS schema_migrations")
+    migs = [sql.stmt("CREATE TABLE sk_mig (id INT)", name="001_mig")]
+    assert_equal(len(db.migrate(migs).applied), 1)
+    assert_equal(len(db.migrate(migs).skipped), 1)
+    db.exec("DROP TABLE sk_mig")
+    db.exec("DROP TABLE schema_migrations")
 
     db.exec("DROP TABLE sk_t")
     db.close()

@@ -82,6 +82,28 @@ db.batch([
 ])
 ```
 
+## Insert from objects
+
+`insert` builds the statement from a dict, so the column list is taken from the data:
+
+```python
+db.insert("notes", {"title": "write docs", "done": False})
+db.insert("notes", [{"title": "first"}, {"title": "second"}])   # a batch in one statement
+```
+
+## Migrations
+
+`migrate` applies a list of named statements once each and records which have run, so re-running a setup script is safe:
+
+```python
+db.migrate([
+    sql.stmt("CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT)", name="001_notes"),
+    sql.stmt("ALTER TABLE notes ADD COLUMN done BOOLEAN DEFAULT 0", name="002_done"),
+])
+```
+
+Each migration needs a `name`; already-applied migrations are skipped on the next run.
+
 ## A small end-to-end store
 
 ```python

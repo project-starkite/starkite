@@ -174,3 +174,45 @@ def test_no_explicit_close_ok():
     db.exec("CREATE TABLE t (n INTEGER)")
     db.exec("INSERT INTO t (n) VALUES (?)", 1)
     assert_equal(db.query_value("SELECT count(*) FROM t"), 1)
+
+# --- v2: insert / migrate (generated SQL) ---
+
+def test_insert_single_object():
+    db = _setup()
+    res = db.insert("users", {"name": "alice", "active": True})
+    assert_equal(res.rows_affected, 1)
+    assert_equal(res.last_insert_id, 1)
+    assert_equal(db.query_value("SELECT name FROM users WHERE id = 1"), "alice")
+    db.close()
+
+def test_insert_batch_of_objects():
+    db = _setup()
+    db.insert("users", [{"name": "a"}, {"name": "b"}, {"name": "c"}])
+    assert_equal(db.query_value("SELECT count(*) FROM users"), 3)
+    db.close()
+
+def test_insert_placeholder_override():
+    db = _setup()
+    db.insert("users", {"name": "x"}, placeholder="?")
+    assert_equal(db.query_value("SELECT count(*) FROM users"), 1)
+    db.close()
+
+def test_insert_column_mismatch_errors():
+    db = _setup()
+    r = db.try_insert("users", [{"name": "a"}, {"active": True}])
+    assert_true(not r.ok)
+    db.close()
+
+def test_migrate_applies_then_skips():
+    db = sql.open("sqlite", ":memory:")
+    migrations = [
+        sql.stmt("CREATE TABLE items (id INTEGER PRIMARY KEY, label TEXT)", name="001_items"),
+        sql.stmt("CREATE TABLE tags (id INTEGER PRIMARY KEY)", name="002_tags"),
+    ]
+    r1 = db.migrate(migrations)
+    assert_equal(len(r1.applied), 2)
+    assert_equal(len(r1.skipped), 0)
+    r2 = db.migrate(migrations)
+    assert_equal(len(r2.applied), 0)
+    assert_equal(len(r2.skipped), 2)
+    db.close()

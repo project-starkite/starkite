@@ -304,6 +304,142 @@ func TestAutoCloseOnRunEnd(t *testing.T) {
 	}
 }
 
+func TestBuildInsert(t *testing.T) {
+	mk := func(pairs ...string) *starlark.Dict {
+		d := starlark.NewDict(len(pairs) / 2)
+		for i := 0; i < len(pairs); i += 2 {
+			d.SetKey(starlark.String(pairs[i]), starlark.String(pairs[i+1]))
+		}
+		return d
+	}
+	tests := []struct {
+		name      string
+		rows      []*starlark.Dict
+		style     string
+		wantSQL   string
+		wantCount int
+	}{
+		{"single qmark", []*starlark.Dict{mk("name", "a", "email", "e")}, "?",
+			"INSERT INTO users (name, email) VALUES (?, ?)", 2},
+		{"single numbered", []*starlark.Dict{mk("name", "a", "email", "e")}, "$",
+			"INSERT INTO users (name, email) VALUES ($1, $2)", 2},
+		{"multi numbered", []*starlark.Dict{mk("n", "1"), mk("n", "2"), mk("n", "3")}, "$",
+			"INSERT INTO users (n) VALUES ($1), ($2), ($3)", 3},
+		{"multi qmark", []*starlark.Dict{mk("n", "1"), mk("n", "2")}, "?",
+			"INSERT INTO users (n) VALUES (?), (?)", 2},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			q, params, err := buildInsert("users", tt.rows, tt.style)
+			if err != nil {
+				t.Fatalf("buildInsert: %v", err)
+			}
+			if q != tt.wantSQL {
+				t.Errorf("SQL = %q, want %q", q, tt.wantSQL)
+			}
+			if len(params) != tt.wantCount {
+				t.Errorf("params = %d, want %d", len(params), tt.wantCount)
+			}
+		})
+	}
+
+	t.Run("column mismatch", func(t *testing.T) {
+		if _, _, err := buildInsert("t", []*starlark.Dict{mk("a", "1"), mk("b", "2")}, "?"); err == nil {
+			t.Error("expected error for differing columns across rows")
+		}
+	})
+}
+
+func TestResolveStyle(t *testing.T) {
+	c := &Connection{driver: "sqlite"}
+	if s, _ := c.resolveStyle(""); s != "?" {
+		t.Errorf("sqlite default = %q, want ?", s)
+	}
+	if s, _ := c.resolveStyle("$"); s != "$" {
+		t.Errorf("override = %q, want $", s)
+	}
+	if _, err := c.resolveStyle("%s"); err == nil {
+		t.Error("expected error for invalid placeholder style")
+	}
+	pg := &Connection{driver: "postgres"}
+	if s, _ := pg.resolveStyle(""); s != "$" {
+		t.Errorf("postgres default = %q, want $", s)
+	}
+}
+
+func TestInsertAndMigrate(t *testing.T) {
+	th := threadWith(t, libkite.AllowAllPermissions())
+	c := openMem(t, th)
+	defer c.db.Close()
+	callMethod(t, th, c, "exec", starlark.String("CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, email TEXT)"))
+
+	row := func(pairs ...string) *starlark.Dict {
+		d := starlark.NewDict(len(pairs) / 2)
+		for i := 0; i < len(pairs); i += 2 {
+			d.SetKey(starlark.String(pairs[i]), starlark.String(pairs[i+1]))
+		}
+		return d
+	}
+
+	t.Run("insert single", func(t *testing.T) {
+		res := callMethod(t, th, c, "insert", starlark.String("users"), row("name", "alice", "email", "a@x"))
+		if structAttr(t, res, "rows_affected") != starlark.MakeInt(1) {
+			t.Error("rows_affected != 1")
+		}
+		if structAttr(t, res, "last_insert_id") != starlark.MakeInt(1) {
+			t.Error("last_insert_id != 1")
+		}
+	})
+
+	t.Run("insert batch", func(t *testing.T) {
+		res := callMethod(t, th, c, "insert", starlark.String("users"), starlark.NewList([]starlark.Value{
+			row("name", "bob", "email", "b@x"),
+			row("name", "carol", "email", "c@x"),
+		}))
+		if structAttr(t, res, "rows_affected") != starlark.MakeInt(2) {
+			t.Error("batch rows_affected != 2")
+		}
+		v := callMethod(t, th, c, "query_value", starlark.String("SELECT count(*) FROM users"))
+		if v != starlark.MakeInt(3) {
+			t.Errorf("total users = %v, want 3", v)
+		}
+	})
+
+	m := New()
+	m.Load(&libkite.ModuleConfig{})
+	mig := func(name, ddl string) starlark.Value {
+		v, _ := m.stmt(th, nil, starlark.Tuple{starlark.String(ddl)}, []starlark.Tuple{{starlark.String("name"), starlark.String(name)}})
+		return v
+	}
+
+	t.Run("migrate applies then skips", func(t *testing.T) {
+		list := starlark.NewList([]starlark.Value{
+			mig("001_widgets", "CREATE TABLE widgets (id INTEGER PRIMARY KEY)"),
+			mig("002_color", "ALTER TABLE widgets ADD COLUMN color TEXT"),
+		})
+		res := callMethod(t, th, c, "migrate", list)
+		applied := structAttr(t, res, "applied").(*starlark.List)
+		if applied.Len() != 2 {
+			t.Fatalf("first migrate applied %d, want 2", applied.Len())
+		}
+		// re-run: both skipped
+		res2 := callMethod(t, th, c, "migrate", list)
+		skipped := structAttr(t, res2, "skipped").(*starlark.List)
+		appl2 := structAttr(t, res2, "applied").(*starlark.List)
+		if skipped.Len() != 2 || appl2.Len() != 0 {
+			t.Errorf("re-run: applied=%d skipped=%d, want 0/2", appl2.Len(), skipped.Len())
+		}
+	})
+
+	t.Run("migrate requires names", func(t *testing.T) {
+		attr, _ := c.Attr("migrate")
+		unnamed, _ := m.stmt(th, nil, starlark.Tuple{starlark.String("CREATE TABLE z (id INT)")}, nil)
+		if _, err := starlark.Call(th, attr.(*starlark.Builtin), starlark.Tuple{starlark.NewList([]starlark.Value{unnamed})}, nil); err == nil {
+			t.Error("expected error for an unnamed migration")
+		}
+	})
+}
+
 func TestSqliteFileDSN(t *testing.T) {
 	got := sqliteFileDSN("app.db")
 	if !strings.Contains(got, "busy_timeout") || !strings.Contains(got, "WAL") {
