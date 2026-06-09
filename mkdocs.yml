@@ -81,6 +81,7 @@ nav:
           - Logging:            core-modules/logging.md
           - JSON & YAML:        core-modules/json-yaml.md
           - Files:              core-modules/files.md
+          - Databases (SQL):    core-modules/sql.md
           - SSH:                core-modules/ssh.md
           - HTTP:
               - Clients: core-modules/http/clients.md
@@ -121,6 +122,7 @@ nav:
           - fs: references/api/fs.md
           - http: references/api/http.md
           - ssh: references/api/ssh.md
+          - sql: references/api/sql.md
           - json: references/api/json.md
           - yaml: references/api/yaml.md
           - csv: references/api/csv.md

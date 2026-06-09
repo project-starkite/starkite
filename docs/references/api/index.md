@@ -106,9 +106,15 @@ Remote services — HTTP and SSH.
 
 ## Data
 
-Encoding, serialization, text processing, and value utilities.
+Database connectivity, encoding, serialization, text processing, and value utilities.
 
 <div class="grid cards" markdown>
+
+-   :material-database:{ .lg .middle } [`sql`](sql.md)
+
+    ---
+
+    SQL databases (SQLite, PostgreSQL, MySQL): query, exec, transactions, batch.
 
 -   :material-code-json:{ .lg .middle } [`json`](json.md)
 
