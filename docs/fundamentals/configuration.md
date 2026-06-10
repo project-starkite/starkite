@@ -56,6 +56,40 @@ kite run ./deploy.star --var environment=prod --var replicas=5
 kite run ./deploy.star --var-file=prod.yaml
 ```
 
+## Variable files (`--var-file`)
+
+A var-file is a plain YAML map of variables — every top-level key is a variable. There are no sections and no reserved keys; the file is values only:
+
+```yaml
+# prod.yaml
+environment: prod
+replicas: 5
+labels:
+  app: myapp
+  team: platform
+regions:
+  - us-east-1
+  - eu-west-1
+```
+
+```python
+var_str("environment")    # "prod"
+var_int("replicas")       # 5
+var_str("labels.app")     # "myapp"  — nested maps flatten to dot notation
+var_dict("labels")        # {"app": "myapp", "team": "platform"} — and stay whole
+var_list("regions")       # ["us-east-1", "eu-west-1"]
+```
+
+Values keep their YAML types: integers read with `var_int`, lists with `var_list`, maps with `var_dict`. A nested map is available both whole (`var_dict("labels")`) and flattened (`var_str("labels.app")`).
+
+The flag repeats; later files override earlier ones on key collisions, and `--var` overrides them all:
+
+```bash
+kite run ./deploy.star --var-file=base.yaml --var-file=prod.yaml --var replicas=7
+```
+
+A var-file is not a config file: it does not use the three-section schema below. A `config:`, `permissions:`, or `sandbox:` key in a var-file is just a variable named `config.…`, `permissions.…`, or `sandbox.…` — permission and sandbox profiles are defined only in `config.yaml`.
+
 ## Config file format
 
 `~/.starkite/config.yaml` (and `./config.yaml` in the working directory) is the single configuration file for the starkite runtime. It has exactly **three top-level sections** — any other top-level key is an error:
