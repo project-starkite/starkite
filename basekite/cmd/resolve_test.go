@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -74,6 +75,22 @@ func TestResolveRunTarget(t *testing.T) {
 			t.Error("expected error for nonexistent path")
 		}
 	})
+
+	t.Run("bare .star file requires a path prefix", func(t *testing.T) {
+		_, _, err := resolveRunTarget("loose.star")
+		if err == nil {
+			t.Fatal("expected error for bare .star reference")
+		}
+		if got := err.Error(); !strings.Contains(got, "./loose.star") {
+			t.Errorf("error should hint the ./ form, got: %v", got)
+		}
+	})
+
+	t.Run("bare single segment is not runnable", func(t *testing.T) {
+		if _, _, err := resolveRunTarget("mymod"); err == nil {
+			t.Error("expected error for bare single-segment reference")
+		}
+	})
 }
 
 func TestResolveRunTargetInstalledRevisions(t *testing.T) {
@@ -104,9 +121,9 @@ func TestResolveRunTargetInstalledRevisions(t *testing.T) {
 	os.Chtimes(updated.Path, future, future)
 
 	t.Run("bare reference selects newest", func(t *testing.T) {
-		entry, isModule, err := resolveRunTarget("@acme/tool")
+		entry, isModule, err := resolveRunTarget("acme/tool")
 		if err != nil || !isModule {
-			t.Fatalf("resolve @acme/tool: %v (isModule=%v)", err, isModule)
+			t.Fatalf("resolve acme/tool: %v (isModule=%v)", err, isModule)
 		}
 		if entry != filepath.Join(updated.Path, "main.star") {
 			t.Errorf("entry = %q, want newest revision %q", entry, updated.Path)
@@ -114,9 +131,9 @@ func TestResolveRunTargetInstalledRevisions(t *testing.T) {
 	})
 
 	t.Run("@rev pins an exact revision", func(t *testing.T) {
-		entry, _, err := resolveRunTarget("@acme/tool@" + first.Rev)
+		entry, _, err := resolveRunTarget("acme/tool@" + first.Rev)
 		if err != nil {
-			t.Fatalf("resolve @acme/tool@%s: %v", first.Rev, err)
+			t.Fatalf("resolve acme/tool@%s: %v", first.Rev, err)
 		}
 		if entry != filepath.Join(first.Path, "main.star") {
 			t.Errorf("entry = %q, want pinned revision %q", entry, first.Path)
@@ -124,13 +141,13 @@ func TestResolveRunTargetInstalledRevisions(t *testing.T) {
 	})
 
 	t.Run("unknown @rev errors", func(t *testing.T) {
-		if _, _, err := resolveRunTarget("@acme/tool@deadbeef"); err == nil {
+		if _, _, err := resolveRunTarget("acme/tool@deadbeef"); err == nil {
 			t.Error("expected error for unknown revision")
 		}
 	})
 
 	t.Run("uninstalled reference errors", func(t *testing.T) {
-		if _, _, err := resolveRunTarget("@acme/missing"); err == nil {
+		if _, _, err := resolveRunTarget("acme/missing"); err == nil {
 			t.Error("expected error for uninstalled module")
 		}
 	})

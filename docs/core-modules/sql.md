@@ -11,7 +11,7 @@ The `sql` module connects to SQL databases. **SQLite is built into every edition
 These examples touch the filesystem (SQLite is file I/O), so run them with at least `--allow-fs`:
 
 ```bash
-kite run store.star --allow-fs
+kite run ./store.star --allow-fs
 ```
 
 ## Open a database
@@ -107,7 +107,7 @@ Each migration needs a `name`; already-applied migrations are skipped on the nex
 ## A small end-to-end store
 
 ```python
-# store.star — run: kite run store.star --allow-fs
+# store.star — run: kite run ./store.star --allow-fs
 db = sql.open("sqlite", "notes.db")
 db.exec("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, done BOOLEAN DEFAULT 0)")
 

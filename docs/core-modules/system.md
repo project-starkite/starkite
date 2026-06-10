@@ -44,7 +44,7 @@ if disk.ok and disk.stdout:
 ## Run it
 
 ```bash
-kite run examples/core/sysinfo.star
+kite run ./examples/core/sysinfo.star
 ```
 
 Expected output (host-specific values differ):

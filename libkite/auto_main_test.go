@@ -145,7 +145,7 @@ def helper():
 	// A single-file module exports a struct under its basename; access members
 	// through it (mod.helper), not as bare imported names.
 	entrySrc := `
-load("mod.star", "mod")
+load("./mod.star", "mod")
 mod.helper()
 `
 	if err := os.WriteFile(entryPath, []byte(entrySrc), 0o644); err != nil {

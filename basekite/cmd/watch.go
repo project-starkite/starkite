@@ -15,7 +15,7 @@ import (
 )
 
 var watchCmd = &cobra.Command{
-	Use:   "watch <script.star>",
+	Use:   "watch <target>",
 	Short: "Watch and re-execute script on file changes",
 	Long: `Watch a script file and automatically re-execute it when the file changes.
 
@@ -23,10 +23,10 @@ This is useful during development to get immediate feedback on script changes.
 
 Examples:
   # Watch a script
-  kite watch deploy.star
+  kite watch ./deploy.star
 
   # Watch with custom output format
-  kite watch manifest.star --output=yaml
+  kite watch ./manifest.star --output=yaml
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: watchScript,
@@ -37,7 +37,7 @@ func init() {
 }
 
 func watchScript(cmd *cobra.Command, args []string) error {
-	// Resolve the run target (file, directory module, or @namespace/name).
+	// Resolve the run target (path reference or installed namespace/name).
 	entry, isModule, err := resolveRunTarget(args[0])
 	if err != nil {
 		return err

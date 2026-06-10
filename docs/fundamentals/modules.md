@@ -6,13 +6,13 @@ weight: 50
 
 # Modules
 
-Every capability in a starkite script — filesystem, HTTP, SSH, Kubernetes, LLMs — is exposed as a **module**. Built-in modules are auto-loaded into every script; `load()` pulls in other `.star` files from the same project.
+Every capability in a starkite script — filesystem, HTTP, SSH, Kubernetes, LLMs — is exposed as a **module**. Built-in modules are auto-loaded into every script. The `load()` function can be used to pull in installed modules or other modules from the same project.
 
-For the per-module API catalog, see [References > API](../references/api/index.md).
+For available modules, see [References > API](../references/api/index.md).
 
 ## Auto-loaded modules
 
-Unlike standard Starlark, starkite modules do not require `load()` statements. Every built-in module is injected into the global scope before the script runs:
+Standard `starkite` modules do not require `load()` statements. Every built-in module is injected into the global scope before the script runs:
 
 ```python
 # No import needed
@@ -34,7 +34,8 @@ See [Editions](editions.md) for the full edition model.
 
 ## What a module is
 
-A module is a **directory** containing a `mod.yaml` manifest and one or more `.star` files. The manifest declares the module's identity and configuration:
+A module is a **directory** containing a `mod.yaml` manifest and one or more `.star` files. 
+The manifest declares the module's identity and configuration:
 
 ```yaml
 # helpers/mod.yaml
@@ -54,11 +55,12 @@ The directory's public symbols (everything not starting with `_`) merge into one
 
 ## Loading script modules
 
-`load()` imports a module and binds its public symbols under a single name, accessed as `name.function()`:
+`load()` imports a module and binds its public symbols under a single name, accessed as `name.function()`. The reference form determines where the module comes from — a filesystem reference requires a path prefix (`./`, `../`, or `/`); a bare `namespace/name` is an installed-module identity:
 
 ```python
-# a local module directory (relative to the calling script)
+# a local module directory or file (path prefix required)
 load("./helpers", "helpers")
+load("./lib/util.star", "util")
 
 def main():
     helpers.deploy("production")
@@ -66,7 +68,7 @@ def main():
 
 Rename the binding with Starlark's aliasing syntax: `load("./helpers", h = "helpers")`.
 
-An **installed** module is loaded by its `namespace/name`:
+An **installed** module is loaded by its bare `namespace/name` identity, resolved from the global cache (and pinned by `mod.lock` when one governs the run):
 
 ```python
 load("acme/slack", "slack")     # installed via: kite module install ...
@@ -74,6 +76,8 @@ load("acme/slack", "slack")     # installed via: kite module install ...
 def main():
     slack.post("#deploys", "shipped")
 ```
+
+`load()` never takes a revision — committed code is pinned by `mod.lock`, not by inline revisions. Revision selection (`namespace/name@rev`) is available on the `kite run` and `kite module` command lines.
 
 ## Managing modules
 
@@ -112,7 +116,7 @@ For a git source the installed revision is the resolved commit SHA and the worki
 
 Install validates the module: the source must contain a `mod.yaml` with a `name` and a `main.star` entry file, or the install is rejected.
 
-Run an installed module directly with `kite run @acme/slack`. When several revisions are installed, the bare reference runs the newest; pin a specific one with `kite run @acme/slack@<rev>`.
+Run an installed module directly with `kite run acme/slack`. When several revisions are installed, the bare reference runs the newest; pin a specific one with `kite run acme/slack@<rev>`.
 
 ### list
 
@@ -195,7 +199,7 @@ modules:
 
 `mod.lock` is committed and reviewable: a changed dependency produces a diff. On later runs, resolution is cache-first and incremental — a locked dependency whose cached tree still verifies is reused without re-fetching, and a hash mismatch is an error. The cache is version-addressed (`<namespace>/<name>@<rev>/`) and write-once, so projects pinning different revisions coexist.
 
-A **loose script** run directly (`kite run deploy.star`, not a module directory) has no `mod.yaml` to declare dependencies. The installed modules it `load()`s are resolved from the cache only — nothing is fetched — and recorded in a `mod.lock` written beside the script. An installed reference that is not already installed is an error; install it first with `kite module install`.
+A **loose script** run directly (`kite run ./deploy.star`, not a module directory) has no `mod.yaml` to declare dependencies. The installed modules it `load()`s are resolved from the cache only — nothing is fetched — and recorded in a `mod.lock` written beside the script. An installed reference that is not already installed is an error; install it first with `kite module install`.
 
 ## Module permissions
 

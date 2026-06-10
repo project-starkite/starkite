@@ -13,7 +13,7 @@ import (
 )
 
 var runCmd = &cobra.Command{
-	Use:   "run <script.star>",
+	Use:   "run <target>",
 	Short: "Execute a starkite script",
 	Long: `Execute a starkite script file.
 
@@ -21,7 +21,7 @@ The script should be written in Starlark (a Python-like language) and typically
 has the .star extension.
 
 Note: You can also run scripts directly without the 'run' subcommand:
-  kite script.star
+  kite ./script.star
   ./script.star    # with shebang: #!/usr/bin/env kite
 
 Variables can be injected from multiple sources with the following priority
@@ -34,23 +34,23 @@ Variables can be injected from multiple sources with the following priority
 
 Examples:
   # Run a script
-  kite deploy.star
-  kite run deploy.star
+  kite ./deploy.star
+  kite run ./deploy.star
 
   # Run with variables
-  kite deploy.star --var image_tag=v1.0.0 --var replicas=3
+  kite ./deploy.star --var image_tag=v1.0.0 --var replicas=3
 
   # Run with variable file (merges with ~/.starkite/config.yaml)
-  kite deploy.star --var-file=prod.yaml
+  kite ./deploy.star --var-file=prod.yaml
 
   # Run with multiple variable files (later files override earlier)
-  kite deploy.star --var-file=base.yaml --var-file=prod.yaml
+  kite ./deploy.star --var-file=base.yaml --var-file=prod.yaml
 
   # Combine sources (CLI overrides all)
-  kite deploy.star --var-file=base.yaml --var image_tag=v2.0.0
+  kite ./deploy.star --var-file=base.yaml --var image_tag=v2.0.0
 
   # Pipe output to kubectl
-  kite manifest.star | kubectl apply -f -
+  kite ./manifest.star | kubectl apply -f -
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: runScript,
@@ -62,7 +62,7 @@ func init() {
 
 func runScript(cmd *cobra.Command, args []string) error {
 	// Resolve the run target: a script file, a directory module, or an
-	// installed @namespace/name. Module runs require a main() entry point.
+	// installed namespace/name. Module runs require a main() entry point.
 	scriptPath, isModule, err := resolveRunTarget(args[0])
 	if err != nil {
 		return &libkite.ScriptError{

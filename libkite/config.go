@@ -62,7 +62,7 @@ type Config struct {
 
 	// RequireEntryPoint makes a missing EntryPoint a hard error: the file must
 	// define EntryPoint, otherwise it is a library and not directly runnable.
-	// The CLI sets this for module runs (a directory or @namespace/name), not
+	// The CLI sets this for module runs (a directory or namespace/name), not
 	// for loose script files.
 	RequireEntryPoint bool
 

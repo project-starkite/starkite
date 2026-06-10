@@ -15,9 +15,9 @@ Installed modules live under `~/.starkite/modules/` and are discovered automatic
 | `kite module install <source>` | Install from a git repo or local path |
 | `kite module list` | List installed modules |
 | `kite module update <name>` | Fetch the latest revision of an installed module into the cache |
-| `kite module remove <name>` | Delete an installed module. Aliases: `rm`, `uninstall` |
-| `kite module info <name>` | Show detailed info about an installed module |
-| `kite module verify [name]` | Re-hash installed modules and check them against their recorded hash |
+| `kite module remove <name>[@rev]` | Delete an installed module (all revisions, or one). Aliases: `rm`, `uninstall` |
+| `kite module info <name>[@rev]` | Show detailed info about an installed module |
+| `kite module verify [name[@rev]]` | Re-hash installed modules and check them against their recorded hash |
 
 ## `kite module install <source>`
 
@@ -82,41 +82,48 @@ revision alongside any existing one.
 kite module update helm
 ```
 
-## `kite module remove <name>`
+## `kite module remove <name>[@rev]`
 
-Removes an installed module and its files.
+Removes an installed module. Bare `namespace/name` deletes every cached
+revision; a `@rev` suffix (full id or unique prefix) deletes only that revision.
 
 ```bash
-kite module remove helm
-kite module rm echo
+kite module remove acme/helm            # all revisions
+kite module remove acme/helm@9f3c1ab    # one revision
+kite module rm acme/echo
 ```
 
-## `kite module info <name>`
+## `kite module info <name>[@rev]`
 
-Shows detailed info: name, type, path, version, repository, entry point.
+Shows detailed info: name, revision, type, path, version, repository, entry
+point. Bare `namespace/name` lists every installed revision; a `@rev` suffix
+shows only that revision.
 
 ```bash
-kite module info helm
+kite module info acme/helm
 # Name:        helm
+# Revision:    9f3c1ab
 # Type:        starlark
-# Path:        /home/alice/.starkite/modules/helm
+# Path:        /home/alice/.starkite/modules/acme/helm@9f3c1ab
 # Version:     v1.0.0
 # Repository:  github.com/user/kite-helm
 # Description: Helm chart operations for starkite
 ```
 
-## `kite module verify [name]`
+## `kite module verify [name[@rev]]`
 
 Re-hashes installed modules and compares each against the content hash recorded
 at install, detecting on-disk tampering or corruption. With no argument every
-installed module is checked; with a `namespace/name` only that module. Exits
-non-zero if any module fails.
+installed module is checked; with a `namespace/name` every revision of that
+module; with a `@rev` suffix only that revision. Exits non-zero if any check
+fails.
 
 ```bash
-kite module verify              # check every installed module
-kite module verify acme/helm    # check one module
-# ok    acme/helm
-# FAIL  acme/tools  content hash mismatch for ...: locked sha256:…, on disk sha256:…
+kite module verify                      # check every installed module
+kite module verify acme/helm            # check every revision of one module
+kite module verify acme/helm@9f3c1ab    # check one revision
+# ok    acme/helm@9f3c1ab
+# FAIL  acme/tools@a1b2c3d  content hash mismatch for ...: locked sha256:…, on disk sha256:…
 ```
 
 This is the full-content check. At run time, `kite run` verifies a locked

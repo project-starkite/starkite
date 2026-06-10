@@ -5,7 +5,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -61,7 +60,7 @@ func (a permissionAlias) Set(string) error {
 }
 
 var rootCmd = &cobra.Command{
-	Use:   "kite [script.star]",
+	Use:   "kite [target]",
 	Short: "Starkite - A powerful automation tool for cloud-native infrastructure",
 	Long: `kite is the CLI for starkite, a powerful automation tool for cloud-native infrastructure.
 It provides a unified scripting interface using Starlark, a Python-like language, to execute
@@ -69,18 +68,18 @@ commands across local machines, remote servers, containers, and Kubernetes clust
 
 Examples:
   # Execute a script (these are equivalent)
-  kite script.star
-  kite run script.star
+  kite ./script.star
+  kite run ./script.star
   ./script.star              # with shebang: #!/usr/bin/env kite
 
   # Execute inline Starlark code
-  kite exec 'print(local.exec("hostname").stdout)'
+  kite exec 'print(exec("hostname"))'
 
   # Interactive REPL
   kite repl
 
   # Pipe output to other tools
-  kite manifest.star | kubectl apply -f -
+  kite ./manifest.star | kubectl apply -f -
 `,
 	Version: version.String(),
 
@@ -207,7 +206,7 @@ func Execute() int {
 	}
 
 	// Implicit run: if the first arg is a run target (a .star file, an existing
-	// file, a module directory, or an @namespace/name reference) rather than a
+	// path reference, an installed namespace/name identity, or a .star arg) rather
 	// flag or subcommand, insert "run".
 	if len(os.Args) > 1 {
 		firstArg := os.Args[1]
@@ -231,22 +230,13 @@ func Execute() int {
 }
 
 // looksLikeRunTarget reports whether arg is something `kite run` can execute —
-// a .star file, an existing file, a module directory (contains a manifest), or
-// an @namespace/name reference — so it can be run without an explicit "run".
+// a path reference (./, ../, /), an installed namespace/name identity, or a
+// .star argument — so it can be run without an explicit "run". Subcommand names
+// never contain a slash, and malformed forms (e.g. a bare "file.star" missing
+// its path prefix) still route to run so resolveRunTarget can produce the
+// precise error.
 func looksLikeRunTarget(arg string) bool {
-	if strings.HasPrefix(arg, "@") || strings.HasSuffix(arg, ".star") {
-		return true
-	}
-	info, err := os.Stat(arg)
-	if err != nil {
-		return false
-	}
-	if !info.IsDir() {
-		return true
-	}
-	// A directory is a run target only when it is a module.
-	_, err = os.Stat(filepath.Join(arg, libkite.ManifestFile))
-	return err == nil
+	return isPathArg(arg) || strings.Contains(arg, "/") || strings.HasSuffix(arg, ".star")
 }
 
 // exitCodeFromError extracts an exit code from an error

@@ -7,6 +7,7 @@ import (
 	"text/tabwriter"
 
 	"github.com/project-starkite/starkite/basekite/manager"
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/spf13/cobra"
 )
 
@@ -93,11 +94,12 @@ This pulls the latest changes from the module's git repository.
 }
 
 var moduleRemoveCmd = &cobra.Command{
-	Use:   "remove <name>",
+	Use:   "remove <name>[@rev]",
 	Short: "Remove an installed module",
 	Long: `Remove an installed module.
 
-This permanently deletes the module and its files.
+Bare namespace/name deletes every cached revision; a @rev suffix deletes only
+that revision.
 `,
 	Aliases: []string{"rm", "uninstall"},
 	Args:    cobra.ExactArgs(1),
@@ -105,18 +107,19 @@ This permanently deletes the module and its files.
 }
 
 var moduleInfoCmd = &cobra.Command{
-	Use:   "info <name>",
+	Use:   "info <name>[@rev]",
 	Short: "Show information about an installed module",
 	Long: `Show detailed information about an installed module.
 
-Displays the module's name, version, repository, and entry point.
+Displays the module's name, revision, version, repository, and entry point.
+Bare namespace/name lists every installed revision; a @rev suffix shows one.
 `,
 	Args: cobra.ExactArgs(1),
 	RunE: runModuleInfo,
 }
 
 var moduleVerifyCmd = &cobra.Command{
-	Use:   "verify [name]",
+	Use:   "verify [name[@rev]]",
 	Short: "Verify installed modules against their recorded hash",
 	Long: `Re-hash installed modules and compare against the content hash recorded
 at install, detecting on-disk tampering or corruption.
@@ -267,39 +270,52 @@ func runModuleUpdate(cmd *cobra.Command, args []string) error {
 }
 
 func runModuleRemove(cmd *cobra.Command, args []string) error {
-	name := args[0]
+	identity, rev := libkite.SplitModuleRev(args[0])
 
 	mgr, err := manager.New("")
 	if err != nil {
 		return fmt.Errorf("failed to initialize module manager: %w", err)
 	}
 
-	if err := mgr.Remove(name); err != nil {
+	if err := mgr.Remove(identity, rev); err != nil {
 		return err
 	}
 
-	fmt.Printf("Removed module %s\n", name)
+	if rev != "" {
+		fmt.Printf("Removed module %s@%s\n", identity, rev)
+	} else {
+		fmt.Printf("Removed module %s\n", identity)
+	}
 	return nil
 }
 
 func runModuleInfo(cmd *cobra.Command, args []string) error {
-	name := args[0]
+	identity, rev := libkite.SplitModuleRev(args[0])
 
 	mgr, err := manager.New("")
 	if err != nil {
 		return fmt.Errorf("failed to initialize module manager: %w", err)
 	}
 
-	revs, err := mgr.Revisions(name)
+	if rev != "" {
+		info, err := mgr.Resolve(identity, rev)
+		if err != nil {
+			return err
+		}
+		printModuleInfo(info)
+		return nil
+	}
+
+	revs, err := mgr.Revisions(identity)
 	if err != nil {
 		return err
 	}
 	if len(revs) == 0 {
-		return fmt.Errorf("module %q not installed", name)
+		return fmt.Errorf("module %q not installed", identity)
 	}
 
 	if len(revs) > 1 {
-		fmt.Printf("%s has %d installed revisions:\n\n", name, len(revs))
+		fmt.Printf("%s has %d installed revisions:\n\n", identity, len(revs))
 	}
 	for i, info := range revs {
 		if i > 0 {
@@ -333,9 +349,9 @@ func printModuleInfo(info *manager.ModuleInfo) {
 }
 
 func runModuleVerify(cmd *cobra.Command, args []string) error {
-	var ref string
+	var identity, rev string
 	if len(args) == 1 {
-		ref = args[0]
+		identity, rev = libkite.SplitModuleRev(args[0])
 	}
 
 	mgr, err := manager.New("")
@@ -343,7 +359,7 @@ func runModuleVerify(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to initialize module manager: %w", err)
 	}
 
-	results, err := mgr.Verify(ref)
+	results, err := mgr.Verify(identity, rev)
 	if err != nil {
 		return err
 	}

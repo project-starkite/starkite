@@ -11,8 +11,8 @@ A starkite script runs top to bottom. This page covers how execution starts, the
 ## Ways to run a script
 
 ```bash
-kite run deploy.star                 # run a file
-kite run deploy.star --var env=prod  # pass variables
+kite run ./deploy.star                 # run a file
+kite run ./deploy.star --var env=prod  # pass variables
 kite exec 'print(os.hostname())'     # run inline source
 ```
 
@@ -37,7 +37,7 @@ def main():
     print("hello")
 ```
 
-`kite run hello.star` prints `hello` — no explicit call needed.
+`kite run ./hello.star` prints `hello` — no explicit call needed.
 
 Defining `main` is optional. A script that does not define it runs entirely at the top level.
 

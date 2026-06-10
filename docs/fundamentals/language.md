@@ -17,7 +17,7 @@ def main():
     print("hello")
 ```
 
-`kite run hello.star` prints `hello` — no explicit call needed.
+`kite run ./hello.star` prints `hello` — no explicit call needed.
 
 Defining `main` is optional. A script that does not define it runs entirely at the top level.
 

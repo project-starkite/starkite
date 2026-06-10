@@ -766,13 +766,13 @@ sudo install -m 0755 ./bin/kite /usr/local/bin/kite</code></pre>
       <h4>1. Run via the <code>kite</code> CLI</h4>
       <div class="run-card__split">
         <p>Starkite scripts run through the <code>kite</code> CLI. The <code>kite run</code> command (or its implicit shorthand) accepts any <code>.star</code> file and forwards <code>--var</code> arguments to the script — suitable for ad-hoc invocation, CI pipelines, and pipeline composition with other tools.</p>
-        <pre><code class="language-bash">$ kite run deploy.star
+        <pre><code class="language-bash">$ kite run ./deploy.star
 
 # shorthand — `run` is implicit
-$ kite deploy.star --var image_tag=v1.0.0
+$ kite ./deploy.star --var image_tag=v1.0.0
 
 # pipe results to other tools
-$ kite manifest.star | kubectl apply -f -</code></pre>
+$ kite ./manifest.star | kubectl apply -f -</code></pre>
       </div>
     </div>
 
@@ -900,13 +900,13 @@ mcp.serve(
     </div>
     <div class="feature-section__code">
       <pre><code class="language-bash"># Named profile from ~/.starkite/security.yaml
-$ kite run job.star --permissions=ci --sandbox=ci
+$ kite run ./job.star --permissions=ci --sandbox=ci
 
 # Inline rules — no config file needed
-$ kite run job.star --permissions="allow:fs.read"
+$ kite run ./job.star --permissions="allow:fs.read"
 
 # Built-in strict profile — denies everything sensitive
-$ kite run untrusted.star --permissions=strict --sandbox=strict
+$ kite run ./untrusted.star --permissions=strict --sandbox=strict
 Error: permission denied: os.exec is not allowed</code></pre>
     </div>
   </div>

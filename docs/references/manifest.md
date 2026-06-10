@@ -22,7 +22,7 @@ dependencies:
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | **yes** | The module's name. With `namespace`, forms the `namespace/name` identity used by `load()` and `kite run @namespace/name`. |
+| `name` | string | **yes** | The module's name. With `namespace`, forms the `namespace/name` identity used by `load()` and `kite run namespace/name`. |
 | `namespace` | string | no | The identity's namespace. May be omitted when it can be resolved from the install source (a git org) or supplied at install time with `--as <namespace>/<name>`. |
 | `version` | string | no | Human-facing version of the module (e.g. `0.1.0`). Informational; not used for resolution. |
 | `description` | string | no | One-line summary, shown by `kite module info` and `kite module list`. |

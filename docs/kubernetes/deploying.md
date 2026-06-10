@@ -50,9 +50,9 @@ for p in k.top_pods(sort_by="cpu", timeout="15s"):
 ## Run it
 
 ```bash
-kite run examples/cloud/quick-deploy/quick-deploy.star
-kite run examples/cloud/quick-deploy/quick-deploy.star --var image=myapp:v2 --var namespace=staging
-kite run examples/cloud/quick-deploy/quick-deploy.star --dry-run
+kite run ./examples/cloud/quick-deploy/quick-deploy.star
+kite run ./examples/cloud/quick-deploy/quick-deploy.star --var image=myapp:v2 --var namespace=staging
+kite run ./examples/cloud/quick-deploy/quick-deploy.star --dry-run
 ```
 
 ## What's happening

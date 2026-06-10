@@ -35,7 +35,7 @@ env = var_str("environment", "dev")
 ### Script parameters
 
 ```python
-# kite run deploy.star --var env=prod --var replicas=3 --var dry-run=true
+# kite run ./deploy.star --var env=prod --var replicas=3 --var dry-run=true
 
 env = var_str("env", "dev")
 replicas = var_int("replicas", 1)
@@ -49,7 +49,7 @@ if dry_run:
 ### List and dict variables
 
 ```python
-# kite run script.star --var tags='["web","api"]' --var labels='{"team":"platform"}'
+# kite run ./script.star --var tags='["web","api"]' --var labels='{"team":"platform"}'
 
 tags = var_list("tags")
 labels = var_dict("labels")

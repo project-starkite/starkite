@@ -52,8 +52,8 @@ for name in var_names():
 Pass values on the command line with `--var` (repeatable) or a `--var-file`:
 
 ```bash
-kite run deploy.star --var environment=prod --var replicas=5
-kite run deploy.star --var-file=prod.yaml
+kite run ./deploy.star --var environment=prod --var replicas=5
+kite run ./deploy.star --var-file=prod.yaml
 ```
 
 ## Config file format

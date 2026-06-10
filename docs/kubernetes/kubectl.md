@@ -33,8 +33,8 @@ print(yaml.encode(manifest))
 Pipe it straight into `kubectl`:
 
 ```bash
-kite run gen.star --var image=myapp:v2 | kubectl apply -f -
-kite run gen.star --var image=myapp:v2 | kubectl diff -f -
+kite run ./gen.star --var image=myapp:v2 | kubectl apply -f -
+kite run ./gen.star --var image=myapp:v2 | kubectl diff -f -
 ```
 
 ## Multiple objects
@@ -46,7 +46,7 @@ print(yaml.encode_all([deployment, service, configmap]))
 ```
 
 ```bash
-kite run stack.star | kubectl apply -f -
+kite run ./stack.star | kubectl apply -f -
 ```
 
 This keeps cluster mutation in `kubectl` (and its RBAC, dry-run, and diff tooling) while starkite handles variable injection and conditional logic. To apply directly from the script instead, see [Deploying resources](deploying.md).

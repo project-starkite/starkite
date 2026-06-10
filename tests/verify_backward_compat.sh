@@ -278,10 +278,10 @@ info "Test 13e: loaded module bound by runtime permission + attributed"
 
 MODDIR=$(mktemp -d /tmp/kite_test_XXXXXX)
 printf 'def reach():\n    return exec("uname -s")\n' > "$MODDIR/mod.star"
-printf 'load("mod.star", "mod")\nprint(mod.reach())\n' > "$MODDIR/host.star"
+printf 'load("./mod.star", "mod")\nprint(mod.reach())\n' > "$MODDIR/host.star"
 
 # Under allow-fs the module's exec is denied, naming the module.
-# load("mod.star") resolves relative to host.star's directory.
+# load("./mod.star") resolves relative to host.star's directory.
 if $KITE run "$MODDIR/host.star" --allow-fs 2>&1 | grep -q 'permission denied (module "mod")'; then
     pass "loaded module denial is bound and attributed"
 else
@@ -324,10 +324,10 @@ fi
 
 # Install as a namespaced module and run via @namespace/name.
 $KITE module install "$RUNDIR/execmod" --as t/execmod --force >/dev/null 2>&1 || true
-if $KITE run @t/execmod --allow-all 2>&1 | grep -q "ran execmod"; then
-    pass "kite run @namespace/name"
+if $KITE run t/execmod --allow-all 2>&1 | grep -q "ran execmod"; then
+    pass "kite run namespace/name"
 else
-    fail "kite run @namespace/name"
+    fail "kite run namespace/name"
 fi
 $KITE module remove t/execmod >/dev/null 2>&1 || true
 rm -rf "$RUNDIR"
@@ -552,17 +552,17 @@ if command -v git >/dev/null 2>&1; then
       GIT_AUTHOR_NAME=t GIT_AUTHOR_EMAIL=t@e GIT_COMMITTER_NAME=t GIT_COMMITTER_EMAIL=t@e \
       git commit -qm v2 ) >/dev/null 2>&1
     GK module update acme/leaf >/dev/null 2>&1
-    if [ "$(GK run @acme/leaf --allow-all 2>&1)" = "v2" ]; then
-        pass "bare @namespace/name runs the newest revision"
+    if [ "$(GK run acme/leaf --allow-all 2>&1)" = "v2" ]; then
+        pass "bare namespace/name runs the newest revision"
     else
-        fail "bare @namespace/name runs the newest revision"
+        fail "bare namespace/name runs the newest revision"
     fi
-    if [ "$(GK run "@acme/leaf@$COMMIT" --allow-all 2>&1)" = "v1" ]; then
-        pass "@namespace/name@rev pins a specific revision"
+    if [ "$(GK run "acme/leaf@$COMMIT" --allow-all 2>&1)" = "v1" ]; then
+        pass "namespace/name@rev pins a specific revision"
     else
-        fail "@namespace/name@rev pins a specific revision"
+        fail "namespace/name@rev pins a specific revision"
     fi
-    if GK run "@acme/leaf@nosuchrev" --allow-all >/dev/null 2>&1; then
+    if GK run "acme/leaf@nosuchrev" --allow-all >/dev/null 2>&1; then
         fail "unknown @rev errors"
     else
         pass "unknown @rev errors"

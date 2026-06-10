@@ -32,7 +32,7 @@ Examples:
   kite repl
 
   # In REPL
-  >>> result = local.exec("hostname")
+  >>> result = exec("hostname")
   >>> print(result.value)
 `,
 	RunE: startRepl,
@@ -208,7 +208,7 @@ Built-in Functions:
   path.*            Path manipulation functions
 
 Examples:
-  >>> result = local.exec("hostname")
+  >>> result = exec("hostname")
   >>> print(result.value)
   >>> hosts = ["host1", "host2"]
   >>> for h in hosts:

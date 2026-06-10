@@ -58,8 +58,8 @@ k8s.control("deployments",
 In one shell, start the controller:
 
 ```bash
-kite run examples/cloud/controller/deployment-scaler.star
-kite run examples/cloud/controller/deployment-scaler.star --var max_replicas=5
+kite run ./examples/cloud/controller/deployment-scaler.star
+kite run ./examples/cloud/controller/deployment-scaler.star --var max_replicas=5
 ```
 
 In another shell, create a labeled Deployment that exceeds the limit:

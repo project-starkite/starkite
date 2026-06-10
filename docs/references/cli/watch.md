@@ -15,6 +15,6 @@ kite watch <script.star>
 ## Example
 
 ```bash
-kite watch deploy.star
+kite watch ./deploy.star
 # Script re-runs automatically when deploy.star is modified
 ```

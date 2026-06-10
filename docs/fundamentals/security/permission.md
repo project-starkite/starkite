@@ -17,7 +17,7 @@ For OS-level isolation (filesystem visibility, process containment), see [Sandbo
 Without `--permissions`, and with no `default` profile configured, a script runs under `deny-all`: it may perform pure computation plus `print` and `log`, and nothing else. Filesystem, network, environment, and exec are all denied until the script is granted a higher profile.
 
 ```bash
-kite script.star            # deny-all unless a config default is set
+kite ./script.star            # deny-all unless a config default is set
 ```
 
 To make a machine's everyday ceiling more permissive without a flag on every run, define a `default` profile in `~/.starkite/config.yaml` (see [Custom profiles](#custom-profiles)). An unspecified `--permissions` then resolves to that profile.
@@ -25,17 +25,17 @@ To make a machine's everyday ceiling more permissive without a flag on every run
 ## Quick start
 
 ```bash
-kite script.star --permissions=allow-fs           # read any file; write within $CWD; env
-kite script.star --permissions=allow-local        # serve, $CWD exec, k8s, ai
-kite script.star --permissions=allow-all          # unrestricted
-kite script.star --permissions=./team.yaml#deploy # custom profile from a file
+kite ./script.star --permissions=allow-fs           # read any file; write within $CWD; env
+kite ./script.star --permissions=allow-local        # serve, $CWD exec, k8s, ai
+kite ./script.star --permissions=allow-all          # unrestricted
+kite ./script.star --permissions=./team.yaml#deploy # custom profile from a file
 ```
 
 Each built-in profile has a boolean alias — `--allow-fs`, `--allow-net`, `--allow-local`, `--allow-all`, `--deny-all` — equivalent to `--permissions=<profile>`:
 
 ```bash
-kite script.star --allow-fs        # same as --permissions=allow-fs
-kite script.star --allow-all       # same as --permissions=allow-all
+kite ./script.star --allow-fs        # same as --permissions=allow-fs
+kite ./script.star --allow-all       # same as --permissions=allow-all
 ```
 
 Set at most one permission selector: combining two aliases, or an alias with `--permissions=`, is an error.
@@ -57,8 +57,8 @@ The five built-in profiles form a strict capability ladder; each is a superset o
 `allow-local` grants the full functional surface — files, low-level network, ai/k8s/mcp, serve, and exec scoped to `$CWD` — while withholding the capabilities that turn a script into arbitrary machine control (unrestricted `os.exec`, `k8s.exec`, process control). That withheld set is the line between `allow-local` and `allow-all`.
 
 ```bash
-kite analyze.star --permissions=allow-fs
-kite deploy.star  --permissions=allow-local
+kite ./analyze.star --permissions=allow-fs
+kite ./deploy.star  --permissions=allow-local
 ```
 
 ## Custom profiles
@@ -83,8 +83,8 @@ permissions:
 Select a named profile with `--permissions=<name>`:
 
 ```bash
-kite build.star    --permissions=deploy
-kite ci-task.star  --permissions=ci
+kite ./build.star    --permissions=deploy
+kite ./ci-task.star  --permissions=ci
 ```
 
 A profile named `default` is otherwise ordinary, with one special role: it is the implicit profile when `--permissions` is unspecified. A named profile that is not defined — including `default` when it has no entry — is an error.
@@ -101,7 +101,7 @@ permissions:
 ```
 
 ```bash
-kite build.star --permissions=./team.yaml#deploy
+kite ./build.star --permissions=./team.yaml#deploy
 ```
 
 ### Inline rules
@@ -109,9 +109,9 @@ kite build.star --permissions=./team.yaml#deploy
 For one-off invocations, pass rules directly. The value starts with `allow:` or `deny:`. Rules within a clause are comma-separated; clauses are separated by `;`. Inline rules layer on a `deny-all` baseline — anything not allowed is denied.
 
 ```bash
-kite script.star --permissions=allow:fs.read
-kite script.star --permissions='allow:fs.read,fs.write,os.exec($CWD/**)'
-kite script.star --permissions='allow:fs.read($CWD/**);deny:http.client'
+kite ./script.star --permissions=allow:fs.read
+kite ./script.star --permissions='allow:fs.read,fs.write,os.exec($CWD/**)'
+kite ./script.star --permissions='allow:fs.read($CWD/**);deny:http.client'
 ```
 
 No profile-plus-rules composition is accepted on the command line (e.g. `allow-net` plus extra rules). Compose in a `config.yaml` profile instead.
@@ -144,7 +144,7 @@ Deny rules are evaluated first, then allow rules; an unmatched call is denied.
 
 ```bash
 # allow-fs: read anywhere, write only inside the working tree
-kite report.star --allow-fs
+kite ./report.star --allow-fs
 #   read_text("/etc/hosts")        → allowed (read is unscoped)
 #   path("out.json").write_text(…) → allowed (relative path is under $CWD)
 #   path("/tmp/x").write_text(…)   → denied  (outside $CWD; needs allow-all)
@@ -195,11 +195,11 @@ Code reached through `load()` — a local directory module or an installed modul
 A dependency that needs more than the entry script was granted fails at the gated call, and the run is restarted at a higher profile. For example, a script run with `--allow-fs` that loads a module which calls `k8s.read`:
 
 ```
-kite deploy.star --allow-fs
+kite ./deploy.star --allow-fs
 #   deploy.star reads/writes local files   → allowed
 #   the loaded module calls k8s.read(...)    → denied (k8s is allow-local)
 # re-run granting the capability the dependency needs:
-kite deploy.star --allow-local
+kite ./deploy.star --allow-local
 ```
 
 A denial raised inside a loaded module names that module (see below).
@@ -209,7 +209,7 @@ A denial raised inside a loaded module names that module (see below).
 `--permissions` and `--sandbox` are independent, composable layers. Combined, they provide defense in depth:
 
 ```bash
-kite untrusted.star --sandbox=strict --permissions=deny-all
+kite ./untrusted.star --sandbox=strict --permissions=deny-all
 ```
 
 `--permissions` blocks operations at the Starlark API level inside one process. `--sandbox` confines the OS view (filesystem, processes, network) at the kernel level via gVisor. A bypass in one is contained by the other. See [Sandbox](sandbox.md).

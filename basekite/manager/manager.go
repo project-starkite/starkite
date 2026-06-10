@@ -483,13 +483,27 @@ func (m *Manager) Update(ref string) (*ModuleInfo, error) {
 	return m.Install(source, InstallOptions{})
 }
 
-// Remove removes an installed module and all of its cached revisions. ref is
-// "namespace/name".
-func (m *Manager) Remove(ref string) error {
+// Remove removes an installed module. ref is "namespace/name". With an empty
+// rev every cached revision is removed; otherwise only the revision matching
+// rev (full id or unique prefix).
+func (m *Manager) Remove(ref, rev string) error {
 	ns, name, ok := strings.Cut(ref, "/")
 	if !ok {
 		return fmt.Errorf("module %q not installed", ref)
 	}
+
+	if rev != "" {
+		info, err := m.Resolve(ref, rev)
+		if err != nil {
+			return err
+		}
+		if err := os.RemoveAll(info.Path); err != nil {
+			return err
+		}
+		pruneEmptyDir(filepath.Join(m.rootDir, ns))
+		return nil
+	}
+
 	dirs, err := m.installedRevDirs(ns, name)
 	if err != nil {
 		return err
@@ -518,18 +532,26 @@ type VerifyResult struct {
 
 // Verify re-hashes installed modules and compares against the content hash
 // recorded at install, detecting on-disk tampering or corruption. With an empty
-// ref it checks every installed module; otherwise it checks every revision of
-// the single "namespace/name". This is the full-content check; the run-time fast
-// path uses the stat fingerprint instead.
-func (m *Manager) Verify(ref string) ([]VerifyResult, error) {
+// ref it checks every installed module; with a "namespace/name" it checks every
+// revision of that module; with a rev it checks only the matching revision.
+// This is the full-content check; the run-time fast path uses the stat
+// fingerprint instead.
+func (m *Manager) Verify(ref, rev string) ([]VerifyResult, error) {
 	var targets []*ModuleInfo
-	if ref == "" {
+	switch {
+	case ref == "":
 		all, err := m.List()
 		if err != nil {
 			return nil, err
 		}
 		targets = all
-	} else {
+	case rev != "":
+		info, err := m.Resolve(ref, rev)
+		if err != nil {
+			return nil, err
+		}
+		targets = []*ModuleInfo{info}
+	default:
 		revs, err := m.Revisions(ref)
 		if err != nil {
 			return nil, err

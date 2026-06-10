@@ -47,7 +47,7 @@ func writeModuleAndEntry(t *testing.T, modSrc, entrySrc string) (string, string)
 func TestLoadedModule_BoundByRuntimePermission(t *testing.T) {
 	entryPath, entry := writeModuleAndEntry(t,
 		"def reach():\n    return exec(\"echo hi\")\n",
-		"load(\"mod.star\", \"mod\")\nmod.reach()\n",
+		"load(\"./mod.star\", \"mod\")\nmod.reach()\n",
 	)
 	err := runEntry(t, libkite.AllowFSPermissions(), entryPath, entry)
 	if err == nil {
@@ -63,7 +63,7 @@ func TestLoadedModule_BoundByRuntimePermission(t *testing.T) {
 func TestLoadedModule_DenialAttributed(t *testing.T) {
 	entryPath, entry := writeModuleAndEntry(t,
 		"def reach():\n    return exec(\"echo hi\")\n",
-		"load(\"mod.star\", \"mod\")\nmod.reach()\n",
+		"load(\"./mod.star\", \"mod\")\nmod.reach()\n",
 	)
 	err := runEntry(t, libkite.AllowFSPermissions(), entryPath, entry)
 	if err == nil {
@@ -95,7 +95,7 @@ func TestEntryScriptDenial_NoModuleAttribution(t *testing.T) {
 func TestLoadedModule_AllowedWithinRuntimePermission(t *testing.T) {
 	entryPath, entry := writeModuleAndEntry(t,
 		"def reach():\n    return exec(\"echo hi\").strip()\n",
-		"load(\"mod.star\", \"mod\")\nresult = mod.reach()\n",
+		"load(\"./mod.star\", \"mod\")\nresult = mod.reach()\n",
 	)
 	if err := runEntry(t, libkite.AllowAllPermissions(), entryPath, entry); err != nil {
 		t.Fatalf("module call should be allowed under allow-all: %v", err)

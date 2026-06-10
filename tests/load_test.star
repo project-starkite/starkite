@@ -1,6 +1,6 @@
 # load_test.star - Tests for external module loading
 #
-# Tests the script module system: load(), search paths, private symbol
+# Tests the script module system: load(), path-prefixed references, private symbol
 # filtering, multi-file modules, caching, dependency chains, and
 # built-in module access from external modules.
 
@@ -8,10 +8,10 @@
 # The module exports a 'greeter' symbol (derived from filename)
 load("./modules/greeter", "greeter")
 
-# Load a multi-file module by name (from ./modules/)
+# Load a multi-file module by explicit directory path
 # The module exports a 'mymodule' symbol (derived from directory name)
 # Use Starlark aliasing syntax: alias = "symbol"
-load("mymodule", mymod = "mymodule")
+load("./modules/mymodule", mymod = "mymodule")
 
 # Load a module that itself loads another module (dependency chain)
 load("./modules/wrapper", "wrapper")
@@ -41,7 +41,7 @@ def test_single_file_module_functions():
 # =============================================================================
 
 def test_multi_file_module_load():
-    """Test loading a multi-file module via name search."""
+    """Test loading a multi-file module by directory path."""
     result = mymod.hello()
     assert(result == "Hello, world!", "expected hello world")
 

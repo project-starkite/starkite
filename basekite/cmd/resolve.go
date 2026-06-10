@@ -12,19 +12,42 @@ import (
 )
 
 // resolveRunTarget maps a `kite run` argument to the entry file to execute and
-// whether it is a module (a directory module or an installed @namespace/name).
-// A module run requires a `main()` entry point; a loose script file does not.
+// whether it is a module (a directory module or an installed module). A module
+// run requires a `main()` entry point; a loose script file does not.
 //
-// Forms:
-//   - @namespace/name      : an installed module; the newest revision is used.
-//   - @namespace/name@rev  : a specific installed revision (full id or prefix).
-//   - ./dir or dir         : a directory module (mod.yaml + main.star).
-//   - file.star            : a loose script file.
+// Reference grammar (the Go model — bare references are identities, filesystem
+// references require a path prefix):
+//
+//   - ./path or /abs/path        : a filesystem reference — a directory module
+//     (mod.yaml + main.star) or a .star script file.
+//   - namespace/name             : an installed module; the newest revision.
+//   - namespace/name@rev         : a specific installed revision (id or prefix).
+//   - a bare ".star" file or bare directory is an error: filesystem references
+//     require the path prefix.
 func resolveRunTarget(arg string) (entryPath string, isModule bool, err error) {
-	// Installed module reference.
-	if strings.HasPrefix(arg, "@") {
-		ref := strings.TrimPrefix(arg, "@")
-		identity, rev := libkite.SplitModuleRev(ref)
+	if isPathArg(arg) {
+		info, statErr := os.Stat(arg)
+		if statErr != nil {
+			return "", false, fmt.Errorf("not found: %s", arg)
+		}
+		// Directory module: the manifest check also verifies the main.star entry.
+		if info.IsDir() {
+			if _, mErr := libkite.LoadModuleManifest(arg); mErr != nil {
+				return "", false, fmt.Errorf("%s is not a runnable module: %w", arg, mErr)
+			}
+			return filepath.Join(arg, libkite.EntryFile), true, nil
+		}
+		// Loose script file.
+		return arg, false, nil
+	}
+
+	if strings.HasSuffix(arg, ".star") {
+		return "", false, fmt.Errorf("file reference %q requires a path prefix: use %q", arg, "./"+arg)
+	}
+
+	// Installed module identity: namespace/name[@rev].
+	if strings.Contains(arg, "/") {
+		identity, rev := libkite.SplitModuleRev(arg)
 		mgr, mErr := manager.New("")
 		if mErr != nil {
 			return "", false, mErr
@@ -32,7 +55,7 @@ func resolveRunTarget(arg string) (entryPath string, isModule bool, err error) {
 		info, gErr := mgr.Resolve(identity, rev)
 		if gErr != nil {
 			if rev == "" {
-				return "", false, fmt.Errorf("module %q is not installed; install it with: kite module install <source>", identity)
+				return "", false, fmt.Errorf("module %q is not installed; install it with `kite module install <source>`, or use ./%s for a local path", identity, arg)
 			}
 			return "", false, gErr
 		}
@@ -43,27 +66,20 @@ func resolveRunTarget(arg string) (entryPath string, isModule bool, err error) {
 		return entry, true, nil
 	}
 
-	info, statErr := os.Stat(arg)
-	if statErr != nil {
-		return "", false, fmt.Errorf("not found: %s", arg)
-	}
+	return "", false, fmt.Errorf("%q is not a runnable reference: use ./%s for a local path, or namespace/name for an installed module", arg, arg)
+}
 
-	// Directory module: the manifest check also verifies the main.star entry.
-	if info.IsDir() {
-		if _, mErr := libkite.LoadModuleManifest(arg); mErr != nil {
-			return "", false, fmt.Errorf("%s is not a runnable module: %w", arg, mErr)
-		}
-		return filepath.Join(arg, libkite.EntryFile), true, nil
-	}
-
-	// Loose script file.
-	return arg, false, nil
+// isPathArg reports whether a run argument is a filesystem path reference.
+func isPathArg(arg string) bool {
+	return arg == "." || arg == ".." ||
+		strings.HasPrefix(arg, "./") || strings.HasPrefix(arg, "../") ||
+		filepath.IsAbs(arg)
 }
 
 // resolveModuleDeps resolves the dependency closure of a module directory before
 // it runs, fetching any declared dependencies into the global cache. A working
 // directory the user owns has its mod.lock written (Sync); an immutable cache
-// module (an installed @namespace/name) is resolved read-only (EnsureClosure).
+// module (an installed namespace/name) is resolved read-only (EnsureClosure).
 func resolveModuleDeps(moduleDir string) error {
 	mgr, err := manager.New("")
 	if err != nil {

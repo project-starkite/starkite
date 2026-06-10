@@ -51,7 +51,7 @@ mcp.serve(
 Run the server script like any other:
 
 ```bash
-kite run my-mcp-server.star
+kite run ./my-mcp-server.star
 ```
 
 A client launches it as a stdio subprocess. For example, configuring Claude Desktop to spawn `kite run /path/to/my-mcp-server.star` exposes its tools to the assistant.

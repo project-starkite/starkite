@@ -13,7 +13,7 @@ The shape is always the same: the host agent spawns `kite` as a subprocess, pass
 ## Run a script as a tool
 
 ```bash
-kite run deploy.star --var image=myapp:v2 --output json
+kite run ./deploy.star --var image=myapp:v2 --output json
 ```
 
 The host agent supplies inputs through [`--var`](../fundamentals/configuration.md) and reads the script's JSON output from stdout. From Python:
@@ -48,10 +48,10 @@ Because the host agent may run untrusted logic, constrain what the tool can do w
 
 ```bash
 # Restrict to compute, print, and log only
-kite run untrusted.star --permissions=deny-all
+kite run ./untrusted.star --permissions=deny-all
 
 # OS-level isolation on Linux
-kite run untrusted.star --sandbox
+kite run ./untrusted.star --sandbox
 ```
 
 This lets a host agent expose powerful automation (Kubernetes, SSH, HTTP, filesystem) while bounding the blast radius per invocation.
@@ -59,7 +59,7 @@ This lets a host agent expose powerful automation (Kubernetes, SSH, HTTP, filesy
 ## Why kite as a tool
 
 - **Portable** — one static binary, no toolchain or interpreter to install on the agent's host.
-- **Uniform** — the same `kite run script.star --var k=v --output json` contract regardless of what the script does.
+- **Uniform** — the same `kite run ./script.star --var k=v --output json` contract regardless of what the script does.
 - **Secure** — per-invocation permission profiles and sandboxing, independent of the calling agent.
 
 To expose individual functions to an LLM over a protocol instead of the command line, see [Creating MCP servers](mcp.md). To embed the runtime directly in a Go program, see [Embedding](../references/embedding.md).

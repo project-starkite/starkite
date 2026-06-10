@@ -119,36 +119,36 @@ func (rt *Runtime) resolveModulePath(module string) (string, error) {
 	return rt.resolveModulePathFrom(module, "")
 }
 
-// resolveModulePathFrom resolves a module reference to its directory.
+// resolveModulePathFrom resolves a module reference to its directory or file.
 //
-// A module is always a directory containing mod.yaml and one or more .star
-// files. Resolution by reference shape:
+// Reference grammar (the Go model — bare references are identities, filesystem
+// references require a path prefix):
 //
-//   - ends in ".star": an intra-module file load (a module's own files loading
-//     each other relative to the caller) — resolves to that file.
-//   - starts with "./", "../", or "/": an explicit relative or absolute module
-//     directory path.
-//   - otherwise ("name" or "namespace/name"): an installed module reference,
-//     searched under the module directories.
+//   - "./path", "../path", "/abs/path": a filesystem reference — a module
+//     directory or a .star file, resolved relative to the caller.
+//   - "namespace/name": an installed module identity, resolved from the
+//     version-addressed global cache (lock-pinned when a mod.lock governs).
+//   - anything else is an error: a bare ".star" file needs a path prefix, and
+//     a bare single segment that reaches this resolver is not a built-in.
 func (rt *Runtime) resolveModulePathFrom(module, callerPath string) (string, error) {
+	if isPathRef(module) {
+		return rt.resolvePathFrom(module, callerPath)
+	}
 	if strings.HasSuffix(module, ".star") {
-		return rt.resolvePathFrom(module, callerPath)
+		return "", fmt.Errorf("file reference %q requires a path prefix: use %q", module, "./"+module)
 	}
-	if strings.HasPrefix(module, "./") || strings.HasPrefix(module, "../") || filepath.IsAbs(module) {
-		return rt.resolvePathFrom(module, callerPath)
+	if strings.Contains(module, "/") {
+		return rt.resolveInstalledModule(module)
 	}
+	return "", fmt.Errorf("module %q not found: use ./%s for a local module directory, or namespace/name for an installed module", module, module)
+}
 
-	// Installed reference ("name" or "namespace/name"): search local module
-	// dirs (plain), then the version-addressed global cache.
-	searchPaths := rt.getModuleSearchPathsFrom(module, callerPath)
-	for _, searchPath := range searchPaths {
-		moduleDir := filepath.Join(searchPath, module)
-		if isModuleDir(moduleDir) {
-			return moduleDir, nil
-		}
-	}
-
-	return rt.resolveInstalledModule(module)
+// isPathRef reports whether a reference is a filesystem path (the only forms
+// that may name files or directories directly).
+func isPathRef(ref string) bool {
+	return ref == "." || ref == ".." ||
+		strings.HasPrefix(ref, "./") || strings.HasPrefix(ref, "../") ||
+		filepath.IsAbs(ref)
 }
 
 // resolveInstalledModule resolves "namespace/name" to its directory in the
@@ -252,50 +252,6 @@ func (rt *Runtime) resolvePathFrom(path, callerPath string) (string, error) {
 	}
 
 	return "", fmt.Errorf("file not found: %s", path)
-}
-
-// getModuleSearchPaths returns the search paths for module resolution.
-func (rt *Runtime) getModuleSearchPaths(module string) []string {
-	return rt.getModuleSearchPathsFrom(module, "")
-}
-
-// getModuleSearchPathsFrom returns search paths with a caller path for nested resolution.
-func (rt *Runtime) getModuleSearchPathsFrom(module, callerPath string) []string {
-	var paths []string
-
-	// 0. Relative to caller (for nested module loads)
-	if callerPath != "" {
-		callerDir := filepath.Dir(callerPath)
-		paths = append(paths, filepath.Join(callerDir, "modules"))
-		paths = append(paths, callerDir)
-	}
-
-	// 1. Relative to current script: ./modules/
-	if rt.config.ScriptPath != "" {
-		scriptDir := filepath.Dir(rt.config.ScriptPath)
-		paths = append(paths, filepath.Join(scriptDir, "modules"))
-		paths = append(paths, scriptDir)
-	}
-
-	// 2. Relative to working directory: ./modules/
-	if rt.config.WorkDir != "" {
-		paths = append(paths, filepath.Join(rt.config.WorkDir, "modules"))
-		paths = append(paths, rt.config.WorkDir)
-	}
-
-	// 3. STARKITE_MODULE_PATH entries (colon-separated)
-	if modulePath := os.Getenv("STARKITE_MODULE_PATH"); modulePath != "" {
-		for _, p := range strings.Split(modulePath, ":") {
-			if p = strings.TrimSpace(p); p != "" {
-				paths = append(paths, p)
-			}
-		}
-	}
-
-	// The version-addressed global cache (~/.starkite/modules/<ns>/<name>@<rev>)
-	// is resolved separately by resolveInstalledModule, not as a plain search path.
-
-	return paths
 }
 
 // loadModuleFromPath loads a module from a resolved path. A directory is a

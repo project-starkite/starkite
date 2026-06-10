@@ -243,7 +243,7 @@ func TestManagerRemove(t *testing.T) {
 	}
 
 	t.Run("not found", func(t *testing.T) {
-		err := mgr.Remove("nonexistent")
+		err := mgr.Remove("nonexistent", "")
 		if err == nil {
 			t.Error("expected error for nonexistent module")
 		}
@@ -252,7 +252,7 @@ func TestManagerRemove(t *testing.T) {
 	t.Run("remove starlark", func(t *testing.T) {
 		moduleDir := writeStarlarkModule(t, mgr, "acme", "remove-me")
 
-		err := mgr.Remove("acme/remove-me")
+		err := mgr.Remove("acme/remove-me", "")
 		if err != nil {
 			t.Fatalf("Remove() failed: %v", err)
 		}
@@ -352,7 +352,7 @@ func TestManagerUpdateAndRevisions(t *testing.T) {
 	if _, err := mgr.Get("acme/tool"); err == nil {
 		t.Error("Get should error on multiple revisions")
 	}
-	results, err := mgr.Verify("acme/tool")
+	results, err := mgr.Verify("acme/tool", "")
 	if err != nil {
 		t.Fatalf("Verify: %v", err)
 	}
@@ -365,8 +365,16 @@ func TestManagerUpdateAndRevisions(t *testing.T) {
 		}
 	}
 
-	// Remove drops every revision.
-	if err := mgr.Remove("acme/tool"); err != nil {
+	// Remove with a rev drops only that revision.
+	if err := mgr.Remove("acme/tool", first.Rev); err != nil {
+		t.Fatalf("Remove(rev): %v", err)
+	}
+	if revs, _ := mgr.Revisions("acme/tool"); len(revs) != 1 {
+		t.Fatalf("Revisions after single-rev remove = %d, want 1", len(revs))
+	}
+
+	// Bare remove drops every remaining revision.
+	if err := mgr.Remove("acme/tool", ""); err != nil {
 		t.Fatalf("Remove: %v", err)
 	}
 	if revs, _ := mgr.Revisions("acme/tool"); len(revs) != 0 {
@@ -570,7 +578,7 @@ func TestManagerVerify(t *testing.T) {
 	}
 
 	t.Run("intact module verifies", func(t *testing.T) {
-		results, err := mgr.Verify("acme/tool")
+		results, err := mgr.Verify("acme/tool", "")
 		if err != nil {
 			t.Fatalf("Verify: %v", err)
 		}
@@ -584,7 +592,7 @@ func TestManagerVerify(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(info.Path, "main.star"), []byte("def main():\n    print('tampered')\n"), 0o644); err != nil {
 			t.Fatalf("tamper: %v", err)
 		}
-		results, err := mgr.Verify("acme/tool")
+		results, err := mgr.Verify("acme/tool", "")
 		if err != nil {
 			t.Fatalf("Verify: %v", err)
 		}

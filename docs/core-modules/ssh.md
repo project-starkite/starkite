@@ -39,7 +39,7 @@ print(t.render())
 ## Run it
 
 ```bash
-kite run examples/core/remote-check.star
+kite run ./examples/core/remote-check.star
 ```
 
 Expected output (host-specific values differ):

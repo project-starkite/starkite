@@ -15,8 +15,8 @@ The sandbox is **Linux-only**. On macOS or Windows, requesting a sandbox returns
 For an explicit `kite` invocation, use the `--sandbox` flag:
 
 ```bash
-kite script.star --sandbox             # default profile
-kite script.star --sandbox=strict      # strict profile (offline)
+kite ./script.star --sandbox             # default profile
+kite ./script.star --sandbox=strict      # strict profile (offline)
 kite test ./tests/ --sandbox
 ```
 
@@ -67,7 +67,7 @@ Not visible:
 `strict` blocks outbound network and removes all `/etc/*` mounts. Filesystem access is limited to `$CWD` (rw) and `/tmp` (private tmpfs).
 
 ```bash
-kite analyze.star --sandbox=strict
+kite ./analyze.star --sandbox=strict
 STARKITE_SECURITY_SANDBOX=strict ./analyze.star
 ```
 
@@ -90,7 +90,7 @@ The sandbox binds the **current working directory** read-write. Run kite from th
 
 ```bash
 cd ~/projects/my-deployment
-kite deploy.star --sandbox        # only ~/projects/my-deployment is visible
+kite ./deploy.star --sandbox        # only ~/projects/my-deployment is visible
 
 cd ~
 kite ~/projects/my-deployment/deploy.star --sandbox  # exposes ALL of $HOME
@@ -158,7 +158,7 @@ mounts:
 ```
 
 ```bash
-kite deploy.star --sandbox=./myprofile.yaml
+kite ./deploy.star --sandbox=./myprofile.yaml
 STARKITE_SECURITY_SANDBOX=./myprofile.yaml ./deploy.star
 ```
 
@@ -184,7 +184,7 @@ sandbox:
 ```
 
 ```bash
-kite deploy.star --sandbox=k8s-deploy
+kite ./deploy.star --sandbox=k8s-deploy
 STARKITE_SECURITY_SANDBOX=k8s-deploy ./deploy.star
 ```
 
@@ -206,7 +206,7 @@ STARKITE_SECURITY_SANDBOX=k8s-deploy ./deploy.star
 The sandbox and `--permissions` are independent. They compose:
 
 ```bash
-kite untrusted.star --sandbox=strict --permissions=allow-fs
+kite ./untrusted.star --sandbox=strict --permissions=allow-fs
 ```
 
 `--permissions` enforces allow/deny rules on Starlark API calls (exec, network, filesystem, k8s, …) inside one process. The sandbox confines the OS view (filesystem visibility, process isolation, network reach) at the kernel level via gVisor. A bypass in one is contained by the other. See [Permission](permission.md).

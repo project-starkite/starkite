@@ -20,7 +20,7 @@ v0.1.0
 ## kite run &lt;script&gt;
 
 ```bash
-$ kite run examples/core/hello.star
+$ kite run ./examples/core/hello.star
 Hello from starkite!
 Hostname: dev-host.local
 User:     alice
@@ -35,8 +35,8 @@ Home:     /home/alice
 `run` is the implicit subcommand when the first arg is a path:
 
 ```bash
-$ kite examples/core/hello.star
-# same output as `kite run examples/core/hello.star`
+$ kite ./examples/core/hello.star
+# same output as `kite run ./examples/core/hello.star`
 ```
 
 ## kite exec '&lt;code&gt;'
@@ -85,7 +85,7 @@ $ kite repl
 Re-run a script on every file change. Stop with Ctrl-C.
 
 ```bash
-$ kite watch examples/core/hello.star
+$ kite watch ./examples/core/hello.star
 ```
 
 ## See also

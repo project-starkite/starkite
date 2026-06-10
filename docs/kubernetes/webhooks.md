@@ -95,7 +95,7 @@ openssl req -x509 -newkey rsa:2048 \
     -keyout /tmp/key.pem -out /tmp/cert.pem \
     -days 1 -nodes -subj '/CN=localhost'
 
-kite run examples/cloud/webhook/validate-replicas.star \
+kite run ./examples/cloud/webhook/validate-replicas.star \
     --var tls_cert=/tmp/cert.pem --var tls_key=/tmp/key.pem
 ```
 

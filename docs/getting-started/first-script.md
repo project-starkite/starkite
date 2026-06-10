@@ -18,7 +18,7 @@ print("Hello from starkite!")
 Next, use the `kite` command to execute the script:
 
 ```
-$ kite run hello.star
+$ kite run ./hello.star
 
 Hello from starkite!
 ```
@@ -70,7 +70,7 @@ When you run the example, it should print system information
 similar to the output below.
 
 ```bash
-$ kite run examples/core/hello.star
+$ kite run ./examples/core/hello.star
 
 Hello from starkite!
 Hostname: dev-host.local

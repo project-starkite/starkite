@@ -16,11 +16,11 @@ var execCmd = &cobra.Command{
 
 Examples:
   # Simple command execution
-  kite exec 'print(local.exec("hostname").value)'
+  kite exec 'print(exec("hostname"))'
 
   # Multi-line code (use quotes)
   kite exec '
-    result = local.exec("ls -la")
+    result = exec("ls -la")
     print(result.value)
   '
 
