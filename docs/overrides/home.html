@@ -673,12 +673,11 @@ mcp.serve(
                   <span class="terminal__dot terminal__dot--red"></span>
                   <span class="terminal__dot terminal__dot--yellow"></span>
                   <span class="terminal__dot terminal__dot--green"></span>
-                  <span class="terminal__title">security.yaml</span>
+                  <span class="terminal__title">config.yaml</span>
                 </div>
-                <pre><code class="language-yaml"># ~/.starkite/security.yaml
+                <pre><code class="language-yaml"># ~/.starkite/config.yaml
 permissions:
   ci:
-    default: deny
     allow:
       - fs.read
       - http.client
@@ -895,11 +894,11 @@ mcp.serve(
 <section class="feature-section">
   <div class="feature-section__split">
     <div class="feature-section__text">
-      <p>Two layers of defense apply to every script. Permission profiles gate module calls at the API layer under a deny-by-default policy (<code>os.exec</code> denied, <code>fs.read</code> allowed). gVisor sandboxing isolates the script at the syscall layer with no host filesystem access and no outbound network. Named profiles are defined in <code>~/.starkite/security.yaml</code> and apply to any invocation via a single command-line flag.</p>
+      <p>Two layers of defense apply to every script. Permission profiles gate module calls at the API layer under a deny-by-default policy (<code>os.exec</code> denied, <code>fs.read</code> allowed). gVisor sandboxing isolates the script at the syscall layer with no host filesystem access and no outbound network. Named profiles are defined in <code>~/.starkite/config.yaml</code> and apply to any invocation via a single command-line flag.</p>
       <a href="fundamentals/security/permission/" class="feature-section__cta">Read the security model</a>
     </div>
     <div class="feature-section__code">
-      <pre><code class="language-bash"># Named profile from ~/.starkite/security.yaml
+      <pre><code class="language-bash"># Named profile from ~/.starkite/config.yaml
 $ kite run ./job.star --permissions=ci --sandbox=ci
 
 # Inline rules — no config file needed

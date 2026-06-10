@@ -169,7 +169,7 @@ See [`kite module`](../references/cli/module.md) for the full flag reference.
 
 ## Declaring dependencies
 
-A module declares the modules it loads in its `mod.yaml` `dependencies` map, keyed by each dependency's `namespace/name` identity and valued by its source (a git reference or a local path, optionally `source@version`):
+Dependency resolution is automatic: `kite run` fetches a module's dependencies into the global cache, resolves them transitively, and pins them in `mod.lock` — there is no separate install step. The one thing the resolver cannot infer is **where each dependency comes from**: `load("acme/slack")` names an identity, not a fetch location. The `dependencies` map in `mod.yaml` supplies that mapping — each `namespace/name` identity to its source (a git reference or a local path, optionally `source@version`):
 
 ```yaml
 # app/mod.yaml
@@ -181,7 +181,7 @@ dependencies:
   acme/leaf: ../leaf            # a local directory
 ```
 
-Running the module resolves this set: each declared dependency — and, transitively, the dependencies it declares — is fetched into the global cache and recorded in a generated `mod.lock` beside `mod.yaml`. The lockfile pins every resolved module to a source, an immutable revision, and a content hash:
+Everything after the declaration is automatic. Running the module fetches each declared dependency — and, transitively, the dependencies it declares — into the global cache, and records the result in a generated `mod.lock` beside `mod.yaml`. The lockfile pins every resolved module to a source, an immutable revision, and a content hash:
 
 ```yaml
 # app/mod.lock (generated; commit it)
@@ -198,6 +198,8 @@ modules:
 ```
 
 `mod.lock` is committed and reviewable: a changed dependency produces a diff. On later runs, resolution is cache-first and incremental — a locked dependency whose cached tree still verifies is reused without re-fetching, and a hash mismatch is an error. The cache is version-addressed (`<namespace>/<name>@<rev>/`) and write-once, so projects pinning different revisions coexist.
+
+A `load()` of an **undeclared** module still resolves when that module happens to be installed in the cache — but it is not fetched for you, not recorded in `mod.lock`, and not pinned to a revision. Declare every module the code loads; the declaration is what makes the run reproducible.
 
 A **loose script** run directly (`kite run ./deploy.star`, not a module directory) has no `mod.yaml` to declare dependencies. The installed modules it `load()`s are resolved from the cache only — nothing is fetched — and recorded in a `mod.lock` written beside the script. An installed reference that is not already installed is an error; install it first with `kite module install`.
 

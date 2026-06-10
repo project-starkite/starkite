@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
-	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/spf13/cobra"
@@ -133,9 +132,11 @@ func runWatchedScript(scriptPath string, perms *libkite.PermissionConfig, isModu
 	}
 
 	// Create and populate variable store
-	varStore := varstore.New()
-	varStore.LoadFromEnv()
-	_ = varStore.LoadFromCLI(variables)
+	varStore, err := loadVarStore()
+	if err != nil {
+		fmt.Printf("Error loading variables: %v\n", err)
+		return
+	}
 
 	// Create module config
 	moduleConfig := &libkite.ModuleConfig{

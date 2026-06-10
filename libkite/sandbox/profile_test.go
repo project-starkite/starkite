@@ -87,7 +87,7 @@ func TestLoadProfile_strict(t *testing.T) {
 }
 
 func TestLoadProfile_unknownName(t *testing.T) {
-	// With no ~/.starkite/security.yaml present, an unknown profile name
+	// With no ~/.starkite/config.yaml present, an unknown profile name
 	// should surface the "missing security file" friendly error pointing
 	// at the built-ins.
 	_, err := LoadProfile("nope-this-name-does-not-exist")
@@ -329,8 +329,8 @@ sandbox:
 	}
 }
 
-func TestLoadProfile_fromNamed_securityFile(t *testing.T) {
-	// Stage a fake home dir with a security.yaml; redirect HOME so the
+func TestLoadProfile_fromNamed_userConfig(t *testing.T) {
+	// Stage a fake home dir with a config.yaml; redirect HOME so the
 	// loader picks it up.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
@@ -339,12 +339,17 @@ func TestLoadProfile_fromNamed_securityFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	yaml := `
+config:
+  environment: dev
+permissions:
+  ci:
+    allow: [fs.read]
 sandbox:
   hometest:
     network: host
     mounts: [{destination: /tmp, type: tmpfs}]
 `
-	if err := os.WriteFile(filepath.Join(cfgDir, "security.yaml"), []byte(strings.TrimLeft(yaml, "\n")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(strings.TrimLeft(yaml, "\n")), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -359,7 +364,7 @@ sandbox:
 	// Unknown name in same file → error mentions defined names.
 	_, err = LoadProfile("missing")
 	if err == nil {
-		t.Fatal("expected error for unknown profile in security.yaml")
+		t.Fatal("expected error for unknown profile in config.yaml")
 	}
 	if !strings.Contains(err.Error(), "hometest") {
 		t.Errorf("error should list defined profiles: %v", err)

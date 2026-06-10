@@ -38,6 +38,67 @@ func TestParseConfigFile_Permissions(t *testing.T) {
 	}
 }
 
+func TestParseConfigFile_ThreeSections(t *testing.T) {
+	v := New()
+	cfg := []byte(`config:
+  project:
+    name: my-project
+  defaults:
+    log_level: info
+  providers:
+    ssh:
+      user: deploy
+  active_edition: cloud
+  environment: dev
+  labels:
+    app: myapp
+permissions:
+  ci:
+    allow: [fs.read]
+sandbox:
+  mybox:
+    network: host
+`)
+	if err := v.parseConfigFile(cfg); err != nil {
+		t.Fatalf("parseConfigFile: %v", err)
+	}
+
+	// Runtime keys parsed into their sections, not variables.
+	if v.ProjectConfig["name"] != "my-project" {
+		t.Errorf("project.name = %v", v.ProjectConfig["name"])
+	}
+	if v.RuntimeDefaults["log_level"] != "info" {
+		t.Errorf("defaults.log_level = %v", v.RuntimeDefaults["log_level"])
+	}
+	if v.ProviderDefaults["ssh"]["user"] != "deploy" {
+		t.Errorf("providers.ssh.user = %v", v.ProviderDefaults["ssh"])
+	}
+	if v.ActiveEdition != "cloud" {
+		t.Errorf("active_edition = %q", v.ActiveEdition)
+	}
+
+	// User keys under config: flatten into variables.
+	if got := v.defaultVars["environment"]; got != "dev" {
+		t.Errorf("environment var = %v", got)
+	}
+	if got := v.defaultVars["labels.app"]; got != "myapp" {
+		t.Errorf("labels.app var = %v", got)
+	}
+
+	// permissions: parsed; sandbox: tolerated (consumed elsewhere).
+	if _, ok := v.Permissions["ci"]; !ok {
+		t.Error("permissions.ci not parsed")
+	}
+}
+
+func TestParseConfigFile_UnknownTopLevelKeyErrors(t *testing.T) {
+	v := New()
+	// Loose top-level user variables are rejected: they belong under config:.
+	if err := v.parseConfigFile([]byte("environment: dev\n")); err == nil {
+		t.Fatal("expected error for unknown top-level key")
+	}
+}
+
 func TestTryParseJSON_PlainString(t *testing.T) {
 	result := tryParseJSON("hello")
 	if result != "hello" {

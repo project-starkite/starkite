@@ -96,7 +96,13 @@ func (v *Vars) LoadDefaults() error {
 	return nil
 }
 
-// parseConfigFile parses a YAML config file and populates appropriate sections.
+// parseConfigFile parses a YAML config file. The file has exactly three
+// top-level sections:
+//
+//	config:        arbitrary configuration — the runtime keys (project,
+//	               defaults, providers, active_edition) plus user variables
+//	permissions:   named permission profiles (selected via --permissions)
+//	sandbox:       named sandbox profiles (consumed by the sandbox loader)
 func (v *Vars) parseConfigFile(data []byte) error {
 	var config map[string]interface{}
 	if err := yaml.Unmarshal(data, &config); err != nil {
@@ -104,6 +110,33 @@ func (v *Vars) parseConfigFile(data []byte) error {
 	}
 
 	for key, value := range config {
+		switch key {
+		case "config":
+			m, ok := value.(map[string]interface{})
+			if !ok {
+				return fmt.Errorf("config section must be a map")
+			}
+			v.parseConfigSection(m)
+		case "permissions":
+			specs, err := decodePermissions(value)
+			if err != nil {
+				return fmt.Errorf("config permissions: %w", err)
+			}
+			v.Permissions = specs
+		case "sandbox":
+			// Consumed by the sandbox profile loader, not the var store.
+		default:
+			return fmt.Errorf("unknown top-level key %q: the config file has three sections — config: (variables and runtime settings), permissions:, and sandbox:", key)
+		}
+	}
+
+	return nil
+}
+
+// parseConfigSection handles the config: section: the runtime keys are parsed
+// specially; every other key flattens into user variables.
+func (v *Vars) parseConfigSection(section map[string]interface{}) {
+	for key, value := range section {
 		switch key {
 		case "project":
 			if m, ok := value.(map[string]interface{}); ok {
@@ -125,19 +158,11 @@ func (v *Vars) parseConfigFile(data []byte) error {
 			if s, ok := value.(string); ok {
 				v.ActiveEdition = s
 			}
-		case "permissions":
-			specs, err := decodePermissions(value)
-			if err != nil {
-				return fmt.Errorf("config permissions: %w", err)
-			}
-			v.Permissions = specs
 		default:
 			// Flatten nested maps with dot notation
 			v.flattenAndStore(key, value, v.defaultVars)
 		}
 	}
-
-	return nil
 }
 
 // decodePermissions converts the raw `permissions:` config section into typed

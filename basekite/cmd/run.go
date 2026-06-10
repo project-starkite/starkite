@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/spf13/cobra"
@@ -107,31 +106,10 @@ func runScript(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create and populate variable store
-	varStore := varstore.New()
-
-	// Load from environment (lowest priority for external sources)
-	varStore.LoadFromEnv()
-
-	// Load default config (starkite.yaml) - second lowest priority
-	if err := varStore.LoadDefaults(); err != nil {
+	varStore, err := loadVarStore()
+	if err != nil {
 		return &libkite.ScriptError{
-			Message:  fmt.Sprintf("failed to load default config: %v", err),
-			ExitCode: libkite.ExitConfigError,
-		}
-	}
-
-	// Load from var files (medium priority)
-	if err := varStore.LoadFromFiles(varFiles); err != nil {
-		return &libkite.ScriptError{
-			Message:  fmt.Sprintf("failed to load var files: %v", err),
-			ExitCode: libkite.ExitConfigError,
-		}
-	}
-
-	// Load from CLI (highest priority)
-	if err := varStore.LoadFromCLI(variables); err != nil {
-		return &libkite.ScriptError{
-			Message:  fmt.Sprintf("failed to parse variables: %v", err),
+			Message:  err.Error(),
 			ExitCode: libkite.ExitConfigError,
 		}
 	}

@@ -14,7 +14,7 @@ Starkite resolves variables from five sources, highest priority first:
 
 1. **CLI flags** — `--var key=value`
 2. **Variable files** — `--var-file=values.yaml`
-3. **Default config** — `~/.starkite/config.yaml` or `./config.yaml`
+3. **Default config** — `~/.starkite/config.yaml` or `./config.yaml` (loaded by every script-executing command: `run`, `exec`, `test`, `repl`, `watch`)
 4. **Environment** — `STARKITE_VAR_key=value`
 5. **Script default** — `var_str("key", "default")`
 
@@ -58,43 +58,60 @@ kite run ./deploy.star --var-file=prod.yaml
 
 ## Config file format
 
-`~/.starkite/config.yaml` (and `./config.yaml` in the working directory) holds defaults for the starkite runtime. Four top-level keys are **reserved** — parsed specially and **not** accessible via `var_*`:
+`~/.starkite/config.yaml` (and `./config.yaml` in the working directory) is the single configuration file for the starkite runtime. It has exactly **three top-level sections** — any other top-level key is an error:
+
+| Section | Purpose |
+|---|---|
+| `config` | Arbitrary configuration: runtime settings and user variables |
+| `permissions` | Named permission profiles, selectable with `--permissions=<name>`; a profile named `default` becomes the implicit profile when no flag is given. See [Permission](security/permission.md#custom-profiles). |
+| `sandbox` | Named sandbox profiles, selectable with `--sandbox=<name>`. See [Sandbox](security/sandbox.md). |
+
+Within `config:`, four keys are **reserved** — parsed into runtime state and **not** accessible via `var_*`:
 
 | Reserved key | Purpose |
 |---|---|
-| `project` | Project metadata (name, version). Read by tooling; not user variables. |
-| `defaults` | Runtime defaults (log_level, timeout). Read by the runtime; not user variables. |
-| `providers` | Provider-specific defaults (`ssh`, etc.). Read by the relevant module at construction time; not user variables. |
-| `active_edition` | The active edition for `kite edition use`. |
+| `config.project` | Project metadata (name, version). Read by tooling; not user variables. |
+| `config.defaults` | Runtime defaults (log_level, timeout). Read by the runtime; not user variables. |
+| `config.providers` | Provider-specific defaults (`ssh`, etc.). Read by the relevant module at construction time; not user variables. |
+| `config.active_edition` | The active edition for `kite edition use`. |
 
-Every **other** top-level key becomes a user variable accessible via `var_*`. Nested maps flatten into dot-notation:
+Every **other** key under `config:` becomes a user variable accessible via `var_*`. Nested maps flatten into dot-notation:
 
 ```yaml
 # ~/.starkite/config.yaml
+config:
+  # Reserved keys (not accessible via var_*)
+  project:
+    name: my-project
+    version: 0.1.0
+  defaults:
+    log_level: info
+    timeout: 300
+  providers:
+    ssh:
+      user: deploy
+      private_key_file: ~/.ssh/id_rsa
 
-# Reserved sections (not accessible via var_*)
-project:
-  name: my-project
-  version: 0.1.0
+  # User variables (accessible via var_*)
+  environment: dev
+  replicas: 3
+  labels:
+    app: myapp
+    team: platform
 
-defaults:
-  log_level: info
-  timeout: 300
+permissions:
+  ci:
+    allow: ["fs.read", "os.exec($CWD/**)"]
 
-providers:
-  ssh:
-    user: deploy
-    private_key_file: ~/.ssh/id_rsa
-
-# User variables (accessible via var_*)
-environment: dev
-replicas: 3
-labels:
-  app: myapp
-  team: platform
+sandbox:
+  builder:
+    network: host
+    mounts:
+      - destination: /tmp
+        type: tmpfs
 ```
 
-Reserved keys (`project.name`, `providers.ssh.user`, etc.) do not appear in `var_names()`, and `var_str("providers.ssh.user")` returns the default. Provider config is read by the relevant module's factory (`ssh.config(...)`), not via `var_*`.
+Reserved keys (`config.project.name`, `config.providers.ssh.user`, etc.) do not appear in `var_names()`, and `var_str("providers.ssh.user")` returns the default. Provider config is read by the relevant module's factory (`ssh.config(...)`), not via `var_*`.
 
 ## Environment variables
 

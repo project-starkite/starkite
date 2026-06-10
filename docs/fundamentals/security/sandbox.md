@@ -131,7 +131,7 @@ Or with GNU `env -S` (Linux):
 
 ## Custom profiles
 
-Author a profile YAML and pass either the path or a name registered in `~/.starkite/security.yaml`.
+Author a profile YAML and pass either the path or a name registered under the `sandbox:` section of `~/.starkite/config.yaml`.
 
 ### By file path
 
@@ -162,13 +162,10 @@ kite ./deploy.star --sandbox=./myprofile.yaml
 STARKITE_SECURITY_SANDBOX=./myprofile.yaml ./deploy.star
 ```
 
-### By name in `~/.starkite/security.yaml`
+### By name in `~/.starkite/config.yaml`
 
 ```yaml
-# ~/.starkite/security.yaml
-permissions:
-  # ...
-
+# ~/.starkite/config.yaml
 sandbox:
   k8s-deploy:
     network: host

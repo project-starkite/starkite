@@ -17,7 +17,7 @@ func ConfigPath() (string, error) {
 	return filepath.Join(starkiteDir, "config.yaml"), nil
 }
 
-// ActiveEdition reads the active edition from config.yaml.
+// ActiveEdition reads the active edition from config.yaml's config: section.
 // Returns EditionBase if the config file doesn't exist or active_edition is unset.
 func ActiveEdition() string {
 	configPath, err := ConfigPath()
@@ -35,7 +35,11 @@ func ActiveEdition() string {
 		return EditionBase
 	}
 
-	if active, ok := config["active_edition"]; ok {
+	section, ok := config["config"].(map[string]interface{})
+	if !ok {
+		return EditionBase
+	}
+	if active, ok := section["active_edition"]; ok {
 		if s, ok := active.(string); ok && s != "" {
 			return s
 		}
@@ -44,8 +48,8 @@ func ActiveEdition() string {
 	return EditionBase
 }
 
-// SetActiveEdition updates the active_edition in config.yaml.
-// It performs a careful read-modify-write to preserve all other config sections.
+// SetActiveEdition updates active_edition under config.yaml's config: section.
+// It performs a careful read-modify-write to preserve all other sections.
 func SetActiveEdition(name string) error {
 	configPath, err := ConfigPath()
 	if err != nil {
@@ -64,12 +68,21 @@ func SetActiveEdition(name string) error {
 	if config == nil {
 		config = make(map[string]interface{})
 	}
+	section, ok := config["config"].(map[string]interface{})
+	if !ok {
+		section = make(map[string]interface{})
+	}
 
 	// Update or remove the active_edition key
 	if name == EditionBase || name == "" {
-		delete(config, "active_edition")
+		delete(section, "active_edition")
 	} else {
-		config["active_edition"] = name
+		section["active_edition"] = name
+	}
+	if len(section) == 0 {
+		delete(config, "config")
+	} else {
+		config["config"] = section
 	}
 
 	// Marshal and write back

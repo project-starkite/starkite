@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 
-	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/basekite/version"
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/spf13/cobra"
@@ -48,9 +47,10 @@ func startRepl(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create and populate variable store
-	varStore := varstore.New()
-	varStore.LoadFromEnv()
-	_ = varStore.LoadFromCLI(variables)
+	varStore, err := loadVarStore()
+	if err != nil {
+		return err
+	}
 
 	// Create module config
 	moduleConfig := &libkite.ModuleConfig{
@@ -189,8 +189,8 @@ starkite REPL Commands:
   .clear    Clear the screen
   .vars     Show all defined variables
 
-Built-in Providers:
-  local     Execute commands on the local machine
+Built-in Modules:
+  os        Local system operations (exec, env, hostname)
   ssh       Execute commands on remote machines via SSH
 
 Built-in Functions:
@@ -205,7 +205,7 @@ Built-in Functions:
   yaml.decode()     Decode from YAML
   strings.*         String manipulation functions
   time.*            Time functions
-  path.*            Path manipulation functions
+  fs.path()         Path object for file operations
 
 Examples:
   >>> result = exec("hostname")

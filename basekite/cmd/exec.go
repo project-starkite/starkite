@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/spf13/cobra"
 )
@@ -43,11 +42,10 @@ func execCode(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create and populate variable store
-	varStore := varstore.New()
-	varStore.LoadFromEnv()
-	if err := varStore.LoadFromCLI(variables); err != nil {
+	varStore, err := loadVarStore()
+	if err != nil {
 		return &libkite.ScriptError{
-			Message:  fmt.Sprintf("failed to parse variables: %v", err),
+			Message:  err.Error(),
 			ExitCode: libkite.ExitConfigError,
 		}
 	}

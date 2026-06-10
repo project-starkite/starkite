@@ -51,7 +51,7 @@ const InsideEnvVar = "STARKITE_INSIDE_SANDBOX"
 //
 // The value uses the same syntax as LoadProfile: a built-in name
 // ("default", "strict"), a file path, or a named profile under
-// "sandbox:<name>" in ~/.starkite/security.yaml.
+// "sandbox:<name>" in ~/.starkite/config.yaml.
 //
 // Examples:
 //
@@ -130,7 +130,7 @@ type Mount struct {
 //
 // Profile is loaded by LoadProfile from one of the built-in YAML files
 // embedded into the binary, from a file path on disk, or from
-// ~/.starkite/security.yaml. Both built-ins live as .yaml files in
+// ~/.starkite/config.yaml. Both built-ins live as .yaml files in
 // libkite/sandbox/profiles/ and are embedded via go:embed.
 type Profile struct {
 	Name    string      // empty for "no sandbox"
@@ -161,7 +161,7 @@ const (
 //     "#name" fragment selects a profile when the file holds more than
 //     one (under a top-level "sandbox:" map).
 //  3. Named user profile: looked up under "sandbox.<name>" in
-//     ~/.starkite/security.yaml.
+//     ~/.starkite/config.yaml.
 func LoadProfile(value string) (Profile, error) {
 	if value == "" {
 		return Profile{}, nil

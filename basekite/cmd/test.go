@@ -11,7 +11,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
@@ -235,9 +234,15 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig) []testResult 
 	}
 
 	// Create and populate variable store
-	varStore := varstore.New()
-	varStore.LoadFromEnv()
-	_ = varStore.LoadFromCLI(variables)
+	varStore, err := loadVarStore()
+	if err != nil {
+		return []testResult{{
+			Name:   testFile,
+			File:   testFile,
+			Passed: false,
+			Error:  err.Error(),
+		}}
+	}
 
 	// Create module config
 	moduleConfig := &libkite.ModuleConfig{

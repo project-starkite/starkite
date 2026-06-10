@@ -116,7 +116,7 @@ func init() {
 	// Sandbox flag — Linux only; non-Linux returns a clear error.
 	// `--sandbox` (no value) resolves to the built-in "default" profile;
 	// `--sandbox=<name>` resolves a built-in, file path, or named user
-	// profile from ~/.starkite/security.yaml. Shebang-launched scripts
+	// profile from ~/.starkite/config.yaml. Shebang-launched scripts
 	// can use STARKITE_SECURITY_SANDBOX env var instead — see
 	// docs/guides/sandbox.md.
 	rootCmd.PersistentFlags().StringVar(&sandboxMode, "sandbox", "",
@@ -312,6 +312,25 @@ func configPermissions() map[string]permissions.ProfileSpec {
 		return nil
 	}
 	return vs.Permissions
+}
+
+// loadVarStore builds the variable store every script-executing command uses,
+// applying the documented priority order: environment (lowest), config-file
+// defaults (~/.starkite/config.yaml, ./config.yaml), --var-file files, then
+// --var flags (highest).
+func loadVarStore() (*varstore.Vars, error) {
+	vs := varstore.New()
+	vs.LoadFromEnv()
+	if err := vs.LoadDefaults(); err != nil {
+		return nil, fmt.Errorf("failed to load default config: %w", err)
+	}
+	if err := vs.LoadFromFiles(varFiles); err != nil {
+		return nil, fmt.Errorf("failed to load var files: %w", err)
+	}
+	if err := vs.LoadFromCLI(variables); err != nil {
+		return nil, fmt.Errorf("failed to parse variables: %w", err)
+	}
+	return vs, nil
 }
 
 // GetPermissions resolves the --permissions flag against the config-defined

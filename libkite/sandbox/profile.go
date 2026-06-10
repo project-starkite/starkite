@@ -14,15 +14,14 @@ import (
 //go:embed profiles/default.yaml profiles/strict.yaml
 var builtinProfiles embed.FS
 
-// UserSecurityFile is the default location for user-defined sandbox
+// UserConfigFile is the default location for user-defined sandbox
 // profiles, relative to the user's home directory. The "sandbox:" section
-// of this file holds a map of profile name → profileSpec.
-const UserSecurityFile = ".starkite/security.yaml"
+// of the unified config file holds a map of profile name → profileSpec.
+const UserConfigFile = ".starkite/config.yaml"
 
-// securityFile is the on-disk schema for ~/.starkite/security.yaml,
-// limited to the fields this package consumes. The Permissions section
-// (top-level "permissions:") is parsed by libkite/permissions and
-// ignored here.
+// securityFile is the on-disk schema of the sections this package consumes
+// from ~/.starkite/config.yaml (or a user-supplied profile file). Other
+// sections (config:, permissions:) are parsed elsewhere and ignored here.
 type securityFile struct {
 	Sandbox map[string]profileSpec `yaml:"sandbox"`
 	// Permissions is parsed but unused — declared so KnownFields(true)
@@ -232,7 +231,7 @@ func loadFromFile(value string) (Profile, error) {
 	//         mounts: [...]
 	//
 	//   (b) A security file with a "sandbox:" map — same schema as
-	//       ~/.starkite/security.yaml. Useful if the user wants to
+	//       ~/.starkite/config.yaml. Useful if the user wants to
 	//       co-locate multiple profiles or share the layout with
 	//       permissions:
 	//
@@ -247,13 +246,13 @@ func loadFromFile(value string) (Profile, error) {
 }
 
 // loadNamed resolves a value with no separators / yaml suffix as a
-// named profile under "sandbox.<name>" in ~/.starkite/security.yaml.
+// named profile under "sandbox.<name>" in ~/.starkite/config.yaml.
 func loadNamed(name string) (Profile, error) {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return Profile{}, fmt.Errorf("sandbox: cannot resolve home directory: %w", err)
 	}
-	path := filepath.Join(home, UserSecurityFile)
+	path := filepath.Join(home, UserConfigFile)
 
 	sf, _, err := readSecurityFile(path)
 	if err != nil {
