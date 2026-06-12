@@ -91,6 +91,24 @@ sandbox:
 	}
 }
 
+func TestParseConfigFile_PermissionAlias(t *testing.T) {
+	v := New()
+	cfg := []byte(`permissions:
+  default: allow-all
+  ci:
+    allow: [fs.read]
+`)
+	if err := v.parseConfigFile(cfg); err != nil {
+		t.Fatalf("parseConfigFile: %v", err)
+	}
+	if v.Permissions["default"].Alias != "allow-all" {
+		t.Errorf("default.Alias = %q, want allow-all", v.Permissions["default"].Alias)
+	}
+	if len(v.Permissions["ci"].Allow) != 1 {
+		t.Errorf("ci profile not parsed: %+v", v.Permissions["ci"])
+	}
+}
+
 func TestParseConfigFile_UnknownTopLevelKeyErrors(t *testing.T) {
 	v := New()
 	// Loose top-level user variables are rejected: they belong under config:.

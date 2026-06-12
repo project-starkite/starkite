@@ -259,16 +259,58 @@ else
     fail "--permissions=allow-fs allows fs read"
 fi
 
-# --------------------------------------------
-# Test 13d: inline rule syntax
-# --------------------------------------------
-info "Test 13d: inline rules --permissions=allow:os.exec"
-
-if $KITE exec 'print(exec("echo inline"))' --permissions='allow:os.exec' 2>&1 | grep -q "inline"; then
-    pass "inline rules work"
+# Boolean alias flags are equivalent to --permissions=<name>.
+if $KITE exec 'print(read_text("README.md")[:40])' --allow-fs 2>&1 | grep -qE "align|starkite|#"; then
+    pass "--allow-fs boolean alias works"
 else
-    fail "inline rules work"
+    fail "--allow-fs boolean alias works"
 fi
+
+if $KITE exec 'exec("echo nope")' --deny-all 2>&1 | grep -q "permission denied"; then
+    pass "--deny-all boolean alias works"
+else
+    fail "--deny-all boolean alias works"
+fi
+
+# --------------------------------------------
+# Test 13d: config-defined permission profiles (+ alias shortcut)
+# --------------------------------------------
+info "Test 13d: config-defined permission profiles"
+
+PROFHOME=$(mktemp -d /tmp/kite_test_XXXXXX)
+mkdir -p "$PROFHOME/.starkite"
+cat > "$PROFHOME/.starkite/config.yaml" <<'PROF'
+permissions:
+  runner:
+    allow: ["os.exec"]
+  everything: allow-all
+PROF
+
+if HOME="$PROFHOME" $KITE exec 'print(exec("echo profiled"))' --permissions=runner 2>&1 | grep -q "profiled"; then
+    pass "config-defined profile grants its rules"
+else
+    fail "config-defined profile grants its rules"
+fi
+
+if HOME="$PROFHOME" $KITE exec 'print(read_text("README.md")[:3])' --permissions=runner 2>&1 | grep -q "permission denied"; then
+    pass "config-defined profile denies outside its allow list"
+else
+    fail "config-defined profile denies outside its allow list"
+fi
+
+if HOME="$PROFHOME" $KITE exec 'print(exec("echo aliased"))' --permissions=everything 2>&1 | grep -q "aliased"; then
+    pass "alias profile (everything: allow-all) works"
+else
+    fail "alias profile (everything: allow-all) works"
+fi
+
+# Removed syntaxes error as unknown profiles.
+if $KITE exec 'print(1)' --permissions='allow:os.exec' 2>&1 | grep -q "unknown profile"; then
+    pass "inline rule syntax is rejected"
+else
+    fail "inline rule syntax is rejected"
+fi
+rm -rf "$PROFHOME"
 
 # --------------------------------------------
 # Test 13e: a loaded module is bound by the runtime permission, and a denial

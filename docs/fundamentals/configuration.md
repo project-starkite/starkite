@@ -97,7 +97,7 @@ A var-file is not a config file: it does not use the three-section schema below.
 | Section | Purpose |
 |---|---|
 | `config` | Arbitrary configuration: runtime settings and user variables |
-| `permissions` | Named permission profiles, selectable with `--permissions=<name>`; a profile named `default` becomes the implicit profile when no flag is given. See [Permission](security/permission.md#custom-profiles). |
+| `permissions` | Named permission profiles, selectable with `--permissions=<name>`; a profile named `default` becomes the implicit profile when no flag is given. See [Permission](security/permission.md#custom-permission-profiles). |
 | `sandbox` | Named sandbox profiles, selectable with `--sandbox=<name>`. See [Sandbox](security/sandbox.md). |
 
 Within `config:`, four keys are **reserved** — parsed into runtime state and **not** accessible via `var_*`:
@@ -134,6 +134,7 @@ config:
     team: platform
 
 permissions:
+  default: allow-fs        # alias — a built-in as the implicit profile
   ci:
     allow: ["fs.read", "os.exec($CWD/**)"]
 

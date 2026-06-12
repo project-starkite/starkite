@@ -1,11 +1,11 @@
 package permissions
 
 import (
-	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -52,141 +52,6 @@ func TestLoadProfile_EmptyReturnsNil(t *testing.T) {
 	}
 }
 
-func TestLoadProfile_Inline(t *testing.T) {
-	tests := []struct {
-		input         string
-		wantAllow     []string
-		wantDeny      []string
-		wantParseFail bool
-	}{
-		// Single allow clause
-		{
-			input:     "allow:fs.read",
-			wantAllow: []string{"fs.read"},
-		},
-		// allow + deny separated by semicolon
-		{
-			input:     "allow:fs.read,http.client;deny:os.exec",
-			wantAllow: []string{"fs.read", "http.client"},
-			wantDeny:  []string{"os.exec"},
-		},
-		// Whitespace inside rules is trimmed
-		{
-			input:     "allow: fs.read , http.client ",
-			wantAllow: []string{"fs.read", "http.client"},
-		},
-		// Whitespace around the entire clause is trimmed
-		{
-			input:     "  allow:fs.read ;  deny:os.exec  ",
-			wantAllow: []string{"fs.read"},
-			wantDeny:  []string{"os.exec"},
-		},
-		// Errors
-		{input: "allow:", wantParseFail: true},         // empty rule list
-		{input: "allow:,fs.read", wantParseFail: true}, // empty entry
-		{input: "allow:fs.read,", wantParseFail: true}, // trailing comma → empty entry
-		{input: "allow", wantParseFail: true},          // no colon
-		{input: "permit:fs.read", wantParseFail: true}, // unknown kind (only matches LoadProfile path; isInline filters)
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			cfg, err := parseInline(tt.input)
-			if tt.wantParseFail {
-				if err == nil {
-					t.Errorf("parseInline(%q) expected error, got %+v", tt.input, cfg)
-				}
-				return
-			}
-			if err != nil {
-				t.Fatalf("parseInline(%q): %v", tt.input, err)
-			}
-			if !reflect.DeepEqual(cfg.Allow, tt.wantAllow) {
-				t.Errorf("Allow = %v, want %v", cfg.Allow, tt.wantAllow)
-			}
-			if !reflect.DeepEqual(cfg.Deny, tt.wantDeny) {
-				t.Errorf("Deny = %v, want %v", cfg.Deny, tt.wantDeny)
-			}
-			if cfg.Default != libkite.DefaultDeny {
-				t.Errorf("Default = %v, want DefaultDeny", cfg.Default)
-			}
-		})
-	}
-}
-
-func TestLoadProfile_InlineThroughLoadProfile(t *testing.T) {
-	cfg, err := LoadProfile("allow:fs.read,http.client;deny:os.exec")
-	if err != nil {
-		t.Fatalf("LoadProfile inline: %v", err)
-	}
-	if !reflect.DeepEqual(cfg.Allow, []string{"fs.read", "http.client"}) {
-		t.Errorf("Allow = %v", cfg.Allow)
-	}
-	if !reflect.DeepEqual(cfg.Deny, []string{"os.exec"}) {
-		t.Errorf("Deny = %v", cfg.Deny)
-	}
-}
-
-func TestLoadProfile_FilePath(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "team.yaml")
-	content := []byte(`permissions:
-  team:
-    allow:
-      - fs.read
-      - http.client
-`)
-	if err := os.WriteFile(path, content, 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	cfg, err := LoadProfile(path)
-	if err != nil {
-		t.Fatalf("LoadProfile(%q): %v", path, err)
-	}
-	if !reflect.DeepEqual(cfg.Allow, []string{"fs.read", "http.client"}) {
-		t.Errorf("Allow = %v", cfg.Allow)
-	}
-	if cfg.Default != libkite.DefaultDeny {
-		t.Errorf("Default = %v, want DefaultDeny", cfg.Default)
-	}
-}
-
-func TestLoadProfile_FilePathWithFragment(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "security.yaml")
-	content := []byte(`permissions:
-  team:
-    allow: [fs.read]
-  dev:
-    allow: [fs.read, fs.write]
-    deny: [fs.delete]
-`)
-	if err := os.WriteFile(path, content, 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
-	cfg, err := LoadProfile(path + "#dev")
-	if err != nil {
-		t.Fatalf("LoadProfile fragment: %v", err)
-	}
-	if cfg.Default != libkite.DefaultDeny {
-		t.Errorf("dev.default = %v, want deny", cfg.Default)
-	}
-	if !reflect.DeepEqual(cfg.Deny, []string{"fs.delete"}) {
-		t.Errorf("Deny = %v", cfg.Deny)
-	}
-
-	// No fragment + multi-profile → error suggesting #name.
-	if _, err := LoadProfile(path); err == nil {
-		t.Error("LoadProfile with no fragment on multi-profile file should error")
-	}
-
-	// Unknown fragment → error.
-	if _, err := LoadProfile(path + "#missing"); err == nil {
-		t.Error("LoadProfile with unknown fragment should error")
-	}
-}
-
 func TestLoadProfile_UnknownNameErrors(t *testing.T) {
 	_, err := LoadProfile("nonexistent-profile-xyz")
 	if err == nil {
@@ -194,17 +59,6 @@ func TestLoadProfile_UnknownNameErrors(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "allow-all") || !strings.Contains(err.Error(), "deny-all") {
 		t.Errorf("error should mention built-in names; got %q", err.Error())
-	}
-}
-
-func TestLoadProfile_InvalidYAML(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "bad.yaml")
-	if err := os.WriteFile(path, []byte("this is: not [valid yaml: ::"), 0o644); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-	if _, err := LoadProfile(path); err == nil {
-		t.Error("expected parse error for malformed YAML")
 	}
 }
 
@@ -267,39 +121,71 @@ func TestResolve(t *testing.T) {
 	})
 }
 
-func TestIsInline(t *testing.T) {
-	cases := map[string]bool{
-		"allow:fs.read": true,
-		"deny:os.exec":  true,
-		"strict":        false,
-		"./team.yaml":   false,
-		"":              false,
-		"allow":         false, // missing colon
-		"alloW:fs.read": false, // case-sensitive
+func TestResolve_Alias(t *testing.T) {
+	defined := map[string]ProfileSpec{
+		"default": {Alias: ProfileAllowFS},
+		"wide":    {Alias: ProfileAllowAll},
+		"broken":  {Alias: "no-such-builtin"},
 	}
-	for in, want := range cases {
-		if got := isInline(in); got != want {
-			t.Errorf("isInline(%q) = %v, want %v", in, got, want)
+
+	t.Run("alias expands to its built-in", func(t *testing.T) {
+		cfg, err := Resolve("wide", defined)
+		if err != nil {
+			t.Fatalf("Resolve(wide): %v", err)
 		}
+		if cfg.Default != libkite.DefaultAllow {
+			t.Errorf("alias allow-all: Default = %v, want DefaultAllow", cfg.Default)
+		}
+	})
+
+	t.Run("default profile as alias", func(t *testing.T) {
+		cfg, err := Resolve("", defined)
+		if err != nil {
+			t.Fatalf("Resolve(\"\"): %v", err)
+		}
+		want, _ := Resolve(ProfileAllowFS, nil)
+		if !reflect.DeepEqual(cfg.Allow, want.Allow) {
+			t.Errorf("default alias allow-fs: Allow = %v, want %v", cfg.Allow, want.Allow)
+		}
+	})
+
+	t.Run("alias to unknown built-in errors", func(t *testing.T) {
+		if _, err := Resolve("broken", defined); err == nil {
+			t.Error("alias to non-built-in should error")
+		}
+	})
+}
+
+func TestProfileSpec_UnmarshalYAML(t *testing.T) {
+	var m map[string]ProfileSpec
+	src := []byte(`
+default: allow-fs
+ci:
+  allow: [fs.read]
+  deny: [fs.delete]
+`)
+	if err := yaml.Unmarshal(src, &m); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if m["default"].Alias != "allow-fs" {
+		t.Errorf("default.Alias = %q, want allow-fs", m["default"].Alias)
+	}
+	if !reflect.DeepEqual(m["ci"].Allow, []string{"fs.read"}) || !reflect.DeepEqual(m["ci"].Deny, []string{"fs.delete"}) {
+		t.Errorf("ci spec = %+v", m["ci"])
 	}
 }
 
-func TestIsFilePath(t *testing.T) {
-	cases := map[string]bool{
-		"./team.yaml":       true,
-		"/abs/path.yml":     true,
-		"team.yaml":         true,
-		"team.yaml#dev":     true,
-		"team.yml":          true,
-		"strict":            false,
-		"allow-all":         false,
-		"some-name":         false,
-		"some.name":         false, // not yaml/yml extension
-		`C:\path\file.yaml`: true,  // Windows path with backslash
-	}
-	for in, want := range cases {
-		if got := isFilePath(in); got != want {
-			t.Errorf("isFilePath(%q) = %v, want %v", in, got, want)
+func TestResolve_RemovedSyntaxesError(t *testing.T) {
+	// Inline rules and file paths are no longer accepted; they resolve as
+	// unknown profile names.
+	for _, v := range []string{
+		"allow:fs.read",
+		"allow:fs.read;deny:os.exec",
+		"./profile.yaml",
+		"profiles.yaml#deploy",
+	} {
+		if _, err := Resolve(v, nil); err == nil {
+			t.Errorf("Resolve(%q) should error: not a profile name", v)
 		}
 	}
 }

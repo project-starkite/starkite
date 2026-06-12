@@ -20,7 +20,7 @@ var builtinProfiles embed.FS
 const UserConfigFile = ".starkite/config.yaml"
 
 // securityFile is the on-disk schema of the sections this package consumes
-// from ~/.starkite/config.yaml (or a user-supplied profile file). Other
+// from config.yaml. Other
 // sections (config:, permissions:) are parsed elsewhere and ignored here.
 type securityFile struct {
 	Sandbox map[string]profileSpec `yaml:"sandbox"`
@@ -30,8 +30,8 @@ type securityFile struct {
 }
 
 // profileSpec is the YAML schema for a sandbox profile. The shape
-// matches what users write in custom profile files, so the same
-// decoder parses both embedded and user-supplied profiles.
+// matches what users write under config.yaml's "sandbox:" map, so the
+// same decoder parses both embedded and user-defined profiles.
 type profileSpec struct {
 	Network string      `yaml:"network"`
 	Mounts  []mountSpec `yaml:"mounts,omitempty"`
@@ -193,113 +193,42 @@ func errWithOrigin(err error, origin string) error {
 // file path rather than a built-in or named user profile. A path is
 // recognized by an explicit separator or a .yaml/.yml suffix on the
 // portion before any "#name" fragment.
-func isFilePath(value string) bool {
-	if strings.ContainsAny(value, "/\\") {
-		return true
-	}
-	base := value
-	if i := strings.Index(value, "#"); i >= 0 {
-		base = value[:i]
-	}
-	return strings.HasSuffix(base, ".yaml") || strings.HasSuffix(base, ".yml")
-}
-
-// loadFromFile loads a profile from an explicit YAML file path. The path
-// may include a "#name" fragment to select one profile when the file's
-// "sandbox:" section holds more than one. When the file holds exactly
-// one profile and no fragment is given, that single profile is used.
-func loadFromFile(value string) (Profile, error) {
-	path := value
-	fragment := ""
-	if i := strings.Index(value, "#"); i >= 0 {
-		path = value[:i]
-		fragment = value[i+1:]
-	}
-
-	sf, raw, err := readSecurityFile(path)
-	if err != nil {
-		return Profile{}, err
-	}
-
-	// Two accepted file shapes:
-	//
-	//   (a) A top-level profileSpec — the file IS the profile, no
-	//       "sandbox:" wrapper. This is the obvious shape for a
-	//       single-purpose profile file:
-	//
-	//         network: host
-	//         mounts: [...]
-	//
-	//   (b) A security file with a "sandbox:" map — same schema as
-	//       ~/.starkite/config.yaml. Useful if the user wants to
-	//       co-locate multiple profiles or share the layout with
-	//       permissions:
-	//
-	//         sandbox:
-	//           myprofile:
-	//             network: host
-	//             mounts: [...]
-	if len(sf.Sandbox) == 0 {
-		return decodeProfile(profileNameFromPath(path, fragment), raw, path)
-	}
-	return pickFromSecurityFile(sf, fragment, path)
-}
-
-// loadNamed resolves a value with no separators / yaml suffix as a
-// named profile under "sandbox.<name>" in ~/.starkite/config.yaml.
+// loadNamed resolves a profile name against the "sandbox:" maps of
+// ./config.yaml and ~/.starkite/config.yaml; the project-local file wins.
 func loadNamed(name string) (Profile, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return Profile{}, fmt.Errorf("sandbox: cannot resolve home directory: %w", err)
+	paths := []string{"config.yaml"}
+	if home, err := os.UserHomeDir(); err == nil {
+		paths = append(paths, filepath.Join(home, UserConfigFile))
 	}
-	path := filepath.Join(home, UserConfigFile)
 
-	sf, _, err := readSecurityFile(path)
-	if err != nil {
-		var pathErr *os.PathError
-		if errors.As(err, &pathErr) && errors.Is(pathErr.Err, os.ErrNotExist) {
-			return Profile{}, fmt.Errorf(
-				"sandbox: unknown profile %q (built-ins: %s, %s; %s does not exist)",
-				name, ProfileDefault, ProfileStrict, path)
+	var defined []string
+	var searched []string
+	for _, path := range paths {
+		sf, _, err := readSecurityFile(path)
+		if err != nil {
+			var pathErr *os.PathError
+			if errors.As(err, &pathErr) && errors.Is(pathErr.Err, os.ErrNotExist) {
+				continue
+			}
+			return Profile{}, err
 		}
-		return Profile{}, err
-	}
-
-	spec, ok := sf.Sandbox[name]
-	if !ok {
-		names := make([]string, 0, len(sf.Sandbox))
+		searched = append(searched, path)
+		if spec, ok := sf.Sandbox[name]; ok {
+			return profileFromSpec(name, spec, path)
+		}
 		for n := range sf.Sandbox {
-			names = append(names, n)
+			defined = append(defined, n)
 		}
-		return Profile{}, fmt.Errorf(
-			"sandbox: profile %q not found in %s (defined: %v; built-ins: %s, %s)",
-			name, path, names, ProfileDefault, ProfileStrict)
 	}
-	return profileFromSpec(name, spec, path)
-}
 
-// pickFromSecurityFile selects a single profileSpec from a parsed
-// security file's "sandbox:" map and returns the resolved Profile.
-func pickFromSecurityFile(sf *securityFile, fragment, origin string) (Profile, error) {
-	if fragment != "" {
-		spec, ok := sf.Sandbox[fragment]
-		if !ok {
-			return Profile{}, fmt.Errorf("sandbox: profile %q not found in %s", fragment, origin)
-		}
-		return profileFromSpec(fragment, spec, origin)
-	}
-	if len(sf.Sandbox) == 1 {
-		for name, spec := range sf.Sandbox {
-			return profileFromSpec(name, spec, origin)
-		}
-	}
-	names := make([]string, 0, len(sf.Sandbox))
-	for n := range sf.Sandbox {
-		names = append(names, n)
+	if len(searched) == 0 {
+		return Profile{}, fmt.Errorf(
+			"sandbox: unknown profile %q (built-ins: %s, %s; no config.yaml found)",
+			name, ProfileDefault, ProfileStrict)
 	}
 	return Profile{}, fmt.Errorf(
-		"sandbox: %s has multiple profiles %v; specify one with %s#<name>",
-		origin, names, origin)
+		"sandbox: profile %q not found in %s (defined: %v; built-ins: %s, %s)",
+		name, strings.Join(searched, ", "), defined, ProfileDefault, ProfileStrict)
 }
 
 // readSecurityFile parses path as a security file (containing a
@@ -336,19 +265,4 @@ func profileFromSpec(name string, spec profileSpec, origin string) (Profile, err
 		return Profile{}, fmt.Errorf("sandbox: profile %q: re-marshal: %w", name, err)
 	}
 	return decodeProfile(name, raw, origin)
-}
-
-// profileNameFromPath derives a Profile.Name when loading from a file
-// without an explicit fragment. The basename without extension reads
-// nicely in error messages and CLI traces.
-func profileNameFromPath(path, fragment string) string {
-	if fragment != "" {
-		return fragment
-	}
-	base := filepath.Base(path)
-	base = strings.TrimSuffix(base, filepath.Ext(base))
-	if base == "" {
-		return "<file>"
-	}
-	return base
 }

@@ -131,38 +131,9 @@ Or with GNU `env -S` (Linux):
 
 ## Custom profiles
 
-Author a profile YAML and pass either the path or a name registered under the `sandbox:` section of `~/.starkite/config.yaml`.
+`--sandbox` accepts a profile name only: a built-in (`default`, `strict`) or a profile defined under the `sandbox:` section of `config.yaml`. Both `./config.yaml` and `~/.starkite/config.yaml` are searched; the project-local file wins, so a repository can ship its own sandbox profiles.
 
-### By file path
-
-```yaml
-# myprofile.yaml — default-like, plus a read-only kubeconfig mount.
-network: host
-
-mounts:
-  - source: $CWD
-    destination: $CWD
-    mode: rw
-
-  - destination: /tmp
-    type: tmpfs
-
-  - source: /etc/ssl/certs
-    destination: /etc/ssl/certs
-    mode: ro
-    optional: true
-
-  - source: /home/alice/.kube/config
-    destination: /etc/kubeconfig
-    mode: ro
-```
-
-```bash
-kite ./deploy.star --sandbox=./myprofile.yaml
-STARKITE_SECURITY_SANDBOX=./myprofile.yaml ./deploy.star
-```
-
-### By name in `~/.starkite/config.yaml`
+### Defining a named profile
 
 ```yaml
 # ~/.starkite/config.yaml

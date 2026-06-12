@@ -237,98 +237,6 @@ unexpected: 42
 	}
 }
 
-func TestLoadProfile_fromFile_topLevel(t *testing.T) {
-	// File is itself a profileSpec (no "sandbox:" wrapper).
-	dir := t.TempDir()
-	path := filepath.Join(dir, "myprofile.yaml")
-	yaml := `
-network: host
-mounts:
-  - destination: /tmp
-    type: tmpfs
-    mode: rw
-`
-	if err := os.WriteFile(path, []byte(strings.TrimLeft(yaml, "\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	p, err := LoadProfile(path)
-	if err != nil {
-		t.Fatalf("LoadProfile(%s): %v", path, err)
-	}
-	if p.Name != "myprofile" {
-		t.Errorf("Name = %q, want %q (from filename)", p.Name, "myprofile")
-	}
-	if p.Network != NetworkHost {
-		t.Errorf("Network = %q, want %q", p.Network, NetworkHost)
-	}
-	if len(p.Mounts) != 1 {
-		t.Fatalf("expected 1 mount, got %d", len(p.Mounts))
-	}
-}
-
-func TestLoadProfile_fromFile_securityFileSingle(t *testing.T) {
-	// File has a "sandbox:" map with one entry. Loaded without fragment.
-	dir := t.TempDir()
-	path := filepath.Join(dir, "security.yaml")
-	yaml := `
-sandbox:
-  only:
-    network: host
-    mounts:
-      - destination: /tmp
-        type: tmpfs
-`
-	if err := os.WriteFile(path, []byte(strings.TrimLeft(yaml, "\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	p, err := LoadProfile(path)
-	if err != nil {
-		t.Fatalf("LoadProfile: %v", err)
-	}
-	if p.Name != "only" {
-		t.Errorf("Name = %q, want %q", p.Name, "only")
-	}
-}
-
-func TestLoadProfile_fromFile_securityFileMulti(t *testing.T) {
-	dir := t.TempDir()
-	path := filepath.Join(dir, "security.yaml")
-	yaml := `
-sandbox:
-  one:
-    network: host
-    mounts: [{destination: /tmp, type: tmpfs}]
-  two:
-    network: sandbox-loopback
-    mounts: [{destination: /tmp, type: tmpfs}]
-`
-	if err := os.WriteFile(path, []byte(strings.TrimLeft(yaml, "\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	// No fragment → ambiguous → error.
-	if _, err := LoadProfile(path); err == nil {
-		t.Errorf("expected ambiguity error for multi-profile file without fragment")
-	}
-
-	// With fragment → picks the named one.
-	p, err := LoadProfile(path + "#two")
-	if err != nil {
-		t.Fatalf("LoadProfile with fragment: %v", err)
-	}
-	if p.Name != "two" {
-		t.Errorf("Name = %q, want %q", p.Name, "two")
-	}
-	if p.Network != NetworkSandboxLoopback {
-		t.Errorf("Network = %q, want %q", p.Network, NetworkSandboxLoopback)
-	}
-
-	// Unknown fragment → error.
-	if _, err := LoadProfile(path + "#nope"); err == nil {
-		t.Errorf("expected error for unknown fragment")
-	}
-}
-
 func TestLoadProfile_fromNamed_userConfig(t *testing.T) {
 	// Stage a fake home dir with a config.yaml; redirect HOME so the
 	// loader picks it up.
@@ -371,28 +279,6 @@ sandbox:
 	}
 }
 
-func TestIsFilePath(t *testing.T) {
-	cases := []struct {
-		value string
-		want  bool
-	}{
-		{"default", false},
-		{"strict", false},
-		{"my-profile", false},
-		{"./local.yaml", true},
-		{"/abs/path.yaml", true},
-		{"path.yml", true},
-		{"path.yaml#name", true},
-		{"name#fragment", false}, // no .yaml/.yml suffix, no separator
-	}
-	for _, tc := range cases {
-		got := isFilePath(tc.value)
-		if got != tc.want {
-			t.Errorf("isFilePath(%q) = %v, want %v", tc.value, got, tc.want)
-		}
-	}
-}
-
 func TestDecodeProfile_defaults(t *testing.T) {
 	yaml := `
 network: host
@@ -414,5 +300,70 @@ mounts:
 	}
 	if p.Mounts[1].Mode != MountRW {
 		t.Errorf("default Mode for tmpfs = %q, want rw", p.Mounts[1].Mode)
+	}
+}
+
+func TestLoadProfile_RemovedSyntaxesError(t *testing.T) {
+	// File paths and fragments are no longer accepted; they resolve as
+	// unknown profile names.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	for _, v := range []string{"./myprofile.yaml", "profiles.yaml#k8s", "/abs/p.yml"} {
+		if _, err := LoadProfile(v); err == nil {
+			t.Errorf("LoadProfile(%q) should error: not a profile name", v)
+		}
+	}
+}
+
+func TestLoadProfile_fromNamed_projectLocalConfig(t *testing.T) {
+	// A profile defined in ./config.yaml resolves, and wins over one with the
+	// same name in ~/.starkite/config.yaml.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	cfgDir := filepath.Join(home, ".starkite")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	homeYAML := `
+sandbox:
+  shared:
+    network: sandbox-loopback
+`
+	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(strings.TrimLeft(homeYAML, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	work := t.TempDir()
+	localYAML := `
+sandbox:
+  shared:
+    network: host
+  localonly:
+    network: host
+`
+	if err := os.WriteFile(filepath.Join(work, "config.yaml"), []byte(strings.TrimLeft(localYAML, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(work)
+
+	p, err := LoadProfile("shared")
+	if err != nil {
+		t.Fatalf("LoadProfile(shared): %v", err)
+	}
+	if p.Network != NetworkHost {
+		t.Errorf("project-local profile should win: Network = %v, want host", p.Network)
+	}
+
+	if _, err := LoadProfile("localonly"); err != nil {
+		t.Errorf("LoadProfile(localonly): %v", err)
+	}
+
+	// Unknown name lists profiles from both files.
+	_, err = LoadProfile("missing")
+	if err == nil {
+		t.Fatal("expected error for unknown profile")
+	}
+	if !strings.Contains(err.Error(), "shared") {
+		t.Errorf("error should list defined profiles: %v", err)
 	}
 }

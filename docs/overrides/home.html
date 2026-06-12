@@ -901,11 +901,11 @@ mcp.serve(
       <pre><code class="language-bash"># Named profile from ~/.starkite/config.yaml
 $ kite run ./job.star --permissions=ci --sandbox=ci
 
-# Inline rules — no config file needed
-$ kite run ./job.star --permissions="allow:fs.read"
+# Built-in ladder profile — no config file needed
+$ kite run ./job.star --allow-fs
 
-# Built-in strict profile — denies everything sensitive
-$ kite run ./untrusted.star --permissions=strict --sandbox=strict
+# Deny-all permissions + strict sandbox for untrusted code
+$ kite run ./untrusted.star --permissions=deny-all --sandbox=strict
 Error: permission denied: os.exec is not allowed</code></pre>
     </div>
   </div>

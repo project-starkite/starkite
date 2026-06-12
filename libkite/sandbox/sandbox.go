@@ -129,9 +129,9 @@ type Mount struct {
 // description that the runtime backend translates to a runsc/OCI spec.
 //
 // Profile is loaded by LoadProfile from one of the built-in YAML files
-// embedded into the binary, from a file path on disk, or from
-// ~/.starkite/config.yaml. Both built-ins live as .yaml files in
-// libkite/sandbox/profiles/ and are embedded via go:embed.
+// embedded into the binary, or from a config.yaml "sandbox:" entry. Both
+// built-ins live as .yaml files in libkite/sandbox/profiles/ and are
+// embedded via go:embed.
 type Profile struct {
 	Name    string      // empty for "no sandbox"
 	Network NetworkMode // host | sandbox-loopback
@@ -152,16 +152,11 @@ const (
 )
 
 // LoadProfile resolves a --sandbox value to a Profile. An empty value
-// returns the zero Profile (no sandbox).
-//
-// Resolution order:
+// returns the zero Profile (no sandbox). A value is a profile name only:
 //
 //  1. Built-in name: "default", "strict".
-//  2. File path: contains '/' or '\', or ends in .yaml/.yml. Optional
-//     "#name" fragment selects a profile when the file holds more than
-//     one (under a top-level "sandbox:" map).
-//  3. Named user profile: looked up under "sandbox.<name>" in
-//     ~/.starkite/config.yaml.
+//  2. A user profile defined under the "sandbox:" map in ./config.yaml or
+//     ~/.starkite/config.yaml (the project-local file wins).
 func LoadProfile(value string) (Profile, error) {
 	if value == "" {
 		return Profile{}, nil
@@ -169,9 +164,6 @@ func LoadProfile(value string) (Profile, error) {
 	switch value {
 	case ProfileDefault, ProfileStrict:
 		return loadBuiltin(value)
-	}
-	if isFilePath(value) {
-		return loadFromFile(value)
 	}
 	return loadNamed(value)
 }

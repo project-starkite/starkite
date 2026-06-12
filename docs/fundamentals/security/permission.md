@@ -96,24 +96,20 @@ When the following script is executed without a specified permission, Starkite w
 kite ./build.star
 ```
 
-### A permission file
+### Aliasing a built-in
 
-The Starkite runtime can read permission profiles from a YAML file specified with `--permissions=<file-path>#<profile-name>`. For intance, given the following permission definition in file `./team.yaml`:
+A profile whose value is a name instead of an allow/deny map is an alias for that built-in profile. The common use is making a built-in the machine's implicit default:
 
 ```yaml
-# team.yaml
+# ~/.starkite/config.yaml
 permissions:
-  deploy: { allow: ["fs.read($CWD/**)", "k8s.write"] }
-  ci:     { allow: ["k8s.read"] }
+  default: allow-fs        # unflagged runs get the allow-fs ceiling
+  everything: allow-all    # selectable as --permissions=everything
 ```
 
-The following command will run the Starkite script with the `deploy` permission profile:
+Aliases name built-in profiles only.
 
-```bash
-kite ./build.star --permissions=./team.yaml#deploy
-```
-
-No profile-plus-rules composition is accepted on the command line (e.g. `allow-net` plus extra rules). Compose in a `config.yaml` profile instead.
+`--permissions` accepts a profile name only — a built-in or a profile defined in `config.yaml`. Rules are written in `config.yaml`, never on the command line, and no profile-plus-rules composition is accepted (e.g. `allow-net` plus extra rules); compose in a profile instead. The project-local `./config.yaml` is also loaded, so a repository can ship its own profiles.
 
 ## Permission rule grammar
 
@@ -154,16 +150,6 @@ fs.read(/etc/**)              → resource: /etc/**
 fs.read(read_file:*)          → functions: [read_file], resource: *
 fs.read(read_file,glob:/x/*)  → functions: [read_file, glob], resource: /x/*
 fs.read(/some,path:with-colon)→ resource: /some,path:with-colon  (no valid funclist prefix)
-```
-
-### Inline rules
-
-For one-off invocations, pass rules directly. The value starts with `allow:` or `deny:`. Rules within a clause are comma-separated; clauses are separated by `;`. Inline rules layer on a `deny-all` baseline — anything not allowed is denied.
-
-```bash
-kite ./script.star --permissions=allow:fs.read
-kite ./script.star --permissions='allow:fs.read,fs.write,os.exec($CWD/**)'
-kite ./script.star --permissions='allow:fs.read($CWD/**);deny:http.client'
 ```
 
 ### Path expansion

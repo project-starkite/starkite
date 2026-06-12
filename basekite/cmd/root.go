@@ -104,8 +104,8 @@ func init() {
 
 	// Permission flags
 	rootCmd.PersistentFlags().StringVar(&permissionsMode, "permissions", "",
-		"Permission profile: a built-in (deny-all|allow-fs|allow-net|allow-local|allow-all), "+
-			"a named/config profile, inline rules (allow:…;deny:…), or a file path")
+		"Permission profile name: a built-in (deny-all|allow-fs|allow-net|allow-local|allow-all) "+
+			"or a profile defined in config.yaml's permissions: section")
 
 	// Boolean aliases for the built-in profiles, e.g. --allow-fs == --permissions=allow-fs.
 	for _, p := range permissionProfileFlags {
@@ -115,14 +115,14 @@ func init() {
 
 	// Sandbox flag — Linux only; non-Linux returns a clear error.
 	// `--sandbox` (no value) resolves to the built-in "default" profile;
-	// `--sandbox=<name>` resolves a built-in, file path, or named user
-	// profile from ~/.starkite/config.yaml. Shebang-launched scripts
+	// `--sandbox=<name>` resolves a built-in or a profile defined in
+	// config.yaml's sandbox: section. Shebang-launched scripts
 	// can use STARKITE_SECURITY_SANDBOX env var instead — see
 	// docs/guides/sandbox.md.
 	rootCmd.PersistentFlags().StringVar(&sandboxMode, "sandbox", "",
-		"Sandbox profile for OS-level isolation (Linux). "+
-			"Use --sandbox alone for the built-in \"default\" profile, "+
-			"or --sandbox=<name> for a user-defined profile.")
+		"Sandbox profile name for OS-level isolation (Linux): a built-in "+
+			"(default|strict) or a profile defined in config.yaml's sandbox: section. "+
+			"--sandbox alone selects \"default\".")
 	rootCmd.PersistentFlags().Lookup("sandbox").NoOptDefVal = "default"
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
