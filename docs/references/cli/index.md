@@ -55,7 +55,8 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--timeout seconds` | Script execution timeout | `300` |
 | `--permissions name` | Permission profile name: a built-in (`deny-all`/`allow-fs`/`allow-net`/`allow-local`/`allow-all`) or a profile defined in `config.yaml`; unset resolves to the config `default` profile or `deny-all` | `""` |
 | `--deny-all`, `--allow-fs`, `--allow-net`, `--allow-local`, `--allow-all` | Boolean aliases for `--permissions=<profile>`. Set at most one; not combinable with `--permissions` | `false` |
-| `--sandbox[=profile]` | OS-level sandbox profile (Linux only). Bare `--sandbox` selects `default`; see [Sandbox guide](../../fundamentals/security/sandbox.md). | `""` |
+| `--sandbox[=profile]` | OS-level sandbox profile (Linux only): a built-in rung (`opaque`/`net-access`/`host`) or a `config.yaml` profile. Bare `--sandbox` selects the config `default` profile, else `opaque`. See [Sandbox guide](../../fundamentals/security/sandbox.md). | `""` |
+| `--sandbox-opaque`, `--sandbox-net-access`, `--sandbox-host` | Boolean aliases for `--sandbox=<rung>`. Set at most one sandbox flag | `false` |
 
 ## Environment Variables
 

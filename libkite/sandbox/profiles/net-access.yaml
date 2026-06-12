@@ -1,0 +1,50 @@
+# net-access.yaml — built-in net-access sandbox profile (second rung).
+#
+# Goal: networked automation, host invisible. Everything in opaque, plus
+# the host network and the read-only support files TLS verification and
+# name resolution need.
+#
+# Network mode: host
+#   The contained process shares the host's network namespace, so HTTPS,
+#   SSH, DNS — anything that works outside the sandbox — works inside it.
+#   Trade-off: network syscalls bypass gVisor's netstack, so this rung
+#   defends the filesystem and process-table surfaces but not the network
+#   stack.
+#
+# Filesystem: opaque + ro /etc/ssl/certs, /etc/resolv.conf, /etc/hosts,
+# /etc/nsswitch.conf. A support file absent on the host (minimal images)
+# is skipped — built-in profiles drop absent sources at load.
+#
+# $HOME, /etc/passwd, and host binaries are NOT visible.
+
+network: host
+
+mounts:
+  - source: $CWD
+    destination: $CWD
+    mode: rw
+    type: bind
+
+  - destination: /tmp
+    type: tmpfs
+    mode: rw
+
+  - source: /etc/ssl/certs
+    destination: /etc/ssl/certs
+    type: bind
+    mode: ro
+
+  - source: /etc/resolv.conf
+    destination: /etc/resolv.conf
+    type: bind
+    mode: ro
+
+  - source: /etc/hosts
+    destination: /etc/hosts
+    type: bind
+    mode: ro
+
+  - source: /etc/nsswitch.conf
+    destination: /etc/nsswitch.conf
+    type: bind
+    mode: ro

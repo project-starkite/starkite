@@ -205,13 +205,13 @@ func stripSandboxFlag(args []string) []string {
 // mirrors the host's network interfaces into the sentry's netstack
 // (creating veth equivalents) and requires reading the host netns, which
 // rootless mode cannot do across processes ("operation not permitted").
-// NetworkNone gives the loopback-only behavior the strict profile needs
+// NetworkNone gives the loopback-only behavior the opaque rung needs
 // without that privilege requirement.
 func networkModeFor(mode sandbox.NetworkMode) (config.NetworkType, error) {
 	switch mode {
 	case sandbox.NetworkHost:
 		return config.NetworkHost, nil
-	case sandbox.NetworkSandboxLoopback:
+	case sandbox.NetworkLoopback:
 		return config.NetworkNone, nil
 	default:
 		return 0, fmt.Errorf("unsupported network mode %q", mode)

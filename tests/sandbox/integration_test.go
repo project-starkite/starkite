@@ -19,6 +19,7 @@ package sandbox_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -38,20 +39,36 @@ type engagement int
 const (
 	viaFlag engagement = iota
 	viaEnv
+	viaAliasOpaque
 )
 
-func TestSandboxDefaultProfile_flag(t *testing.T) {
-	runStarTest(t, "sandbox_default_test.star", "default", viaFlag)
+func TestSandboxNetAccessRung_flag(t *testing.T) {
+	runStarTest(t, "sandbox_netaccess_test.star", "net-access", viaFlag)
 }
 
-func TestSandboxStrictProfile_flag(t *testing.T) {
-	runStarTest(t, "sandbox_strict_test.star", "strict", viaFlag)
+func TestSandboxOpaqueRung_flag(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "opaque", viaFlag)
 }
 
-// Env-var engagement is the shebang-style path. Exercised on the strict
-// profile; default-via-env would just duplicate the flag-path coverage.
-func TestSandboxStrictProfile_env(t *testing.T) {
-	runStarTest(t, "sandbox_strict_test.star", "strict", viaEnv)
+func TestSandboxHostRung_flag(t *testing.T) {
+	runStarTest(t, "sandbox_host_test.star", "host", viaFlag)
+}
+
+// Bare --sandbox with no config default resolves to the opaque rung; the
+// opaque property suite must pass under it.
+func TestSandboxBareFlagDefaultsToOpaque(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "default", viaFlag)
+}
+
+// The --sandbox-<rung> boolean aliases select the same profiles.
+func TestSandboxAliasFlag(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "", viaAliasOpaque)
+}
+
+// Env-var engagement is the shebang-style path. Exercised on the opaque
+// rung; net-access-via-env would just duplicate the flag-path coverage.
+func TestSandboxOpaqueRung_env(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "opaque", viaEnv)
 }
 
 // TestSandboxPerTestFile verifies that `kite test <dir>` with a sandbox
@@ -87,10 +104,10 @@ func TestSandboxPerTestFile(t *testing.T) {
 
 	// allow-all keeps the permission layer out of the way so what the test
 	// observes is the gVisor sandbox's isolation, not a permission denial.
-	cmd := exec.CommandContext(ctx, kite, "test", workDir, "--sandbox=strict", "--permissions=allow-all")
+	cmd := exec.CommandContext(ctx, kite, "test", workDir, "--sandbox=opaque", "--permissions=allow-all")
 	cmd.Dir = workDir
 	out, err := cmd.CombinedOutput()
-	t.Logf("kite test --sandbox=strict (multi-file) output:\n%s", out)
+	t.Logf("kite test --sandbox=opaque (multi-file) output:\n%s", out)
 	if err != nil {
 		if sandboxUnavailable(string(out)) {
 			t.Skipf("host cannot start a gVisor sandbox; skipping. "+
@@ -150,6 +167,13 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 		t.Fatalf("staging test script into workdir: %v", err)
 	}
 
+	// Stage host facts the star tests cannot discover from inside the
+	// sandbox (no $HOME env there).
+	hostinfo := fmt.Sprintf("{\"home\": %q}", home)
+	if err := os.WriteFile(filepath.Join(workDir, "hostinfo.json"), []byte(hostinfo), 0o644); err != nil {
+		t.Fatalf("staging hostinfo.json: %v", err)
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
 	defer cancel()
 
@@ -165,6 +189,9 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	case viaEnv:
 		env = append(env, "STARKITE_SECURITY_SANDBOX="+profile)
 		label = "STARKITE_SECURITY_SANDBOX=" + profile
+	case viaAliasOpaque:
+		args = append(args, "--sandbox-opaque")
+		label = "--sandbox-opaque"
 	default:
 		t.Fatalf("unknown engagement %d", eng)
 	}

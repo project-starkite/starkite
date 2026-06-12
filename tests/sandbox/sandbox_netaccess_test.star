@@ -1,14 +1,14 @@
-# sandbox_default_test.star — Integration tests for the default sandbox
+# sandbox_netaccess_test.star — Integration tests for the net-access sandbox
 # profile. Driven by tests/sandbox/integration_test.go on Linux only.
 #
-# Each test asserts one property of the default profile. Run via:
-#   kite test ./tests/sandbox/sandbox_default_test.star --sandbox
+# Each test asserts one property of the net-access rung. Run via:
+#   kite test ./tests/sandbox/sandbox_netaccess_test.star --sandbox
 #
 # The Go driver runs this file from a clean temp directory (NOT under
 # $HOME) so the credential-isolation tests aren't confounded by the
 # user's home dir being the $CWD bind-mount target.
 
-# --- positive: things that should work under default profile ---
+# --- positive: things that should work under net-access rung ---
 
 def test_hello_world():
     """Sandbox boots, basic Starlark + builtins run, exit 0."""
@@ -86,7 +86,7 @@ def test_ssh_loopback_password():
 def test_etc_passwd_invisible():
     """Host /etc/passwd is NOT mounted — credential-disclosure path closed."""
     # NOTE: /etc/ssl/certs IS mounted (curated), but /etc/passwd is not.
-    assert(not exists("/etc/passwd"), "/etc/passwd must not be visible inside default sandbox")
+    assert(not exists("/etc/passwd"), "/etc/passwd must not be visible inside net-access sandbox")
 
 def test_home_invisible():
     """Host /home and ~/.ssh / ~/.aws / ~/.kube etc. are NOT mounted.

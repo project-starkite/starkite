@@ -96,9 +96,9 @@ When the following script is executed without a specified permission, Starkite w
 kite ./build.star
 ```
 
-### Aliasing a built-in
+### Built-in profile aliasing
 
-A profile whose value is a name instead of an allow/deny map is an alias for that built-in profile. The common use is making a built-in the machine's implicit default:
+It is possible to use a rule alias by specifying the name of a built-in rule instead of defining a rule map. This makes it convenient to setup default rules using built-in permission rules:
 
 ```yaml
 # ~/.starkite/config.yaml
@@ -107,9 +107,7 @@ permissions:
   everything: allow-all    # selectable as --permissions=everything
 ```
 
-Aliases name built-in profiles only.
-
-`--permissions` accepts a profile name only — a built-in or a profile defined in `config.yaml`. Rules are written in `config.yaml`, never on the command line, and no profile-plus-rules composition is accepted (e.g. `allow-net` plus extra rules); compose in a profile instead. The project-local `./config.yaml` is also loaded, so a repository can ship its own profiles.
+Note that you can only alias built-in profile names only.
 
 ## Permission rule grammar
 
@@ -121,6 +119,7 @@ funclist := func_name ("," func_name)*
 ```
 
 Where:
+
 - `module` - the name of a module (built-in or loaded)
 - `category` - the name of a category of functionalities (i.e. `read`) against a reource
 - `funclist` - list of exact function names that match the applied rule (i.e. `read_file`)
@@ -141,7 +140,7 @@ The following shows some example permission rules.
 | `fs.read(read_file,read_bytes:/etc/**)` | either function, resource matching glob |
 | `os.exec($CWD/**)` | exec of any binary resolving to a path under `$CWD` |
 
-During execution, `deny` rules are evaluated first, then ``allow` rules. Unmatched rules are denied.
+During execution, `deny` rules are evaluated first followed `allow` rules. Unmatched rules are denied.
 
 The contents inside parentheses are parsed as a function list only when they consist of bare identifiers separated by commas, followed by `:`. Otherwise they are treated as a resource pattern:
 
@@ -162,11 +161,11 @@ allow:
   - fs.read($HOME/.config/myapp/*) # any file under the specified user path
 ```
 
-When a path does not include either of these special path prefixes are matched verbatim.
+When a rule path does not include either of these special prefixes, paths are matched verbatim.
 
 ## Modules and categories
 
-The followings are modules and categories that are checked by the permission engine at runtime. The majority of the standard library modules (string manipulation, data encoding, math, time, regexp, templates, etc.) are not unchecked and always works.
+The followings are modules and categories that are checked by the permission engine at runtime. The majority of the standard library modules (strings, data encoding, math, time, regexp, templates, etc.) are compute only functions and are not checked.
 
 | Module | Categories | What's checked |
 |---|---|---|
@@ -181,28 +180,26 @@ The followings are modules and categories that are checked by the permission eng
 
 ## Loaded modules
 
-Code reached through `load()` — a local directory module or an installed module — runs under the **same runtime permission as the entry script**. A module declares nothing about its own capabilities; downloading or importing it grants no authority.
-
-A module dependency that needs more permissions than the script was granted will fail. For example, a script run with `--allow-fs` that loads a module which calls `k8s.read` will fail:
+Code reached through `load()` — a local directory module or an installed module — runs under the same runtime permission as its containing script. A module dependency that needs more permissions, than were granted to its hosting script, will fail. For example, a script run with `--allow-fs` that loads a module which calls `k8s.read` will fail:
 
 ```
 kite ./deploy.star --allow-fs
 #   deploy.star reads/writes local files   → allowed
 #   the loaded module calls k8s.read(...)  → denied (k8s is allow-local)
 ```
+
 The fix is to rerun the script with an elevated permission profile:
 
 ```
 kite ./deploy.star --allow-local
 ```
 
-
 ## Augmenting security with `--sandbox`
 
 The permission level of a script can be combined with Starkite's sandbox for additional security:
 
 ```bash
-kite ./untrusted.star --sandbox=strict --permissions=deny-all
+kite ./untrusted.star --sandbox=opaque --permissions=deny-all
 ```
 
-The `--sandbox` flag causes Starkite to confine the OS view (filesystem, processes, network) at the kernel level via gVisor. See [Sandbox](sandbox.md).
+The `--sandbox` flag causes Starkite to confine access to resources (filesystem, processes, network) at the kernel level via gVisor. See [Sandbox](sandbox.md).

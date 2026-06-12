@@ -684,7 +684,7 @@ permissions:
 
 sandbox:
   ci:
-    network: sandbox-loopback
+    network: loopback
     mounts:
       - source: $CWD
         destination: $CWD
@@ -905,7 +905,7 @@ $ kite run ./job.star --permissions=ci --sandbox=ci
 $ kite run ./job.star --allow-fs
 
 # Deny-all permissions + strict sandbox for untrusted code
-$ kite run ./untrusted.star --permissions=deny-all --sandbox=strict
+$ kite run ./untrusted.star --permissions=deny-all --sandbox=opaque
 Error: permission denied: os.exec is not allowed</code></pre>
     </div>
   </div>

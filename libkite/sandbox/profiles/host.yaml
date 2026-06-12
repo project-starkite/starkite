@@ -1,0 +1,74 @@
+# host.yaml — built-in host sandbox profile (the ladder's most capable rung).
+#
+# Goal: read the host, write only the tree. Everything in net-access, plus
+# read-only $HOME and host binaries — host tools are runnable inside the
+# sandbox and configuration like ~/.kube and ~/.ssh is readable.
+#
+# What this rung protects: host INTEGRITY. Nothing outside $CWD and /tmp
+# is writable; writes cannot reach shell startup files, ~/.ssh, or system
+# paths, and nothing persists past exit except $CWD output.
+#
+# What it does not protect: host CONFIDENTIALITY. Secrets readable by the
+# invoking user under $HOME are readable by the script. Do not use this
+# rung for code you would not let read your home directory.
+#
+# $HOME is read-only by design: a writable $HOME is a delayed sandbox
+# escape (~/.bashrc, ~/.gitconfig hooks, ~/.ssh/authorized_keys execute
+# outside the sandbox later).
+
+network: host
+
+mounts:
+  - source: $CWD
+    destination: $CWD
+    mode: rw
+    type: bind
+
+  - destination: /tmp
+    type: tmpfs
+    mode: rw
+
+  - source: /etc/ssl/certs
+    destination: /etc/ssl/certs
+    type: bind
+    mode: ro
+
+  - source: /etc/resolv.conf
+    destination: /etc/resolv.conf
+    type: bind
+    mode: ro
+
+  - source: /etc/hosts
+    destination: /etc/hosts
+    type: bind
+    mode: ro
+
+  - source: /etc/nsswitch.conf
+    destination: /etc/nsswitch.conf
+    type: bind
+    mode: ro
+
+  - source: $HOME
+    destination: $HOME
+    type: bind
+    mode: ro
+
+  - source: /usr
+    destination: /usr
+    type: bind
+    mode: ro
+
+  - source: /bin
+    destination: /bin
+    type: bind
+    mode: ro
+
+  - source: /lib
+    destination: /lib
+    type: bind
+    mode: ro
+
+  - source: /lib64
+    destination: /lib64
+    type: bind
+    mode: ro

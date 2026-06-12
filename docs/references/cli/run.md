@@ -60,7 +60,7 @@ kite ./deploy.star --permissions=allow-fs
 
 # OS-level sandbox (Linux only)
 kite ./deploy.star --sandbox             # default profile (network ok, no $HOME)
-kite ./deploy.star --sandbox=strict      # offline, $CWD-only
+kite ./deploy.star --sandbox=opaque      # offline, $CWD-only
 kite ./deploy.star --sandbox --permissions=allow-fs   # both layers
 ```
 

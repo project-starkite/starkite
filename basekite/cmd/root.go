@@ -43,7 +43,27 @@ var (
 	// is the alternative entry point for shebang-launched scripts (and
 	// works for CLI invocations too). The flag wins when both are set.
 	sandboxMode string
+
+	// sandboxProfileFlags are boolean aliases for --sandbox=<rung>, one per
+	// built-in rung (e.g. --sandbox-opaque == --sandbox=opaque). At most one
+	// sandbox selector — including --sandbox — may be set.
+	sandboxProfileFlags = []string{
+		"sandbox-opaque", "sandbox-net-access", "sandbox-host",
+	}
 )
+
+// sandboxAlias is a bool-style pflag.Value that sets the shared --sandbox
+// target to a fixed rung name when its flag is present, so --sandbox-opaque
+// is exactly --sandbox=opaque.
+type sandboxAlias struct{ profile string }
+
+func (sandboxAlias) String() string   { return "" }
+func (sandboxAlias) Type() string     { return "bool" }
+func (sandboxAlias) IsBoolFlag() bool { return true }
+func (a sandboxAlias) Set(string) error {
+	sandboxMode = a.profile
+	return nil
+}
 
 // permissionAlias is a bool-style pflag.Value that sets the shared
 // --permissions target to a fixed profile name when its flag is present, so
@@ -120,14 +140,25 @@ func init() {
 	// can use STARKITE_SECURITY_SANDBOX env var instead — see
 	// docs/guides/sandbox.md.
 	rootCmd.PersistentFlags().StringVar(&sandboxMode, "sandbox", "",
-		"Sandbox profile name for OS-level isolation (Linux): a built-in "+
-			"(default|strict) or a profile defined in config.yaml's sandbox: section. "+
-			"--sandbox alone selects \"default\".")
+		"Sandbox profile name for OS-level isolation (Linux): a built-in rung "+
+			"(opaque|net-access|host) or a profile defined in config.yaml's sandbox: "+
+			"section. --sandbox alone selects the config-defined \"default\" profile, "+
+			"or the opaque rung when none is defined.")
 	rootCmd.PersistentFlags().Lookup("sandbox").NoOptDefVal = "default"
+
+	// Boolean aliases for the built-in rungs, e.g. --sandbox-opaque == --sandbox=opaque.
+	for _, f := range sandboxProfileFlags {
+		rung := strings.TrimPrefix(f, "sandbox-")
+		rootCmd.PersistentFlags().Var(sandboxAlias{rung}, f, fmt.Sprintf("Alias for --sandbox=%s", rung))
+		rootCmd.PersistentFlags().Lookup(f).NoOptDefVal = "true" // usable as a bare flag
+	}
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		applyEnvDefaults()
-		return checkPermissionFlagConflict(rootCmd.PersistentFlags())
+		if err := checkPermissionFlagConflict(rootCmd.PersistentFlags()); err != nil {
+			return err
+		}
+		return checkSandboxFlagConflict(rootCmd.PersistentFlags())
 	}
 }
 
@@ -146,6 +177,25 @@ func checkPermissionFlagConflict(flags *pflag.FlagSet) error {
 	}
 	if len(set) > 1 {
 		return fmt.Errorf("only one permission flag may be set; got %s", strings.Join(set, " and "))
+	}
+	return nil
+}
+
+// checkSandboxFlagConflict rejects setting more than one sandbox selector —
+// the rung aliases (--sandbox-opaque, …) and --sandbox all target the same
+// value, so combining them is contradictory.
+func checkSandboxFlagConflict(flags *pflag.FlagSet) error {
+	var set []string
+	if flags.Lookup("sandbox").Changed {
+		set = append(set, "--sandbox")
+	}
+	for _, f := range sandboxProfileFlags {
+		if flags.Lookup(f).Changed {
+			set = append(set, "--"+f)
+		}
+	}
+	if len(set) > 1 {
+		return fmt.Errorf("only one sandbox flag may be set; got %s", strings.Join(set, " and "))
 	}
 	return nil
 }

@@ -273,6 +273,27 @@ else
 fi
 
 # --------------------------------------------
+# Test 13c2: sandbox flag aliases parse and are mutually exclusive
+# --------------------------------------------
+info "Test 13c2: sandbox flag aliases"
+
+# Conflicting sandbox selectors error at flag validation (before any platform check).
+if $KITE exec 'print(1)' --sandbox-opaque --sandbox-host 2>&1 | grep -q "only one sandbox flag"; then
+    pass "conflicting sandbox flags rejected"
+else
+    fail "conflicting sandbox flags rejected"
+fi
+
+# A single alias engages the sandbox path (platform error on non-Linux is
+# the engagement proof; on Linux the run itself is the proof).
+OUT=$($KITE exec 'print("sbx-ok")' --sandbox-opaque 2>&1 || true)
+if echo "$OUT" | grep -qE "sbx-ok|sandbox not available"; then
+    pass "--sandbox-opaque alias engages sandbox"
+else
+    fail "--sandbox-opaque alias engages sandbox ($OUT)"
+fi
+
+# --------------------------------------------
 # Test 13d: config-defined permission profiles (+ alias shortcut)
 # --------------------------------------------
 info "Test 13d: config-defined permission profiles"

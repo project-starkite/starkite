@@ -98,7 +98,7 @@ A var-file is not a config file: it does not use the three-section schema below.
 |---|---|
 | `config` | Arbitrary configuration: runtime settings and user variables |
 | `permissions` | Named permission profiles, selectable with `--permissions=<name>`; a profile named `default` becomes the implicit profile when no flag is given. See [Permission](security/permission.md#custom-permission-profiles). |
-| `sandbox` | Named sandbox profiles, selectable with `--sandbox=<name>`. See [Sandbox](security/sandbox.md). |
+| `sandbox` | Named sandbox profiles, selectable with `--sandbox=<name>`; a profile named `default` is what a bare `--sandbox` selects. A scalar value aliases a built-in rung. See [Sandbox](security/sandbox.md). |
 
 Within `config:`, four keys are **reserved** — parsed into runtime state and **not** accessible via `var_*`:
 
@@ -139,9 +139,13 @@ permissions:
     allow: ["fs.read", "os.exec($CWD/**)"]
 
 sandbox:
+  default: net-access      # alias — bare --sandbox selects this rung
   builder:
     network: host
     mounts:
+      - source: $CWD
+        destination: $CWD
+        mode: rw
       - destination: /tmp
         type: tmpfs
 ```

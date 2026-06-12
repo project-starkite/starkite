@@ -1,12 +1,12 @@
 #!/usr/bin/env kite
-# default-http-fetch.star — fetches a URL over HTTPS from inside the
+# netaccess-http-fetch.star — fetches a URL over HTTPS from inside the
 # default sandbox profile. Demonstrates that the host network is fully
 # reachable and TLS verification works (the curated /etc/ssl/certs mount
 # provides the CA roots).
 #
 # Run:
-#   kite default-http-fetch.star --sandbox --permissions=allow-net
-#   STARKITE_SECURITY_SANDBOX=default ./default-http-fetch.star --permissions=allow-net
+#   kite ./netaccess-http-fetch.star --sandbox --permissions=allow-net
+#   STARKITE_SECURITY_SANDBOX=net-access ./netaccess-http-fetch.star --permissions=allow-net
 
 resp = http.url("https://example.com").get()
 print("status: %d" % resp.status_code)

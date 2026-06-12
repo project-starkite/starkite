@@ -10,6 +10,7 @@ package sandbox
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"runtime"
 )
@@ -78,15 +79,15 @@ type NetworkMode string
 
 const (
 	// NetworkHost shares the host's network namespace with the contained
-	// process. Network reachability matches the host. Used by the default
-	// profile.
+	// process. Network reachability matches the host. Used by the
+	// net-access and host rungs.
 	NetworkHost NetworkMode = "host"
 
-	// NetworkSandboxLoopback enables the runtime's network stack but does
-	// not bridge it to the host. In-sandbox loopback works (servers and
+	// NetworkLoopback enables the runtime's network stack but does not
+	// bridge it to the host. In-sandbox loopback works (servers and
 	// clients within one script can talk); no packet leaves the sandbox.
-	// Used by the strict profile.
-	NetworkSandboxLoopback NetworkMode = "sandbox-loopback"
+	// Used by the opaque rung.
+	NetworkLoopback NetworkMode = "loopback"
 )
 
 // MountType discriminates between supported sandbox mount kinds.
@@ -112,17 +113,15 @@ const (
 
 // Mount describes a single host-to-sandbox path mapping in the profile.
 //
-// Source is required for Type=bind, ignored for Type=tmpfs. A bind whose
-// source is missing on the host will fail at sandbox start unless
-// Optional is true (which causes the runner to silently skip it; useful
-// for profile entries like /etc/resolv.conf that may be absent on
-// minimal hosts).
+// Source is required for Type=bind, ignored for Type=tmpfs. A bind source
+// must exist on the host: a user-profile mount with an absent source is a
+// load-time error, and built-in profiles drop absent sources at load (so
+// the rungs stay portable to minimal hosts).
 type Mount struct {
 	Source      string    // host path (empty for tmpfs)
 	Destination string    // path inside the sandbox
 	Type        MountType // bind | tmpfs
 	Mode        MountMode // rw | ro
-	Optional    bool      // bind: skip silently when source is absent
 }
 
 // Profile is the resolved sandbox configuration: the platform-agnostic
@@ -134,7 +133,7 @@ type Mount struct {
 // embedded via go:embed.
 type Profile struct {
 	Name    string      // empty for "no sandbox"
-	Network NetworkMode // host | sandbox-loopback
+	Network NetworkMode // host | loopback
 	Mounts  []Mount
 }
 
@@ -144,25 +143,40 @@ func (p Profile) IsZero() bool {
 	return p.Name == ""
 }
 
-// Built-in profile names. Must match the basenames of the embedded YAML
-// files under libkite/sandbox/profiles/.
+// Built-in profile names — the capability ladder, each rung a superset of
+// the prior. Must match the basenames of the embedded YAML files under
+// libkite/sandbox/profiles/.
 const (
-	ProfileDefault = "default"
-	ProfileStrict  = "strict"
+	ProfileOpaque    = "opaque"
+	ProfileNetAccess = "net-access"
+	ProfileHost      = "host"
 )
+
+// DefaultProfileName is the reserved profile name in config.yaml's sandbox:
+// map consumed by a bare --sandbox (or --sandbox=default).
+const DefaultProfileName = "default"
 
 // LoadProfile resolves a --sandbox value to a Profile. An empty value
 // returns the zero Profile (no sandbox). A value is a profile name only:
 //
-//  1. Built-in name: "default", "strict".
-//  2. A user profile defined under the "sandbox:" map in ./config.yaml or
+//  1. "default" (what a bare --sandbox sends): the "default" profile from
+//     config.yaml's sandbox: map when defined, else the opaque rung.
+//  2. A built-in rung: "opaque", "net-access", "host".
+//  3. A user profile defined under the "sandbox:" map in ./config.yaml or
 //     ~/.starkite/config.yaml (the project-local file wins).
 func LoadProfile(value string) (Profile, error) {
 	if value == "" {
 		return Profile{}, nil
 	}
+	if value == DefaultProfileName {
+		p, err := loadNamed(DefaultProfileName)
+		if errors.Is(err, errProfileNotFound) {
+			return loadBuiltin(ProfileOpaque)
+		}
+		return p, err
+	}
 	switch value {
-	case ProfileDefault, ProfileStrict:
+	case ProfileOpaque, ProfileNetAccess, ProfileHost:
 		return loadBuiltin(value)
 	}
 	return loadNamed(value)

@@ -33,7 +33,7 @@ const sandboxKitePath = "/.kite"
 //   - NoNewPrivileges = true
 //   - pid/mount/ipc/uts/user namespaces isolated
 //   - NetworkNamespace deliberately omitted; runner sets conf.Network
-//     based on profile.Network (host vs sandbox-loopback)
+//     based on profile.Network (host vs loopback)
 //   - Single-UID identity mapping
 func buildSpec(profile sandbox.Profile, innerArgs []string, cwd, hostBinary string, bun *bundle) (*specs.Spec, error) {
 	procArgs := append([]string{sandboxKitePath, "__runtime__"}, innerArgs...)
@@ -51,11 +51,6 @@ func buildSpec(profile sandbox.Profile, innerArgs []string, cwd, hostBinary stri
 		{"/dev", false},         // devtmpfs (plumbing)
 	}
 	for _, m := range profile.Mounts {
-		if m.Optional && m.Type == sandbox.MountBind {
-			if _, err := os.Stat(m.Source); err != nil {
-				continue
-			}
-		}
 		mountpoints = append(mountpoints, struct {
 			path   string
 			isFile bool
@@ -81,14 +76,9 @@ func buildSpec(profile sandbox.Profile, innerArgs []string, cwd, hostBinary stri
 
 	// Profile-driven mounts.
 	for _, m := range profile.Mounts {
-		ociMount, ok, err := mountToOCI(m)
+		ociMount, err := mountToOCI(m)
 		if err != nil {
 			return nil, err
-		}
-		if !ok {
-			// Optional bind whose source doesn't exist on the host —
-			// silently skipped, by design.
-			continue
 		}
 		mounts = append(mounts, ociMount)
 	}
@@ -136,16 +126,11 @@ func buildSpec(profile sandbox.Profile, innerArgs []string, cwd, hostBinary stri
 }
 
 // mountToOCI translates a sandbox.Mount into the OCI runtime-spec form
-// the gofer consumes. Returns (mount, false, nil) when the mount is an
-// optional bind whose source doesn't exist on the host (caller skips it).
-func mountToOCI(m sandbox.Mount) (specs.Mount, bool, error) {
+// the gofer consumes. Absent bind sources were already handled at profile
+// load (built-ins filtered, user profiles rejected).
+func mountToOCI(m sandbox.Mount) (specs.Mount, error) {
 	switch m.Type {
 	case sandbox.MountBind:
-		if m.Optional {
-			if _, err := os.Stat(m.Source); err != nil {
-				return specs.Mount{}, false, nil
-			}
-		}
 		opts := []string{"rbind", "nosuid", "nodev"}
 		switch m.Mode {
 		case sandbox.MountRO:
@@ -153,23 +138,23 @@ func mountToOCI(m sandbox.Mount) (specs.Mount, bool, error) {
 		case sandbox.MountRW:
 			opts = append(opts, "rw")
 		default:
-			return specs.Mount{}, false, fmt.Errorf("mount %s: unknown mode %q", m.Destination, m.Mode)
+			return specs.Mount{}, fmt.Errorf("mount %s: unknown mode %q", m.Destination, m.Mode)
 		}
 		return specs.Mount{
 			Destination: m.Destination,
 			Type:        "bind",
 			Source:      m.Source,
 			Options:     opts,
-		}, true, nil
+		}, nil
 	case sandbox.MountTmpfs:
 		return specs.Mount{
 			Destination: m.Destination,
 			Type:        "tmpfs",
 			Source:      "tmpfs",
 			Options:     []string{"nosuid", "nodev"},
-		}, true, nil
+		}, nil
 	default:
-		return specs.Mount{}, false, fmt.Errorf("mount %s: unknown type %q", m.Destination, m.Type)
+		return specs.Mount{}, fmt.Errorf("mount %s: unknown type %q", m.Destination, m.Type)
 	}
 }
 

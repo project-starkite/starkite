@@ -17,112 +17,312 @@ func TestLoadProfile_empty(t *testing.T) {
 	}
 }
 
-func TestLoadProfile_default(t *testing.T) {
-	p, err := LoadProfile(ProfileDefault)
-	if err != nil {
-		t.Fatalf("LoadProfile(default): %v", err)
+// mountByDest indexes a profile's mounts by destination.
+func mountByDest(p Profile) map[string]Mount {
+	m := make(map[string]Mount, len(p.Mounts))
+	for _, mt := range p.Mounts {
+		m[mt.Destination] = mt
 	}
-	if p.Name != ProfileDefault {
-		t.Errorf("Name = %q, want %q", p.Name, ProfileDefault)
+	return m
+}
+
+func TestLoadProfile_opaque(t *testing.T) {
+	p, err := LoadProfile(ProfileOpaque)
+	if err != nil {
+		t.Fatalf("LoadProfile(opaque): %v", err)
+	}
+	if p.Name != ProfileOpaque {
+		t.Errorf("Name = %q, want %q", p.Name, ProfileOpaque)
+	}
+	if p.Network != NetworkLoopback {
+		t.Errorf("Network = %q, want %q", p.Network, NetworkLoopback)
+	}
+
+	cwd, _ := os.Getwd()
+	if got := len(p.Mounts); got != 2 {
+		t.Fatalf("opaque should have exactly 2 mounts ($CWD + /tmp); got %d (%+v)", got, p.Mounts)
+	}
+	m := mountByDest(p)
+	if cw, ok := m[cwd]; !ok || cw.Type != MountBind || cw.Mode != MountRW {
+		t.Errorf("$CWD mount = %+v, want bind+rw at %s", m[cwd], cwd)
+	}
+	if tmp, ok := m["/tmp"]; !ok || tmp.Type != MountTmpfs || tmp.Mode != MountRW {
+		t.Errorf("/tmp mount = %+v, want tmpfs+rw", m["/tmp"])
+	}
+}
+
+func TestLoadProfile_netAccess(t *testing.T) {
+	p, err := LoadProfile(ProfileNetAccess)
+	if err != nil {
+		t.Fatalf("LoadProfile(net-access): %v", err)
 	}
 	if p.Network != NetworkHost {
 		t.Errorf("Network = %q, want %q", p.Network, NetworkHost)
 	}
 
 	cwd, _ := os.Getwd()
-	wantMounts := map[string]Mount{
-		cwd:                  {Source: cwd, Destination: cwd, Type: MountBind, Mode: MountRW},
-		"/tmp":               {Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
-		"/etc/ssl/certs":     {Source: "/etc/ssl/certs", Destination: "/etc/ssl/certs", Type: MountBind, Mode: MountRO, Optional: true},
-		"/etc/resolv.conf":   {Source: "/etc/resolv.conf", Destination: "/etc/resolv.conf", Type: MountBind, Mode: MountRO, Optional: true},
-		"/etc/hosts":         {Source: "/etc/hosts", Destination: "/etc/hosts", Type: MountBind, Mode: MountRO, Optional: true},
-		"/etc/nsswitch.conf": {Source: "/etc/nsswitch.conf", Destination: "/etc/nsswitch.conf", Type: MountBind, Mode: MountRO, Optional: true},
+	m := mountByDest(p)
+	if _, ok := m[cwd]; !ok {
+		t.Errorf("net-access must mount $CWD")
 	}
-	if got, want := len(p.Mounts), len(wantMounts); got != want {
-		t.Fatalf("len(Mounts) = %d, want %d (mounts: %+v)", got, want, p.Mounts)
+	if _, ok := m["/tmp"]; !ok {
+		t.Errorf("net-access must mount /tmp")
 	}
-	for _, m := range p.Mounts {
-		want, ok := wantMounts[m.Destination]
-		if !ok {
-			t.Errorf("unexpected mount destination %q", m.Destination)
-			continue
+
+	// Every host-support file present on this host must be mounted ro;
+	// absent ones are filtered at load (built-in portability).
+	for _, sf := range []string{"/etc/ssl/certs", "/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"} {
+		_, hostErr := os.Stat(sf)
+		mt, mounted := m[sf]
+		if hostErr == nil && (!mounted || mt.Mode != MountRO) {
+			t.Errorf("support file %s exists on host but is not mounted ro (got %+v)", sf, mt)
 		}
-		if m != want {
-			t.Errorf("mount %q: got %+v, want %+v", m.Destination, m, want)
+		if hostErr != nil && mounted {
+			t.Errorf("support file %s absent on host but mounted: %+v", sf, mt)
+		}
+	}
+
+	// Nothing beyond opaque + support files: no $HOME, no host binaries.
+	home, _ := os.UserHomeDir()
+	for _, banned := range []string{home, "/usr", "/bin", "/lib"} {
+		if _, ok := m[banned]; ok {
+			t.Errorf("net-access must not mount %s", banned)
 		}
 	}
 }
 
-func TestLoadProfile_strict(t *testing.T) {
-	p, err := LoadProfile(ProfileStrict)
+func TestLoadProfile_host(t *testing.T) {
+	p, err := LoadProfile(ProfileHost)
 	if err != nil {
-		t.Fatalf("LoadProfile(strict): %v", err)
+		t.Fatalf("LoadProfile(host): %v", err)
 	}
-	if p.Name != ProfileStrict {
-		t.Errorf("Name = %q, want %q", p.Name, ProfileStrict)
-	}
-	if p.Network != NetworkSandboxLoopback {
-		t.Errorf("Network = %q, want %q", p.Network, NetworkSandboxLoopback)
+	if p.Network != NetworkHost {
+		t.Errorf("Network = %q, want %q", p.Network, NetworkHost)
 	}
 
-	if got := len(p.Mounts); got != 2 {
-		t.Fatalf("strict should have exactly 2 mounts ($CWD + /tmp); got %d (%+v)", got, p.Mounts)
-	}
-	for _, m := range p.Mounts {
-		switch m.Destination {
-		case "/tmp":
-			if m.Type != MountTmpfs || m.Mode != MountRW {
-				t.Errorf("/tmp mount = %+v, want tmpfs+rw", m)
-			}
-		default:
-			// Should be the $CWD bind.
-			if m.Type != MountBind || m.Mode != MountRW {
-				t.Errorf("non-/tmp mount = %+v, want bind+rw", m)
-			}
-		}
-		if strings.HasPrefix(m.Destination, "/etc/") {
-			t.Errorf("strict profile should have no /etc/* mount, found %q", m.Destination)
-		}
-	}
-}
-
-func TestLoadProfile_unknownName(t *testing.T) {
-	// With no ~/.starkite/config.yaml present, an unknown profile name
-	// should surface the "missing security file" friendly error pointing
-	// at the built-ins.
-	_, err := LoadProfile("nope-this-name-does-not-exist")
-	if err == nil {
-		t.Fatal("expected error for unknown profile, got nil")
-	}
-	msg := err.Error()
-	if !strings.Contains(msg, "unknown profile") && !strings.Contains(msg, "not found") {
-		t.Errorf("error message should mention 'unknown profile' or 'not found': %v", err)
-	}
-}
-
-func TestDecodeProfile_cwdExpansion(t *testing.T) {
 	cwd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
+	m := mountByDest(p)
+
+	// $HOME and /usr exist everywhere this test runs; both must be ro.
+	for _, ro := range []string{home, "/usr"} {
+		mt, ok := m[ro]
+		if !ok {
+			t.Fatalf("host rung must mount %s", ro)
+		}
+		if mt.Mode != MountRO {
+			t.Errorf("%s mount mode = %q, want ro (a writable $HOME is a sandbox escape)", ro, mt.Mode)
+		}
+	}
+
+	// The only rw mounts are $CWD and /tmp.
+	for _, mt := range p.Mounts {
+		if mt.Mode == MountRW && mt.Destination != cwd && mt.Destination != "/tmp" {
+			t.Errorf("unexpected rw mount %+v — host rung writes only the tree", mt)
+		}
+	}
+}
+
+// TestLadderSubsets asserts each rung is a superset of the one below:
+// every mount of the lower rung is present identically in the higher one.
+func TestLadderSubsets(t *testing.T) {
+	opaque, err := LoadProfile(ProfileOpaque)
+	if err != nil {
+		t.Fatal(err)
+	}
+	net, err := LoadProfile(ProfileNetAccess)
+	if err != nil {
+		t.Fatal(err)
+	}
+	host, err := LoadProfile(ProfileHost)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	assertSuperset := func(lo, hi Profile) {
+		t.Helper()
+		him := mountByDest(hi)
+		for _, m := range lo.Mounts {
+			hm, ok := him[m.Destination]
+			if !ok {
+				t.Errorf("%s ⊄ %s: mount %q missing in %s", lo.Name, hi.Name, m.Destination, hi.Name)
+				continue
+			}
+			if hm != m {
+				t.Errorf("%s ⊄ %s: mount %q differs: %+v vs %+v", lo.Name, hi.Name, m.Destination, m, hm)
+			}
+		}
+	}
+	assertSuperset(opaque, net)
+	assertSuperset(net, host)
+
+	if opaque.Network != NetworkLoopback || net.Network != NetworkHost || host.Network != NetworkHost {
+		t.Errorf("network ladder wrong: %s/%s/%s", opaque.Network, net.Network, host.Network)
+	}
+}
+
+func TestLoadProfile_defaultReserved(t *testing.T) {
+	t.Run("no config: bare default falls back to opaque", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		t.Chdir(t.TempDir())
+
+		p, err := LoadProfile(DefaultProfileName)
+		if err != nil {
+			t.Fatalf("LoadProfile(default): %v", err)
+		}
+		if p.Name != ProfileOpaque || p.Network != NetworkLoopback {
+			t.Errorf("fallback = %q/%q, want opaque/loopback", p.Name, p.Network)
+		}
+	})
+
+	t.Run("config default as alias", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		work := t.TempDir()
+		writeFile(t, filepath.Join(work, "config.yaml"), "sandbox:\n  default: net-access\n")
+		t.Chdir(work)
+
+		p, err := LoadProfile(DefaultProfileName)
+		if err != nil {
+			t.Fatalf("LoadProfile(default): %v", err)
+		}
+		if p.Name != DefaultProfileName || p.Network != NetworkHost {
+			t.Errorf("default alias = %q/%q, want default/host", p.Name, p.Network)
+		}
+	})
+
+	t.Run("config default as full spec", func(t *testing.T) {
+		home := t.TempDir()
+		t.Setenv("HOME", home)
+		work := t.TempDir()
+		writeFile(t, filepath.Join(work, "config.yaml"), `
+sandbox:
+  default:
+    network: loopback
+    mounts:
+      - destination: /tmp
+        type: tmpfs
+`)
+		t.Chdir(work)
+
+		p, err := LoadProfile(DefaultProfileName)
+		if err != nil {
+			t.Fatalf("LoadProfile(default): %v", err)
+		}
+		if p.Network != NetworkLoopback || len(p.Mounts) != 1 {
+			t.Errorf("default spec = %+v", p)
+		}
+	})
+}
+
+func TestProfileAlias(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	writeFile(t, filepath.Join(work, "config.yaml"), `
+sandbox:
+  sealed: opaque
+  bad: no-such-rung
+  chained: default
+`)
+	t.Chdir(work)
+
+	t.Run("alias expands to its rung, keeps the selected name", func(t *testing.T) {
+		p, err := LoadProfile("sealed")
+		if err != nil {
+			t.Fatalf("LoadProfile(sealed): %v", err)
+		}
+		if p.Name != "sealed" || p.Network != NetworkLoopback {
+			t.Errorf("alias = %q/%q, want sealed/loopback", p.Name, p.Network)
+		}
+	})
+
+	t.Run("alias to unknown rung errors", func(t *testing.T) {
+		if _, err := LoadProfile("bad"); err == nil || !strings.Contains(err.Error(), "must name a built-in") {
+			t.Errorf("alias to non-rung should error, got %v", err)
+		}
+	})
+
+	t.Run("alias to reserved default errors", func(t *testing.T) {
+		if _, err := LoadProfile("chained"); err == nil {
+			t.Error("alias chains are not allowed")
+		}
+	})
+}
+
+func TestBuiltinShadowing(t *testing.T) {
+	// A config profile named after a rung is ignored: built-ins win.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	writeFile(t, filepath.Join(work, "config.yaml"), `
+sandbox:
+  opaque:
+    network: host
+`)
+	t.Chdir(work)
+
+	p, err := LoadProfile(ProfileOpaque)
+	if err != nil {
+		t.Fatalf("LoadProfile(opaque): %v", err)
+	}
+	if p.Network != NetworkLoopback {
+		t.Errorf("built-in opaque shadowed by config: Network = %q", p.Network)
+	}
+}
+
+func TestUserProfile_missingSourceErrors(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	writeFile(t, filepath.Join(work, "config.yaml"), `
+sandbox:
+  typo:
+    network: host
+    mounts:
+      - source: /nonexistent-path-for-test-xyz
+        destination: /data
+`)
+	t.Chdir(work)
+
+	_, err := LoadProfile("typo")
+	if err == nil || !strings.Contains(err.Error(), "does not exist on the host") {
+		t.Errorf("missing bind source should fail loudly, got %v", err)
+	}
+}
+
+func TestOldRungNamesError(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+
+	if _, err := LoadProfile("strict"); err == nil {
+		t.Error("removed name \"strict\" should no longer resolve")
+	}
+}
+
+func TestDecodeProfile_pathExpansion(t *testing.T) {
+	cwd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
 	yaml := `
 network: host
 mounts:
   - source: $CWD
     destination: $CWD/sub
     mode: rw
+  - source: $HOME/.kube
+    destination: /etc/kube
 `
 	p, err := decodeProfile("test", []byte(yaml), "")
 	if err != nil {
 		t.Fatalf("decodeProfile: %v", err)
 	}
-	if len(p.Mounts) != 1 {
-		t.Fatalf("want 1 mount, got %d", len(p.Mounts))
+	if p.Mounts[0].Source != cwd || p.Mounts[0].Destination != filepath.Join(cwd, "sub") {
+		t.Errorf("$CWD expansion wrong: %+v", p.Mounts[0])
 	}
-	m := p.Mounts[0]
-	if m.Source != cwd {
-		t.Errorf("Source = %q, want %q", m.Source, cwd)
-	}
-	wantDest := filepath.Join(cwd, "sub")
-	if m.Destination != wantDest {
-		t.Errorf("Destination = %q, want %q", m.Destination, wantDest)
+	if p.Mounts[1].Source != filepath.Join(home, ".kube") {
+		t.Errorf("$HOME expansion wrong: %+v", p.Mounts[1])
 	}
 }
 
@@ -143,6 +343,11 @@ func TestDecodeProfile_validation(t *testing.T) {
 			wantErr: "unknown network mode",
 		},
 		{
+			name:    "removed network value sandbox-loopback",
+			yaml:    "network: sandbox-loopback",
+			wantErr: "unknown network mode",
+		},
+		{
 			name: "tmpfs with source",
 			yaml: `
 network: host
@@ -154,15 +359,15 @@ mounts:
 			wantErr: "tmpfs mount must not specify source",
 		},
 		{
-			name: "tmpfs with optional",
+			name: "removed optional field rejected",
 			yaml: `
 network: host
 mounts:
-  - destination: /tmp
-    type: tmpfs
+  - source: /etc/hosts
+    destination: /etc/hosts
     optional: true
 `,
-			wantErr: "tmpfs mount cannot be optional",
+			wantErr: "field optional not found",
 		},
 		{
 			name: "bind without source",
@@ -237,48 +442,6 @@ unexpected: 42
 	}
 }
 
-func TestLoadProfile_fromNamed_userConfig(t *testing.T) {
-	// Stage a fake home dir with a config.yaml; redirect HOME so the
-	// loader picks it up.
-	home := t.TempDir()
-	t.Setenv("HOME", home)
-	cfgDir := filepath.Join(home, ".starkite")
-	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	yaml := `
-config:
-  environment: dev
-permissions:
-  ci:
-    allow: [fs.read]
-sandbox:
-  hometest:
-    network: host
-    mounts: [{destination: /tmp, type: tmpfs}]
-`
-	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(strings.TrimLeft(yaml, "\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	p, err := LoadProfile("hometest")
-	if err != nil {
-		t.Fatalf("LoadProfile(hometest): %v", err)
-	}
-	if p.Name != "hometest" || p.Network != NetworkHost {
-		t.Errorf("got %+v, want Name=hometest Network=host", p)
-	}
-
-	// Unknown name in same file → error mentions defined names.
-	_, err = LoadProfile("missing")
-	if err == nil {
-		t.Fatal("expected error for unknown profile in config.yaml")
-	}
-	if !strings.Contains(err.Error(), "hometest") {
-		t.Errorf("error should list defined profiles: %v", err)
-	}
-}
-
 func TestDecodeProfile_defaults(t *testing.T) {
 	yaml := `
 network: host
@@ -308,10 +471,51 @@ func TestLoadProfile_RemovedSyntaxesError(t *testing.T) {
 	// unknown profile names.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
 	for _, v := range []string{"./myprofile.yaml", "profiles.yaml#k8s", "/abs/p.yml"} {
 		if _, err := LoadProfile(v); err == nil {
 			t.Errorf("LoadProfile(%q) should error: not a profile name", v)
 		}
+	}
+}
+
+func TestLoadProfile_fromNamed_userConfig(t *testing.T) {
+	// A profile in ~/.starkite/config.yaml resolves; the file's other
+	// sections (config:, permissions:) are tolerated.
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Chdir(t.TempDir())
+	cfgDir := filepath.Join(home, ".starkite")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(cfgDir, "config.yaml"), `
+config:
+  environment: dev
+permissions:
+  ci:
+    allow: [fs.read]
+sandbox:
+  hometest:
+    network: host
+    mounts: [{destination: /tmp, type: tmpfs}]
+`)
+
+	p, err := LoadProfile("hometest")
+	if err != nil {
+		t.Fatalf("LoadProfile(hometest): %v", err)
+	}
+	if p.Name != "hometest" || p.Network != NetworkHost {
+		t.Errorf("got %+v, want Name=hometest Network=host", p)
+	}
+
+	// Unknown name in same file → error mentions defined names.
+	_, err = LoadProfile("missing")
+	if err == nil {
+		t.Fatal("expected error for unknown profile in config.yaml")
+	}
+	if !strings.Contains(err.Error(), "hometest") {
+		t.Errorf("error should list defined profiles: %v", err)
 	}
 }
 
@@ -324,26 +528,20 @@ func TestLoadProfile_fromNamed_projectLocalConfig(t *testing.T) {
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	homeYAML := `
+	writeFile(t, filepath.Join(cfgDir, "config.yaml"), `
 sandbox:
   shared:
-    network: sandbox-loopback
-`
-	if err := os.WriteFile(filepath.Join(cfgDir, "config.yaml"), []byte(strings.TrimLeft(homeYAML, "\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
+    network: loopback
+`)
 
 	work := t.TempDir()
-	localYAML := `
+	writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
   shared:
     network: host
   localonly:
     network: host
-`
-	if err := os.WriteFile(filepath.Join(work, "config.yaml"), []byte(strings.TrimLeft(localYAML, "\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
+`)
 	t.Chdir(work)
 
 	p, err := LoadProfile("shared")
@@ -365,5 +563,12 @@ sandbox:
 	}
 	if !strings.Contains(err.Error(), "shared") {
 		t.Errorf("error should list defined profiles: %v", err)
+	}
+}
+
+func writeFile(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(strings.TrimLeft(content, "\n")), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

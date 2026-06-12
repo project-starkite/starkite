@@ -200,7 +200,7 @@ db.driver    # → "sqlite"
 | `allow-fs` | `sql.open(sqlite:**)` — SQLite is file I/O |
 | `allow-net` | adds `sql.open(postgres:**)`, `sql.open(mysql:**)` — networked databases |
 
-Connection methods inherit the capability from `open`. DSN passwords are redacted in permission patterns and error messages. Under `--sandbox=strict`, network drivers are blocked by network isolation while a SQLite database in `$CWD` works.
+Connection methods inherit the capability from `open`. DSN passwords are redacted in permission patterns and error messages. Under `--sandbox=opaque`, network drivers are blocked by network isolation while a SQLite database in `$CWD` works.
 
 ## Error handling
 

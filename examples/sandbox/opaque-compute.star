@@ -1,5 +1,5 @@
 #!/usr/bin/env kite
-# strict-compute.star — pure compute over project files inside the strict
+# opaque-compute.star — pure compute over project files inside the strict
 # sandbox profile. No outbound network, no DNS, no TLS roots.
 #
 # Demonstrates two strict-profile properties:
@@ -10,8 +10,8 @@
 #      involvement.
 #
 # Run:
-#   kite strict-compute.star --sandbox=strict --permissions=allow-local
-#   STARKITE_SECURITY_SANDBOX=strict ./strict-compute.star --permissions=allow-local
+#   kite ./opaque-compute.star --sandbox=opaque --permissions=allow-local
+#   STARKITE_SECURITY_SANDBOX=opaque ./opaque-compute.star --permissions=allow-local
 
 # (1) Compute over project files.
 def transform_items(values):
