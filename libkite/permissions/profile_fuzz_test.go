@@ -14,8 +14,9 @@ func FuzzResolve(f *testing.F) {
 		f.Add(s)
 	}
 	defined := map[string]ProfileSpec{
-		"default": {Alias: ProfileAllowFS},
+		"default": {Base: ProfileAllowFS},
 		"team":    {Allow: []string{"fs.read"}},
+		"carved":  {Base: ProfileAllowAll, Deny: []string{"os.exec"}},
 	}
 	f.Fuzz(func(t *testing.T, value string) {
 		_, _ = Resolve(value, defined)

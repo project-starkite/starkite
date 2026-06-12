@@ -34,24 +34,26 @@ type securityFile struct {
 	Permissions map[string]any `yaml:"permissions,omitempty"`
 }
 
-// profileSpec is one value in config.yaml's "sandbox:" map. Two YAML forms
-// are accepted:
+// profileSpec is one value in config.yaml's "sandbox:" map. Three YAML
+// forms are accepted:
 //
-//	ci: net-access            # scalar — alias to a built-in rung
-//	ci: { network: ..., ... } # map — a full profile body
+//	ci: net-access                      # scalar — shorthand for {base: net-access}
+//	ci: { network: ..., mounts: ... }   # self-contained body
+//	ci: { base: host, mounts: ... }     # composed body — start from a rung
 //
 // The map form is captured as a raw node and re-decoded strictly in
 // profileFromSpec, so unknown fields inside a profile error loudly even
 // though the outer config file is parsed leniently.
 type profileSpec struct {
-	Alias string
-	Node  yaml.Node
+	Base string
+	Node yaml.Node
 }
 
-// UnmarshalYAML accepts either a scalar built-in alias or a profile map.
+// UnmarshalYAML accepts either a scalar (shorthand for {base: <rung>}) or a
+// profile map.
 func (ps *profileSpec) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.ScalarNode {
-		return node.Decode(&ps.Alias)
+		return node.Decode(&ps.Base)
 	}
 	ps.Node = *node
 	return nil
@@ -59,9 +61,11 @@ func (ps *profileSpec) UnmarshalYAML(node *yaml.Node) error {
 
 // profileBody is the strict YAML schema of a full profile definition. The
 // shape matches what users write under config.yaml's "sandbox:" map, so
-// the same decoder parses both embedded and user-defined profiles.
+// the same decoder parses both embedded and user-defined profiles. Base,
+// when set, names a built-in rung the body composes on top of.
 type profileBody struct {
-	Network string      `yaml:"network"`
+	Base    string      `yaml:"base,omitempty"`
+	Network string      `yaml:"network,omitempty"`
 	Mounts  []mountSpec `yaml:"mounts,omitempty"`
 }
 
@@ -111,6 +115,9 @@ func decodeProfile(name string, data []byte, origin string) (Profile, error) {
 	dec.KnownFields(true)
 	if err := dec.Decode(&body); err != nil {
 		return Profile{}, fmt.Errorf("sandbox: profile %q: %w", name, errWithOrigin(err, origin))
+	}
+	if body.Base != "" {
+		return composeProfile(name, body, origin)
 	}
 
 	cwd, err := os.Getwd()
@@ -194,6 +201,78 @@ func decodeMount(m mountSpec, cwd, home string) (Mount, error) {
 	}
 
 	return out, nil
+}
+
+// composeProfile builds a profile on top of a built-in rung: the rung's
+// network unless the body overrides it, and the rung's mounts with the
+// body's mounts appended — a body mount replaces a rung mount with the
+// same destination. Composition can widen OR narrow a rung (e.g. remount
+// $HOME rw over host's ro); the result is the author's responsibility,
+// like any user profile.
+func composeProfile(name string, body profileBody, origin string) (Profile, error) {
+	switch body.Base {
+	case ProfileOpaque, ProfileNetAccess, ProfileHost:
+	default:
+		return Profile{}, fmt.Errorf(
+			"sandbox: profile %q%s: base %q must name a built-in profile (%s, %s, %s)",
+			name, fmtOrigin(origin), body.Base, ProfileOpaque, ProfileNetAccess, ProfileHost)
+	}
+	base, err := loadBuiltin(body.Base)
+	if err != nil {
+		return Profile{}, err
+	}
+
+	p := Profile{Name: name, Network: base.Network}
+	switch body.Network {
+	case "":
+	case string(NetworkHost):
+		p.Network = NetworkHost
+	case string(NetworkLoopback):
+		p.Network = NetworkLoopback
+	default:
+		return Profile{}, fmt.Errorf("sandbox: profile %q%s: unknown network mode %q (want %q or %q)",
+			name, fmtOrigin(origin), body.Network, NetworkHost, NetworkLoopback)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return Profile{}, fmt.Errorf("sandbox: profile %q: getwd: %w", name, err)
+	}
+	home, _ := os.UserHomeDir()
+
+	var added []Mount
+	for i, m := range body.Mounts {
+		mount, err := decodeMount(m, cwd, home)
+		if err != nil {
+			return Profile{}, fmt.Errorf("sandbox: profile %q%s: mount[%d]: %w", name, fmtOrigin(origin), i, err)
+		}
+		added = append(added, mount)
+	}
+	// User-authored mounts must exist on the host (the rung's own mounts
+	// were already filtered at loadBuiltin).
+	if err := validateSources(Profile{Name: name, Mounts: added}, origin); err != nil {
+		return Profile{}, err
+	}
+
+	override := make(map[string]int, len(added))
+	for i, m := range added {
+		override[m.Destination] = i
+	}
+	used := make(map[string]bool, len(added))
+	for _, m := range base.Mounts {
+		if i, ok := override[m.Destination]; ok {
+			p.Mounts = append(p.Mounts, added[i])
+			used[m.Destination] = true
+			continue
+		}
+		p.Mounts = append(p.Mounts, m)
+	}
+	for _, m := range added {
+		if !used[m.Destination] {
+			p.Mounts = append(p.Mounts, m)
+		}
+	}
+	return p, nil
 }
 
 // validateSources checks that every bind-mount source exists on the host.
@@ -314,23 +393,12 @@ func readSecurityFile(path string) (*securityFile, error) {
 }
 
 // profileFromSpec builds a Profile from one "sandbox:" map value. A scalar
-// alias resolves to its built-in rung; a map body is re-decoded strictly
-// (unknown fields error) and its bind sources must exist on the host.
+// (shorthand for {base: <rung>}) resolves to its built-in rung; a map body
+// is re-decoded strictly (unknown fields error), composed on its base when
+// one is named, and its own bind sources must exist on the host.
 func profileFromSpec(name string, spec profileSpec, origin string) (Profile, error) {
-	if spec.Alias != "" {
-		switch spec.Alias {
-		case ProfileOpaque, ProfileNetAccess, ProfileHost:
-			p, err := loadBuiltin(spec.Alias)
-			if err != nil {
-				return Profile{}, err
-			}
-			p.Name = name
-			return p, nil
-		default:
-			return Profile{}, fmt.Errorf(
-				"sandbox: profile %q%s: alias %q must name a built-in profile (%s, %s, %s)",
-				name, fmtOrigin(origin), spec.Alias, ProfileOpaque, ProfileNetAccess, ProfileHost)
-		}
+	if spec.Base != "" {
+		return composeProfile(name, profileBody{Base: spec.Base}, origin)
 	}
 
 	raw, err := yaml.Marshal(&spec.Node)
@@ -341,6 +409,8 @@ func profileFromSpec(name string, spec profileSpec, origin string) (Profile, err
 	if err != nil {
 		return Profile{}, err
 	}
+	// Composed profiles re-validate harmlessly: the base's mounts were
+	// filtered to existing sources and the additions already validated.
 	if err := validateSources(p, origin); err != nil {
 		return Profile{}, err
 	}

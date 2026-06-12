@@ -572,3 +572,150 @@ func writeFile(t *testing.T, path, content string) {
 		t.Fatal(err)
 	}
 }
+
+func TestComposeProfile_base(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	cache := filepath.Join(work, "cache")
+	if err := os.MkdirAll(cache, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFile(t, filepath.Join(work, "config.yaml"), `
+sandbox:
+  dev:
+    base: opaque
+    mounts:
+      - source: $CWD/cache
+        destination: /cache
+        mode: rw
+  widened:
+    base: opaque
+    network: host
+  scalar: opaque
+  badbase:
+    base: nope
+  badnet:
+    base: opaque
+    network: bridge
+  missing:
+    base: opaque
+    mounts:
+      - source: /nonexistent-base-add-xyz
+        destination: /x
+`)
+	t.Chdir(work)
+
+	t.Run("base + appended mount", func(t *testing.T) {
+		p, err := LoadProfile("dev")
+		if err != nil {
+			t.Fatalf("LoadProfile(dev): %v", err)
+		}
+		if p.Network != NetworkLoopback {
+			t.Errorf("network should inherit base (loopback), got %q", p.Network)
+		}
+		opaque, _ := LoadProfile(ProfileOpaque)
+		if len(p.Mounts) != len(opaque.Mounts)+1 {
+			t.Fatalf("mounts = %d, want base+1 (%+v)", len(p.Mounts), p.Mounts)
+		}
+		m := mountByDest(p)
+		add, ok := m["/cache"]
+		if !ok || add.Mode != MountRW || add.Source != filepath.Join(work, "cache") {
+			t.Errorf("appended mount = %+v", add)
+		}
+	})
+
+	t.Run("network override on a base", func(t *testing.T) {
+		p, err := LoadProfile("widened")
+		if err != nil {
+			t.Fatalf("LoadProfile(widened): %v", err)
+		}
+		if p.Network != NetworkHost {
+			t.Errorf("network = %q, want host override", p.Network)
+		}
+	})
+
+	t.Run("scalar shorthand ≡ bare base", func(t *testing.T) {
+		p, err := LoadProfile("scalar")
+		if err != nil {
+			t.Fatalf("LoadProfile(scalar): %v", err)
+		}
+		opaque, _ := LoadProfile(ProfileOpaque)
+		if p.Network != opaque.Network || len(p.Mounts) != len(opaque.Mounts) {
+			t.Errorf("scalar shorthand differs from rung: %+v", p)
+		}
+	})
+
+	t.Run("override by destination replaces the base mount", func(t *testing.T) {
+		// Narrowing/widening a base mount in place: remount $CWD ro over
+		// opaque's rw.
+		cwd, _ := os.Getwd()
+		writeFile(t, filepath.Join(work, "config2.yaml"), "")
+		writeFile(t, filepath.Join(work, "config.yaml"), `
+sandbox:
+  rotree:
+    base: opaque
+    mounts:
+      - source: $CWD
+        destination: $CWD
+        mode: ro
+`)
+		p, err := LoadProfile("rotree")
+		if err != nil {
+			t.Fatalf("LoadProfile(rotree): %v", err)
+		}
+		opaque, _ := LoadProfile(ProfileOpaque)
+		if len(p.Mounts) != len(opaque.Mounts) {
+			t.Fatalf("override should replace, not append: %d mounts", len(p.Mounts))
+		}
+		if m := mountByDest(p)[cwd]; m.Mode != MountRO {
+			t.Errorf("$CWD override = %+v, want ro", m)
+		}
+	})
+}
+
+func TestComposeProfile_errors(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+	writeFile(t, filepath.Join(work, "config.yaml"), `
+sandbox:
+  badbase:
+    base: nope
+  badnet:
+    base: opaque
+    network: bridge
+  missing:
+    base: opaque
+    mounts:
+      - source: /nonexistent-base-add-xyz
+        destination: /x
+  chain:
+    base: default
+`)
+	t.Chdir(work)
+
+	t.Run("unknown base errors", func(t *testing.T) {
+		if _, err := LoadProfile("badbase"); err == nil || !strings.Contains(err.Error(), "must name a built-in") {
+			t.Errorf("unknown base should error, got %v", err)
+		}
+	})
+
+	t.Run("bad network on a base errors", func(t *testing.T) {
+		if _, err := LoadProfile("badnet"); err == nil || !strings.Contains(err.Error(), "unknown network mode") {
+			t.Errorf("bad network should error, got %v", err)
+		}
+	})
+
+	t.Run("missing source in additions errors loudly", func(t *testing.T) {
+		if _, err := LoadProfile("missing"); err == nil || !strings.Contains(err.Error(), "does not exist on the host") {
+			t.Errorf("missing addition source should error, got %v", err)
+		}
+	})
+
+	t.Run("base cannot chain to reserved default", func(t *testing.T) {
+		if _, err := LoadProfile("chain"); err == nil {
+			t.Error("base: default must error (rungs only)")
+		}
+	})
+}

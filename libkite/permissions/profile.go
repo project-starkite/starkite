@@ -40,33 +40,36 @@ const DefaultProfileName = "default"
 
 // ProfileSpec is a single permissions profile defined in config.yaml.
 //
-// Two YAML forms are accepted:
+// Three YAML forms are accepted:
 //
-//	ci: { allow: [...], deny: [...] }   # full spec — allow-list only; a
-//	                                    # capability is granted only if it
-//	                                    # appears in Allow and not in Deny
-//	default: allow-fs                   # alias — the profile is the named
-//	                                    # built-in
+//	ci: { allow: [...], deny: [...] }   # self-contained spec — allow-list
+//	                                    # only; a capability is granted only
+//	                                    # if it appears in Allow and not Deny
+//	deploy:                             # composed spec — start from a
+//	  base: allow-fs                    # built-in profile, append rules
+//	  allow: [k8s.write]
+//	  deny: [fs.delete]
+//	default: allow-fs                   # scalar — shorthand for
+//	                                    # { base: allow-fs }
 type ProfileSpec struct {
+	Base  string   `yaml:"base,omitempty"`
 	Allow []string `yaml:"allow,omitempty"`
 	Deny  []string `yaml:"deny,omitempty"`
-
-	// Alias names a built-in profile when the YAML value is a scalar string
-	// instead of an allow/deny map. Mutually exclusive with Allow/Deny.
-	Alias string `yaml:"-"`
 }
 
-// UnmarshalYAML accepts either a scalar built-in alias or an allow/deny map.
+// UnmarshalYAML accepts either a scalar (shorthand for {base: <name>}) or a
+// spec map.
 func (p *ProfileSpec) UnmarshalYAML(node *yaml.Node) error {
 	if node.Kind == yaml.ScalarNode {
-		var alias string
-		if err := node.Decode(&alias); err != nil {
+		var base string
+		if err := node.Decode(&base); err != nil {
 			return err
 		}
-		p.Alias = alias
+		p.Base = base
 		return nil
 	}
 	type plain struct {
+		Base  string   `yaml:"base,omitempty"`
 		Allow []string `yaml:"allow,omitempty"`
 		Deny  []string `yaml:"deny,omitempty"`
 	}
@@ -74,23 +77,40 @@ func (p *ProfileSpec) UnmarshalYAML(node *yaml.Node) error {
 	if err := node.Decode(&sp); err != nil {
 		return err
 	}
-	p.Allow, p.Deny = sp.Allow, sp.Deny
+	p.Base, p.Allow, p.Deny = sp.Base, sp.Allow, sp.Deny
 	return nil
 }
 
+// toConfig resolves the spec to a PermissionConfig. With a base, the result
+// is the built-in's rules plus the spec's appended allow/deny lists, keeping
+// the built-in's default; deny-first evaluation is unchanged, so an appended
+// deny carves an exception out of the base's allows, and a base deny cannot
+// be re-allowed.
 func (p ProfileSpec) toConfig() (*libkite.PermissionConfig, error) {
-	if p.Alias != "" {
-		cfg := builtin(p.Alias)
-		if cfg == nil {
-			return nil, fmt.Errorf("permissions: alias %q must name a built-in profile (%s)",
-				p.Alias, strings.Join(builtinProfiles, ", "))
-		}
-		return cfg, nil
+	if p.Base == "" {
+		return &libkite.PermissionConfig{
+			Allow:   p.Allow,
+			Deny:    p.Deny,
+			Default: libkite.DefaultDeny,
+		}, nil
+	}
+
+	base := builtin(p.Base)
+	if base == nil {
+		return nil, fmt.Errorf("permissions: base %q must name a built-in profile (%s)",
+			p.Base, strings.Join(builtinProfiles, ", "))
+	}
+	allow, deny := base.Allow, base.Deny
+	if len(p.Allow) > 0 {
+		allow = append(append([]string{}, base.Allow...), p.Allow...)
+	}
+	if len(p.Deny) > 0 {
+		deny = append(append([]string{}, base.Deny...), p.Deny...)
 	}
 	return &libkite.PermissionConfig{
-		Allow:   p.Allow,
-		Deny:    p.Deny,
-		Default: libkite.DefaultDeny,
+		Allow:   allow,
+		Deny:    deny,
+		Default: base.Default,
 	}, nil
 }
 

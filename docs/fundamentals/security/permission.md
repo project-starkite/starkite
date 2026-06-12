@@ -96,18 +96,32 @@ When the following script is executed without a specified permission, Starkite w
 kite ./build.star
 ```
 
-### Built-in profile aliasing
+### Composing from a base
 
-It is possible to use a rule alias by specifying the name of a built-in rule instead of defining a rule map. This makes it convenient to setup default rules using built-in permission rules:
+A profile can start from a built-in profile and append rules. `base` names the built-in; `allow` and `deny` extend its lists, and the built-in's default behavior is kept. Deny-first evaluation is unchanged: an appended `deny` carves an exception out of the base's grants, and a base `deny` cannot be re-allowed.
 
 ```yaml
 # ~/.starkite/config.yaml
 permissions:
-  default: allow-fs        # unflagged runs get the allow-fs ceiling
+  deploy:
+    base: allow-fs
+    allow: ["k8s.write", "os.exec($CWD/**)"]
+    deny: ["fs.delete"]
+  almost-everything:
+    base: allow-all
+    deny: ["os.exec"]        # everything except process execution
+```
+
+A profile whose value is a bare name is shorthand for `base` with no additions — convenient for setting the implicit default from a built-in:
+
+```yaml
+# ~/.starkite/config.yaml
+permissions:
+  default: allow-fs        # = { base: allow-fs }; unflagged runs get this ceiling
   everything: allow-all    # selectable as --permissions=everything
 ```
 
-Note that you can only alias built-in profile names only.
+`base` (and the bare-name shorthand) accepts built-in profile names only — profiles cannot compose on other config profiles.
 
 ## Permission rule grammar
 

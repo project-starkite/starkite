@@ -305,6 +305,9 @@ permissions:
   runner:
     allow: ["os.exec"]
   everything: allow-all
+  carved:
+    base: allow-all
+    deny: ["os.exec"]
 PROF
 
 if HOME="$PROFHOME" $KITE exec 'print(exec("echo profiled"))' --permissions=runner 2>&1 | grep -q "profiled"; then
@@ -323,6 +326,19 @@ if HOME="$PROFHOME" $KITE exec 'print(exec("echo aliased"))' --permissions=every
     pass "alias profile (everything: allow-all) works"
 else
     fail "alias profile (everything: allow-all) works"
+fi
+
+# base composition: allow-all minus os.exec — exec denied, fs read allowed.
+if HOME="$PROFHOME" $KITE exec 'exec("echo nope")' --permissions=carved 2>&1 | grep -q "permission denied"; then
+    pass "base-composed profile denies the carved capability"
+else
+    fail "base-composed profile denies the carved capability"
+fi
+
+if HOME="$PROFHOME" $KITE exec 'print(read_text("README.md")[:3])' --permissions=carved 2>&1 | grep -qv "permission denied"; then
+    pass "base-composed profile keeps the base grants"
+else
+    fail "base-composed profile keeps the base grants"
 fi
 
 # Removed syntaxes error as unknown profiles.

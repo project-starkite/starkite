@@ -141,12 +141,18 @@ Or with GNU `env -S` (Linux):
 
 ### Defining a named profile
 
-A profile value is either a full spec or a **scalar alias** to a built-in rung:
+A profile value takes one of three forms — a full spec, a composition on a built-in rung via `base`, or a bare rung name (shorthand for `base` with no additions):
 
 ```yaml
 # ~/.starkite/config.yaml
 sandbox:
-  default: net-access          # bare --sandbox now selects net-access on this machine
+  default: net-access          # = { base: net-access }; bare --sandbox selects this
+  dev:
+    base: host                 # start from the host rung…
+    mounts:
+      - source: $HOME/.cache
+        destination: $HOME/.cache
+        mode: rw               # …and add a writable cache
   k8s-deploy:
     network: host
     mounts:
@@ -161,17 +167,20 @@ sandbox:
 ```
 
 ```bash
-kite ./deploy.star --sandbox=k8s-deploy
+kite ./deploy.star --sandbox=dev
 STARKITE_SECURITY_SANDBOX=k8s-deploy ./deploy.star
 ```
 
-The profile named `default` is reserved: it is what a bare `--sandbox` selects. An alias must name a built-in rung; built-in rung names cannot be redefined.
+With a `base`, `network` is optional (the rung's mode applies unless overridden) and `mounts` append — a mount with the same `destination` as a rung mount replaces it. Replacement can widen a rung (for example remounting `$HOME` rw over `host`'s ro); the `$HOME`-write escape warning above applies to composed profiles exactly as to hand-written ones.
+
+The profile named `default` is reserved: it is what a bare `--sandbox` selects. `base` (and the bare-name shorthand) must name a built-in rung; built-in rung names cannot be redefined.
 
 ### Schema
 
 | Field | Required | Allowed values | Notes |
 |---|---|---|---|
-| `network` | yes | `host`, `loopback` | `host` uses the host network. `loopback` is an isolated, loopback-only network inside the sandbox — no egress. |
+| `base` | no | `opaque`, `net-access`, `host` | Compose on a built-in rung: its network unless overridden, its mounts plus this profile's (same `destination` replaces). |
+| `network` | yes (no with `base`) | `host`, `loopback` | `host` uses the host network. `loopback` is an isolated, loopback-only network inside the sandbox — no egress. |
 | `mounts[].source` | for `bind` | absolute path, or `$CWD` / `$CWD/sub` / `$HOME` / `$HOME/sub` | Must exist at sandbox start; a missing path is an error. |
 | `mounts[].destination` | yes | absolute path | Where the mount appears inside the sandbox. |
 | `mounts[].type` | no (default `bind`) | `bind`, `tmpfs` | `tmpfs` takes no `source`. |

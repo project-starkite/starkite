@@ -97,8 +97,8 @@ A var-file is not a config file: it does not use the three-section schema below.
 | Section | Purpose |
 |---|---|
 | `config` | Arbitrary configuration: runtime settings and user variables |
-| `permissions` | Named permission profiles, selectable with `--permissions=<name>`; a profile named `default` becomes the implicit profile when no flag is given. See [Permission](security/permission.md#custom-permission-profiles). |
-| `sandbox` | Named sandbox profiles, selectable with `--sandbox=<name>`; a profile named `default` is what a bare `--sandbox` selects. A scalar value aliases a built-in rung. See [Sandbox](security/sandbox.md). |
+| `permissions` | Named permission profiles, selectable with `--permissions=<name>`; a profile named `default` becomes the implicit profile when no flag is given. Profiles can compose on a built-in via `base`; a bare-name value is shorthand for `base`. See [Permission](security/permission.md#custom-permission-profiles). |
+| `sandbox` | Named sandbox profiles, selectable with `--sandbox=<name>`; a profile named `default` is what a bare `--sandbox` selects. Profiles can compose on a built-in rung via `base`; a bare-name value is shorthand for `base`. See [Sandbox](security/sandbox.md). |
 
 Within `config:`, four keys are **reserved** — parsed into runtime state and **not** accessible via `var_*`:
 
@@ -134,12 +134,12 @@ config:
     team: platform
 
 permissions:
-  default: allow-fs        # alias — a built-in as the implicit profile
+  default: allow-fs        # shorthand for {base: allow-fs} — the implicit profile
   ci:
     allow: ["fs.read", "os.exec($CWD/**)"]
 
 sandbox:
-  default: net-access      # alias — bare --sandbox selects this rung
+  default: net-access      # shorthand for {base: net-access} — bare --sandbox selects this
   builder:
     network: host
     mounts:
