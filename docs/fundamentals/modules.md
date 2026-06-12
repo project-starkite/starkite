@@ -1,6 +1,6 @@
 ---
 title: "Modules"
-description: "How starkite organizes built-in capabilities — auto-loading and load()"
+description: "Understanding the Starkite module system"
 weight: 50
 ---
 

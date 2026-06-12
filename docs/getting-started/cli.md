@@ -1,6 +1,6 @@
 ---
 title: "Use the kite CLI"
-description: "Common kite subcommands run against a single hello script"
+description: "Introduction to Starkte CLI commands"
 weight: 5
 ---
 
