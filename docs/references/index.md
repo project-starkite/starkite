@@ -6,7 +6,7 @@ weight: 40
 
 # References
 
-Canonical lookup catalog. For background and onboarding, see [Getting started](../getting-started/index.md) and [Fundamentals](../fundamentals/language.md).
+When you already know what you want and just need the exact spelling — a command's flags, a module's functions, a manifest field — this is where you look it up. The reference section trades narrative for precision: each page is a terse catalog you scan rather than read. The cards below split that catalog three ways. Reach for the CLI when you need a command, the API when you need a module, and the manifest when you are writing `mod.yaml`. If you are still building a mental model rather than looking something up, start instead with [Getting started](../getting-started/index.md) and [Fundamentals](../fundamentals/language.md).
 
 <div class="grid cards" markdown>
 

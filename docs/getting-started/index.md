@@ -6,15 +6,17 @@ weight: 1
 
 # Welcome to Starkite
 
-Starkite is a scripting runtime for creating system and infrastructure automation using the Starlark language. It is designed to be safe-by-default with support for operational and agentic AI workloads. Starkite  bundles a complete set of standard library modules, a permission engine, and a sandbox system for contained script execution. 
+Starkite is a runtime for automating systems and infrastructure with scripts written in [Starlark](https://github.com/bazelbuild/starlark) — a small, deterministic dialect of Python created for [Bazel](https://bazel.build). It targets the jobs that otherwise turn into fragile shell scripts or over-privileged Python: deploying to Kubernetes, running commands over SSH, calling HTTP APIs, or giving an AI agent a controlled set of actions.
 
-## What is Starlark?
+## Why Starlark?
 
-Starkite scripts are written in [Starlark](https://github.com/bazelbuild/starlark) — a small, Python-derived language used by the [Bazel](https://bazel.build) build system. While scripts looks like Python, Starlark removes serveral key language constructs: no `while` loops, no recursion, no mutable globals after initialization, no classes, no catchable exceptions. This allows script to be more predictable and behave identically across runs.
+Starlark will look familiar — it reads like Python, so if you already know Python you can read a Starkite script on sight. The difference is what it leaves out: no `while` loops, no recursion, no classes, and no mutable global state. Those constraints are what let a script run the same way every time, which is also what makes it safe to run code you didn't write yourself.
 
-For a deep dive, see [Language](../fundamentals/language.md) and the [Starlark spec](https://github.com/bazelbuild/starlark/blob/master/spec.md).
+See [Language](../fundamentals/language.md) for the full picture, or the [Starlark spec](https://github.com/bazelbuild/starlark/blob/master/spec.md) for the language definition.
 
 ## Where next
+
+Install the runtime and write your first script. When you want to understand how the pieces fit together, the fundamentals come next.
 
 <div class="grid cards" markdown>
 

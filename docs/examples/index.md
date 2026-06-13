@@ -6,7 +6,7 @@ weight: 1
 
 # Examples
 
-Runnable `.star` scripts in the [starkite repository](https://github.com/project-starkite/starkite/tree/main/examples), grouped by domain. Each links to source you can run with `kite run <path>`.
+The fastest way to learn what a Starkite script looks like is to read one that already works. This page catalogs runnable `.star` scripts from the [starkite repository](https://github.com/project-starkite/starkite/tree/main/examples), grouped by the domain they exercise — core automation, Kubernetes, AI agents, and the sandbox. Each entry links to source you can clone and run as-is with `kite run <path>`, then adapt to your own task. Start with the card that matches what you are trying to do.
 
 <div class="grid cards" markdown>
 
@@ -46,6 +46,8 @@ Runnable `.star` scripts in the [starkite repository](https://github.com/project
 
 ## Core modules
 
+Begin where every script begins: the base modules for talking to the local system, a remote host over SSH, and the network. These examples range from a one-line hello world to a full HTTP server with middleware, so you can pick the one closest to your task and build outward.
+
 | Example | Description |
 |---------|-------------|
 | [hello.star](https://github.com/project-starkite/starkite/blob/main/examples/core/hello.star) | Hello world |
@@ -53,9 +55,11 @@ Runnable `.star` scripts in the [starkite repository](https://github.com/project
 | [remote-check.star](https://github.com/project-starkite/starkite/blob/main/examples/core/remote-check.star) | Remote server health checks via SSH |
 | [http-server/](https://github.com/project-starkite/starkite/tree/main/examples/core/http-server) | REST APIs, webhooks, middleware |
 
-See the [Core Modules guides](../core-modules/system.md) for the concepts behind these.
+When you want the concepts behind these rather than the finished scripts, read the [Core Modules guides](../core-modules/system.md).
 
 ## Kubernetes
+
+Once you are comfortable with the base modules, the `k8s` module turns those same patterns toward a cluster. The examples below run the full range of cluster work — a single deployment, a zero-downtime rolling update, a reconcile loop, an admission webhook, a complete multi-tier stack — so you can match one to the shape of your own operation.
 
 | Example | Description |
 |---------|-------------|
@@ -74,11 +78,11 @@ See the [Core Modules guides](../core-modules/system.md) for the concepts behind
 | [controller/](https://github.com/project-starkite/starkite/tree/main/examples/cloud/controller) | Controller reconcile loops |
 | [webhook/](https://github.com/project-starkite/starkite/tree/main/examples/cloud/webhook) | Validating and mutating admission webhooks |
 
-See the [Kubernetes guides](../kubernetes/connect.md) for the concepts behind these.
+For the concepts these scripts rest on — connecting to a cluster, applying manifests, watching resources — see the [Kubernetes guides](../kubernetes/connect.md).
 
 ## AI
 
-Agent and MCP patterns: [`aikite/examples/agent/`](https://github.com/project-starkite/starkite/tree/main/aikite/examples/agent).
+The `ai` and `mcp` modules let a script drive a model the same way it drives a cluster. These examples live under [`aikite/examples/agent/`](https://github.com/project-starkite/starkite/tree/main/aikite/examples/agent) and walk the common agent shapes — a run-to-completion loop, a human-in-the-loop REPL, history management for long sessions, and wrapping an external tool server over MCP.
 
 | Example | Description |
 |---------|-------------|
@@ -87,14 +91,18 @@ Agent and MCP patterns: [`aikite/examples/agent/`](https://github.com/project-st
 | [history_management.star](https://github.com/project-starkite/starkite/blob/main/aikite/examples/agent/history_management.star) | History summarization for long runs |
 | [mcp_integration.star](https://github.com/project-starkite/starkite/blob/main/aikite/examples/agent/mcp_integration.star) | Wrapping an MCP server's tools |
 
-See the [AI Support guides](../ai/agents.md) for the patterns behind these.
+To understand the agent and MCP patterns these scripts assemble, read the [AI Support guides](../ai/agents.md).
 
 ## Sandbox
 
-OS-level isolation with `--sandbox` (Linux only). See the [Sandbox guide](../fundamentals/security/sandbox.md).
+When you run code you do not fully trust, the examples above gain a second layer: `--sandbox` confines the script to OS-level isolation on Linux. These three show that layer in action — a network fetch under the default profile, offline compute over the working directory, and the sandbox composed with a permission profile for defense in depth.
 
 | Example | Description |
 |---------|-------------|
 | [netaccess-http-fetch.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/netaccess-http-fetch.star) | HTTPS fetch under the default profile |
 | [opaque-compute.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/opaque-compute.star) | Offline compute over `$CWD` |
 | [defense-in-depth.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/defense-in-depth.star) | Compose `--sandbox=opaque` with `--permissions=allow-fs` |
+
+The sandbox is Linux-only. For the isolation model and the available profiles, see the [Sandbox guide](../fundamentals/security/sandbox.md).
+</content>
+</invoke>

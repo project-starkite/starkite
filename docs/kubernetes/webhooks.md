@@ -6,13 +6,13 @@ weight: 70
 
 # Webhooks
 
-Kubernetes admission webhooks intercept API requests before resources are persisted. `k8s.webhook()` starts an HTTPS server that receives `AdmissionReview` requests, hands the resource to a Starlark handler, and returns the verdict — for validation, an `allowed: true/false` response; for mutation, an RFC 6902 JSON patch generated automatically by diffing the original and modified objects.
+Sometimes you need the cluster to enforce a rule before a resource is ever stored — reject a Deployment that asks for too many replicas, or stamp a default label onto everything that comes through. That is an admission webhook: Kubernetes pauses each API request just before it persists the resource and asks your server for a verdict. With `k8s.webhook()` you write that server as a Starlark handler instead of a Go service.
 
-Two example scripts demonstrate the validate and mutate sides. Both block the script (like `http.serve()` and `k8s.control()`).
+The mechanism is the same whichever side you write. `k8s.webhook()` starts an HTTPS server that receives `AdmissionReview` requests, hands the resource to your handler, and turns what the handler returns into a response the API server understands. A validating handler returns a verdict — `allowed: true` or `allowed: false` — and a mutating handler returns a modified object, which the webhook diffs against the original to produce the RFC 6902 JSON patch the API server applies. Like `http.serve()` and `k8s.control()`, the call blocks: it runs the server until interrupted.
 
 ## Validating webhook
 
-Reject Deployments with too many replicas or missing labels.
+Start with the side that says yes or no. A validating handler inspects the resource and decides whether to admit it — here, rejecting Deployments that ask for too many replicas or omit a required label.
 
 **Source:** [`examples/cloud/webhook/validate-replicas.star`](https://github.com/project-starkite/starkite/blob/main/examples/cloud/webhook/validate-replicas.star)
 
@@ -41,11 +41,11 @@ k8s.webhook("/validate",
 )
 ```
 
-The handler returns a dict. `{"allowed": True}` admits the request; `{"allowed": False, "message": "..."}` rejects with the message surfaced to the API client. Raising an error is treated as `allowed: False` with the error text as the message.
+The verdict is the dict the handler returns. `{"allowed": True}` admits the request; `{"allowed": False, "message": "..."}` rejects it, and the message surfaces to the API client as the reason. If the handler raises an error instead of returning, the webhook treats that as `allowed: False` with the error text as the message — a failed assertion or an unexpected `None` becomes a rejection rather than a crash.
 
 ## Mutating webhook
 
-Inject default labels into every Deployment.
+When you need to change a resource rather than judge it, switch to a mutating handler. It receives the object, edits it, and returns it — here, injecting a default label onto every Deployment.
 
 **Source:** [`examples/cloud/webhook/mutate-labels.star`](https://github.com/project-starkite/starkite/blob/main/examples/cloud/webhook/mutate-labels.star)
 
@@ -68,11 +68,11 @@ k8s.webhook("/mutate",
 )
 ```
 
-The handler receives the resource as a mutable `AttrDict`, modifies it in place using bracket notation, and returns it. The webhook diffs the original and modified objects and emits an RFC 6902 JSON patch back to the API server.
+You never construct the patch yourself. The handler receives the resource as a mutable `AttrDict`, edits it in place with bracket notation, and returns it; the webhook diffs the returned object against the original it sent in and emits the RFC 6902 JSON patch back to the API server. You describe the desired end state, and the wire format is derived for you.
 
 ## Object access
 
-Objects passed to handlers are `AttrDict` values. Reads use dot-access; writes use bracket-access:
+Both handlers work on the same kind of value, so it pays to know how it reads and writes. Objects passed to handlers are `AttrDict` values, and they expose two access styles: dot-access for reading and bracket-access for writing.
 
 ```python
 def handler(obj):
@@ -84,11 +84,11 @@ def handler(obj):
     return obj
 ```
 
-Nested AttrDicts share state with the parent — `labels = obj.metadata.labels; labels["k"] = "v"` modifies `obj` in place.
+Dot-access reaches through nested maps and list indices, so you read deep paths without quoting every key. The catch worth knowing is that nested AttrDicts share state with their parent: bind `labels = obj.metadata.labels`, write `labels["k"] = "v"`, and you have modified `obj` itself. That is what makes in-place mutation work, but it also means a handle you took for reading can change the object you return.
 
 ## Run locally
 
-Generate a self-signed cert for testing:
+Before you deploy anything, you can run a webhook on your own machine to check the logic. The one prerequisite is TLS — the API server only talks to webhooks over HTTPS — so generate a throwaway certificate and point the script at it:
 
 ```bash
 openssl req -x509 -newkey rsa:2048 \
@@ -99,11 +99,11 @@ kite run ./examples/cloud/webhook/validate-replicas.star \
     --var tls_cert=/tmp/cert.pem --var tls_key=/tmp/key.pem
 ```
 
-For production, use [cert-manager](https://cert-manager.io/) to issue and rotate certificates automatically.
+That self-signed pair is fine for a local check, but it expires in a day and no cluster will trust it in production. For a real deployment, let [cert-manager](https://cert-manager.io/) issue and rotate the certificate so you are not minting and distributing keys by hand.
 
 ## Generate deployment artifacts
 
-`kite kube gen-webhook-artifacts` produces the full set of manifests (Namespace, ServiceAccount, Deployment with TLS volume, Service `443 → 9443`, TLS Secret placeholder, and a `ValidatingWebhookConfiguration` or `MutatingWebhookConfiguration`):
+A running script is only half of a deployed webhook — the cluster also needs the Deployment, Service, Secret, and the configuration that tells the API server to call you. Rather than hand-write that stack, `kite kube gen-webhook-artifacts` produces the full set of manifests (Namespace, ServiceAccount, Deployment with TLS volume, Service `443 → 9443`, TLS Secret placeholder, and a `ValidatingWebhookConfiguration` or `MutatingWebhookConfiguration`):
 
 ```bash
 kite kube gen-webhook-artifacts \
@@ -116,11 +116,11 @@ kite kube gen-webhook-artifacts \
 kubectl apply -f deploy.yaml
 ```
 
-`--rule` keys: `group` (API group, omit for core, `*` for all), `version` (`v1`, omit for all), `resource` (resource type), `operations` (`CREATE`, `UPDATE`, `DELETE`, `CONNECT`, `*`). Repeat `--rule` for multiple match rules.
+The `--rule` flag is what scopes the webhook to the requests it should see. Its keys are `group` (API group, omit for core, `*` for all), `version` (`v1`, omit for all), `resource` (resource type), and `operations` (`CREATE`, `UPDATE`, `DELETE`, `CONNECT`, `*`). Repeat `--rule` to match more than one kind of request — a webhook with no matching rule is never called, so this is where you decide what it guards.
 
 ## Combining validation and mutation
 
-When both `validate` and `mutate` are passed to the same `k8s.webhook()` call, validation runs first; mutation is skipped if validation rejects.
+You do not need two servers to do both jobs. Pass `validate` and `mutate` to the same `k8s.webhook()` call and one server runs both: validation runs first, and if it rejects the request, mutation is skipped. The resource is never modified on its way to being denied.
 
 ## See also
 

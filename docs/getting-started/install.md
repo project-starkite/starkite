@@ -6,11 +6,11 @@ weight: 2
 
 # Install
 
-Starkite ships as a single binary. Download a prebuilt one or build from source.
+Installing Starkite gives you `kite`, the all-in-one binary that bundles every edition's capabilities — command, cloud, and AI modules in one executable. It ships as a single self-contained binary, so there is no runtime to install alongside it and nothing to configure before the first run. Pick the method that matches how you want to manage it: `go install` if you already have a Go toolchain, a prebuilt release if you want bytes you can drop on `PATH`, or a source build when you need the lean editions or a specific commit.
 
 === "Go Install"
 
-    Install with `go install`:
+    When you have Go on the machine, `go install` is the shortest path — it fetches, builds, and places the binary in your Go bin directory in one step:
 
     ```bash
     go install github.com/project-starkite/starkite/kite@latest
@@ -18,7 +18,7 @@ Starkite ships as a single binary. Download a prebuilt one or build from source.
 
 === "Download from GitHub"
 
-    Download a pre-built binary for the target platform from [GitHub Releases](https://github.com/project-starkite/starkite/releases).
+    To skip the toolchain entirely, download a prebuilt binary for your platform from [GitHub Releases](https://github.com/project-starkite/starkite/releases). Reach for the line that matches your OS and architecture:
 
     ```
     # Linux
@@ -33,7 +33,7 @@ Starkite ships as a single binary. Download a prebuilt one or build from source.
 
 === "From Source"
 
-    The repository is a Go workspace with one module per edition. `make kite` builds the default all-in-one binary into `./bin/`:
+    Build from source when you want the lean editions or a specific commit rather than the latest release. The repository is a Go workspace with one module per edition, and `make kite` compiles the default all-in-one binary into `./bin/`:
 
     ```bash
     git clone https://github.com/project-starkite/starkite.git
@@ -41,21 +41,23 @@ Starkite ships as a single binary. Download a prebuilt one or build from source.
     make kite
     ```
 
-    Move the binary onto `PATH`:
+    That leaves the binary under `./bin/`; move it onto `PATH` so you can call `kite` from anywhere:
 
     ```bash
     sudo install -m 0755 ./bin/kite /usr/local/bin/kite
     ```
 
-    To build all four editions (the lean `kitecmd` / `kitecloud` / `kiteai` alongside `kite`), run `make all`. Run `make help` to list every target.
+    If you want the space-conscious editions as well, `make all` builds all four — the lean `kitecmd` / `kitecloud` / `kiteai` alongside `kite`. Run `make help` to list every target.
 
 ## Verify
+
+However you installed it, confirm the binary runs and reports its build:
 
 ```bash
 kite version
 ```
 
-Expected output (commit and Go version differ per build):
+The output names the version followed by the commit and build details, which differ per build:
 
 ```
 kite version v0.1.0
@@ -69,11 +71,13 @@ kite version v0.1.0
 
 # Container
 
-The `kite` binary is published as an OCI container image at `ghcr.io/project-starkite/starkite`. The image is built with [ko](https://ko.build/) on a [Chainguard distroless](https://www.chainguard.dev/chainguard-images) base.
+If you would rather not place a binary on the host at all, run Starkite from a container. The `kite` binary is published as an OCI image at `ghcr.io/project-starkite/starkite`, built with [ko](https://ko.build/) on a [Chainguard distroless](https://www.chainguard.dev/chainguard-images) base — a minimal image with no shell or package manager, so the attack surface stays small.
 
 For running scripts from the image, see the [Container quickstart](#container).
 
 ## Pull the image
+
+Pull `latest` to track the newest release, or pin a tag when you need a reproducible image across machines:
 
 ```bash
 docker pull ghcr.io/project-starkite/starkite:latest

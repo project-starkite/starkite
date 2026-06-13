@@ -208,7 +208,7 @@ k8s.control(kind, reconcile=..., on_create=..., on_update=..., on_delete=...,
 | Kwarg | Type | Default | Description |
 |-------|------|---------|-------------|
 | `kind` | string | **required** (positional) | Resource kind to watch |
-| `reconcile` | callable | — | `fn(obj, meta) -> dict` — full reconcile handler. Receives the live object and metadata including event kind |
+| `reconcile` | callable | — | `fn(event, obj) -> dict` — full reconcile handler. Receives the event kind (`"ADDED"`, `"MODIFIED"`, `"DELETED"`) and the live object |
 | `on_create` / `on_update` / `on_delete` | callable | — | Per-event handlers. At least one of `reconcile`/`on_create`/`on_update`/`on_delete` is required |
 | `namespace` | string | cluster-wide | Scope the controller to a namespace |
 | `labels` | string | — | Label selector (e.g., `"app=web"`) |
@@ -228,9 +228,9 @@ Blocks until interrupted (SIGINT/SIGTERM).
 ### Example — minimal reconciler
 
 ```python
-def reconcile(obj, meta):
-    printf("reconcile %s: phase=%s\n",
-           obj["metadata"]["name"], obj["status"].get("phase", "-"))
+def reconcile(event, obj):
+    printf("reconcile %s %s: phase=%s\n",
+           event, obj["metadata"]["name"], obj["status"].get("phase", "-"))
     return {"requeue": False}
 
 k8s.control("myapp", reconcile=reconcile,
