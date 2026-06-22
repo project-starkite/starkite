@@ -1,10 +1,12 @@
 ---
-title: "Connect to cluster"
-description: "Configure cluster access for the k8s module"
+title: "Starkite and Kubernetes"
+description: "Configure cluster access and authenticate with the k8s module"
 weight: 10
 ---
 
-# Connect to cluster
+# Starkite and Kubernetes
+
+Starkite's Infrastructure pillar is built natively around Kubernetes cluster operations. Rather than offering generic cloud provider modules (for AWS, GCP, or Azure) or duplicating Terraform-style infrastructure provisioning, Starkite integrates directly with the Kubernetes API to automate workloads, manage resources, and deploy custom controllers.
 
 Before a script can list pods, apply a manifest, or roll a node, the `k8s` module needs to know which cluster to talk to. It resolves that the same way `kubectl` does: it reads `$KUBECONFIG` (or `~/.kube/config`) and uses the current context. So if `kubectl` already works on your machine, the module works too — you write cluster operations directly, with no connection step to set up first.
 

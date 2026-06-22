@@ -37,7 +37,7 @@ See [References > API](../references/api/index.md) for the full catalog. Everyth
 
 On top of base, `kitecloud` brings the Kubernetes surface. The `k8s` module exposes the full Kubernetes API as a three-tier surface (CRUD, kubectl-equivalent, type-safe constructors), plus `k8s.control()` for controller runtime, `k8s.webhook()` for admission webhooks, and `k8s.obj.crd()` for CRD scaffolding. The `kite kube` subcommand generates controller and webhook artifacts from scripts.
 
-See [Kubernetes](../kubernetes/connect.md) for the working guides.
+See [Infrastructure](../infra/kubernetes.md) for the working guides.
 
 ## What `kiteai` adds
 

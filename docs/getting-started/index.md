@@ -14,7 +14,7 @@ Starlark will look familiar — it reads like Python, so if you already know Pyt
 
 See [Language](../fundamentals/language.md) for the full picture, or the [Starlark spec](https://github.com/bazelbuild/starlark/blob/master/spec.md) for the language definition.
 
-## Where next
+## Next Steps
 
 Install the runtime and write your first script. When you want to understand how the pieces fit together, the fundamentals come next.
 
@@ -51,6 +51,22 @@ Install the runtime and write your first script. When you want to understand how
     System, logging, files, JSON/YAML, SSH, HTTP.
 
     [:octicons-arrow-right-24: Core modules](../core-modules/system.md)
+
+-   :material-kubernetes:{ .lg .middle } __Infrastructure__
+
+    ---
+
+    Automate Kubernetes clusters: deploy resources, write controllers, and handle admission webhooks.
+
+    [:octicons-arrow-right-24: Infrastructure](../infra/kubernetes.md)
+
+-   :material-robot:{ .lg .middle } __AI Support__
+
+    ---
+
+    Build multi-turn agents, tool-calling loops, and MCP servers.
+
+    [:octicons-arrow-right-24: AI Support](../ai/agents.md)
 
 -   :material-book-open-variant:{ .lg .middle } __References__
 

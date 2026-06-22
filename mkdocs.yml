@@ -86,15 +86,11 @@ nav:
           - HTTP:
               - Clients: core-modules/http/clients.md
               - Servers: core-modules/http/servers.md
-      - Kubernetes:
-          - Connect to cluster:    kubernetes/connect.md
-          - Piping to kubectl:     kubernetes/kubectl.md
-          - Retrieving objects:    kubernetes/retrieving.md
-          - Object representation: kubernetes/objects.md
-          - Deploying resources:   kubernetes/deploying.md
-          - Controller loops:      kubernetes/controllers.md
-          - Admission webhooks:    kubernetes/webhooks.md
-      - AI Support:
+      - Infrastructure:
+          - Starkite and Kubernetes: infra/kubernetes.md
+          - Operating a cluster:     infra/operations.md
+          - Controlling a cluster:   infra/controllers.md
+      - AI:
           - Building agents:       ai/agents.md
           - Creating MCP servers:  ai/mcp.md
           - CLI tool provider:     ai/cli-tool.md

@@ -78,7 +78,7 @@ Once you are comfortable with the base modules, the `k8s` module turns those sam
 | [controller/](https://github.com/project-starkite/starkite/tree/main/examples/cloud/controller) | Controller reconcile loops |
 | [webhook/](https://github.com/project-starkite/starkite/tree/main/examples/cloud/webhook) | Validating and mutating admission webhooks |
 
-For the concepts these scripts rest on — connecting to a cluster, applying manifests, watching resources — see the [Kubernetes guides](../kubernetes/connect.md).
+For the concepts these scripts rest on — connecting to a cluster, applying manifests, watching resources — see the [Kubernetes guides](../infra/kubernetes.md).
 
 ## AI
 
