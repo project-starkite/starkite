@@ -2,6 +2,7 @@
 title: "os"
 description: "Environment, process info, and command execution"
 weight: 1
+keywords: [os, environment, process, exec, command, subprocess, shell, chdir, env, exit]
 ---
 
 The `os` module provides access to environment variables, process information, and command execution.

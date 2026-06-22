@@ -3,6 +3,7 @@ title: "ai"
 description: "Multi-provider LLM client with chat, tools, and agent primitives"
 weight: 28
 edition: ai
+keywords: [ai, genai, llm, generate, chat, agent, tool, gemini, anthropic, openai]
 ---
 
 !!! note "AI functionality"

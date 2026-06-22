@@ -25,7 +25,7 @@ Exactly which modules arrive this way depends on the edition you run, since each
 
 | Edition | Binary | Modules |
 |---|---|---|
-| Base | `kitecmd` | os, fs, http, ssh, json, yaml, csv, gzip, zip, base64, hash, strings, regexp, template, time, uuid, fmt, log, table, concur, retry, io, vars, runtime, inventory, test |
+| Base | `kitecmd` | os, fs, http, ssh, sql, json, yaml, csv, gzip, zip, base64, hash, strings, regexp, template, time, uuid, fmt, log, table, concur, retry, io, vars, runtime, inventory, test |
 | Cloud | `kitecloud` | base + `k8s` |
 | AI | `kiteai` | base + `ai` + `mcp` |
 | All-in-one | `kite` | base + cloud + ai |

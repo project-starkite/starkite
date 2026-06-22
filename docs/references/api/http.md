@@ -2,6 +2,7 @@
 title: "http"
 description: "HTTP client, server, and URL builder"
 weight: 3
+keywords: [http, client, server, request, response, url, get, post, serve, api]
 ---
 
 The `http` module provides HTTP client functionality, a URL builder, and an embedded HTTP server for building web services in starkite scripts.

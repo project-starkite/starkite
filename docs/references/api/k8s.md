@@ -2,6 +2,7 @@
 title: "k8s"
 description: "Kubernetes resource management (Cloud edition)"
 weight: 27
+keywords: [k8s, kubernetes, cluster, pod, deployment, service, controller, webhook, config, apply]
 ---
 
 !!! note "Cloud functionality"

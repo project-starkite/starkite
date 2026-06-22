@@ -2,6 +2,7 @@
 title: "fs"
 description: "Filesystem operations through the Path object"
 weight: 2
+keywords: [fs, filesystem, file, path, directory, read, write, mkdir, delete, glob]
 ---
 
 ## Overview

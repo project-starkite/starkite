@@ -104,5 +104,3 @@ When you run code you do not fully trust, the examples above gain a second layer
 | [defense-in-depth.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/defense-in-depth.star) | Compose `--sandbox=opaque` with `--permissions=allow-fs` |
 
 The sandbox is Linux-only. For the isolation model and the available profiles, see the [Sandbox guide](../fundamentals/security/sandbox.md).
-</content>
-</invoke>

@@ -89,7 +89,7 @@ A runtime can only call the modules its registry holds, so the registry is where
 | `libkite.NewRegistry(nil)` | empty |
 | `loader.NewDefaultRegistry(nil)` | base (27 modules) |
 | `cloudloader.NewCloudRegistry(nil)` | base + `k8s` |
-| `ailoader.NewAIRegistry(nil)` | base + `genai` + `mcp` |
+| `ailoader.NewAIRegistry(nil)` | base + `ai` + `mcp` |
 
 ### Composing module sets (strict mode)
 
@@ -348,7 +348,7 @@ That capability is not free: it pulls in `k8s.io/client-go` and its dependency t
 
 ## Adding AI/MCP support
 
-The AI registry follows the same shape, bundling `genai` and `mcp` on top of the base set so scripts can call models and MCP servers:
+The AI registry follows the same shape, bundling `ai` and `mcp` on top of the base set so scripts can call models and MCP servers:
 
 ```go
 import (
@@ -356,7 +356,7 @@ import (
     ailoader "github.com/project-starkite/starkite/aikite/loader"
 )
 
-registry := ailoader.NewAIRegistry(nil)         // base + genai + mcp
+registry := ailoader.NewAIRegistry(nil)         // base + ai + mcp
 rt, _ := libkite.NewTrusted(&libkite.Config{Registry: registry})
 ```
 
@@ -391,4 +391,4 @@ Every module you bundle is code compiled into your binary, so the registry you c
 | `libkite.New(nil)` (no registry) | none | ~5 MB |
 | `loader.NewDefaultRegistry(nil)` | 27 base | ~26 MB |
 | `cloudloader.NewCloudRegistry(nil)` | 27 + k8s | ~63 MB |
-| `ailoader.NewAIRegistry(nil)` | 27 + genai + mcp | ~92 MB |
+| `ailoader.NewAIRegistry(nil)` | 27 + ai + mcp | ~92 MB |

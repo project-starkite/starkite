@@ -74,7 +74,7 @@ Each line pulls a fact from a different corner of the system. `hostname()`, `use
 Run it the same way as before, and the values reflect your own machine:
 
 ```bash
-$ kite run ./examples/core/hello.star
+$ kite run ./hello.star
 
 Hello from starkite!
 Hostname: dev-host.local

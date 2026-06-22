@@ -1,6 +1,6 @@
 ---
 title: "Use the kite CLI"
-description: "Introduction to Starkte CLI commands"
+description: "Introduction to Starkite CLI commands"
 weight: 5
 ---
 

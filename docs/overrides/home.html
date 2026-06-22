@@ -570,11 +570,9 @@
     <div class="tx-hero">
       <div class="tx-hero__split">
         <div class="tx-hero__left">
-          <h1 class="tx-hero__headline">Scripting runtime for <span class="tx-hero__accent">awesome automation</span></h1>
+          <h1 class="tx-hero__headline">Scripting runtime for <span class="tx-hero__accent">systems and agentic automation</span></h1>
           <p class="tx-hero__subhead">
-            Create secure system and infrastructure automation scripts using the Starlark language.</p>
-          <p class="tx-hero__desc">
-            Starkite is shipped as a single static binary with near-zero setup, making it an ideal runtime for automating operational and agentic AI workloads.</p>
+            Create secure system and Kubernetes-native infrastructure automation scripts using the Starlark language.</p>
         </div>
         <div class="tx-hero__right">
           <div class="example-tabs">
@@ -585,7 +583,7 @@
 
             <div class="example-tabs__labels">
               <label for="ex-system">System</label>
-              <label for="ex-cloud">Kubernetes</label>
+              <label for="ex-cloud">Infrastructure</label>
               <label for="ex-ai">AI</label>
               <label for="ex-secure">Secure</label>
             </div>
@@ -622,6 +620,7 @@ def main():
                   <span class="terminal__title">controller.star</span>
                 </div>
                 <pre><code class="language-python">#!/usr/bin/env kite
+# Infrastructure: Kubernetes deployment controller
 
 def reconcile(event, obj):
     if obj.spec.replicas > 10:
@@ -697,7 +696,7 @@ sandbox:
       </div>
       <div class="tx-hero__ctas">
         <a href="getting-started/" class="md-button">Get Started</a>
-        <a href="kubernetes/connect/" class="md-button md-button--primary">Kubernetes</a>
+        <a href="kubernetes/connect/" class="md-button md-button--primary">Infrastructure</a>
         <a href="ai/agents/" class="md-button md-button--primary">AI Agents</a>
       </div>
     </div>
@@ -712,6 +711,7 @@ sandbox:
   <svg viewBox="0 0 24 24"><path d="M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z"/></svg>
   Quick Install
 </h2>
+<p class="section-lead">Install the <code>kite</code> binary on your local machine using your preferred setup:</p>
 <div class="install-section">
   <div class="install-tabs">
     <input type="radio" name="install-tab" id="tab-go" checked>
@@ -802,7 +802,7 @@ rolling out v1.0.0</code></pre>
 <section class="feature-section">
   <div class="feature-section__split">
     <div class="feature-section__text">
-      <p>Twenty-five built-in modules cover everyday automation: files, processes, HTTP client and server, SSH, JSON, YAML, CSV, gzip/zip, hashing, regex, templating, time, UUIDs, structured logging, retries, and concurrency. Every module ships inside the single static binary, eliminating the need for a Python venv, Node install, or external package manager.</p>
+      <p>Twenty-seven built-in modules cover everyday automation: files, processes, HTTP client and server, SSH, JSON, YAML, CSV, gzip/zip, hashing, regex, templating, time, UUIDs, structured logging, retries, and concurrency. Every module is built directly into the runtime, eliminating the need for a Python venv, Node install, or external package manager.</p>
       <a href="references/api/" class="feature-section__cta">Browse modules</a>
     </div>
     <div class="feature-section__code">
@@ -830,8 +830,8 @@ http.serve({
 <section class="feature-section">
   <div class="feature-section__split">
     <div class="feature-section__text">
-      <p>The Kubernetes API is built in across three tiers: <code>k8s.list</code>/<code>apply</code>/<code>watch</code> for direct resource control, <code>k8s.deploy</code>/<code>expose</code>/<code>rollout</code> for kubectl-equivalent verbs, and typed constructors for programmatic manifest composition. Scripts run as long-lived controllers via <code>k8s.control</code> or as admission webhooks via <code>k8s.webhook</code>. The <code>kite kube</code> subcommand generates the corresponding deployment manifests for either.</p>
-      <a href="kubernetes/connect/" class="feature-section__cta">Explore Kubernetes</a>
+      <p>Starkite's infrastructure capabilities center on native Kubernetes operations, integrating the API directly into the runtime across three tiers: <code>k8s.list</code>/<code>apply</code>/<code>watch</code> for direct resource control, <code>k8s.deploy</code>/<code>expose</code>/<code>rollout</code> for kubectl-equivalent verbs, and typed constructors for programmatic manifest composition. Scripts run as long-lived controllers via <code>k8s.control</code> or as admission webhooks via <code>k8s.webhook</code>. The <code>kite kube</code> subcommand generates the corresponding deployment manifests for either.</p>
+      <a href="kubernetes/connect/" class="feature-section__cta">Explore Infrastructure</a>
     </div>
     <div class="feature-section__code">
       <pre><code class="language-python">#!/usr/bin/env kite
@@ -860,7 +860,7 @@ k8s.webhook("/validate",
 <section class="feature-section">
   <div class="feature-section__split">
     <div class="feature-section__text">
-      <p>Two patterns support agentic workflows. Any Starlark function can be exposed as an MCP tool that external agents — Claude, Cursor, IDE assistants — invoke without glue code. Alternatively, an agent can be composed entirely in Starlark using multi-provider LLM clients (Gemini, GPT, Claude), built-in tool calling, and structured output.</p>
+      <p>To build or extend AI-native automation, Starkite supports agentic workflows through two main patterns: exposing Starlark functions as MCP tools that external agents — Claude, Cursor, IDE assistants — invoke without glue code. Alternatively, an agent can be composed entirely in Starlark using multi-provider LLM clients (Gemini, GPT, Claude), built-in tool calling, and structured output.</p>
       <a href="ai/agents/" class="feature-section__cta">Build agents</a>
     </div>
     <div class="feature-section__code">
@@ -952,7 +952,7 @@ Time:  9ms
   <h2 class="section-divider__title">Ready to Start? <em>Learn more.</em></h2>
   <div class="section-divider__ctas">
     <a href="getting-started/" class="md-button md-button--primary">Get Started</a>
-    <a href="kubernetes/connect/" class="md-button">Kubernetes</a>
+    <a href="kubernetes/connect/" class="md-button">Infrastructure</a>
     <a href="ai/agents/" class="md-button">AI Agents</a>
   </div>
 </div>

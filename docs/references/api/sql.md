@@ -2,6 +2,7 @@
 title: "sql"
 description: "SQL database connectivity for SQLite, PostgreSQL, and MySQL"
 weight: 8
+keywords: [sql, database, query, SQLite, PostgreSQL, MySQL, transaction, batch, migrate, connection]
 ---
 
 The `sql` module provides database connectivity over Go's `database/sql`. It is a factory module: `sql.open()` returns a connection used for queries, executes, and transactions.

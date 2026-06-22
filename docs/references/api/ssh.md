@@ -2,6 +2,7 @@
 title: "ssh"
 description: "Remote command execution and file transfer over SSH"
 weight: 4
+keywords: [ssh, remote, command, execution, connect, scp, transfer, file, tunnel]
 ---
 
 The `ssh` module provides remote command execution and file transfer over SSH connections.
@@ -28,9 +29,13 @@ client = ssh.config(
 | `hosts` | `list[string]` | required | Target hostnames or IPs |
 | `user` | `string` | current user | SSH username |
 | `key` | `string` | `""` | Path to private key file |
+| `key_passphrase` | `string` | `""` | Passphrase for private key |
 | `password` | `string` | `""` | SSH password (prefer keys) |
 | `port` | `int` | `22` | SSH port |
 | `timeout` | `string` | `"30s"` | Connection timeout |
+| `exec_policy` | `string` | `"concurrent"` | Execution strategy (`"concurrent"` or `"linear"`) |
+| `host_key_check` | `bool` | `true` | Verify host key against known hosts |
+| `max_retries` | `int` | `0` | Max reconnection retries |
 | `keep_alive_interval` | `string` | `"30s"` | Keep-alive interval |
 
 ## SSHClient Methods

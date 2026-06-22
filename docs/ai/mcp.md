@@ -7,7 +7,7 @@ edition: ai
 
 # Creating MCP servers
 
-The Model Context Protocol is how an MCP client — Claude Desktop, a `genai`-based agent, or any other consumer — discovers and calls tools that live outside it. The `mcp` module implements both sides of that protocol, so a starkite script can be either end of the connection. `mcp.serve()` turns a script into an MCP server, publishing its tools, resources, and prompts for a client to use; `mcp.connect()` runs the other direction, calling an existing server as a client (covered in [Building agents](agents.md#pattern-4-mcp-integration)). This page is about serving.
+The Model Context Protocol is how an MCP client — Claude Desktop, an `ai`-based agent, or any other consumer — discovers and calls tools that live outside it. The `mcp` module implements both sides of that protocol, so a starkite script can be either end of the connection. `mcp.serve()` turns a script into an MCP server, publishing its tools, resources, and prompts for a client to use; `mcp.connect()` runs the other direction, calling an existing server as a client (covered in [Building agents](agents.md#pattern-4-mcp-integration)). This page is about serving.
 
 !!! note "Needs the AI modules"
     The `mcp` module is in the default `kite` binary and the lean `kiteai` edition. See [Editions](../fundamentals/editions.md).

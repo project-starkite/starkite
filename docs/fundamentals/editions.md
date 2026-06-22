@@ -12,7 +12,7 @@ The default is **`kite`**, the all-in-one edition. It bundles every module, and 
 
 | Binary | Modules | Use when |
 |---|---|---|
-| `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | **the default** — everything in one binary |
+| `kite` | base + Kubernetes + AI/MCP (all-in-one) | **the default** — everything in one binary |
 | `kitecmd` | base only | system scripts, CI tasks, general automation |
 | `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
 | `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
@@ -29,7 +29,7 @@ The payoff is most concrete where binary size and dependency surface are themsel
 
 Whichever edition you run, you start from the same floor. Every edition includes the 27 base modules:
 
-`os`, `fs`, `fmt`, `io`, `vars`, `strings`, `regexp`, `json`, `yaml`, `csv`, `path`, `time`, `base64`, `hash`, `uuid`, `template`, `gzip`, `zip`, `log`, `concur`, `retry`, `table`, `runtime`, `ssh`, `http`, `inventory`, `test`
+`os`, `fs`, `fmt`, `io`, `vars`, `strings`, `regexp`, `json`, `yaml`, `csv`, `sql`, `time`, `base64`, `hash`, `uuid`, `template`, `gzip`, `zip`, `log`, `concur`, `retry`, `table`, `runtime`, `ssh`, `http`, `inventory`, `test`
 
 See [References > API](../references/api/index.md) for the full catalog. Everything above this floor is what each non-base edition adds.
 
@@ -41,7 +41,7 @@ See [Kubernetes](../kubernetes/connect.md) for the working guides.
 
 ## What `kiteai` adds
 
-Where `kitecloud` reaches into clusters, `kiteai` reaches into models. The `genai` module wraps Firebase Genkit Go with multi-provider chat, streaming, tools, and structured output across Anthropic, OpenAI, and Gemini. The `mcp` module provides both an MCP server (`mcp.serve()`) and a client (`mcp.connect()`) on top of the Model Context Protocol Go SDK.
+Where `kitecloud` reaches into clusters, `kiteai` reaches into models. The `ai` module wraps Firebase Genkit Go with multi-provider chat, streaming, tools, and structured output across Anthropic, OpenAI, and Gemini. The `mcp` module provides both an MCP server (`mcp.serve()`) and a client (`mcp.connect()`) on top of the Model Context Protocol Go SDK.
 
 See [AI](../ai/agents.md) for the working guides.
 

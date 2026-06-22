@@ -123,5 +123,3 @@ What comes out is a single manifest you apply with `kubectl`. When the controlle
 - [`kite kube` reference](../references/cli/kube.md) — `gen-controller-artifacts` flags
 - [Webhooks](webhooks.md) — admission webhooks built on the same blocking-server pattern
 - More controller examples: [`examples/cloud/controller/`](https://github.com/project-starkite/starkite/tree/main/examples/cloud/controller) — `configmap-sync.star` (event logging), `leader-election.star` (HA), `deploy-controller.star` (full programmatic install)
-</content>
-</invoke>
