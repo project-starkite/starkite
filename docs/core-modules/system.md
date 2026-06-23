@@ -1,92 +1,149 @@
 ---
-title: "Execute local commands"
-description: "Run shell commands and capture their output with os.exec"
+title: "System and processes"
+description: "Manage host environments, process contexts, and shell command execution with the os module"
 weight: 3
 ---
 
-# Execute local commands
+# System and processes
 
-Most automation is glue between tools you already trust, and starkite treats shelling out as a first-class way to write that glue. The script is the orchestrator: you compose `kubectl`, `helm`, `git`, `make`, and any other CLI by wrapping them in `os.exec` and reading back what they print. The `os` module gives you the two calls you need for that — one that halts the script when a command fails, and one that hands you the failure to decide what to do with.
+The `os` module manages host environments, process contexts, and shell command execution. Scripts use it to query system information (like hostname, user accounts, and process IDs), manipulate environment variables, and run external commands as sub-processes.
 
-Which one you reach for depends on how you want failure handled. `os.exec(cmd)` runs the command through `/bin/sh -c`, captures its standard output, and returns that output as a string — but a non-zero exit raises, halting the script. Use it when a failed command means the run cannot continue. `os.try_exec(cmd)` runs the same way but never raises: it returns an `ExecResult` carrying `.ok`, `.stdout`, `.stderr`, and `.code`, leaving the decision to you. Reach for it when failure is a branch in your logic rather than a dead end. Both forms pass `cmd` through the shell, so pipes, redirection, and globbing work exactly as written.
-
-**Source:** [`examples/core/sysinfo.star`](https://github.com/project-starkite/starkite/blob/main/examples/core/sysinfo.star) (excerpted)
-
-## Script
-
-The example below builds a small system report, and it leans on both variants to do it. Host facts come from the global aliases `hostname()` and `cwd()`; the OS string comes from a command whose failure should stop the report; and the disk reading comes from a command whose failure can be skipped without losing the rest:
-
-```python
-#!/usr/bin/env kite
-
-print("=" * 60)
-print("System Information Report")
-print("=" * 60)
-
-# Hostname + working directory (global aliases on the os module)
-printf("\n[Host]\n")
-printf("  Hostname:  %s\n", hostname())
-printf("  Directory: %s\n", cwd())
-
-# OS info — exec returns the command's stdout
-os_info = os.exec("uname -a")
-printf("\n[Operating System]\n")
-printf("  %s\n", os_info.strip())
-
-# Disk usage — try_exec returns an ExecResult; safe to skip if df fails
-disk = os.try_exec("df -h / | tail -1")
-if disk.ok and disk.stdout:
-    fields = disk.stdout.split()
-    printf("\n[Disk /]\n")
-    printf("  Total:     %s\n", fields[1])
-    printf("  Used:      %s (%s)\n", fields[2], fields[4])
-    printf("  Available: %s\n", fields[3])
-```
-
-The two calls show the contract in practice. `os.exec("uname -a")` returns the command's stdout straight into `os_info`, so you work with the string directly. `os.try_exec("df -h / | tail -1")` returns an `ExecResult` instead, and the script guards on `disk.ok` before touching `disk.stdout` — if `df` is missing or fails, the disk section is simply omitted and the report still prints.
-
-## Run it
-
-Run the script the same way you run any other:
-
-```bash
-kite run ./examples/core/sysinfo.star
-```
-
-The report prints each section in order, filling in whatever the commands returned on your machine:
-
-```
-============================================================
-System Information Report
-============================================================
-
-[Host]
-  Hostname:  dev-host.local
-  Directory: /home/alice/projects/starkite
-
-[Operating System]
-  Linux dev-host.local 6.5.0-generic #1 SMP ...
-
-[Disk /]
-  Total:     466Gi
-  Used:      8.7Gi (3%)
-  Available: 336Gi
-```
-
-The host-specific values differ from machine to machine, but the structure holds: the OS line came from `os.exec`, and the disk block appeared only because `try_exec` reported success.
-
-## What's happening
-
-Two details are worth keeping in mind as you adapt this:
-
-- `os.exec(cmd)` raises on non-zero exit, so use it only when a failed command should halt the script. `os.try_exec(cmd)` returns an `ExecResult` with `.ok`, `.stdout`, `.stderr`, and `.code` instead of halting, so use it when you want to inspect the outcome and continue.
-- `os.exec` carries the trailing newline from the underlying shell command, so call `.strip()` when you need the bare value.
+Source: [sysinfo.star](https://github.com/project-starkite/starkite/blob/main/examples/core/sysinfo.star) (excerpted)
 
 ## Permissions
 
-Shelling out is a privileged operation, and the permission engine gates it by where the binary lives. Running a command under `$CWD` requires `allow-local`, which grants `os.exec($CWD/**)`; running a command anywhere on the system requires `allow-all`. Reading the environment with `os.env` sits lower, under `allow-fs`. Run a script at the tightest profile that covers the commands it actually invokes — a script that only builds inside its own tree needs `allow-local`, not the unrestricted reach of `allow-all`. See [Permission](../fundamentals/security/permission.md) for the full profile ladder.
+To execute shell commands or read host environment variables, you must run Starkite with a permission profile that authorizes access to those host resources. The runtime evaluates every `os` operation against the following requirements:
+
+* **Inspecting Environment**: Reading environment variables via `os.env` requires `allow-fs` or higher.
+* **Local Command Execution**: Running a command located inside the script's working tree (`$CWD`) requires the `allow-local` profile.
+* **System Command Execution**: Running a command located anywhere else on the system requires the `allow-all` profile.
+
+To ensure host security, always run scripts at the tightest permission profile that supports the operations they invoke. For example, to run a script that executes local commands under the current directory, use the `--allow-local` flag:
+
+```bash
+kite run ./sysinfo.star --allow-local
+```
+
+For more information, see the [Permission Guide](../fundamentals/security/permission.md).
+
+## Host and user context
+
+Host properties and user account information can be inspected using built-in functions on the `os` module or their global aliases:
+
+| Attribute / Function | Alias | Purpose |
+|----------------------|-------|---------|
+| `os.hostname()` | `hostname()` | Returns the system hostname. |
+| `os.user.name` | `username()` | Returns the username of the current user. |
+| `os.user.id` | `userid()` | Returns the user ID (UID) of the current user. |
+| `os.user.gid` | `groupid()` | Returns the primary group ID (GID) of the current user. |
+| `os.user.home` | `home()` | Returns the home directory path of the current user. |
+
+Example usage:
+
+```python
+# Query host context
+printf("Host: %s\n", hostname())
+
+# Query user context
+printf("User: %s (UID: %s, GID: %s)\n", os.user.name, os.user.id, os.user.gid)
+printf("Home Directory: %s\n", os.user.home)
+```
+
+## Environment and directory management
+
+The `os` module provides functions to query and modify environment variables and the current working directory.
+
+* **`os.env(name, [default])`** (Alias: `env`): Retrieves the value of an environment variable. Returns the optional default value if the variable is not set.
+* **`os.setenv(name, value)`** (Alias: `setenv`): Sets the value of an environment variable for the script process and any subsequent sub-processes.
+* **`os.cwd()`** (Alias: `cwd`): Returns the absolute path of the current working directory.
+* **`os.chdir(path)`** (Alias: `chdir`): Changes the script's current working directory for relative path operations and sub-process execution.
+
+Example usage:
+
+```python
+# Read and modify environment
+port = env("APP_PORT", "8080")
+setenv("PORT", port)
+
+# Manage working directory
+original_dir = cwd()
+chdir("/tmp")
+# Relative actions run under /tmp here
+chdir(original_dir)
+```
+
+## Executable resolution and process IDs
+
+* **`os.pid()`** (Alias: `pid`): Returns the process ID of the running script.
+* **`os.ppid()`** (Alias: `ppid`): Returns the parent process ID.
+* **`os.which(name)`** (Alias: `which`): Locates an executable in the system `PATH`. Returns `None` if the executable is not found.
+
+Example usage:
+
+```python
+# Check process context
+printf("PID: %d (Parent PID: %d)\n", pid(), ppid())
+
+# Locate binary paths before execution
+git_path = which("git")
+if git_path:
+    printf("Found git at: %s\n", git_path)
+else:
+    fail("git is required but not installed on PATH")
+```
+
+## Executing local commands
+
+Starkite runs external CLI commands inside a shell wrapper (default: `/bin/sh -c`) and captures their stdout and stderr streams. Use `os.exec` when a command failure should immediately halt execution, or `os.try_exec` to handle exit status codes programmatically:
+
+* **`os.exec(cmd, [options])`** (Alias: `exec`): Executes `cmd` and returns standard output as a string. A non-zero exit code raises a Starlark-level error, halting the script.
+* **`os.try_exec(cmd, [options])`** (Alias: `try_exec`): Executes `cmd` and returns an `ExecResult` object. It never raises an error on command failure, allowing you to handle the exit status programmatically.
+
+### Execution options
+
+Both execution functions accept the following keyword arguments:
+
+| Option | Type | Default | Purpose |
+|--------|------|---------|---------|
+| `shell` | `string` | `"/bin/sh"` | Shell binary used to execute the command string (e.g., `"/bin/bash"`). |
+| `cwd` | `string` | `""` | Working directory in which to run the sub-process. |
+| `env` | `dict` | `None` | Environment variable overrides (mapping string to string) for the command execution context. |
+| `timeout` | `string` | `"60s"` | Time limit for execution (e.g., `"10s"`, `"5m"`). The process is killed if the timeout is exceeded. |
+
+### Handling results
+
+`os.try_exec` returns an `ExecResult` struct containing the following attributes:
+
+* **`.ok`** (`bool`): `True` if the command exited with code `0` and no internal errors occurred.
+* **`.code`** (`int`): The integer process exit code returned by the command.
+* **`.stdout`** (`string`): The standard output stream captured from the command.
+* **`.stderr`** (`string`): The standard error stream captured from the command.
+* **`.error`** (`string`): A combined error message if the command failed or timed out.
+
+### Code example
+
+```python
+# OS info - halts execution if uname fails
+os_info = exec("uname -a")
+print("System OS: " + os_info.strip())
+
+# Disk check with try_exec - safe to handle failure programmatically
+disk = try_exec(
+    "df -h / | tail -1",
+    timeout = "5s",
+    cwd = "/tmp",
+    env = {"LANG": "C"}
+)
+
+if disk.ok:
+    fields = disk.stdout.split()
+    printf("Disk Available: %s (Used: %s)\n", fields[3], fields[4])
+else:
+    printf("Warning: Disk check failed with code %d\n", disk.code)
+```
 
 ## See also
 
-- [`os` reference](../references/api/os.md) — `exec`, `try_exec`, `env`, `setenv`, `which`
-- [Language: error handling](../fundamentals/language.md#error-handling) — the `try_` pattern and `ExecResult`
+* [`os` reference](../references/api/os.md) — `exec`, `try_exec`, `env`, `setenv`, `which`
+* [Language: error handling](../fundamentals/language.md#error-handling) — the `try_` pattern and `ExecResult`
+
