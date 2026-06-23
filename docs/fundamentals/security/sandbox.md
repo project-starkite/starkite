@@ -19,7 +19,7 @@ To execute a script within the default sandbox container, use the `--sandbox` fl
 kite ./script.star --sandbox
 ```
 
-You can specify a profile or use boolean aliases:
+To target a specific profile, pass its name to the `--sandbox` flag, or use its shorthand flag alias (such as `--sandbox-opaque`):
 
 ```bash
 kite ./script.star --sandbox=net-access
