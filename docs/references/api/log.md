@@ -50,6 +50,7 @@ The `log` module provides structured logging built on Go's `slog` package.
 | `warn(msg, attrs={})` | `None` | Log a warning message |
 | `error(msg, attrs={})` | `None` | Log an error message |
 | `attrs(dict)` | `Logger` | Return a new logger with additional default attributes |
+| `group(name)` | `Logger` | Return a new logger with nested attribute grouping namespace |
 
 ## Formats
 
@@ -63,23 +64,23 @@ The `log` module provides structured logging built on Go's `slog` package.
 ### Basic logging
 
 ```python
-log.info("server started", {"port": 8080, "env": "production"})
-log.warn("disk space low", {"path": "/data", "free_gb": 2})
-log.error("connection failed", {"host": "db-01", "error": "timeout"})
+log.info("server started", attrs={"port": 8080, "env": "production"})
+log.warn("disk space low", attrs={"path": "/data", "free_gb": 2})
+log.error("connection failed", attrs={"host": "db-01", "error": "timeout"})
 ```
 
 ### Setting log level
 
 ```python
 log.set_level("debug")
-log.debug("verbose output", {"step": "init"})
+log.debug("verbose output", attrs={"step": "init"})
 ```
 
 ### JSON format
 
 ```python
 log.set_format("json")
-log.info("request", {"method": "GET", "path": "/api/v1/pods"})
+log.info("request", attrs={"method": "GET", "path": "/api/v1/pods"})
 # {"time":"...","level":"INFO","msg":"request","method":"GET","path":"/api/v1/pods"}
 ```
 
@@ -87,7 +88,7 @@ log.info("request", {"method": "GET", "path": "/api/v1/pods"})
 
 ```python
 l = log.logger(level="debug", format="json", output="stdout")
-l.info("custom logger", {"component": "auth"})
+l.info("custom logger", attrs={"component": "auth"})
 ```
 
 ### Logger with default attributes
