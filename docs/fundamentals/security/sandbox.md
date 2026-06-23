@@ -6,153 +6,134 @@ weight: 30
 
 # Execution Sandbox
 
-Starkite is shipped with a sandbox system that runs a script contained inside a [gVisor](https://gvisor.dev) container. The script runs isolated with no direct access to the host's filesystem, user's home directory, and no access to host credentials. The sandbox system runs on **Linux-only** because gVisor intercepts Linux syscalls and relies on user namespaces for rootless isolation. On macOS or Windows, requesting to run a script in a sandbox returns an error. On these OS platforms, you can still use script [Permission](permission.md) capabilities to define script protections.
+Starkite features an OS-level sandbox system that isolates script execution using a [gVisor](https://gvisor.dev) container. Confined scripts have no direct access to the host filesystem, the user's home directory, or host credentials.
+
+> [!IMPORTANT]
+> The sandbox system is **Linux-only**. It relies on Linux-specific namespaces and kernel intercepting. On macOS or Windows, running a script with the sandbox enabled returns an error; use [Script Permissions](permission.md) for protection on these platforms.
 
 ## Quick start
 
-Turn on the sandbox using the `--sandbox` flag when executing `kite` scripts:
+To execute a script within the default sandbox container, use the `--sandbox` flag:
 
 ```bash
-kite ./script.star --sandbox                 # runs script isolated in a sandbox
-kite ./script.star --sandbox=net-access      # specifies a sandbox profile to use
-kite ./script.star --sandbox-opaque          # boolean alias for --sandbox=opaque
+kite ./script.star --sandbox
 ```
 
-For a shebang script (`./script.star` via `#!/usr/bin/env kite`), use the `STARKITE_SECURITY_SANDBOX` env var:
+You can specify a profile or use boolean aliases:
+
+```bash
+kite ./script.star --sandbox=net-access
+kite ./script.star --sandbox-opaque      # Equivalent to --sandbox=opaque
+```
+
+For shebang scripts (`#!/usr/bin/env kite`), enable the sandbox using the `STARKITE_SECURITY_SANDBOX` environment variable:
 
 ```bash
 STARKITE_SECURITY_SANDBOX=opaque ./script.star
-export STARKITE_SECURITY_SANDBOX=net-access
-./other.star
 ```
 
 ## Built-in sandbox profiles
 
-Starkite comes with three built-in sandbox profiles that are defined below in increasing permissiveness.
+Starkite provides three built-in sandbox profiles:
 
-| Rung | Network | Filesystem | Description |
+| Profile | Network | Filesystem Mounts | Purpose |
 |---|---|---|---|
-| `opaque` | Loopback only | `$CWD` rw, `/tmp` tmpfs | Scripts can only access current working dir with no external networking |
-| `net-access` | Full host network | opaque + ro `/etc/{ssl/certs,resolv.conf,hosts,nsswitch.conf}` | Outbound (egress) networking possible |
-| `host` | Full host network | net-access + ro `$HOME`, `/usr`, `/bin`, `/lib`, `/lib64` | Scripts can read host's $HOME and execute binaries |
+| `opaque` | Loopback only | `$CWD` read/write, `/tmp` tmpfs | Completely offline execution; writes restricted to the working directory. |
+| `net-access` | Full network | `opaque` + read-only `/etc/{ssl/certs,resolv.conf,hosts,nsswitch.conf}` | Egress networking allowed (such as HTTP clients or Git operations). |
+| `host` | Full network | `net-access` + read-only `$HOME`, `/usr`, `/bin`, `/lib`, `/lib64` | Allows scripts to read home directory files and execute host binary utilities. |
 
-### opaque
-
-`opaque` blocks outbound network and mounts nothing beyond the working tree.
-
-- Scripts can read/write the current directory.
-- `/tmp` is mounted as private writable tmpfs.
-- Networking is through loopback where traffic never leaves the container.
-
-### net-access
-
-`net-access` adds host network access and TLS verification in addition to `opaque`.
-
-- Script can read/write files in current working directory only.
-- Outside networking traffic is reachable via the host's network.
-- Read-only access to `/etc/ssl/certs`, `/etc/resolv.conf`, `/etc/hosts`, and `/etc/nsswitch.conf` for networking support.
-
-### host
-This is the most permissive profile. It adds read-only access to `$HOME` and to the default binary paths (`/usr`, `/bin`, `/lib`, `/lib64`).
+Example using the `host` profile combined with local execution permissions:
 
 ```bash
 kite ./deploy.star --sandbox=host --allow-local
 ```
 
-## Custom profiles
+## Custom sandbox profiles
 
-Define custom profiles under the `sandbox:` section of `config.yaml`, in addition to the built-in profiles.
+Define custom sandbox profiles in `~/.starkite/config.yaml` under the `sandbox` section.
 
-### Sandbox profile schema
+### Schema fields
 
-The `sandbox` entry in `config.yaml` is a map used to specify sandbox rules for a running script. The following table shows members of the map.
+| Field | Required | Description |
+|---|---|---|
+| `base` | No | Base profile to inherit from (`opaque`, `net-access`, `host`) |
+| `network` | Yes (no if `base` set) | Network access mode (`host` or `loopback`) |
+| `mounts[].source` | For `bind` types | Source path on the host filesystem (supports `$CWD` and `$HOME`) |
+| `mounts[].destination` | Yes | Target mount path inside the sandbox |
+| `mounts[].type` | No | Mount type (`bind` or `tmpfs`). Defaults to `bind`. |
+| `mounts[].mode` | No | Mount permissions (`ro` or `rw`). Binds default to `ro`; tmpfs defaults to `rw`. |
 
-| Field | Required | Allowed values | Notes |
-|---|---|---|---|
-| `base` | no | `opaque`, `net-access`, `host` | Allows a new rule to use a built-in as a base rule. |
-| `network` | yes (no when `base` provided) | `host`, `loopback` | `host` uses the host network. `loopback` is loopback-only network inside the sandbox. |
-| `mounts[].source` | for type `bind` | absolute path, `$CWD` or `$HOME` | Source path must exist at sandbox start. |
-| `mounts[].destination` | yes | absolute path | Where the mount appears inside the sandbox. |
-| `mounts[].type` | no (default `bind`) | `bind`, `tmpfs` | `tmpfs` takes no `source`. |
-| `mounts[].mode` | no | `ro`, `rw` | Default `ro` for binds, `rw` for tmpfs. |
+*Path expansions are limited to `$CWD` and `$HOME`. Shell-style expansions (such as `~`) are not supported.*
 
-`$CWD` and `$HOME` (and their `/sub` forms) are the only path expansions. `~` and other shell-style expansions are not supported. 
-Unknown fields in a profile are an error.
-
-### Sandbox example
-The following shows a config.yaml file with three profiles: `default`, `dev`, and `k8s-deploy`:
+### Example configuration
 
 ```yaml
 # ~/.starkite/config.yaml
 sandbox:
-  default: net-access          # shortcut for { base: net-access }
+  default: net-access          # Shortcut for { base: net-access }
   dev:
-    base: host                 # uses built-in host as parent
+    base: host                 # Inherits host settings
     mounts:
       - source: $HOME/.cache
         destination: $HOME/.cache
         mode: rw
   k8s-deploy:
-    base: net-access           # inherits host network + TLS/DNS support files
+    base: net-access           # Inherits egress network and TLS settings
     mounts:
       - source: $HOME/.kube/config
         destination: /etc/kubeconfig
         mode: ro
 ```
 
-At runtime, the custom sandbox profile can be selected as shown below:
+At runtime, execute with the custom profile:
 
 ```bash
 kite ./deploy.star --sandbox=dev
 STARKITE_SECURITY_SANDBOX=k8s-deploy ./deploy.star
 ```
 
-### Setting a default profile
+### Implicit default profile
 
-A sandbox profile named `default` has a special meaning. At runtime it will be automatically applied (if defined) when a profile name is not provided at launch time. For instance, using the previous `config.yaml` above, following will cause script to run in a sandbox with `net-access` only:
+A profile named `default` in the `sandbox` config is automatically applied when the `--sandbox` flag is passed without specifying a profile name.
 
 ```bash
-kite ./deploy.star --sandbox
+kite ./deploy.star --sandbox   # Applies the custom default profile (net-access)
 ```
 
-## Combining sandbox with permissions
+## Combining sandboxing with permissions
 
-Starkite allows users to combine both sandbox and permission to create high security postures for running scripts. While the sandbox isolates the running script, additional permissions can be specified to restrict Starkite API calls.
+You can combine sandbox isolation with Starkite script permissions to enforce high-security runtime policies:
 
 ```bash
 kite ./untrusted.star --sandbox=opaque --permissions=allow-fs
 ```
 
-See [Permission](permission.md).
+See [Permission Guide](permission.md) for details.
 
-## Ubuntu 24.04+ setup
+## Linux configuration (Ubuntu 24.04+)
 
-On Ubuntu 24.04 and above, AppArmor restricts unprivileged user access to namespaces by default. This causes problems for gVisor's rootless mode:
+On Ubuntu 24.04 and above, AppArmor restricts unprivileged user namespace creation by default. Running rootless gVisor may trigger the following error:
+`sandbox: kernel restricts unprivileged user namespaces`
 
-```
-sandbox: kernel restricts unprivileged user namespaces
-```
+Choose one of the following setups to resolve this:
 
-### Option A: disable the restriction
+### Option A: Disable the restriction globally
 
-On a dev or testing environment, disabling that restriction may be an option.
+For development or test environments:
 
 ```bash
 sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 ```
 
-Or, persist that change across reboots:
+To persist this change across system reboots:
 
 ```bash
-echo 'kernel.apparmor_restrict_unprivileged_userns=0' | \
-  sudo tee /etc/sysctl.d/60-userns.conf
+echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/60-userns.conf
 ```
 
-### Option B: setup apparmor profile for Starkite binary
+### Option B: Configure an AppArmor profile for Starkite
 
-You can also create a Apparmor profile to allow the Starkite binary to create namespaces.
-
-First, create a Apparmor rule file for Starkite's binary `/etc/apparmor.d/kite`:
+Create an AppArmor rule file at `/etc/apparmor.d/kite` to allow namespace creation for the Starkite binary:
 
 ```
 abi <abi/4.0>,
@@ -164,18 +145,16 @@ profile kite /usr/local/bin/kite flags=(unconfined) {
 }
 ```
 
-> Note: make sure to set the proper path of the binary in the rule file above.
+*Ensure the binary path in the rule matches your actual Starkite installation path.*
 
-Next, reload AppArmor:
+Reload the AppArmor configuration:
 
 ```bash
 sudo apparmor_parser -r /etc/apparmor.d/kite
 ```
 
-The profile grants user-namespace creation only to the `kite` binary at the specified path.
+## Limitations
 
-## Sandbox Limits
-
-- macOS and Windows: not supported as the sandbox uses gVisor which requires the Linux kernel.
-- Scripts that need to read `$HOME`: don't use the sandbox, or write a custom profile that mounts the specific paths the script needs.
-- Privileged ports (<1024): rootless gVisor cannot bind them.
+* **OS Support**: Only Linux is supported. gVisor is not compatible with macOS or Windows kernels.
+* **FS Egress**: Scripts requiring access to files outside `$CWD` must either run outside the sandbox, or mount explicit host directories in a custom profile.
+* **Privileged Ports**: Rootless gVisor containers cannot bind to privileged ports (under 1024).

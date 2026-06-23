@@ -6,64 +6,45 @@ weight: 20
 
 # Script Permissions
 
-Starkite is shipped with a permission engine that can be configured to provide execution guardrails when running scripts. The engine intercepts every privileged module call (fs write, network connect, command exec, etc) and matches it against a rule set that determines *which operations a script may invoke*.
+Starkite features a rule-based permission engine that restricts execution capabilities at runtime. The engine intercepts privileged operations—such as filesystem access, network connections, and command execution—and validates them against a permission profile.
 
-For OS-level isolation (filesystem visibility, process containment), see [Sandbox](sandbox.md). The two compose cleanly — pair both for any untrusted script.
+For kernel-level isolation (such as filesystem invisibility and process containment), see [Sandbox](sandbox.md).
 
-## Default: deny-all
+## Default profile
 
-Starkite scripts run without permissions by default. When you run a script, without specifying a permission profile, the script automatically runs using the `deny-all` permission profile with the following capabilities:
-
-- Ability to invoke pure computation function calls
-- Access to functions `load()`, `print` and `log`
-
-At that permission level, a script cannot access resources such as filesystem, network, environment, and exec processes until the script is granted a higher permission profile.
+By default, scripts execute under the `deny-all` profile. In this mode, the script can run pure computations and call basic utilities like `load()`, `print()`, and `log()`. Any attempt to access files, the network, environment variables, or external processes is blocked.
 
 ```bash
-kite ./script.star            # runs using deny-all permission profile
+kite ./script.star            # Runs under the deny-all profile
 ```
 
-## Permission quick start
-Starkite comes with several built-in permission profiles that you can specify at runtime using `--permissions=<profile>` flag:
+## Built-in permission profiles
 
-```bash
-kite ./script.star --permissions=allow-local
-```
+Starkite includes five built-in profiles, selectable via the `--permissions` flag or its boolean aliases:
 
-There are five built-in profiles shown below in increasing permissiveness.
-
-| Profile | Additionally | Key grants at this rung |
+| Profile | Flag Alias | Key Grants |
 |---|---|---|
-| `deny-all` | — (baseline) | pure-compute modules (`strings`, `json`, `yaml`, `time`, `hash`, …) plus `print` and `log`. No external resource access. |
-| `allow-fs` | local files & env | `fs.read` (any file); `fs.write` / `fs.delete` within `$CWD`; `os.env`; `io.prompt`; `sql.open` (SQLite). No network. |
-| `allow-net` | low-level protocol net | `http.client`, all `ssh` (`ssh.connect`, `ssh.transfer`), `sql.open` (Postgres, MySQL). |
-| `allow-local` | `$CWD` exec, services | `os.exec` under `$CWD`, `http.*` serving, `k8s` read/write/config, `mcp.*` and `ai.*` access. |
-| `allow-all` | reads/writes & exec anywhere | Unrestricted access to all module functionalities, including `os.exec` anywhere, `k8s.exec`, and process control. |
+| `deny-all` | `--deny-all` | Compute-only (`strings`, `json`, `yaml`, `time`), plus `load()`, `print()`, `log()` |
+| `allow-fs` | `--allow-fs` | File reads, file writes within `$CWD`, environment variables, SQLite |
+| `allow-net` | `--allow-net` | HTTP clients, SSH connections, remote SQL databases |
+| `allow-local` | `--allow-local` | Local command execution (within `$CWD`), HTTP servers, Kubernetes, MCP, AI |
+| `allow-all` | `--allow-all` | Unrestricted execution (exec anywhere, system process controls) |
 
-Each built-in profile has a boolean alias — `--allow-fs`, `--allow-net`, `--allow-local`, `--allow-all`, `--deny-all` — equivalent to `--permissions=<profile>`:
+Example:
 
 ```bash
-kite ./script.star --allow-all       # same as --permissions=allow-all
+kite ./script.star --allow-fs        # Shorthand alias
+kite ./script.star --permissions=allow-fs
 ```
 
 ## Custom permission profiles
 
-Starkite users can define custom permission profiles in the Starkite configuration file `~/.starkite/config.yaml` under the `permissions:` map. Each entry specifies a capability set that is granted or denied if it matches an `allow` or `deny` rule respectively. A Starkite permission has the following form:
-
-```yaml
-permissions:
-  profile-name: {allow: ["allowed list"], deny: ["deny list"]}
-```
-
-As an example, the following permissions section of config.yaml defines 3 permissions:
-
-- `ci` - with one `allow` rule
-- `deploy` - A more elaborate profile with both `allow` and `deny` rules
+Define custom profiles in `~/.starkite/config.yaml` under the `permissions` section. Each profile lists explicit `allow` and `deny` rules:
 
 ```yaml
 # ~/.starkite/config.yaml
 permissions:
-  ci:      { allow: ["k8s.read"] }
+  ci: { allow: ["k8s.read"] }
   deploy:
     allow:
       - fs.read($CWD/**)
@@ -74,15 +55,15 @@ permissions:
       - http.client(*.internal.*)
 ```
 
-At runtime, a profile can be specified by name using the flag `--permissions=<name>`:
+At runtime, select the profile by name:
 
 ```bash
-kite ./build.star    --permissions=deploy
-kite ./ci-task.star  --permissions=ci
+kite ./build.star --permissions=deploy
 ```
-### Defining a default profile
 
-When `config.yaml` contains a permission profile named `default`, it is applied automatically at runtime.
+### Implicit default profile
+
+To define a default profile that Starkite applies when no `--permissions` flag is provided, name the profile `default`:
 
 ```yaml
 # ~/.starkite/config.yaml
@@ -90,15 +71,15 @@ permissions:
   default: { allow: ["fs.read", "http.client"] }
 ```
 
-When the following script is executed without a specified permission, Starkite will automatically apply the `default` permission profile defined in the `config.yaml` above:
+When running scripts without specifying a permissions flag, the runtime automatically applies this default profile:
 
 ```bash
-kite ./build.star
+kite run ./script.star        # Executes with fs.read and http.client capabilities
 ```
 
-### Composing from a base
+### Profile composition
 
-A profile can start from a built-in profile and append rules. `base` names the built-in; `allow` and `deny` extend its lists, and the built-in's default behavior is kept. Deny-first evaluation is unchanged: an appended `deny` carves an exception out of the base's grants, and a base `deny` cannot be re-allowed.
+Custom profiles can inherit from built-in profiles using `base`. Appended rules extend base capabilities, and `deny` rules always take precedence:
 
 ```yaml
 # ~/.starkite/config.yaml
@@ -112,90 +93,74 @@ permissions:
     deny: ["os.exec"]        # everything except process execution
 ```
 
-A profile whose value is a bare name is shorthand for `base` with no additions — convenient for setting the implicit default from a built-in:
+You can assign a built-in profile name directly as a string value. This is a shorthand for inheriting the built-in profile verbatim, without adding any rules:
 
 ```yaml
 # ~/.starkite/config.yaml
 permissions:
-  default: allow-fs        # = { base: allow-fs }; unflagged runs get this ceiling
-  everything: allow-all    # selectable as --permissions=everything
+  default: allow-fs        # Implicit default is allow-fs
+  everything: allow-all    # Selectable via --permissions=everything
 ```
 
-`base` (and the bare-name shorthand) accepts built-in profile names only — profiles cannot compose on other config profiles.
+> [!NOTE]
+> The `base` field accepts built-in profile names only. Profiles cannot inherit from other custom profiles.
 
-## Permission rule grammar
+## Rule grammar
 
-The Starkite permissions rules are expressed using a uniform grammar of the form:
+Starkite permission rules use a structured format:
 
-```
-rule     := module "." category [ "(" [ funclist ":" ] resource ")" ]
-funclist := func_name ("," func_name)*
-```
+`module.category[([function_list:]resource)]`
 
-Where:
+* **module**: Target module name (e.g., `fs`, `os`).
+* **category**: Target category name (e.g., `read`, `exec`).
+* **function_list**: Optional comma-separated list of specific function names.
+* **resource**: Optional path, host pattern, or glob.
 
-- `module` - the name of a module (built-in or loaded)
-- `category` - the name of a category of functionalities (e.g. `read`) against a resource
-- `funclist` - list of exact function names that match the applied rule (e.g. `read_file`)
-- `:` - separator when functions are applied to a set of resources
-- `resource` - a resource name or path used in the permission
-
-The function list and `resource` are both optional. When both appear, they are separated by `:`.
-
-The following shows some example permission rules.
+### Common rule patterns
 
 | Pattern | Matches |
 |---|---|
-| `*.*` | every module, every category, every operation |
-| `fs.*` | every category in `fs` |
-| `fs.read` | any function in `fs.read`, any resource |
-| `fs.read(/etc/**)` | any function in `fs.read`, resource matching glob |
-| `fs.read(read_file:*)` | only the `read_file` function, any resource |
-| `fs.read(read_file,read_bytes:/etc/**)` | either function, resource matching glob |
-| `os.exec($CWD/**)` | exec of any binary resolving to a path under `$CWD` |
+| `*.*` | Any module, category, and operation |
+| `fs.*` | Any operation in the `fs` module |
+| `fs.read` | Any read operation in the `fs` module on any path |
+| `fs.read(/etc/**)` | Any read operation in the `fs` module on paths matching `/etc/**` |
+| `fs.read(read_file:*)` | Only the `read_file` function on any path |
+| `fs.read(read_file,read_bytes:/etc/**)` | `read_file` or `read_bytes` on paths matching `/etc/**` |
+| `os.exec($CWD/**)` | Execution of any binary located under `$CWD` |
 
-During execution, `deny` rules are evaluated first followed by `allow` rules. Unmatched rules are denied.
-
-The contents inside parentheses are parsed as a function list only when they consist of bare identifiers separated by commas, followed by `:`. Otherwise they are treated as a resource pattern:
-
-```
-fs.read(/etc/**)              → resource: /etc/**
-fs.read(read_file:*)          → functions: [read_file], resource: *
-fs.read(read_file,glob:/x/*)  → functions: [read_file, glob], resource: /x/*
-fs.read(/some,path:with-colon)→ resource: /some,path:with-colon  (no valid funclist prefix)
-```
+Evaluation is **deny-first**. Any operation not explicitly matched by an `allow` rule (or blocked by a `deny` rule) is denied.
 
 ### Path expansion
 
-Starkite permission rules support path expansions and glob suffixes. Special rule variables `$CWD` and `$HOME` expand at startup using the process's working directory and the user's home as shown in the permissions snippet below:
+Rule paths support `$CWD` and `$HOME` environment variables, expanding them to the current working directory and user home directory respectively. Standard globbing (`*`, `**`) applies:
 
 ```yaml
 allow:
-  - fs.read($CWD/**)               # any file under the project directory
-  - fs.read($HOME/.config/myapp/*) # any file under the specified user path
+  - fs.read($CWD/**)               # Read any file under the project directory
+  - fs.read($HOME/.config/myapp/*) # Read files under the specified user path
 ```
 
-When a rule path does not include either of these special prefixes, paths are matched verbatim.
+Without these variables, paths are matched verbatim.
 
-## Modules and categories
+## Checked modules and categories
 
-The following are modules and categories that are checked by the permission engine at runtime. The majority of the standard library modules (strings, data encoding, math, time, regexp, templates, etc.) are compute only functions and are not checked.
+The permission engine only checks modules that access host resources. Pure-compute modules (such as `strings`, `math`, or `json`) bypass the permission engine.
 
-| Module | Categories | What's checked |
+| Module | Categories | Grated Operations Checked |
 |---|---|---|
-| `fs` | `read`, `write`, `delete` | path access |
-| `os` | `exec`, `env`, `process` | command execution, env reads/writes, chdir/exit |
-| `http` | `client`, `server` | outgoing HTTP, listening servers |
-| `ssh` | `connect`, `transfer` | remote exec, SCP up/down |
-| `k8s` | `read`, `write`, `exec`, `config` | API access, kubectl-exec, kubeconfig load |
-| `sql` | `open` | database connections (scoped by driver, e.g. `sqlite`, `postgres`, `mysql`) |
-| `ai` | `generate` | LLM calls (model name as resource) |
-| `mcp` | `client`, `server` | MCP connections + servers |
-| `io` | `prompt` | interactive prompts |
+| `fs` | `read`, `write`, `delete` | Path reads, writes, and deletions |
+| `os` | `exec`, `env`, `process` | Process execution, env reads/writes, directory/process controls |
+| `http` | `client`, `server` | Outbound HTTP requests, listening HTTP servers |
+| `ssh` | `connect`, `transfer` | Remote SSH execution, file uploads/downloads (SCP) |
+| `k8s` | `read`, `write`, `exec`, `config` | Cluster reads/writes, kubectl exec, kubeconfig loading |
+| `sql` | `open` | Database connections (scoped by driver, e.g., `sqlite`, `postgres`) |
+| `ai` | `generate` | LLM calls (model name checked as a resource) |
+| `mcp` | `client`, `server` | MCP connections and hosting |
+| `io` | `prompt` | Terminal user prompts |
 
 ## Loaded modules
 
-Code reached through `load()` — a local directory module or an installed module — runs under the same runtime permission as its containing script. A module dependency that needs more permissions than were granted to its hosting script will fail. For example, a script run with `--allow-fs` that loads a module which calls `k8s.read` will fail:
+When you import a module using `load()`, it runs under the exact same permissions as the calling script. Loading external code does not bypass or expand the script's permission boundary. If an imported module attempts any operation not permitted by the calling script's profile, the runtime blocks the action and raises a permission error.
 
 ```
 kite ./deploy.star --allow-fs
@@ -203,18 +168,8 @@ kite ./deploy.star --allow-fs
 #   the loaded module calls k8s.read(...)  → denied (k8s is allow-local)
 ```
 
-The fix is to rerun the script with an elevated permission profile:
-
-```
-kite ./deploy.star --allow-local
-```
-
-## Augmenting security with `--sandbox`
-
-The permission level of a script can be combined with Starkite's sandbox for additional security:
+To resolve this, rerun the script with the required capabilities:
 
 ```bash
-kite ./untrusted.star --sandbox=opaque --permissions=deny-all
+kite ./deploy.star --allow-local
 ```
-
-The `--sandbox` flag causes Starkite to confine access to resources (filesystem, processes, network) at the kernel level via gVisor. See [Sandbox](sandbox.md).
