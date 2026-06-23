@@ -6,23 +6,23 @@ weight: 30
 
 # Configuration
 
-Most automation scripts need inputs that change from run to run — the target environment, a replica count, a list of regions — without editing the script each time. Starkite supplies those inputs through a layered variable-injection system, backed by an optional `config.yaml`. A script reads every input through the same `var_*` functions, so it never has to know whether a value arrived from a CLI flag, a file, the environment, or a built-in default. You wire the values in from outside; the script just asks for them by name.
+Starkite features a layered configuration system to inject external inputs—such as environment names, ports, or replica counts—into scripts at runtime. Scripts load these variables using typed `var_*` functions. This decouples script logic from the source of the values, whether they are set via command-line flags, YAML files, environment variables, or default fallbacks.
 
 ## Variable injection
 
-When a script asks for a variable, Starkite looks for it in five places and takes the first one that has a value. The sources are ordered so that the more specific and more immediate a source is, the more it wins — a flag you type on the command line beats a value baked into a config file, which in turn beats the fallback you wrote in the script:
+Starkite evaluates five configuration sources in order of precedence (highest to lowest). A value from a higher-priority source overrides any lower sources:
 
-1. **CLI flags** — `--var key=value`
-2. **Variable files** — `--var-file=values.yaml`
-3. **Default config** — `~/.starkite/config.yaml` or `./config.yaml` (loaded by every script-executing command: `run`, `exec`, `test`, `repl`, `watch`)
-4. **Environment** — `STARKITE_VAR_key=value`
-5. **Script default** — `var_str("key", "default")`
+1. **CLI flags**: `--var key=value`
+2. **Variable files**: `--var-file=values.yaml`
+3. **Default config**: `~/.starkite/config.yaml` or `./config.yaml` (loaded automatically by `run`, `exec`, `test`, `repl`, and `watch`)
+4. **Environment variables**: `STARKITE_VAR_key=value`
+5. **Script default**: `var_str("key", "default")`
 
-This ordering is what lets one script serve every environment: the script carries sensible defaults, the config file sets per-machine values, and a `--var` at launch overrides any of it for a one-off run.
+This hierarchy allows a single script to use embedded defaults, adapt to machine-level config files, and accept runtime command overrides.
 
 ### Variable functions
 
-A script reaches a value through a typed accessor. Each function takes the variable name and an optional default to use when no source supplies the value, and returns the value already coerced to the Go type you asked for:
+Each accessor function accepts a key name and an optional default value, returning the value coerced to the requested type:
 
 | Function | Returns | Description |
 |----------|---------|-------------|
@@ -30,32 +30,32 @@ A script reaches a value through a typed accessor. Each function takes the varia
 | `var_int(name, default=0)` | int | Integer variable |
 | `var_bool(name, default=False)` | bool | Boolean variable |
 | `var_float(name, default=0.0)` | float | Float variable |
-| `var_list(name, default=[])` | list | List variable (auto-detects JSON from CLI) |
-| `var_dict(name, default={})` | dict | Dict variable (auto-detects JSON from CLI) |
-| `var_names()` | list | Sorted list of all variable names |
+| `var_list(name, default=[])` | list | List variable (detects JSON from CLI) |
+| `var_dict(name, default={})` | dict | Dictionary variable (detects JSON from CLI) |
+| `var_names()` | list | Sorted list of all defined variable names |
 
 ### Access patterns
 
-In practice you call these accessors at the top of a script to gather its inputs. Top-level values come back directly; nested maps are reachable both as a whole dict and through dot notation, since Starkite flattens nested keys automatically as it loads them:
+Scripts typically declare accessors at the top of the file. Nested maps are flattened automatically during load and can be accessed either as a complete dictionary or using dot notation:
 
 ```python
 # Top-level variables
 env = var_str("environment", "dev")
 count = var_int("replicas", 3)
 
-# Nested user variables (dot notation flattens automatically)
-app = var_str("labels.app")               # "myapp"
-labels = var_dict("labels", {})           # {"app": "myapp", "team": "platform"}
+# Nested variables (dot notation flattens automatically)
+app = var_str("labels.app")               # Returns "myapp"
+labels = var_dict("labels")               # Returns {"app": "myapp", "team": "platform"}
 
 # Lists
 regions = var_list("regions", ["us-east-1"])
 
-# Enumerate every defined variable
+# Enumerate all variables
 for name in var_names():
     print(name, "=", var_str(name))
 ```
 
-Here `labels.app` and `labels` read the same data two ways — the flattened leaf and the intact dict — and `var_names()` lets a script discover what it was given rather than hard-coding the names. To feed those variables in from the command line, use `--var` (which you can repeat) or point at a `--var-file`:
+To supply variables via the command line, use `--var` (repeatable) or `--var-file`:
 
 ```bash
 kite run ./deploy.star --var environment=prod --var replicas=5
@@ -64,7 +64,7 @@ kite run ./deploy.star --var-file=prod.yaml
 
 ## Variable files (`--var-file`)
 
-When a run needs more than a handful of values, typing each one as a `--var` becomes unwieldy. A var-file collects them in one place. It is a plain YAML map of variables — every top-level key is a variable, with no sections and no reserved keys, because the file holds values only:
+A variable file collects inputs into a single YAML configuration:
 
 ```yaml
 # prod.yaml
@@ -78,51 +78,49 @@ regions:
   - eu-west-1
 ```
 
-The script reads that file through the same accessors it would use for any other source, and the YAML structure carries straight through:
+The runtime maps variables to their corresponding Starlark types. Nested maps are available both as whole dictionaries and as flattened dot-notation keys:
 
 ```python
 var_str("environment")    # "prod"
 var_int("replicas")       # 5
-var_str("labels.app")     # "myapp"  — nested maps flatten to dot notation
-var_dict("labels")        # {"app": "myapp", "team": "platform"} — and stay whole
+var_str("labels.app")     # "myapp" (flattened key)
+var_dict("labels")        # {"app": "myapp", "team": "platform"} (complete dict)
 var_list("regions")       # ["us-east-1", "eu-west-1"]
 ```
 
-Values keep their YAML types: integers read with `var_int`, lists with `var_list`, maps with `var_dict`. As with config, a nested map is available both whole (`var_dict("labels")`) and flattened (`var_str("labels.app")`).
-
-Because a single file rarely covers every case, the flag repeats. Later files override earlier ones on key collisions, and a `--var` still overrides them all — so you can layer a base file, an environment-specific file, and a last-minute override in one command:
+You can repeat the `--var-file` flag to layer settings. Keys in later files override earlier ones, and individual `--var` flags override values from files:
 
 ```bash
 kite run ./deploy.star --var-file=base.yaml --var-file=prod.yaml --var replicas=7
 ```
 
-One distinction matters: a var-file is not a config file. It does not use the three-section schema described next. If you put a `config:`, `permissions:`, or `sandbox:` key in a var-file, it is read as an ordinary variable named `config.…`, `permissions.…`, or `sandbox.…` — permission and sandbox profiles are defined only in `config.yaml`.
+Unlike the main `config.yaml` file, a var-file is a flat collection of user variables and does not support runtime keys like `permissions` or `sandbox`.
 
 ## Config file format
 
-That brings us to `config.yaml` itself — the single configuration file for the Starkite runtime, read from `~/.starkite/config.yaml` and from `./config.yaml` in the working directory. Unlike a var-file, it is structured: it has exactly **three top-level sections**, and any other top-level key is an error rather than a stray variable:
+Starkite loads its global configuration from `~/.starkite/config.yaml` and `./config.yaml`. The file is structured into exactly three top-level sections:
 
 | Section | Purpose |
 |---|---|
-| `config` | Arbitrary configuration: runtime settings and user variables |
-| `permissions` | Named permission profiles, selectable with `--permissions=<name>`; a profile named `default` becomes the implicit profile when no flag is given. Profiles can compose on a built-in via `base`; a bare-name value is shorthand for `base`. See [Permission](security/permission.md#custom-permission-profiles). |
-| `sandbox` | Named sandbox profiles, selectable with `--sandbox=<name>`; a profile named `default` is what a bare `--sandbox` selects. Profiles can compose on a built-in rung via `base`; a bare-name value is shorthand for `base`. See [Sandbox](security/sandbox.md). |
+| `config` | Holds runtime settings and user-defined variables |
+| `permissions` | Named permission profiles, selectable via `--permissions=<name>`. See [Permission Guide](security/permission.md#custom-permission-profiles). |
+| `sandbox` | Named sandbox profiles, selectable via `--sandbox=<name>`. See [Sandbox Guide](security/sandbox.md). |
 
-The `config:` section is where variables and runtime settings live together, and that mixing is deliberate but bounded. Four keys inside it are **reserved** — Starkite parses them into runtime state and they are **not** reachable through `var_*`:
+The `config` section contains both runtime parameters and user variables. Four reserved keys are parsed into runtime state and cannot be accessed via `var_*`:
 
-| Reserved key | Purpose |
+| Reserved Key | Purpose |
 |---|---|
-| `config.project` | Project metadata (name, version). Read by tooling; not user variables. |
-| `config.defaults` | Runtime defaults (log_level, timeout). Read by the runtime; not user variables. |
-| `config.providers` | Provider-specific defaults (`ssh`, etc.). Read by the relevant module at construction time; not user variables. |
-| `config.active_edition` | The active edition for `kite edition use`. |
+| `config.project` | Project metadata (name, version) read by build tooling |
+| `config.defaults` | Runtime defaults (such as `log_level` and `timeout`) |
+| `config.providers` | Default provider configurations (e.g., `ssh`), read directly by modules at construction |
+| `config.active_edition` | The active edition managed by `kite edition use` |
 
-Every **other** key under `config:` becomes a user variable accessible via `var_*`, and nested maps flatten into dot-notation just as they do from a var-file. The example below shows all three sections at once — reserved runtime keys and user variables side by side under `config:`, then permission and sandbox profiles:
+All other keys under `config` are loaded as user variables. The following example demonstrates a `config.yaml` containing runtime settings, user variables, permissions, and sandbox profiles:
 
 ```yaml
 # ~/.starkite/config.yaml
 config:
-  # Reserved keys (not accessible via var_*)
+  # Reserved keys (runtime settings)
   project:
     name: my-project
     version: 0.1.0
@@ -134,7 +132,7 @@ config:
       user: deploy
       private_key_file: ~/.ssh/id_rsa
 
-  # User variables (accessible via var_*)
+  # User variables
   environment: dev
   replicas: 3
   labels:
@@ -142,12 +140,12 @@ config:
     team: platform
 
 permissions:
-  default: allow-fs        # shorthand for {base: allow-fs} — the implicit profile
+  default: allow-fs        # Implicit default profile
   ci:
     allow: ["fs.read", "os.exec($CWD/**)"]
 
 sandbox:
-  default: net-access      # shorthand for {base: net-access} — bare --sandbox selects this
+  default: net-access      # Bare --sandbox profile fallback
   builder:
     network: host
     mounts:
@@ -158,22 +156,22 @@ sandbox:
         type: tmpfs
 ```
 
-The split is what keeps the two worlds from leaking into each other. The reserved keys (`config.project.name`, `config.providers.ssh.user`, and so on) never appear in `var_names()`, and `var_str("providers.ssh.user")` returns the default rather than the configured value — provider config is read by the relevant module's factory (`ssh.config(...)`), not through `var_*`. So a script cannot accidentally read runtime plumbing as if it were one of its own inputs.
+Reserved keys (such as `project` or `providers`) do not appear in `var_names()` and cannot be read via `var_*`. Modules read their respective configuration directly from these fields at initialization, ensuring runtime settings do not leak into user script logic.
 
 ## Environment variables
 
-The remaining source needs no file at all. Any environment variable prefixed with `STARKITE_VAR_` is picked up automatically, with underscores in the name converted to dots so the value lands at a nested key:
+Any environment variable prefixed with `STARKITE_VAR_` is automatically loaded as a script variable. Underscores in the variable name are converted to dots to represent nested paths:
 
 ```bash
 export STARKITE_VAR_DATABASE_HOST=pg.local
 export STARKITE_VAR_DATABASE_PORT=5432
 ```
 
-The script reads those exactly as it would any other variable — the prefix and the underscore-to-dot rule are the only translation:
+The script accesses these directly:
 
 ```python
 host = var_str("database.host")   # "pg.local"
 port = var_int("database.port")   # 5432
 ```
 
-This source sits below the config file and above the script default in the precedence order, which makes it a natural fit for values that belong to a host or a CI runner rather than to a script or a single command.
+Environment variables rank below file-based configuration but above script-level defaults, making them ideal for host-specific settings or CI runner configurations.
