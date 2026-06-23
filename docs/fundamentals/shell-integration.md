@@ -6,13 +6,13 @@ weight: 75
 
 # Shell Integration
 
-Starkite is designed to integrate cleanly with standard Unix shells like Bash and Zsh. Because the `kite` binary is self-contained and pre-packages modules for filesystem operations, network requests, and structural format parsing, it can augment standard shell pipelines without requiring external CLI dependencies.
+Starkite operates directly within standard Unix shell environments such as Bash and Zsh. Using command-line evaluation and shebang executions, scripts hook directly into host terminals to extend native pipelines with Starlark runtime capabilities.
 
-This guide illustrates common patterns for integrating `kite exec` and shebang-enabled scripts directly into your terminal workflows.
+The sections below present examples of incorporating Starkite scripting and module features directly into shell workflows.
 
 ## System queries
 
-You can inspect host properties dynamically using built-in runtime functions. Since these are evaluated directly by the Starlark interpreter, they run securely without process-forking overhead or requiring system permissions:
+Host properties can be inspected dynamically using the built-in `runtime` module. The Starlark interpreter evaluates these queries directly within the process:
 
 ```bash
 $ kite exec 'print("OS Platform: " + runtime.platform())'
@@ -21,7 +21,7 @@ OS Platform: darwin
 
 ## Directory globbing
 
-Starkite provides built-in path matching functions to scan and list files directly:
+File path matching can be executed directly using the built-in `glob()` function:
 
 ```bash
 $ kite exec --allow-fs 'print(", ".join(glob("*.md")))'
@@ -30,7 +30,7 @@ CHANGELOG.md, README.md
 
 ## Processing pipeline data (JSON & YAML)
 
-You can decode structured configurations or stream pipeline data using `yaml.decode()` and `json.decode()` combined with filesystem standard inputs (`/dev/stdin`):
+Structured configuration formats are parsed from standard input (`/dev/stdin`) using the built-in `json` and `yaml` modules:
 
 ```bash
 # Query JSON values inline from a pipeline without installing jq
@@ -44,7 +44,7 @@ $ kite exec --allow-fs 'print(yaml.decode(read_text("mod.yaml"))["name"])'
 
 ## Making HTTP API calls
 
-Execute API queries and inspect remote service responses using the built-in `http` module:
+API queries and remote service responses are handled using the built-in `http` module:
 
 ```bash
 # Fetch details from remote web services without curling or writing external scripts
@@ -54,7 +54,7 @@ https://httpbin.org/get
 
 ## Template rendering
 
-Render structured text or HTML configurations inline using local parameters, eliminating the need to install external templating CLI engines (like `gomplate` or `jinja-cli`):
+Structured text or configurations are rendered inline using the built-in `template` module:
 
 ```bash
 # Render templates dynamically with environment variables
@@ -64,7 +64,7 @@ Hello, alice!
 
 ## Cross-platform regex replacements
 
-Perform string search-and-replace patterns using Go's standard regular expression engine, avoiding regex dialect and compatibility differences between macOS (`sed` BSD) and Linux (`sed` GNU):
+String search-and-replace patterns are performed using the built-in `regexp` module, maintaining identical syntax rules across macOS and Linux environments:
 
 ```bash
 # Replace matching digits in system configuration strings
@@ -74,7 +74,7 @@ service-vX-port-X
 
 ## Structured CSV filtering
 
-Parse, iterate, and query tabular dataset records directly inside your shell pipelines without installing heavy spreadsheet libraries (like `pandas`) or dedicated CSV tools:
+Tabular datasets are parsed, iterated, and queried directly within pipelines using the built-in `csv` module:
 
 ```bash
 # Stream and filter CSV records from standard input
@@ -85,7 +85,7 @@ $ echo -e "host,status\nweb-1,active\nweb-2,inactive" | \
 
 ## Shell script assertions
 
-Use the process exit codes returned by `kite exec` to validate inputs and perform assertion checks inside standard shell scripts. In Starlark, conditional checks must reside inside a function body (like `main()`), and environment variables require reading permissions (`--allow-fs` or `--allow-all`):
+Process exit codes returned by `kite exec` can validate inputs and execute assertions inside shell scripts. In Starlark, conditional assertions must reside inside a function body (such as `main()`), and environment lookups require permission profiles that allow filesystem or environment reads (such as `--allow-fs` or `--allow-all`):
 
 ```bash
 # Validate environment port configurations in a Bash conditional wrapper
@@ -99,3 +99,4 @@ else
     echo "Configuration Error: Port must be 1024 or higher."
 fi
 ```
+
