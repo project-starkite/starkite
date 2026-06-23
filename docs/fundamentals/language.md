@@ -6,51 +6,58 @@ weight: 40
 
 # Language
 
-Starkite scripts are written in Starlark — a deterministic, Python-derived language designed to run the same way every time, with no hidden state and no surprises. On top of that base, Starkite adds two conventions you will use in nearly every script: an automatic `main()` entry point that gives a script a clear place to start, and a `try_` prefix that turns failures you want to handle into ordinary values instead of crashes. This page covers those two conventions; for the syntax and semantics of Starlark itself, see the upstream [Starlark spec](https://github.com/bazelbuild/starlark/blob/master/spec.md), and for how a script receives its inputs, see [Configuration](configuration.md).
+Starkite scripts are written in Starlark, a deterministic, Python-derived language. While inheriting the core syntax of Starlark, Starkite introduces two primary execution conventions: an automatic `main()` entry point for structured execution and the `try_` error-handling pattern to handle script failures safely without raising runtime exceptions.
+
+For details on the core syntax and semantics of the base Starlark language, refer to the [Starlark Specification](https://github.com/bazelbuild/starlark/blob/master/spec.md).
 
 ## Entry point
 
-A script needs a place to begin, and Starkite gives it one without ceremony. Define a function named `main`, and after the script's top-level code finishes running, the runtime calls `main()` for you:
+By convention, if you define a function named `main()`, the `kite` runtime automatically executes it after the script's top-level statements run:
 
 ```python
 def main():
-    print("hello")
+    print("Hello from main!")
 ```
 
-Running `kite run ./hello.star` prints `hello`. You never write the call yourself — defining `main` is enough to make it the entry point.
+Running `kite run ./hello.star` executes `main()` automatically. 
 
-Defining `main` is optional. A script that does not define it simply runs top to bottom, with all of its work at the top level. Use `main` when you want a named starting point; skip it when a short script reads more clearly as a straight sequence of statements.
+Defining `main()` is optional. Short scripts can execute statements sequentially at the top level without a `main()` definition.
 
-What happens if you both define `main` and call it yourself at the top level? The runtime notices the explicit call and declines to run `main` a second time, so your script does not execute twice. It records a notice on stderr so the skipped automatic invocation is never silent:
+### Syntactic detection of manual calls
+
+If a script defines `main()` and explicitly invokes it at the top level (e.g., `main()`), the runtime detects the call and skips automatic execution to prevent duplicate runs. It outputs an information message to standard error:
 
 ```
 level=INFO msg="skipping automatic entry-point invocation: script calls it at top level" entrypoint=main script=hello.star
 ```
 
-This detection is syntactic: the runtime recognizes a direct top-level call written as `main()`. A call hidden behind an alias or buried inside control flow is not detected, and `main` would then run twice. If you call the entry point yourself, call it plainly so the runtime can see it.
+This detection looks specifically for direct, top-level `main()` call expressions. Indirect invocations (such as calling an alias of `main` or invoking it within custom control flow) are not detected and may lead to duplicate executions.
 
-The automatic call applies only to the script you launch. A `main` defined in a module pulled in with `load()` is never invoked automatically — it is just another function for the importing script to use. Because the runtime supplies no arguments, `main` must be callable with none; a script's inputs arrive through the [variable-injection system](configuration.md) rather than through parameters.
+### Modules and inputs
+
+*   **Scope**: Automatic invocation only applies to the entry script. A `main()` function defined inside a module loaded via `load()` is never executed automatically.
+*   **Arguments**: The automatic entry-point execution passes no arguments. Inputs must be injected via the [variable-injection system](configuration.md) instead of function parameters.
 
 ## Error handling
 
-Many operations a script performs can fail — a file may be missing, a host unreachable, an API down. By default those failures raise and stop the script, which is the right behavior when there is nothing to do but abort. When you want to inspect a failure and decide what to do next, reach for the `try_` variant: every Starkite function that can fail has one, and instead of raising it returns a `Result` you examine. The `Result` type carries three attributes:
+By default, file, database, or network errors raise runtime exceptions and halt script execution. To inspect errors and perform conditional handling without crashing, Starkite provides a `try_` variant for every built-in function and method that can fail.
+
+Instead of raising exceptions, `try_` functions return a `Result` object:
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `ok` | bool | `True` if the operation succeeded |
-| `value` | any | Return value on success |
-| `error` | string | Error message on failure |
+| `ok` | `bool` | `True` if the operation succeeded |
+| `value` | `any` | The function's return value on success |
+| `error` | `string` | The error message on failure |
 
-### The try_ pattern
-
-The two styles sit side by side: call the plain function when a failure should halt the script, and the `try_` variant when you want to branch on the outcome. The example below reads one file each way:
+### Basic usage
 
 ```python
 def main():
-    # Without try_ — raises on failure
+    # Plain function call: raises an exception and aborts on failure
     content = read_text("/etc/hosts")
 
-    # With try_ — returns a Result instead of raising
+    # try_ variant: returns a Result object instead of raising an exception
     result = fs.path("/etc/missing").try_read_text()
     if result.ok:
         print(result.value)
@@ -58,27 +65,12 @@ def main():
         print("Error:", result.error)
 ```
 
-The first call aborts the script if `/etc/hosts` cannot be read; the second never raises, leaving you to check `result.ok` and pull the value or the error message yourself. Note that the branching lives inside `main()`: Starlark allows `if` and `for` only inside a function, so any error-handling logic belongs in a `def`, never at the top level.
-
-### Constructing results
-
-You can also build a `Result` of your own, which is what you need when writing a check function for `retry`. The `Result()` built-in constructs one from explicit `ok`, `value`, and `error` fields:
-
-```python
-def check_service():
-    resp = http.url("http://localhost:8080/health").try_get()
-    if resp.ok and resp.value.status_code == 200:
-        return Result(ok=True, value="healthy")
-    return Result(ok=False, error="unhealthy")
-
-result = retry.do(check_service, max_attempts=5, delay="2s")
-```
-
-Here `check_service` reports its own outcome as a `Result`, and `retry.do` reads that `ok` field to decide whether to try again — succeeding when the health check returns a 200, and retrying up to five times with a two-second delay otherwise.
+> [!IMPORTANT]
+> Starlark restricts loop (`for`) and conditional (`if`) statements to function bodies. All error handling and branching logic must reside inside a defined function (like `main()`).
 
 ### Object method variants
 
-The `try_` prefix is not limited to top-level functions. Methods on the objects you build — files, paths, HTTP requests — carry the same variant, so you can guard a call at the exact point it might fail:
+The `try_` naming prefix applies to object methods as well:
 
 ```python
 # File objects
@@ -87,23 +79,35 @@ config = json.file("config.json").try_decode()
 # Path objects
 data = fs.path("/tmp/data.txt").try_read_text()
 
-# HTTP
+# HTTP requests
 page = http.url("https://api.example.com/data").try_get()
 ```
 
-Each of these returns a `Result` with the same `ok` / `value` / `error` shape, so you handle a failed decode, read, or request exactly as you would a failed function call.
+### Custom Result construction
 
-### Module-level factories
+For modules like `retry` that evaluate script states, you can construct custom `Result` instances using the `Result()` constructor:
 
-One subtlety is worth knowing when you decide where to put the `try_`. Factory functions have `try_` variants too, but a factory only constructs the object — it does not touch the file, open the connection, or send the request. A missing path therefore goes unreported until the read that actually reaches for it. Guard the operation, not the factory:
+```python
+def check_service():
+    resp = http.url("http://localhost:8080/health").try_get()
+    if resp.ok and resp.value.status_code == 200:
+        return Result(ok=True, value="healthy")
+    return Result(ok=False, error="unhealthy")
+
+# retry.do evaluates the 'ok' attribute of the returned Result
+result = retry.do(check_service, max_attempts=5, delay="2s")
+```
+
+### Factory functions vs. execution methods
+
+Built-in factory functions (like `json.file()` or `http.url()`) only initialize configuration metadata on the host—they do not perform file I/O or network calls directly. Consequently, these factory initializers always succeed, and any failures (such as missing files or DNS resolution errors) will only surface when executing the subsequent methods:
 
 ```python
 def main():
+    # json.file() configures the path, while try_decode() handles the actual parse I/O
     result = json.file("maybe-missing.json").try_decode()
     if result.ok:
         data = result.value
     else:
         print("Error:", result.error)
 ```
-
-`json.file(...)` here always succeeds because it merely names the file; the failure for a missing or malformed file surfaces at `try_decode()`, which is where the `Result` you check comes from.

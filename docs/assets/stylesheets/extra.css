@@ -89,6 +89,7 @@
 .md-typeset table:not([class]) {
   border-radius: 0.5rem;
   overflow: hidden;
+  font-size: 0.95rem;
 }
 
 .md-typeset table:not([class]) th {
