@@ -122,3 +122,15 @@ release:
     owner: project-starkite
     name: starkite
   prerelease: auto
+
+kos:
+  - repositories:
+      - ghcr.io/project-starkite/starkite
+    tags:
+      - latest
+      - "{{.Version}}"
+    build: kite
+    base_image: cgr.dev/chainguard/static:latest
+    platforms:
+      - linux/amd64
+      - linux/arm64

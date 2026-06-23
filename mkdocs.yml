@@ -82,7 +82,6 @@ nav:
           - JSON & YAML:        core-modules/json-yaml.md
           - Files:              core-modules/files.md
           - Databases (SQL):    core-modules/sql.md
-          - SSH:                core-modules/ssh.md
           - HTTP:
               - Clients: core-modules/http/clients.md
               - Servers: core-modules/http/servers.md
@@ -90,6 +89,7 @@ nav:
           - Starkite and Kubernetes: infra/kubernetes.md
           - Operating a cluster:     infra/operations.md
           - Controlling a cluster:   infra/controllers.md
+          - Remote commands (SSH):   infra/ssh.md
       - AI:
           - Building agents:       ai/agents.md
           - Creating MCP servers:  ai/mcp.md
@@ -114,36 +114,41 @@ nav:
       - Embedding: references/embedding.md
       - API:
           - Overview: references/api/index.md
-          - os: references/api/os.md
-          - fs: references/api/fs.md
-          - http: references/api/http.md
-          - ssh: references/api/ssh.md
-          - sql: references/api/sql.md
-          - json: references/api/json.md
-          - yaml: references/api/yaml.md
-          - csv: references/api/csv.md
-          - gzip: references/api/gzip.md
-          - zip: references/api/zip.md
-          - base64: references/api/base64.md
-          - hash: references/api/hash.md
-          - strings: references/api/strings.md
-          - regexp: references/api/regexp.md
-          - template: references/api/template.md
-          - time: references/api/time.md
-          - uuid: references/api/uuid.md
-          - fmt: references/api/fmt.md
-          - log: references/api/log.md
-          - table: references/api/table.md
-          - concur: references/api/concur.md
-          - retry: references/api/retry.md
-          - io: references/api/io.md
-          - vars: references/api/vars.md
-          - runtime: references/api/runtime.md
-          - inventory: references/api/inventory.md
-          - test: references/api/test.md
-          - k8s: references/api/k8s.md
-          - ai: references/api/ai.md
-          - mcp: references/api/mcp.md
+          - System:
+              - os: references/api/os.md
+              - fs: references/api/fs.md
+              - io: references/api/io.md
+              - time: references/api/time.md
+              - strings: references/api/strings.md
+              - regexp: references/api/regexp.md
+              - fmt: references/api/fmt.md
+              - log: references/api/log.md
+              - template: references/api/template.md
+              - uuid: references/api/uuid.md
+          - Data & Formats:
+              - json: references/api/json.md
+              - yaml: references/api/yaml.md
+              - csv: references/api/csv.md
+              - gzip: references/api/gzip.md
+              - zip: references/api/zip.md
+              - base64: references/api/base64.md
+              - hash: references/api/hash.md
+              - table: references/api/table.md
+          - Connectivity:
+              - http: references/api/http.md
+              - ssh: references/api/ssh.md
+              - sql: references/api/sql.md
+          - Concurrency & Control:
+              - concur: references/api/concur.md
+              - retry: references/api/retry.md
+              - runtime: references/api/runtime.md
+              - vars: references/api/vars.md
+              - inventory: references/api/inventory.md
+              - test: references/api/test.md
+          - Platform & AI:
+              - k8s: references/api/k8s.md
+              - ai: references/api/ai.md
+              - mcp: references/api/mcp.md
   - Examples:
       - Overview: examples/index.md
 copyright: >-

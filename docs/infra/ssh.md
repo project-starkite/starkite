@@ -1,7 +1,7 @@
 ---
-title: "Run commands across SSH hosts"
+title: "Remote commands (SSH)"
 description: "Multi-host command execution with ssh.config()"
-weight: 4
+weight: 40
 ---
 
 # Run commands across SSH hosts
@@ -52,7 +52,7 @@ Each host contributes one row, and the `STATUS` column tells you at a glance whi
 
 ```
 +--------+--------+--------------------+
-| HOST   | STATUS | OUTPUT             |
+* HOST   | STATUS | OUTPUT             |
 +--------+--------+--------------------+
 | web-1  | OK     | up 14 days, 3 hours |
 | web-2  | OK     | up 7 days, 2 hours  |

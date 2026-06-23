@@ -191,6 +191,7 @@
     border-radius: 0.5rem;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
     overflow: hidden;
+    width: 100%;
     max-width: 100%;
   }
   .tx-hero__right .example-pane {
@@ -237,13 +238,15 @@
   }
   .example-pane .terminal pre {
     margin: 0;
-    padding: 1rem 1.1rem;
+    padding: 0.9rem 1.1rem;
     background: #0a1628;
     color: #e6edf3;
     border-radius: 0;
     overflow-x: auto;
-    font-size: 0.875rem;
-    line-height: 1.55;
+    font-size: 0.91rem;
+    line-height: 1.5;
+    height: 420px;
+    box-sizing: border-box;
   }
   .example-pane .terminal pre code {
     background: transparent;
@@ -572,20 +575,20 @@
         <div class="tx-hero__left">
           <h1 class="tx-hero__headline">Scripting runtime for <span class="tx-hero__accent">systems and agentic automation</span></h1>
           <p class="tx-hero__subhead">
-            Create secure system and Kubernetes-native infrastructure automation scripts using the Starlark language.</p>
+            Create systems and infrastructure automation scripts that are easy for humans to understand and safe for AI agents to execute.</p>
         </div>
         <div class="tx-hero__right">
           <div class="example-tabs">
             <input type="radio" id="ex-system" name="ex" checked>
             <input type="radio" id="ex-cloud" name="ex">
-            <input type="radio" id="ex-ai" name="ex">
             <input type="radio" id="ex-secure" name="ex">
+            <input type="radio" id="ex-ai" name="ex">
 
             <div class="example-tabs__labels">
               <label for="ex-system">System</label>
               <label for="ex-cloud">Infrastructure</label>
-              <label for="ex-ai">AI</label>
-              <label for="ex-secure">Secure</label>
+              <label for="ex-secure">Remote (SSH)</label>
+              <label for="ex-ai">AI Agents</label>
             </div>
 
             <div class="example-pane" data-for="ex-system">
@@ -594,19 +597,23 @@
                   <span class="terminal__dot terminal__dot--red"></span>
                   <span class="terminal__dot terminal__dot--yellow"></span>
                   <span class="terminal__dot terminal__dot--green"></span>
-                  <span class="terminal__title">fetch-configs.star</span>
+                  <span class="terminal__title">local-check.star</span>
                 </div>
                 <pre><code class="language-python">#!/usr/bin/env kite
+# local-check.star — read config, process logs, and write SQL
 
 def main():
-    fleet = ssh.config(
-        hosts       = ["web-1", "web-2", "web-3"],
-        user        = "deploy",
-        key         = "~/.ssh/id_ed25519",
-        exec_policy = "concurrent",
-    )
-    for r in fleet.download("/etc/nginx/nginx.conf", "/tmp/configs/nginx.conf"):
-        printf("%s -> %s (%d bytes)\n", r.host, r.dst, r.bytes)
+    db_path = var_str("db_path", "data/app.db")
+    db = sql.open("sqlite3", db_path)
+    
+    # Process backup logs concurrently
+    backups = fs.glob("backups/*.json")
+    for f in backups:
+        data = json.decode(fs.read(f))
+        db.exec("INSERT INTO logs (host, status) VALUES (?, ?)", 
+                data["host"], data["status"])
+    
+    printf("Processed %d logs.\n", len(backups))
 </code></pre>
               </div>
             </div>
@@ -617,15 +624,16 @@ def main():
                   <span class="terminal__dot terminal__dot--red"></span>
                   <span class="terminal__dot terminal__dot--yellow"></span>
                   <span class="terminal__dot terminal__dot--green"></span>
-                  <span class="terminal__title">controller.star</span>
+                  <span class="terminal__title">k8s-controller.star</span>
                 </div>
                 <pre><code class="language-python">#!/usr/bin/env kite
-# Infrastructure: Kubernetes deployment controller
+# k8s-controller.star — reconcile replica counts
 
 def reconcile(event, obj):
     if obj.spec.replicas > 10:
         k8s.apply({
-            "apiVersion": "apps/v1", "kind": "Deployment",
+            "apiVersion": "apps/v1",
+            "kind": "Deployment",
             "metadata": {"name": obj.metadata.name,
                          "namespace": obj.metadata.namespace},
             "spec": {"replicas": 10},
@@ -639,55 +647,54 @@ k8s.control("deployments",
               </div>
             </div>
 
-            <div class="example-pane" data-for="ex-ai">
-              <div class="terminal">
-                <div class="terminal__bar">
-                  <span class="terminal__dot terminal__dot--red"></span>
-                  <span class="terminal__dot terminal__dot--yellow"></span>
-                  <span class="terminal__dot terminal__dot--green"></span>
-                  <span class="terminal__title">weather-server.star</span>
-                </div>
-                <pre><code class="language-python">#!/usr/bin/env kite
-
-def get_weather(city):
-    """Return the current weather for a city."""
-    forecasts = {
-        "san francisco": {"temp_f": 64, "conditions": "foggy"},
-        "tokyo":         {"temp_f": 78, "conditions": "sunny"},
-        "berlin":        {"temp_f": 52, "conditions": "cloudy"},
-    }
-    return forecasts.get(city.lower(), {"error": "no data for " + city})
-
-mcp.serve(
-    name  = "weather",
-    tools = [get_weather],
-)
-</code></pre>
-              </div>
-            </div>
-
             <div class="example-pane" data-for="ex-secure">
               <div class="terminal">
                 <div class="terminal__bar">
                   <span class="terminal__dot terminal__dot--red"></span>
                   <span class="terminal__dot terminal__dot--yellow"></span>
                   <span class="terminal__dot terminal__dot--green"></span>
-                  <span class="terminal__title">config.yaml</span>
+                  <span class="terminal__title">fleet-check.star</span>
                 </div>
-                <pre><code class="language-yaml"># ~/.starkite/config.yaml
-permissions:
-  ci:
-    allow:
-      - fs.read
-      - http.client
+                <pre><code class="language-python">#!/usr/bin/env kite
+# fleet-check.star — inspect remote host fleets
 
-sandbox:
-  ci:
-    network: loopback
-    mounts:
-      - source: $CWD
-        destination: $CWD
-        mode: rw
+def main():
+    fleet = ssh.config(
+        hosts       = ["web-1", "web-2", "web-3"],
+        user        = "deploy",
+        key         = "~/.ssh/id_ed25519",
+        exec_policy = "concurrent",
+    )
+    for r in fleet.exec("systemctl is-active nginx"):
+        status = "Active" if r.ok else "Inactive/Failed"
+        printf("Host %s Nginx: %s\n", r.host, status)
+</code></pre>
+              </div>
+            </div>
+
+            <div class="example-pane" data-for="ex-ai">
+              <div class="terminal">
+                <div class="terminal__bar">
+                  <span class="terminal__dot terminal__dot--red"></span>
+                  <span class="terminal__dot terminal__dot--yellow"></span>
+                  <span class="terminal__dot terminal__dot--green"></span>
+                  <span class="terminal__title">weather-mcp.star</span>
+                </div>
+                <pre><code class="language-python">#!/usr/bin/env kite
+# weather-mcp.star — expose tools to AI agents
+
+def get_weather(city):
+    """Return the current weather for a city."""
+    forecasts = {
+        "san francisco": {"temp": 64, "conditions": "foggy"},
+        "tokyo":         {"temp": 78, "conditions": "sunny"},
+    }
+    return forecasts.get(city.lower(), {"error": "no data"})
+
+mcp.serve(
+    name  = "weather-provider",
+    tools = [get_weather],
+)
 </code></pre>
               </div>
             </div>

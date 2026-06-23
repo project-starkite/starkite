@@ -6,6 +6,11 @@
   --md-accent-fg-color: #6366f1;
 }
 
+/* Adjust base font size for content to match home page text scale */
+.md-typeset {
+  font-size: 0.95rem;
+}
+
 [data-md-color-scheme="slate"] {
   --md-primary-fg-color: #22d3ee;
   --md-primary-fg-color--light: #67e8f9;
@@ -220,4 +225,11 @@
   .md-nav--lifted > .md-nav__list > .md-nav__item--active > .md-nav__link {
     display: none;
   }
+}
+
+/* Sizing overrides for tabbed content sets (Installation tabs, etc.) */
+.tabbed-labels label {
+  font-size: 0.95rem !important;
+  font-weight: 700 !important;
+  padding: 0.75rem 1.25rem !important;
 }
