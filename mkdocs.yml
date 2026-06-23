@@ -76,6 +76,7 @@ nav:
           - Testing:        fundamentals/testing.md
           - Editions:       fundamentals/editions.md
           - Running scripts: fundamentals/running.md
+          - Shell integration: fundamentals/shell-integration.md
       - Core Modules:
           - System & processes: core-modules/system.md
           - Logging:            core-modules/logging.md

@@ -6,25 +6,25 @@ weight: 5
 
 # Use the kite CLI
 
-The `kite` binary is how you drive Starkite from the shell: you point it at a `.star` file and it runs your automation, but the same binary also evaluates a one-liner, opens an interactive session, runs a test suite, checks a script for errors, and re-runs a script as you edit it. All of that hangs off subcommands, and the one you reach for most is `run <script>`. Because running a file is the common case, kite makes it the default — when the first positional argument resolves to a script path, the `run` subcommand is implicit, so `kite <script>` and `kite run <script>` do the same thing.
-
-The walkthrough below drives each command against [`examples/core/hello.star`](https://github.com/project-starkite/starkite/blob/main/examples/core/hello.star) so the shape of every invocation is concrete.
+The `kite` command-line interface is the primary utility for executing, validating, testing, and debugging Starkite scripts. It provides dedicated subcommands for inline code evaluation, syntax validation, test harness execution, and hot-reload file watching. The walkthrough below demonstrates these common CLI operations using the local `./hello.star` script created in the previous section.
 
 ## kite version
 
-Before running anything, confirm which build you have. `kite version` prints the full report — edition, commit, build time, runtime — and `--short` narrows it to just the version string, which is the form to use in scripts and CI checks:
+To output the version of the installed `kite` binary:
 
 ```bash
 $ kite version --short
 v0.1.0
 ```
 
-## kite run &lt;script&gt;
+Without the `--short` flag, this command outputs complete build details, including commit hashes, build timestamps, the compiler version, and the target architecture.
 
-`run` is the workhorse: hand it a script and it executes the file end to end, printing whatever the script writes:
+## kite run
+
+The `run` subcommand executes a Starlark script file end-to-end:
 
 ```bash
-$ kite run ./examples/core/hello.star
+$ kite run ./hello.star
 Hello from starkite!
 Hostname: dev-host.local
 User:     alice
@@ -34,41 +34,77 @@ Time:     2026-01-15T10:00:00Z
 Home:     /home/alice
 ```
 
-The output above is host-specific — your hostname, user, paths, and time will differ.
+## kite (shorthand)
 
-## kite &lt;script&gt; (shorthand)
-
-Since `run` is what you do most, you rarely have to type it. When the first argument is a path, kite supplies `run` for you, so the previous command collapses to the bare script:
+For convenience, if the first positional argument passed to `kite` is a script file path, the `run` subcommand is implicit. This makes running the bare file name equivalent to using the explicit `run` subcommand:
 
 ```bash
-$ kite ./examples/core/hello.star
-# same output as `kite run ./examples/core/hello.star`
+$ kite ./hello.star
+Hello from starkite!
+Hostname: dev-host.local
+User:     alice
+Cwd:      /home/alice/projects/starkite
+Kernel:   Linux
+Time:     2026-01-15T10:00:00Z
+Home:     /home/alice
 ```
 
-## kite exec '&lt;code&gt;'
+This shorthand is what enables shebang (`#!`) direct execution. When you execute a script file via `./hello.star`, the operating system invokes `kite ./hello.star` under the hood. Because the `run` subcommand is assumed automatically, the runtime executes the script directly instead of failing due to a missing subcommand.
 
-When the work is too small to warrant a file, skip the script entirely. `kite exec` takes Starlark source on the command line and runs it directly, which is the quickest way to test a snippet or compute a one-off value:
+For example, given a script with the `kite` shebang at the top:
 
-```bash
-$ kite exec 'print("hello from exec")'
-hello from exec
+```python
+#!/usr/bin/env kite
+# hello.star
+print("Hello from starkite!")
+# ...
 ```
 
-## kite validate &lt;script&gt;
-
-To catch errors before a script ever runs — in CI, a pre-commit hook, or an editor — use `validate`. It parses the script without executing it and reports whether the file is well-formed, so a broken script fails the check rather than failing partway through a real run:
+Executing it directly from the shell:
 
 ```bash
-$ kite validate examples/core/hello.star
-examples/core/hello.star: OK
+# Mark the script as executable (if not already done)
+$ chmod +x ./hello.star
+
+# Run the script directly using the shebang shorthand
+$ ./hello.star
+Hello from starkite!
+Hostname: dev-host.local
+User:     alice
+Cwd:      /home/alice/projects/starkite
+Kernel:   Linux
+Time:     2026-01-15T10:00:00Z
+Home:     /home/alice
 ```
 
-## kite test &lt;test_script&gt;
 
-For scripts you mean to keep working, `test` runs the suite. Point it at a `_test.star` file or a directory and it discovers every `def test_*`, runs each one, and reports the tally:
+## kite exec
+
+The `exec` subcommand executes Starlark code passed directly as an inline string argument. This is useful for evaluating expressions, testing snippets, or running inline automation checks:
 
 ```bash
-$ kite test examples/core/hello_test.star
+$ kite exec 'print("Hello from exec")'
+Hello from exec
+```
+
+For advanced shell pipelines, JSON/YAML processing, network queries, and script assertions, see the [Shell Integration Guide](../fundamentals/shell-integration.md).
+
+## kite validate
+
+To check a script's syntax without executing any of its logic, use `validate`. This command parses the script and reports any syntax or structural errors:
+
+```bash
+$ kite validate ./hello.star
+./hello.star: OK
+```
+
+## kite test
+
+To run test suites written in Starlark, point `test` at a test script file (typically suffixed with `_test.star`) or a directory containing them. The runner automatically executes any functions named with the `test_` prefix:
+
+```bash
+# Example running tests against a test file
+$ kite test ./hello_test.star
 Found 1 test file(s)
 ============================================================
 Tests: 6 passed, 0 failed, 6 total
@@ -76,26 +112,25 @@ Time:  15ms
 ============================================================
 ```
 
-See [Testing](../fundamentals/testing.md) for writing tests, assertions, and the run flags.
+For more details on writing test cases and using assertions, see [Testing](../fundamentals/testing.md).
 
 ## kite repl
 
-When you want to explore interactively rather than commit to a file, `repl` opens a session with every built-in module pre-loaded, so you can call them and inspect results line by line. It requires a TTY; exit with Ctrl-D:
+To interactively evaluate Starlark code, launch the read-eval-print loop (REPL) session:
 
 ```bash
 $ kite repl
 >>> print(runtime.platform())
->>> _
+darwin
+>>> 
 ```
 
-## kite watch &lt;script&gt;
+## kite watch
 
-To tighten the edit-run loop, `watch` re-runs a script every time its file changes, so you see the effect of each save without re-invoking kite by hand. Stop the loop with Ctrl-C:
+To speed up development, `watch` monitors a script file and automatically re-executes it every time the file is modified:
 
 ```bash
-$ kite watch ./examples/core/hello.star
+$ kite watch ./hello.star
 ```
 
-## See also
-
-- [CLI reference](../references/cli/index.md) — every subcommand, every flag, every exit code
+For a complete list of CLI subcommands, flags, and environment variables, see the [CLI Reference](../references/cli/index.md).
