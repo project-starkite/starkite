@@ -6,74 +6,102 @@ weight: 30
 
 # JSON & YAML
 
-Almost every automation eventually has to read a config file, parse a command's JSON output, or write a manifest back to disk, and the `json` and `yaml` modules are how you do that without leaving Starlark. The two share one shape on purpose: module-level `encode`/`decode` turn values into strings and back, and `file`/`source` factories handle the disk on either end. `yaml` carries one extra capability for the multi-document files that Kubernetes and similar tools emit. Both are pure-compute modules — they transform data already in hand and never touch the filesystem on their own — so the only step that needs a permission is the one that actually reads or writes a file.
+Starkite scripts use the `json` and `yaml` modules to parse and serialize structured configuration data. Both modules share an identical API for converting strings, reading files, and writing data to disk. As pure-compute modules, they require no security permissions unless they are reading or writing files directly on the host filesystem.
 
 ## Encoding and decoding strings
 
-Start with data you already hold in memory. `encode` serializes a value to a string, and `decode` parses a string back into a value, so a round trip through either module leaves you with native Starlark dicts and lists:
+To convert Starlark values to strings or parse serialized data in memory, use the `encode` and `decode` functions. These operations convert data to and from native Starlark lists and dictionaries:
 
 ```python
-# JSON
-text = json.encode({"host": "localhost", "port": 8080})
-data = json.decode('{"host":"localhost","port":8080}')
-print(data["host"])   # localhost
+# Serialize Starlark data to JSON/YAML strings
+json_text = json.encode({"host": "localhost", "port": 8080})
+yaml_text = yaml.encode({"replicas": 3})
 
-# YAML
-text = yaml.encode({"replicas": 3})
-data = yaml.decode("replicas: 3")
+# Parse JSON/YAML strings back to Starlark dictionaries
+json_data = json.decode('{"host":"localhost","port":8080}')
+yaml_data = yaml.decode("replicas: 3")
+
+# Index parsed values directly as Starlark dictionaries
+print(json_data["host"])  # Outputs: localhost
 ```
 
-After `decode`, `data` is an ordinary dict you index with `data["host"]` — there is no wrapper type to unpack. This is the path to reach for when the bytes come from somewhere other than a file: the body of an HTTP response, the stdout of a command, a string you assembled yourself.
+These in-memory functions are commonly used to process API response payloads, command outputs, or dynamically generated configurations.
 
-## Reading files
+## Reading and writing files
 
-When the data lives on disk, skip the read-then-decode dance and hand the path straight to the module. `json.file(path)` and `yaml.file(path)` return a file object whose `decode()` method reads and parses in one call:
+To interact with files on the filesystem, use the `file` and `source` helper factories:
+
+* **`file(path)`**: Opens a file reader. Call `.decode()` on the returned file object to read and parse its contents.
+* **`source(data)`**: Opens a data writer. Call `.write_file(path)` on the returned writer object to serialize the data and write it to disk.
+
+### Examples
 
 ```python
-pkg = json.file("package.json").decode()
-print(pkg["name"], pkg["version"])
+# Read and parse a JSON file from disk (requires read permission)
+package = json.file("package.json").decode()
+print("Project name: " + package["name"])
 
-cfg = yaml.file("config.yaml").decode()
+# Write a dictionary to a formatted JSON file (requires write permission)
+settings = {"database": {"host": "db.example.com", "port": 5432}}
+json.source(settings).write_file("settings.json", indent="  ")
+
+# Write a dictionary to a block-formatted YAML file
+yaml.source(settings).write_file("settings.yaml")
 ```
 
-The result is the same native dict you would get from `decode` on a string; the file object just spares you opening the file yourself. Because this step reads from disk, it is the one call here that needs filesystem permission.
+The optional `indent` parameter on `json.source().write_file()` defines the indentation spacing for pretty-printed output.
 
-YAML adds a wrinkle that JSON does not: a single file can hold several documents separated by `---`. Calling `decode()` on such a file gives you only the first document, so when you want all of them, reach for `decode_all()`, which returns a list — one entry per document:
+### Pretty-printing JSON in memory
+
+To format or pretty-print a JSON string directly in memory without writing to a file, call the `.encode()` method on a JSON source writer:
 
 ```python
-docs = yaml.file("manifests.yaml").decode_all()
-for doc in docs:
-    print(doc["kind"])
+data = {"status": "active", "code": 200}
+
+# Generates a formatted JSON string with two-space indentation
+pretty_json = json.source(data).encode(indent="  ")
 ```
 
-This is what makes the `yaml` module practical for Kubernetes manifests, where one file routinely bundles a Namespace, a ConfigMap, and a Deployment.
+## Handling multi-document YAML files
 
-## Writing files
+Kubernetes manifests and cloud configurations often combine multiple resource definitions into a single file separated by `---`. The `yaml` module provides specialized functions to handle these multi-document streams:
 
-Going the other direction, `source` wraps a value in a writer and `write_file` serializes it to a path. For JSON, the optional `indent` argument controls pretty-printing — pass two spaces and the output is human-readable rather than packed onto one line:
+* **`yaml.file(path).decode_all()`**: Reads a file from disk and returns a list containing one parsed Starlark dictionary per document.
+* **`yaml.decode_all(string)`**: Parses an in-memory YAML string containing multiple documents and returns a list of parsed dictionaries.
+* **`yaml.encode_all(list)`**: Serializes a list of Starlark dictionaries into a single multi-document YAML string separated by `---`.
+
+### Example: Reading and writing multi-resource manifests
 
 ```python
-config = {
-    "database": {"host": "db.example.com", "port": 5432},
-}
-json.source(config).write_file("config.json", indent="  ")
-yaml.source(config).write_file("config.yaml")
+# Read all resource definitions from a single Kubernetes manifest file
+resources = yaml.file("manifest.yaml").decode_all()
+for res in resources:
+    print("Resource Kind: " + res["kind"])
+
+# Modify a value and re-encode all documents to a new file
+resources[0]["metadata"]["labels"]["env"] = "production"
+yaml.source(resources).write_file("manifest-prod.yaml")
 ```
 
-YAML writes are already block-formatted, so `yaml.source(...).write_file(...)` takes no indent argument. Both of these calls write to disk, so both need filesystem permission for the target path.
+When a list of dictionaries is passed to `yaml.source()`, the writer automatically serializes them as a multi-document stream separated by `---`.
 
-## Round-trip editing
+## Failure handling
 
-The factories compose into the pattern you will use most: read a file, change a value in the resulting dict, and write the same structure back. Because `decode()` hands you a mutable dict, the edit is a plain assignment, and `source(...).write_file(...)` closes the loop:
+By default, syntax errors or missing files will raise a Starlark-level execution error and halt the script. To inspect and handle errors programmatically, use the `try_` variants which return a `Result` object containing `.ok`, `.value`, and `.error` attributes:
 
 ```python
-data = json.file("settings.json").decode()
-data["debug"] = False
-json.source(data).write_file("settings.json", indent="  ")
+# Attempt to read a JSON file safely
+result = json.file("optional-config.json").try_decode()
+
+if result.ok:
+    config = result.value
+    print("Config loaded successfully")
+else:
+    print("Failed to load config: " + result.error)
 ```
 
-Reusing the same `indent` on the way out keeps the file's formatting stable, so a one-key change produces a one-line diff instead of reflowing the whole document.
+## See also
 
-## Handling failure
+* [`json` API reference](../references/api/json.md) — Detailed function signatures and properties.
+* [`yaml` API reference](../references/api/yaml.md) — Detailed function signatures and properties.
 
-Any of these calls can fail — a malformed string, a missing file, an unwritable path — and by default a failure aborts the script. When you would rather inspect the failure than crash on it, every function and method that can fail also has a `try_` variant that returns a [`Result`](../fundamentals/language.md#error-handling) instead of raising: `json.try_decode(s)`, `f.try_decode()`, `w.try_write_file(path)`. Check the `Result` and you decide what a parse error or a missing file means for the run rather than letting it end the script. See the [json](../references/api/json.md) and [yaml](../references/api/yaml.md) references for the full signatures.
