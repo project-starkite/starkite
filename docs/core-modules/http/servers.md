@@ -6,11 +6,24 @@ weight: 2
 
 # HTTP servers
 
-Sometimes a script needs to answer requests rather than make them — a health endpoint, a webhook receiver, a small internal API. The `http` module gives you a production-style server for exactly that, and it keeps the model small: a handler is an ordinary Starlark function that takes a request and returns a response, and a route maps a method-and-path pattern to one of those functions. You wire the routes, then hand control to the server.
+The `http` module provides an HTTP server to receive and process incoming network requests. This allows Starkite scripts to expose health endpoints, listen for webhook payloads, or build internal APIs that respond to external clients.
+
+Serving HTTP requests requires server-binding permissions. Grant access using the `--permissions=allow-local` flag:
+
+```bash
+kite run ./server.star --permissions=allow-local
+```
 
 ## A minimal server
 
-The shortest path from nothing to a running endpoint is three calls — create a server, register a route, and serve. Each handler is a plain function, so the request arrives as its argument and the response leaves as its return value:
+To start a server:
+
+1. Define a handler function that accepts a request object as its argument.
+2. Create a server instance using `http.server()`.
+3. Register the handler to a route pattern using `srv.handle(pattern, handler)`.
+4. Start the listener using `srv.serve(port)`.
+
+The `srv.serve()` method blocks execution, keeping the script active to handle incoming requests:
 
 ```python
 def hello(req):
@@ -22,27 +35,33 @@ srv.handle("GET /hello", hello)
 srv.serve(port=8080)
 ```
 
-`srv.serve()` blocks, so the call at the bottom is where the script stays for the life of the server — everything above it is setup. Route patterns follow Go's `method path` form: `"GET /hello"`, `"POST /users"`, and `"GET /users/{id}"` for a path variable, which the handler later reads back from `req.params`.
+## Routing and route mapping
 
-## Request and response
+Route patterns follow the `"METHOD /path"` format, such as `"GET /hello"` or `"POST /users"`. The server matches incoming requests to registered route handlers.
 
-Each handler works with two values, and both are plain Starlark. The request is the object passed in: you read what the client sent through `req.query` for the query string, `req.body` for the payload, `req.params` for path variables, and `req.headers` for headers. The response is the dict you return — a `status`, a `body`, and optional `headers` — and returning `None` instead is shorthand for `204 No Content` when there is nothing to send back:
+### Routing with path variables
+
+To define dynamic path variables in a route, use curly braces (e.g., `{id}`). The server extracts these variables from the request path and exposes them in the handler through the `req.params` dictionary:
 
 ```python
-def create_user(req):
-    body = json.decode(req.body)
-    return {"status": 201, "body": json.encode({"created": body["name"]})}
+def get_user(req):
+    # Retrieve the path parameter 'id'
+    user_id = req.params.get("id")
+    
+    return {
+        "status": 200,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.encode({"user_id": user_id, "status": "active"}),
+    }
 
 srv = http.server()
-srv.handle("POST /users", create_user)
+srv.handle("GET /users/{id}", get_user)
 srv.serve(port=8080)
 ```
 
-Here the handler decodes the incoming JSON body, then encodes its own JSON for the response, so the dict it returns carries a `201 Created` and a serialized payload. The body is a string on both sides; `json.decode` and `json.encode` are what bridge it to and from structured data.
+### Declarative route mapping
 
-## Quick start with a route map
-
-When a server is small enough that the handlers are one-liners, registering each route by hand is more ceremony than it is worth. `http.serve()` collapses the whole setup into a single call: hand it a dict of pattern-to-handler and a port, and it builds the server, registers every route, and blocks — all at once:
+For simple servers with short handlers, you can use the `http.serve(route_map, port)` shortcut. This function combines server creation, routing, and starting the listener into a single blocking call:
 
 ```python
 http.serve({
@@ -51,37 +70,146 @@ http.serve({
 }, port=8080)
 ```
 
-This is the same server you would build with `http.server()` and repeated `srv.handle()` calls, written as data. Reach for it when the routes are trivial and lose nothing by being inline; switch back to the explicit form once a handler grows past a lambda or you need middleware.
+
+## Request and response objects
+
+Starkite maps the lifecycle of an HTTP transaction directly to Starlark data structures. Each handler function receives a structured request object as its argument, which encapsulates all incoming client data—such as query strings, HTTP headers, path parameters, and request payloads. To respond to the client, the handler must return a Starlark dictionary. The server parses this dictionary to construct the outgoing HTTP response status, headers, and body.
+
+The following example demonstrates a handler reading query parameters and headers from the request object, and returning a formatted response dictionary:
+
+```python
+def handle_transaction(req):
+    # Read query parameters and headers from the request object
+    action = req.query.get("action", "read")
+    auth = req.headers.get("Authorization", "none")
+    
+    # Return a dictionary defining the HTTP response status, headers, and body
+    return {
+        "status": 200,
+        "headers": {
+            "Content-Type": "text/plain",
+            "X-Server-Engine": "Starkite",
+        },
+        "body": "Action: " + action + ", Auth: " + auth,
+    }
+
+srv = http.server()
+srv.handle("GET /transaction", handle_transaction)
+srv.serve(port=8080)
+```
+
+### Request properties
+
+The request object exposes incoming data through the following attributes:
+
+* **`req.method`**: The HTTP method string (e.g., `"GET"`, `"POST"`).
+* **`req.path`**: The request path string (e.g., `"/hello"`).
+* **`req.query`**: A dictionary containing query string parameters.
+* **`req.params`**: A dictionary containing path variables extracted from route patterns.
+* **`req.headers`**: A dictionary of incoming request headers.
+* **`req.body`**: The raw request body as a string.
+
+### Response dictionary structure
+
+The dictionary returned by the handler defines the HTTP response:
+
+* **`status`**: The integer HTTP status code (e.g., `200`, `201`, `400`).
+* **`body`**: A string representing the response payload.
+* **`headers`**: An optional dictionary of HTTP headers to return to the client.
+
+Returning `None` from a handler is a shorthand for returning `{"status": 204}` (No Content).
+
+```python
+def create_user(req):
+    # Decode the incoming JSON body
+    body = json.decode(req.body)
+    
+    # Return a 201 Created status and JSON payload
+    return {
+        "status": 201,
+        "headers": {"Content-Type": "application/json"},
+        "body": json.encode({"created": body["name"]})
+    }
+
+srv = http.server()
+srv.handle("POST /users", create_user)
+srv.serve(port=8080)
+```
+
+
 
 ## Middleware
 
-Cross-cutting concerns — logging every request, checking auth, stamping a shared header — do not belong inside each handler, because repeating them invites drift. `srv.use(fn)` lets you wrap every handler from the outside instead. A middleware is a function that takes the next handler and returns a replacement: it does its work, then calls through:
+Middleware functions allow you to wrap every handler to implement cross-cutting concerns, such as logging, authentication, or common header injection.
+
+A middleware function takes a `next` handler function as an argument and returns a new handler function:
 
 ```python
-def log_requests(next):
+def log_requests(next_handler):
     def handler(req):
         log.info("request", {"method": req.method, "path": req.path})
-        return next(req)
+        return next_handler(req)
     return handler
 
-srv = http.server(read_timeout="30s", write_timeout="60s")
+def hello(req):
+    return {"status": 200, "body": "Hello World"}
+
+srv = http.server()
 srv.use(log_requests)
 srv.handle("GET /hello", hello)
 srv.serve(port=8080)
 ```
 
-The inner `handler` logs the method and path, then forwards the request to `next(req)` and returns whatever it produces, so the wrapped behavior runs on the way in and the real handler runs unchanged. Because the wrap happens around every registered route, one `srv.use()` covers the whole server rather than each endpoint.
+## Server configuration and TLS
 
-## Timeouts and TLS
+You can configure timeouts, payload size limits, and TLS certificates by passing options to `http.server()`:
 
-A server exposed beyond your own machine should not wait forever on a slow client or accept an unbounded body, so `http.server()` takes the knobs that bound those risks. `read_timeout`, `write_timeout`, `idle_timeout`, and `shutdown_timeout` are duration strings (`"30s"`); `max_body_bytes` caps the request size; and `tls_cert` / `tls_key` switch the listener to HTTPS. The defaults are permissive, so set the timeouts deliberately for anything past a local experiment. See the [http API reference](../../references/api/http.md#httpserver) for the full surface.
+* **Timeouts**: Pass `read_timeout`, `write_timeout`, `idle_timeout`, or `shutdown_timeout` as duration strings (e.g., `"30s"`).
+* **Payload limits**: Pass `max_body_bytes` as an integer to cap the maximum request payload size.
+* **TLS (HTTPS)**: Pass `tls_cert` and `tls_key` as file paths to enable HTTPS.
 
-## Permissions
-
-Serving HTTP is a privileged act — it opens a listening socket — so it sits behind the permission ladder rather than running by default. `http.*` serving lives in the `allow-local` profile, alongside `os.exec` under `$CWD` and `k8s` access. Under the default `deny-all`, a script that calls `srv.serve()` is stopped at that call; grant the profile to let it through:
-
-```bash
-kite ./server.star --permissions=allow-local
+```python
+# Configure a secure server with explicit timeouts
+srv = http.server(
+    read_timeout="15s",
+    write_timeout="30s",
+    max_body_bytes=1048576, # 1MB limit
+    tls_cert="/etc/ssl/certs/server.crt",
+    tls_key="/etc/ssl/certs/server.key",
+)
 ```
 
-Run a server under the profile it will use in production, no looser. If a server script needs more than `allow-local`, that is a signal to look at what else it is reaching for. See [Permission](../../fundamentals/security/permission.md).
+## Asynchronous execution and dynamic ports
+
+For integration testing or background tasks, you can start the server asynchronously (non-blocking) using the `srv.start()` method instead of the blocking `srv.serve()` method. 
+
+By passing `port=0`, the operating system automatically allocates an available free port. You can retrieve the assigned port at runtime by calling `srv.port()`:
+
+```python
+def hello(req):
+    return {"status": 200, "body": "Hello World"}
+
+def main():
+    srv = http.server()
+    srv.handle("GET /hello", hello)
+    
+    # Start the server asynchronously on a random free port
+    srv.start(port=0)
+    
+    # Retrieve the dynamically assigned port
+    p = srv.port()
+    print("Server started in background on port:", p)
+
+    # Query the background server using the HTTP client
+    resp = http.url("http://127.0.0.1:" + str(p) + "/hello").get()
+    print("Response body:", resp.get_text())
+
+    # Gracefully shut down the server
+    srv.shutdown()
+    print("Server shut down successfully")
+```
+
+## See also
+
+* [`http` API reference](../../references/api/http.md#httpserver) — Detailed server function signatures and properties.
+* [HTTP clients](clients.md) — Make outbound HTTP requests in Starkite.

@@ -6,52 +6,101 @@ weight: 1
 
 # HTTP clients
 
-When a script needs to reach an outside service — fetch a config, call an API, post a webhook — it does so through the `http` module's client. Every request starts from a single object, `http.url`, which you build from an address and then act on. There is no client to construct and no session to manage: you name a URL and call the method you want.
+The `http` module provides an HTTP client to perform network requests, such as retrieving remote configurations, interacting with web APIs, or dispatching webhooks. Every request begins with the `http.url(address)` constructor, which returns a URL object. You execute requests by calling HTTP verb methods directly on the URL object.
+
+Running scripts that perform outbound HTTP requests requires network permissions. Grant access using the `--permissions=allow-net` flag:
+
+```bash
+kite run ./fetch.star --permissions=allow-net
+```
 
 ## Making requests
 
-You begin by handing `http.url(...)` an address. It returns a URL object, and the verb you call on it decides the request:
+Use `http.url(address)` to create a URL object. The object supports standard HTTP request methods: `get()`, `post()`, `put()`, `patch()`, and `delete()`. 
+
+These methods execute the request synchronously and return an `http.response` object containing the following properties:
+
+* **`status_code`**: The integer HTTP status code returned by the server.
+* **`status`**: The status text string (e.g., `"200 OK"`).
+* **`body`**: The raw response payload as a byte array (`bytes`).
+* **`headers`**: A dictionary of response headers.
+
+Use `resp.get_text()` to retrieve the payload as a UTF-8 string, and `resp.get_bytes()` (or the `body` property) to retrieve the raw bytes.
 
 ```python
 resp = http.url("https://api.example.com/data").get()
+
+# Print the status code
 print(resp.status_code)
-data = json.decode(resp.body)
+
+# Decode and print the body text
+print(resp.get_text())
 ```
 
-The URL object exposes `get`, `post`, `put`, `patch`, and `delete`. Each one sends its request and returns an `http.response` carrying the `status_code`, the `body` as text, and the response `headers` — which is why the example reads `resp.status_code` straight off the return and decodes `resp.body` as JSON without an intervening step.
+## Global client configuration
 
-## Headers, bodies, and timeouts
-
-Real requests rarely stop at a bare GET. Methods that send data take a body as their first argument, and every method accepts `headers` and a `timeout` as keywords:
+To configure global settings for all subsequent HTTP requests in the script, use `http.config()`. You can specify a default timeout and a dictionary of default headers (such as authorization tokens) to be included in every request:
 
 ```python
-resp = http.url("https://api.example.com/users").post(
-    json.encode({"name": "alice"}),
-    headers={"Content-Type": "application/json"},
+http.config(
     timeout="10s",
+    headers={"Authorization": "Bearer secret-token"},
 )
-if resp.status_code == 201:
-    print("created")
 ```
 
-Here the encoded JSON is the POST body, the `Content-Type` header tells the server how to read it, and `timeout="10s"` caps how long the call may wait — a duration string, not a number — so a slow endpoint fails fast instead of hanging the script. The response is the same `http.response` as before, so you check `status_code` to confirm the resource was created.
+## Request payloads and options
+
+When using methods that transmit payloads (`post()`, `put()`, and `patch()`), pass the request body as the first positional argument. All request methods accept optional keyword arguments to configure the request:
+
+* **`headers`**: A dictionary of HTTP headers to include in the request.
+* **`timeout`**: A duration string (e.g., `"5s"` or `"500ms"`) to limit execution time.
+
+```python
+# Send a POST request with a raw text body and custom headers
+resp = http.url("https://api.example.com/logs").post(
+    "Application log entry",
+    headers={"Content-Type": "text/plain", "X-App-Id": "starkite-123"},
+)
+
+# Send a GET request with a custom header and a timeout limit
+resp = http.url("https://api.example.com/status").get(
+    headers={"Accept": "application/json"},
+    timeout="5s",
+)
+```
+
+### Auto-JSON serialization for dictionaries
+
+Passing a Starlark dictionary as the body parameter automatically serializes it to JSON and sets the `Content-Type` header to `application/json`:
+
+```python
+# The dictionary is serialized to JSON and sent with the appropriate Content-Type header
+resp = http.url("https://api.example.com/users").post({"name": "alice"})
+```
 
 ## Error handling
 
-A network call can fail before any status code comes back — the host is down, DNS does not resolve, the connection times out. By default those failures raise and stop the script. When you would rather inspect the failure than abort on it, each request method has a `try_` variant that returns a [`Result`](../../fundamentals/language.md#error-handling) instead of raising:
+Network failures, DNS resolution errors, and timeouts halt script execution. To handle these failures programmatically, use request methods prefixed with `try_` (such as `try_get()` or `try_post()`), which return a `Result` object.
+
+The `Result` object contains the following properties:
+* **`ok`**: A boolean indicating if the request succeeded.
+* **`value`**: The `http.response` object (available only when `ok` is `True`).
+* **`error`**: A string describing the failure (available only when `ok` is `False`).
+
+Because Starlark restricts control flow (like `if` statements) to function bodies, wrap error-handling logic in a function:
 
 ```python
-result = http.url("https://unreachable.example.com").try_get()
-if result.ok:
-    print(result.value.status_code)
-else:
-    print("request failed:", result.error)
+def fetch_user_safely():
+    result = http.url("https://api.example.com/users/1").try_get()
+
+    if result.ok:
+        print("Status code:", result.value.status_code)
+        print("Body text:", result.value.get_text())
+    else:
+        print("Request failed:", result.error)
 ```
 
-A `Result` reports success through `result.ok`. On success the response is in `result.value` — note that the status code lives one level down, at `result.value.status_code` — and on failure the reason is in `result.error`. The cost of `try_` is that you now branch on every call site; reach for it when a failed request is a condition to handle rather than a reason to stop.
+## See also
 
-## Permissions
-
-Outbound requests are a gated capability. The client lives under the `http.client` rule, which the `allow-net` profile grants, so a script that makes requests needs at least that profile — under the default `deny-all`, an `http.url(...).get()` is denied before it leaves the process. See [Permission](../../fundamentals/security/permission.md) for the profile ladder.
-
-See the [http API reference](../../references/api/http.md#httpurl) for the full request and response surface. To build a server, see [HTTP servers](servers.md).
+* [`http` API reference](../../references/api/http.md#httpurl) — Detailed client function signatures and properties.
+* [HTTP servers](servers.md) — Expose HTTP endpoints in Starkite.
