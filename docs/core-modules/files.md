@@ -6,73 +6,165 @@ weight: 40
 
 # Files
 
-Almost every automation eventually touches the filesystem — reading a config, writing a report, walking a directory tree. Starkite gives you one object for all of it. The `fs` module is **Path-first**: instead of a grab-bag of free functions that each take a string, you build a `Path` and call methods on it, the way Python's `pathlib` works. You create a path with `fs.path()`, or with the `path()` global alias that the module injects so you never need a prefix for the common case:
+Starkite scripts use the `fs` module to manage files, directories, and path resolutions. The module centers on the `Path` type, allowing scripts to execute filesystem reads, writes, deletions, and traversals directly through path-anchored methods.
+
+## Path instantiation and composition
+
+To perform filesystem operations, instantiate a `Path` object using the `fs.path()` factory or the global alias `path()`:
 
 ```python
 p = fs.path("/etc/hosts")
 p = path("/etc/hosts")        # equivalent global alias
 ```
 
-Both calls produce the same `Path` object. Everything that follows hangs off it.
+Once instantiated, you can query its properties to inspect path components:
 
-## Path properties and building
+| Property | Type | Description | Example (for `path("/home/alice/report.md")`) |
+|----------|------|-------------|-----------------------------------------------|
+| `.name` | `string` | The filename including its extension. | `"report.md"` |
+| `.stem` | `string` | The filename excluding the extension. | `"report"` |
+| `.suffix` | `string` | The file extension including the leading dot. | `".md"` |
+| `.parent` | `Path` | The parent directory as a new `Path` object. | `path("/home/alice")` |
+| `.parts` | `list[string]` | A list of individual path segments. | `["/", "home", "alice", "report.md"]` |
+| `.string` | `string` | The clean string representation of the path. | `"/home/alice/report.md"` |
 
-Before you read or write anything, you usually need to inspect a path or derive a new one from it, and a `Path` answers both needs without string surgery. Its components are exposed as properties, and the `/` operator composes new paths by joining segments — again mirroring `pathlib`, so the path is always a real object rather than a string you splice together:
+To compose and join new path segments, use the path slash operator (`/`) or the `.join()` method:
 
 ```python
-p = path("/home/alice/report.md")
-p.name       # "report.md"
-p.stem       # "report"
-p.suffix     # ".md"
-p.parent     # Path("/home/alice")
-
+# Build a nested path using the path slash operator
 config = path("/home/alice") / "config" / "app.yaml"
-print(config.string)   # /home/alice/config/app.yaml
+
+# Alternatively, join segments using the join() method
+config = path("/home/alice").join("config", "app.yaml")
+
+# Resolves to the absolute path: /home/alice/config/app.yaml
+print(config.string)
 ```
 
-The properties read off the parts you care about — `name`, `stem`, `suffix`, `parent` — while `/` builds `config` up segment by segment. Note `.string` at the end: a `Path` is an object, so when you want the plain text form for printing or passing onward, you ask for it explicitly.
+## File I/O operations
 
-## Reading and writing
-
-Once you have a path, moving data in and out of it is a single method call. `read_text()` pulls the whole file into a string, `write_text()` replaces its contents, and predicate methods like `exists()` let you branch before you act:
+To read, write, or append data to a file, execute the corresponding methods directly on a `Path` object:
 
 ```python
-# Read
-text = path("config.yaml").read_text()
+p = path("config.yaml")
 
-# Write
-path("/tmp/out.txt").write_text("hello")
+# Read the entire file as a string
+content = p.read_text()
 
-# Existence and type checks
-if path("/etc/hosts").exists():
-    ...
+# Overwrite or create a file with text (default mode is 0644)
+path("/tmp/output.txt").write_text("hello world")
+
+# Append text to the end of a file
+path("/tmp/output.txt").append_text("\nsecond line")
 ```
 
-These calls are the ones gated by the [permission](../fundamentals/security/permission.md) ladder. A read needs `fs.read`, and a write or delete needs `fs.write` / `fs.delete` — and under the default `deny-all` profile a script gets neither, so a script that touches the filesystem must run under `allow-fs` or higher. That gate is the cost of safety: the write above will not reach disk until you grant the authority for it.
-
-## Listing and globbing
-
-Reading one file at a time only takes you so far; most jobs operate over a set of files you discover at runtime. `glob()` on a directory path matches a pattern and yields each result as its own `Path`, so you can iterate the matches and keep calling `Path` methods on them without re-wrapping strings:
+Binary operations are supported via `.read_bytes()`, `.write_bytes()`, and `.append_bytes()`:
 
 ```python
-for entry in path("./logs").glob("*.log"):
-    print(entry.name)
+# Read binary data from a file (returns a bytes object)
+binary_data = path("image.png").read_bytes()
+
+# Write raw bytes to a file
+path("copy.png").write_bytes(binary_data)
+
+# Append binary data to a file using a bytes literal
+path("data.bin").append_bytes(b"\x00\xff\x00\xff")
 ```
 
-Each `entry` here is a full `Path`, which is why `entry.name` works directly inside the loop — the same object model carries through from the directory to every file it contains.
+## Metadata and checks
 
-## Error handling
+You can query file types, check existence, and inspect system metadata:
 
-A missing file or a permission denial normally raises and stops the script, which is the right default when you cannot continue without the data. When you can — a probe that may legitimately fail, an optional file — every I/O method offers a `try_` variant that returns a [`Result`](../fundamentals/language.md#error-handling) instead of raising, handing you control over the failure:
+* **`.exists()`**: Returns `True` if the path exists on disk.
+* **`.is_file()` / `.is_dir()` / `.is_symlink()`**: Type-checking predicates.
+* **`.stat()`**: Returns a dictionary containing file details (`name`, `size`, `mode`, `is_dir`, `mod_time`).
+* **`.disk_usage()`**: Returns a dictionary containing storage space info (`total`, `used`, `free` in bytes) for the partition hosting the path.
 
 ```python
-result = path("/etc/missing").try_read_text()
-if result.ok:
-    print(result.value)
-else:
-    print("error:", result.error)
+def main():
+    target = path("/var/log/syslog")
+
+    if target.exists() and target.is_file():
+        info = target.stat()
+        print("File size in bytes: " + str(info["size"]))
 ```
 
-You inspect `result.ok` to see whether the read succeeded, then reach for `result.value` on success or `result.error` on failure. The trade-off is explicitness: `try_read_text()` never interrupts your script, but you carry the obligation to check the result yourself.
+## Directory traversal and globbing
 
-See the [fs API reference](../references/api/fs.md) for the complete `Path` surface — path building, metadata, directory operations, and globbing.
+To locate, list, or recursively traverse files in a directory, use the following methods:
+
+* **`.listdir()`**: Returns a list of immediate child `Path` objects in the directory.
+* **`.glob(pattern)`**: Searches the directory and returns a list of child `Path` objects matching a wildcard glob pattern.
+* **`.walk()`**: Recursively traverses the directory tree, returning a list of `tuple(dir_path, subdirs, files)` identical to Python's `os.walk`.
+
+### Traversal examples
+
+```python
+def main():
+    # List all immediate logs in a directory
+    for entry in path("./logs").glob("*.log"):
+        print("Log file: " + entry.name)
+
+    # Recursively traverse and list all nested files
+    for dir_path, subdirs, files in path("./src").walk():
+        for f in files:
+            # Re-assemble the path using the path slash operator
+            full_path = dir_path / f
+            print("Found source file: " + full_path.string)
+```
+
+## Common file operations
+
+The `Path` object provides standard methods to manage files and directories:
+
+| Method | Purpose |
+|--------|---------|
+| `.touch([exist_ok=True])` | Creates an empty file or updates its modification time. |
+| `.mkdir([parents=False, mode=0755])` | Creates a new directory. Set `parents=True` to create intermediate parent folders. |
+| `.remove()` | Deletes the file or empty directory. |
+| `.rename(target_path)` | Renames or moves the file to a new path. |
+| `.copy_to(target_path)` | Copies the file to a new destination. |
+| `.move_to(target_path)` | Moves the file to a new destination. |
+| `.expanduser()` | Resolves leading `~` or `~user` home directory prefixes. |
+
+```python
+# Create nested directories
+path("./data/archive").mkdir(parents=True)
+
+# Copy a file to a backup destination
+path("config.json").copy_to("config.json.bak")
+```
+
+## Permissions
+
+All filesystem interactions are gated by Starkite's security engine. Reading from the filesystem requires the `fs.read` capability, and modifying or deleting files requires `fs.write` or `fs.delete`. 
+
+To run a script that accesses the filesystem, execute it with a permission profile like `--allow-fs`:
+
+```bash
+kite run ./backup.star --allow-fs
+```
+
+For more details, see the [Permission Guide](../fundamentals/security/permission.md).
+
+## Failure handling
+
+By default, executing an I/O operation on a missing file or path with insufficient permissions raises a Starlark-level execution error and terminates the script. 
+
+To handle failures programmatically without halting the script, append `try_` to any I/O method name. These variants return a `Result` object:
+
+```python
+def main():
+    # Safely attempt to read an optional configuration file
+    result = path("optional-settings.json").try_read_text()
+
+    if result.ok:
+        settings = result.value
+    else:
+        print("Skipping optional settings: " + result.error)
+```
+
+## See also
+
+* [`fs` API reference](../references/api/fs.md) — Detailed function signatures and properties.
+
