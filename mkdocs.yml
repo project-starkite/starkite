@@ -87,10 +87,14 @@ nav:
               - Clients: core-modules/http/clients.md
               - Servers: core-modules/http/servers.md
       - Infrastructure:
-          - Starkite and Kubernetes: infra/kubernetes.md
-          - Operating a cluster:     infra/operations.md
-          - Controlling a cluster:   infra/controllers.md
-          - Remote commands (SSH):   infra/ssh.md
+          - Overview: infra/index.md
+          - Kubernetes Automation:
+              - Connecting to a cluster: infra/kubernetes.md
+              - Operating a cluster:     infra/operations.md
+              - Controlling a cluster:   infra/controllers.md
+          - Host Fleet Automation:
+              - Remote commands (SSH):   infra/ssh.md
+              - Orchestrating fleets:    infra/fleet.md
       - AI:
           - Building agents:       ai/agents.md
           - Creating MCP servers:  ai/mcp.md
