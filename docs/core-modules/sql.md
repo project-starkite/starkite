@@ -1,37 +1,49 @@
 ---
 title: "Databases (SQL)"
-description: "Persisting and querying data with the sql module and embedded SQLite"
+description: "Persist and query relational data using the sql module and embedded SQLite"
 weight: 45
 ---
 
 # Databases (SQL)
 
-When a script needs to remember something between runs — a list of processed items, a set of seeded fixtures, the state of a long migration — it reaches for the `sql` module. The module gives a script durable, queryable storage without standing up infrastructure: **SQLite is built into every edition**, embedded and serverless, so a script that opens a file is a script with a database. PostgreSQL and MySQL ship in the all-in-one `kite` binary and present the same API, so code written against SQLite carries over to a networked database with only the connection string changing.
+The `sql` module provides persistent, queryable data storage for Starkite scripts. When a script needs to maintain state between executions—such as tracking processed items, seeding database fixtures, or managing schema migrations—it uses this module to read and write relational data. SQLite is embedded directly into the Starkite runtime, enabling serverless database operations against a local file. The module also connects to external PostgreSQL and MySQL databases using the same API.
 
-Under the hood the module is two layers over Go's `database/sql`. The lower layer is the raw machinery — `open`, `query`, `exec`, `begin` — a thin, faithful wrapping you can drop to when you want full control. The upper layer adds the conveniences a script actually wants: a managed `tx()` that commits and rolls back for you, scalar and column readers, streaming, and migrations. You will spend almost all of your time in the upper layer; the lower one is there when you need it.
+The module provides two levels of control: a low-level interface for direct SQL execution, and a high-level interface that automates common scripting tasks such as managing transactions, streaming large datasets, and running idempotent schema migrations.
 
-Because SQLite is file I/O, these examples touch the filesystem, so run them with at least `--allow-fs`:
+Because database operations access the host system, Starkite enforces permission checks. Interacting with local SQLite files requires the `--allow-fs` permission, while connecting to external PostgreSQL or MySQL servers requires `--allow-net`:
 
 ```bash
 kite run ./store.star --allow-fs
 ```
 
-## Open a database
+## Connecting to a database
 
-Every interaction starts from a connection, and you obtain one with `sql.open(driver, dsn)`. This call is also the security seam: permission is checked here, per driver, so a SQLite open clears under `allow-fs` while a Postgres or MySQL open needs the network grant of `allow-net`. For SQLite the DSN is a file path, or `:memory:` for an ephemeral database that exists only for the life of the run:
+Initialize a database connection using `sql.open(driver, dsn)`. The driver name and connection string (DSN) format determine the target database and the required permission profile:
+
+| Driver | DSN Format / Example | Required Permission | Description |
+| :--- | :--- | :--- | :--- |
+| `sqlite` | `app.db` or `:memory:` | `--allow-fs` | Local file-based database or in-memory ephemeral database. |
+| `postgres` | `postgres://user:pass@host:port/db?sslmode=disable` | `--allow-net` | External PostgreSQL server connection string. |
+| `mysql` | `user:pass@tcp(host:port)/db` | `--allow-net` | External MySQL or MariaDB server connection string. |
 
 ```python
-db = sql.open("sqlite", "app.db")     # a file on disk
-db = sql.open("sqlite", ":memory:")   # in-memory, gone when the script ends
+# Open a persistent SQLite database file
+db = sql.open("sqlite", "app.db")
+
+# Open an in-memory SQLite database
+db = sql.open("sqlite", ":memory:")
 ```
 
-The connection that comes back closes itself when the script ends, so an explicit `db.close()` is optional — keep it only when you want to release the pool early.
+Database connections close automatically when the script finishes execution. Calling `db.close()` is optional and is only necessary to release connection pool resources early.
 
-## Create a table and insert rows
+## Executing write operations
 
-With a connection in hand, you change data and schema through `exec`, which runs any statement that does not return rows. The one rule to internalize: pass values as parameters with `?` placeholders, never by formatting them into the SQL string, so each value is bound safely and an apostrophe in a title can never become an injection. After an `exec`, the result tells you what happened:
+To modify database schema or data, use `db.exec(query, *args)`. This method executes statements that do not return rows, such as schema modifications or data insertions.
+
+Pass query parameters as arguments using driver-native placeholders to prevent SQL injection:
 
 ```python
+# Create a table
 db.exec("""
     CREATE TABLE IF NOT EXISTS notes (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -40,120 +52,226 @@ db.exec("""
     )
 """)
 
-res = db.exec("INSERT INTO notes (title) VALUES (?)", "write the docs")
-print(res.last_insert_id)   # 1
-print(res.rows_affected)    # 1
+# Insert a row with bound parameters
+res = db.exec("INSERT INTO notes (title) VALUES (?)", "Write documentation")
 ```
 
-The `INSERT` reports `last_insert_id` — the generated key for the new row — and `rows_affected`, the count of rows the statement touched. Use the former to thread a fresh row's id into the next statement, the latter to confirm an update or delete hit what you expected.
+The `db.exec()` method returns a result object containing two properties:
+* `last_insert_id`: The auto-generated primary key ID of the inserted row (typically supported by SQLite and MySQL).
+* `rows_affected`: The number of rows modified by the statement.
 
-## Query
+## Inserting structured data
 
-Reading is where the upper layer earns its keep, because the shape you want back is rarely "all rows, all columns." Start with the general case: `query` returns a list of rows, each a dict keyed by column name, which you iterate directly:
+To insert dictionaries or lists of dictionaries directly without writing manual `INSERT` statements, use `db.insert(table, data)`. The module automatically generates the column names and placeholders from the keys of the dictionary.
+
+To insert a single row, pass a dictionary:
 
 ```python
-notes = db.query("SELECT id, title FROM notes WHERE done = ?", False)
-for n in notes:
-    printf("[%d] %s\n", n["id"], n["title"])
+db.insert("notes", {"title": "Write documentation", "done": False})
 ```
 
-Often you want less than a full table of dicts, and reaching for `query` and then indexing into it is clumsy. For a single row, `query_row` returns one dict or `None`; for a single value, `query_value` returns a bare scalar; and for one column across many rows, `query_column` returns a flat list:
+To perform a bulk insertion in a single statement, pass a list of dictionaries:
 
 ```python
-note  = db.query_row("SELECT * FROM notes WHERE id = ?", 1)   # dict or None
-count = db.query_value("SELECT count(*) FROM notes")          # 1
-titles = db.query_column("SELECT title FROM notes")           # ["write the docs"]
+db.insert("notes", [
+    {"title": "First task"},
+    {"title": "Second task"},
+])
 ```
 
-Each of these reads its whole result into memory before returning. That is fine until the result is large, at which point materializing every row is wasteful or impossible. For that case `query_each` streams: it calls a function once per row and never holds the full set:
+All dictionaries in a bulk insertion list must contain the identical set of keys. The module generates the SQL structure using the keys of the first dictionary.
+
+### Bulk execution with prepared statements
+
+To execute the same SQL statement repeatedly with different parameters, use `db.exec_many(query, param_sets)`. This method prepares the statement once and runs it for each set of parameters within a single transaction, improving performance:
 
 ```python
-db.query_each("SELECT * FROM events", lambda r: process(r))
+# Parameter sets must be a list of lists or tuples
+tasks = [
+    ("Task A",),
+    ("Task B",),
+    ("Task C",),
+]
+
+res = db.exec_many("INSERT INTO notes (title) VALUES (?)", tasks)
 ```
 
-The trade-off is the usual one — `query_each` keeps memory flat for a million rows, but you process row by row rather than getting a list back to slice and reuse.
+The returned result contains the cumulative `rows_affected` across all executions. The `last_insert_id` is set to `None`.
 
-## Transactions
+## Querying data
 
-When several writes have to land together or not at all — debit one account, credit another — you need a transaction. The upper layer's `db.tx()` makes the common case safe by default: you hand it a function, it hands that function a transaction, and it commits when the function returns cleanly and rolls back if the function raises. There is no manual commit or rollback to forget:
+The `sql` module provides several query methods tailored to the expected structure of the results.
+
+### Querying multiple rows
+
+Use `db.query(query, *args)` to retrieve multiple rows. This method returns a list of dictionaries, where each dictionary represents a row keyed by column names.
+
+Because Starlark restricts control-flow statements like `for` loops to function bodies, wrap the iteration in a function:
 
 ```python
-def complete_all(tx):
+def print_open_notes():
+    notes = db.query("SELECT id, title FROM notes WHERE done = ?", False)
+    for n in notes:
+        printf("[%d] %s\n", n["id"], n["title"])
+```
+
+### Targeted query methods
+
+To retrieve specific result shapes without manual parsing, use these specialized query methods:
+
+* **`db.query_row(query, *args)`**: Returns a single row as a dictionary, or `None` if no row matches.
+* **`db.query_value(query, *args)`**: Returns a single scalar value from the first column of the first row.
+* **`db.query_column(query, *args)`**: Returns a flat list of scalar values from the first column of all matching rows.
+
+```python
+# Retrieve a single row
+note = db.query_row("SELECT * FROM notes WHERE id = ?", 1)
+
+# Retrieve an aggregate scalar value
+count = db.query_value("SELECT count(*) FROM notes")
+
+# Retrieve a list of values for a single column
+titles = db.query_column("SELECT title FROM notes")
+```
+
+### Streaming large datasets
+
+Standard query methods load the entire result set into memory. For large datasets, use `db.query_each(query, callback, *args)` to stream rows. This method invokes the callback function for each row individually without loading the full set into memory:
+
+```python
+def process_row(row):
+    print(row["title"])
+
+db.query_each("SELECT * FROM notes", process_row)
+```
+
+## Transactions and batching
+
+Transactions ensure that multiple database operations execute atomically. The `sql` module supports both callback-managed transactions and statement batching.
+
+### Callback-managed transactions
+
+Use `db.tx(callback, retry=0)` to execute multiple operations within a single transaction. Pass a function that accepts a transaction object (`tx`) as its argument.
+
+The transaction commits automatically if the function returns cleanly, and rolls back if the function raises an error.
+
+```python
+def update_and_log(tx):
     tx.exec("UPDATE notes SET done = 1 WHERE done = 0")
     tx.exec("INSERT INTO notes (title, done) VALUES (?, 1)", "archive sweep")
 
-db.tx(complete_all)
+db.tx(update_and_log)
 ```
 
-Sometimes the unit of work is not a function but a fixed, known list of independent statements. For that, `db.batch()` runs them atomically — all commit or all roll back — and you build each statement with `sql.stmt()`:
+To handle transient write contention (such as SQLite lock contention or database deadlocks), set the `retry` keyword argument to specify how many times the transaction should be retried before failing:
 
 ```python
-db.batch([
-    sql.stmt("INSERT INTO notes (title) VALUES (?)", "first"),
-    sql.stmt("INSERT INTO notes (title) VALUES (?)", "second"),
+# Retry up to 3 times on transient errors
+db.tx(update_and_log, retry=3)
+```
+
+### Statement batching
+
+For lists of independent statements that do not require intermediate reads, use `db.batch(statements)`. This method executes a list of statement objects, created using `sql.stmt(query, *args, name=None)`, inside a single transaction.
+
+If all statements in the batch are named, `db.batch()` returns a dictionary keyed by statement names. If statements are unnamed, it returns a list of results in the order they were executed:
+
+```python
+# Naming statements returns a dictionary of results
+results = db.batch([
+    sql.stmt("INSERT INTO notes (title) VALUES (?)", "First task", name="task1"),
+    sql.stmt("INSERT INTO notes (title) VALUES (?)", "Second task", name="task2"),
 ])
+
+print(results["task1"].last_insert_id)
 ```
 
-Reach for `tx()` when the steps depend on each other or on intermediate reads, and for `batch()` when you simply have a list to apply as one unit.
+Use `db.tx()` when subsequent statements depend on intermediate query results. Use `db.batch()` to apply a list of static writes atomically.
 
-## Insert from objects
+## Schema migrations
 
-Writing `INSERT` SQL by hand is tedious when the data is already a dict, so `insert` builds the statement for you, taking the column list straight from the data's keys. Pass one dict for a row, or a list of dicts to write a batch in a single statement:
+To manage database schema changes safely, use `db.migrate(statements)`. This method tracks and applies schema updates incrementally. It records applied migrations in a `schema_migrations` tracking table to ensure each named migration step runs exactly once.
 
-```python
-db.insert("notes", {"title": "write docs", "done": False})
-db.insert("notes", [{"title": "first"}, {"title": "second"}])   # a batch in one statement
-```
-
-Every dict in a batch must carry the same columns, since `insert` derives the statement once from the first row and binds the rest to it.
-
-## Migrations
-
-A setup script that creates tables should be safe to re-run, but a bare `CREATE TABLE` fails the second time and a guarded one silently skips real schema changes. `migrate` solves this properly: it applies a list of named statements once each and records which have already run, so re-running the script applies only what is new:
+Define each migration step using `sql.stmt(query, *args, name)`:
 
 ```python
-db.migrate([
-    sql.stmt("CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT)", name="001_notes"),
-    sql.stmt("ALTER TABLE notes ADD COLUMN done BOOLEAN DEFAULT 0", name="002_done"),
+res = db.migrate([
+    sql.stmt("CREATE TABLE notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT)", name="001_create_notes"),
+    sql.stmt("ALTER TABLE notes ADD COLUMN done BOOLEAN DEFAULT 0", name="002_add_done_column"),
 ])
+
+print("Applied migrations:", res.applied)
+print("Skipped migrations:", res.skipped)
 ```
 
-The `name` on each statement is its identity in that ledger — it is how `migrate` knows a step has run and skips it next time — so every migration needs one, and the names must stay stable once they have been applied.
+The `name` parameter uniquely identifies the migration step in the database ledger. Do not change migration names after they have been executed.
 
-## A small end-to-end store
+## Complete example
 
-Putting the pieces together, a self-contained store is a connection, a schema, a handful of functions over `exec` and `query`, and a `main()` that drives them:
+The following script demonstrates opening a database, initializing the schema, performing write operations, and querying the results:
 
 ```python
-# store.star — run: kite run ./store.star --allow-fs
+# store.star
+# Run with: kite run ./store.star --allow-fs
+
 db = sql.open("sqlite", "notes.db")
-db.exec("CREATE TABLE IF NOT EXISTS notes (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, done BOOLEAN DEFAULT 0)")
 
-def add(title):
-    return db.exec("INSERT INTO notes (title) VALUES (?)", title).last_insert_id
+# Initialize the schema
+db.exec("""
+    CREATE TABLE IF NOT EXISTS notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        done BOOLEAN DEFAULT 0
+    )
+""")
 
-def finish(id):
-    db.exec("UPDATE notes SET done = 1 WHERE id = ?", id)
+def add_note(title):
+    res = db.exec("INSERT INTO notes (title) VALUES (?)", title)
+    return res.last_insert_id
+
+def mark_done(note_id):
+    db.exec("UPDATE notes SET done = 1 WHERE id = ?", note_id)
 
 def main():
-    finish(add("draft proposal"))
-    add("review PR")
-    open_notes = db.query("SELECT id, title FROM notes WHERE done = 0")
-    printf("%d open note(s)\n", len(open_notes))
-    for n in open_notes:
-        printf("  - %s\n", n["title"])
+    # Insert notes and retrieve the ID
+    proposal_id = add_note("Draft proposal")
+    add_note("Review pull request")
+
+    # Mark the first note as completed
+    mark_done(proposal_id)
+
+    # Query and print remaining active notes
+    active_notes = db.query("SELECT id, title FROM notes WHERE done = 0")
+    printf("%d active note(s):\n", len(active_notes))
+    for note in active_notes:
+        printf("  - [%d] %s\n", note["id"], note["title"])
 ```
 
-Running this creates `notes.db` in the working directory, adds two notes, marks one done, and prints the one that remains open — and because the file persists, a second run picks up where the first left off.
+Running this script creates a local SQLite database named `notes.db`, inserts two rows, updates one row, and outputs the remaining active row. The database file persists between runs.
 
-## Notes
+## Driver-specific behaviors
 
-A few behaviors are worth keeping in mind, because they follow from the module staying faithful to the underlying driver rather than papering over it:
+Because the `sql` module wraps underlying database drivers directly, you must observe driver-specific behaviors:
 
-- **Placeholders are driver-native.** SQLite and MySQL use `?`; PostgreSQL uses `$1`. The SQL is not rewritten — write it for the database you opened, or a mismatch surfaces as an error.
-- **SQLite booleans** have no native type: a `True` stored is read back as the integer `1`. PostgreSQL and MySQL with a real `BOOLEAN` column return `bool`.
-- **Concurrent writers** to a file database are handled for you by an automatic busy-timeout and WAL mode.
+* **Query placeholders**: Placeholders are driver-dependent and are not rewritten by Starkite. SQLite and MySQL use `?` placeholders, while PostgreSQL uses numbered `$1`, `$2` placeholders.
+* **Boolean representation**: SQLite does not have a native boolean type. Boolean values stored in SQLite are returned as integers (`1` for true, `0` for false). PostgreSQL and MySQL return boolean values as Starlark `bool` values.
+* **Concurrency in SQLite**: The embedded SQLite driver handles concurrent write operations using Write-Ahead Logging (WAL) and an automatic busy-timeout handler.
 
-These are the conveniences of an OLTP module — short, transactional reads and writes against a live database — not a bulk analytics engine.
+## Failure handling
 
-For the complete method list, type mapping, permissions, and the other drivers, see the [`sql` API reference](../references/api/sql.md).
+By default, SQL syntax errors, connection failures, or constraint violations raise a Starlark-level execution error and halt the script. To inspect and handle errors programmatically, use the `try_` variants of the connection methods. These variants return a `Result` object containing `.ok`, `.value`, and `.error` attributes:
+
+```python
+def check_query():
+    result = db.try_query("SELECT * FROM non_existent_table")
+
+    if result.ok:
+        rows = result.value
+        print("Query succeeded")
+    else:
+        print("Query failed: " + result.error)
+```
+
+## See also
+
+* [`sql` API reference](../references/api/sql.md) — Detailed function signatures and properties.
