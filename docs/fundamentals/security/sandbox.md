@@ -110,6 +110,54 @@ kite ./untrusted.star --sandbox=opaque --permissions=allow-fs
 
 See [Permission Guide](permission.md) for details.
 
+## Sandbox Architecture
+
+Starkite does not require an external container daemon (such as Docker or containerd) or a separate installation of `runsc`. Instead, the gVisor sandbox components are compiled directly into the single `kite` binary.
+
+```
++-----------------------------------------------------------------+
+|                         Host System                             |
+|  +------------------+                                           |
+|  |   kite run --sb  |  (Parent process, acts as coordinator)    |
+|  +--------+---------+                                           |
+|           | spawns (self-exec via /proc/self/exe)               |
+|           v                                                     |
+|  +-----------------------------------------------------------+  |
+|  |                  gVisor Sandbox Boundary                  |  |
+|  |                                                           |  |
+|  |   +-------------------+       +-----------------------+   |  |
+|  |   |  runsc-sandbox    | <---> |      runsc-gofer      |   |  |
+|  |   |  (Sentry Kernel)  |       |  (File System Proxy)  |   |  |
+|  |   +---------+---------+       +-----------+-----------+   |  |
+|  |             | guest-exec                  | mounts        |  |
+|  |             v                             v               |  |
+|  |   +-------------------+               +-------+           |  |
+|  |   |     /.kite        | <============ |  $CWD | (rw bind) |  |
+|  |   | (Contained Process|               +-------+           |  |
+|  |   |   runs script)    |                                   |  |
+|  |   +-------------------+                                   |  |
+|  +-----------------------------------------------------------+  |
++-----------------------------------------------------------------+
+```
+
+### Self-Execution Flow
+
+When you run a script with sandboxing enabled, the runtime coordinates the following sequence:
+
+1. **Self-Execution**: The parent `kite` process prepares a temporary OCI bundle directory containing a standard OCI `config.json` and an empty `rootfs`. It then self-executes the `kite` binary multiple times, cosmetically renaming `os.Args[0]` to `runsc-sandbox` and `runsc-gofer` to satisfy gVisor's internal command-line interface:
+   * **Sentry (`runsc-sandbox`)**: A user-space kernel written in Go that intercepts all system calls made by the guest process, virtualizing them without exposing the host kernel.
+   * **Gofer (`runsc-gofer`)**: A secure file system proxy that mediates all file system access from the sandbox to the host.
+2. **Namespace Isolation**: The sandbox isolates the guest process across five namespaces:
+   * **PID**: The script process cannot see or signal host processes.
+   * **Mount**: The guest process has its own mount table, completely detached from the host `/`.
+   * **IPC**: System V IPC and POSIX message queues are isolated.
+   * **UTS**: Hostname and domain name are isolated.
+   * **User**: The host's unprivileged UID and GID are mapped to container ID `0` (root inside the container), enabling secure, rootless sandbox boot.
+3. **Network Namespace Bypass**: To run rootless without requiring network setup privileges, the OCI spec omits the `NetworkNamespace` configuration. Instead, the runner configures gVisor's internal network stack:
+   * **Loopback Mode (`strict`/`opaque` profiles)**: Configures `config.NetworkNone`. The guest process sees only a loopback interface (`127.0.0.1`). No packets can leave the sandbox or reach the host.
+   * **Host Network Mode (`net-access`/`host` profiles)**: Configures `config.NetworkHost`. The guest process shares the host's network namespace, allowing outbound connections (e.g., HTTP clients, SSH) while retaining filesystem and process isolation.
+4. **Contained Execution**: The guest process is launched via the path `/.kite` (which is a read-only bind mount of the host `kite` binary) inside the sandbox. The argument list is prefixed with a private `__runtime__` marker. When the sandboxed `kite` process boots, it detects the marker, strips it, sets `STARKITE_INSIDE_SANDBOX=1` in its environment to prevent recursive sandboxing, and safely executes the Starlark script.
+
 ## Linux configuration (Ubuntu 24.04+)
 
 On Ubuntu 24.04 and above, AppArmor restricts unprivileged user namespace creation by default. Running rootless gVisor may trigger the following error:

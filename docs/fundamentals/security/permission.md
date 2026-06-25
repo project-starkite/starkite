@@ -158,6 +158,38 @@ The permission engine only checks modules that access host resources. Pure-compu
 | `mcp` | `client`, `server` | MCP connections and hosting |
 | `io` | `prompt` | Terminal user prompts |
 
+## Identity Switching (POSIX)
+
+Starkite supports executing command-line processes under specified user or group credentials in POSIX environments by passing `userid` and `groupid` to `os.exec()` or `os.try_exec()`.
+
+### Credential Configuration
+
+On non-Windows platforms, Starkite maps the `userid` and `groupid` parameters to Go's `syscall.Credential` struct and attaches it to the command's `SysProcAttr`:
+
+```go
+cred := &syscall.Credential{Uid: uid, Gid: gid}
+cmd.SysProcAttr = &syscall.SysProcAttr{Credential: cred}
+```
+
+On Windows platforms, credential switching is unsupported; attempting to pass `userid` or `groupid` will immediately return an execution error.
+
+### Security Authorization
+
+Because switching process credentials is a highly sensitive operation, the Starkite interpreter validates identity-switching requests against a dedicated permission rule. The script must be granted the `switch_identity` capability for the target binary:
+
+```go
+libkite.Check(thread, "os", "exec", "switch_identity", execTarget)
+```
+
+By default, only the **`allow-all`** permission profile authorizes identity switching. In custom profiles, you must explicitly grant this capability:
+
+```yaml
+permissions:
+  restricted-deploy:
+    allow:
+      - os.exec(switch_identity:/usr/bin/git) # Allow identity switching only for git
+```
+
 ## Loaded modules
 
 When you import a module using `load()`, it runs under the exact same permissions as the calling script. Loading external code does not bypass or expand the script's permission boundary. If an imported module attempts any operation not permitted by the calling script's profile, the runtime blocks the action and raises a permission error.

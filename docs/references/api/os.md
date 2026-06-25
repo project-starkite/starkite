@@ -19,7 +19,7 @@ The `os` module provides access to environment variables, process information, a
 | `os.pid()` | `int` | Get current process ID |
 | `os.ppid()` | `int` | Get parent process ID |
 | `os.exit(code=0)` | `None` | Exit the process with the given code |
-| `os.exec(cmd, shell=None, env=None, cwd=None, timeout="60s")` | `ExecResult` | Execute a system command |
+| `os.exec(cmd, shell=None, env=None, cwd=None, timeout="60s", userid=None, groupid=None)` | `ExecResult` | Execute a system command |
 | `os.which(name)` | `string`/`None` | Find executable on PATH |
 | `os.username()` | `string` | Get current username |
 | `os.userid()` | `string` | Get current user ID |
@@ -85,6 +85,13 @@ result = os.exec(
     cwd="/home/user/project",
     env={"GOOS": "linux", "GOARCH": "amd64"},
     timeout="120s",
+)
+
+# With user and group execution switching (requires POSIX and allow-all permissions)
+result = os.exec(
+    "id",
+    userid="nobody",
+    groupid="nogroup",
 )
 
 # Find an executable

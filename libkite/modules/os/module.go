@@ -270,6 +270,8 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 	var envDict starlark.Value = starlark.None
 	var cwdStr starlark.Value = starlark.None
 	var timeoutStr starlark.Value = starlark.None
+	var useridVal starlark.Value = starlark.None
+	var groupidVal starlark.Value = starlark.None
 
 	for _, kv := range kwargs {
 		key := string(kv[0].(starlark.String))
@@ -282,7 +284,66 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 			cwdStr = kv[1]
 		case "timeout":
 			timeoutStr = kv[1]
+		case "userid":
+			useridVal = kv[1]
+		case "groupid":
+			groupidVal = kv[1]
 		}
+	}
+
+	var targetUID uint32
+	var targetGID uint32
+	var hasUID bool
+	var hasGID bool
+
+	if useridVal != starlark.None {
+		hasUID = true
+		if s, ok := starlark.AsString(useridVal); ok {
+			u, err := user.Lookup(s)
+			if err != nil {
+				return nil, fmt.Errorf("os.exec: failed to resolve username %q: %w", s, err)
+			}
+			var uid int
+			if _, err := fmt.Sscanf(u.Uid, "%d", &uid); err != nil {
+				return nil, fmt.Errorf("os.exec: invalid system UID %q for user %q: %w", u.Uid, s, err)
+			}
+			targetUID = uint32(uid)
+		} else if i, ok := useridVal.(starlark.Int); ok {
+			uid, ok := i.Int64()
+			if !ok || uid < 0 {
+				return nil, fmt.Errorf("os.exec: userid cannot be negative or out of range")
+			}
+			targetUID = uint32(uid)
+		} else {
+			return nil, fmt.Errorf("os.exec: userid must be a string or integer, got %s", useridVal.Type())
+		}
+	}
+
+	if groupidVal != starlark.None {
+		hasGID = true
+		if s, ok := starlark.AsString(groupidVal); ok {
+			g, err := user.LookupGroup(s)
+			if err != nil {
+				return nil, fmt.Errorf("os.exec: failed to resolve groupname %q: %w", s, err)
+			}
+			var gid int
+			if _, err := fmt.Sscanf(g.Gid, "%d", &gid); err != nil {
+				return nil, fmt.Errorf("os.exec: invalid system GID %q for group %q: %w", g.Gid, s, err)
+			}
+			targetGID = uint32(gid)
+		} else if i, ok := groupidVal.(starlark.Int); ok {
+			gid, ok := i.Int64()
+			if !ok || gid < 0 {
+				return nil, fmt.Errorf("os.exec: groupid cannot be negative or out of range")
+			}
+			targetGID = uint32(gid)
+		} else {
+			return nil, fmt.Errorf("os.exec: groupid must be a string or integer, got %s", groupidVal.Type())
+		}
+	}
+
+	if (hasUID || hasGID) && !supportsUserSwitch {
+		return nil, fmt.Errorf("os.exec: userid and groupid execution switching is not supported on this platform")
 	}
 
 	m.mu.RLock()
@@ -310,6 +371,12 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 	if err := libkite.Check(thread, "os", "exec", "exec", execTarget); err != nil {
 		return nil, err
 	}
+	if hasUID || hasGID {
+		if err := libkite.Check(thread, "os", "exec", "switch_identity", execTarget); err != nil {
+			return nil, err
+		}
+	}
+
 	if s, ok := starlark.AsString(timeoutStr); ok && s != "" {
 		d, err := time.ParseDuration(s)
 		if err != nil {
@@ -331,6 +398,7 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 	}
 
 	cmd := exec.Command(shell, "-c", cmdStr)
+	configureCredential(cmd, targetUID, targetGID, hasUID, hasGID)
 	if workDir != "" {
 		cmd.Dir = workDir
 	}

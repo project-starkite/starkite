@@ -19,7 +19,6 @@ theme:
   features:
     - navigation.tabs
     - navigation.sections
-    - navigation.expand
     - navigation.top
     - search.highlight
     - search.share
@@ -82,7 +81,11 @@ nav:
           - Running scripts: fundamentals/running.md
           - Shell integration: fundamentals/shell-integration.md
       - Core Modules:
-          - System & processes: core-modules/system.md
+          - System & processes:
+              - Overview:           core-modules/system.md
+              - Launching processes: core-modules/sys-launch.md
+              - Process context:     core-modules/sys-context.md
+              - Security:            core-modules/sys-security.md
           - Logging:            core-modules/logging.md
           - JSON & YAML:        core-modules/json-yaml.md
           - Files:              core-modules/files.md
