@@ -35,7 +35,7 @@ For module details, see the [API Reference](../references/api/index.md).
 
 The `kitecloud` edition adds the `k8s` module and the `kite kube` CLI command set. This enables Kubernetes CRUD operations, controller runtimes, custom resource definitions (CRDs), and admission webhooks.
 
-For guides, see the [Kubernetes Guide](../infra/kubernetes.md).
+For guides, see the [Kubernetes Guide](../infra/k8s-connect.md).
 
 ## What `kiteai` adds
 

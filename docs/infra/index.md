@@ -57,7 +57,11 @@ Because infrastructure operations run with elevated privileges, Starkite enforce
 
 To begin automating your infrastructure, explore these guides:
 
-* [Connecting to a cluster](kubernetes.md) — Configure cluster access, manage kubeconfig contexts, and resolve namespaces.
-* [Operating a cluster](operations.md) — Deploy resources, scale workloads, and retrieve Kubernetes objects.
-* [Controlling a cluster](controllers.md) — Build custom reconciliation loops and admission webhooks.
+* [Connecting to a cluster](k8s-connect.md) — Configure cluster access, manage kubeconfig contexts, and resolve namespaces.
+* [Object representation](k8s-objects.md) — Understand how Starkite represents Kubernetes resources and handles access semantics.
+* [Managing workloads](k8s-workloads.md) — Deploy, scale, autoscale, and monitor container workloads.
+* [Querying resources](k8s-resources.md) — Retrieve, list, filter, and watch Kubernetes API objects.
+* [Declarative manifests](k8s-manifests.md) — Construct, apply, and generate Kubernetes YAML configs.
+* [Kubernetes Controllers](k8s-controllers.md) — Build custom reconciliation loops and background controllers.
+* [Admission webhooks](k8s-webhooks.md) — Intercept, validate, and mutate API requests before they are persisted.
 * [Managing remote hosts](ssh.md) — Run parallel commands and transfer files across remote servers over SSH.

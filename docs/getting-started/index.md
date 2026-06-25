@@ -58,7 +58,7 @@ Install the runtime and write your first script. When you want to understand how
 
     Automate Kubernetes clusters: deploy resources, write controllers, and handle admission webhooks.
 
-    [:octicons-arrow-right-24: Infrastructure](../infra/kubernetes.md)
+    [:octicons-arrow-right-24: Infrastructure](../infra/k8s-connect.md)
 
 -   :material-robot:{ .lg .middle } __AI Support__
 

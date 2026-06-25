@@ -89,9 +89,13 @@ nav:
       - Infrastructure:
           - Overview: infra/index.md
           - Kubernetes Automation:
-              - Connecting to a cluster: infra/kubernetes.md
-              - Operating a cluster:     infra/operations.md
-              - Controlling a cluster:   infra/controllers.md
+              - Connecting to a cluster: infra/k8s-connect.md
+              - Object representation:   infra/k8s-objects.md
+              - Managing workloads:      infra/k8s-workloads.md
+              - Querying resources:      infra/k8s-resources.md
+              - Declarative manifests:   infra/k8s-manifests.md
+              - Kubernetes Controllers:  infra/k8s-controllers.md
+              - Admission webhooks:      infra/k8s-webhooks.md
           - Host Fleet Automation:
               - Remote commands (SSH):   infra/ssh.md
               - Orchestrating fleets:    infra/fleet.md

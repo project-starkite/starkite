@@ -95,5 +95,5 @@ kite kube gen-webhook-artifacts \
 
 ## Related
 
-- [Building webhooks guide](../../infra/controllers.md#admission-webhooks)
+- [Building webhooks guide](../../infra/k8s-webhooks.md)
 - [k8s module reference](../api/k8s.md)
