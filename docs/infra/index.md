@@ -64,4 +64,7 @@ To begin automating your infrastructure, explore these guides:
 * [Declarative manifests](k8s-manifests.md) — Construct, apply, and generate Kubernetes YAML configs.
 * [Kubernetes Controllers](k8s-controllers.md) — Build custom reconciliation loops and background controllers.
 * [Admission webhooks](k8s-webhooks.md) — Intercept, validate, and mutate API requests before they are persisted.
-* [Managing remote hosts](ssh.md) — Run parallel commands and transfer files across remote servers over SSH.
+* [Connecting with SSH](ssh-connect.md) — Configure SSH clients, manage private key authentication, and establish connections.
+* [Executing host commands](ssh-exec.md) — Run remote commands, handle execution results, and manage environment contexts.
+* [Transferring files](ssh-transfer.md) — Upload and download files securely across remote hosts.
+* [Fleet orchestration](fleet.md) — Discover, filter, and automate changes across entire server fleets.

@@ -31,6 +31,7 @@ client = ssh.config(
 | `key` | `string` | `""` | Path to private key file |
 | `key_passphrase` | `string` | `""` | Passphrase for private key |
 | `password` | `string` | `""` | SSH password (prefer keys) |
+| `sudo` | `bool` | `false` | Default sudo execution policy for all commands |
 | `port` | `int` | `22` | SSH port |
 | `timeout` | `string` | `"30s"` | Connection timeout |
 | `exec_policy` | `string` | `"concurrent"` | Execution strategy (`"concurrent"` or `"linear"`) |

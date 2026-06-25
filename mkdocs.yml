@@ -43,7 +43,11 @@ markdown_extensions:
       pygments_lang_class: true
   - pymdownx.inlinehilite
   - pymdownx.snippets
-  - pymdownx.superfences
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
   - pymdownx.emoji:
@@ -96,9 +100,11 @@ nav:
               - Declarative manifests:   infra/k8s-manifests.md
               - Kubernetes Controllers:  infra/k8s-controllers.md
               - Admission webhooks:      infra/k8s-webhooks.md
-          - Host Fleet Automation:
-              - Remote commands (SSH):   infra/ssh.md
-              - Orchestrating fleets:    infra/fleet.md
+          - SSH Host Automation:
+              - Connecting with SSH:     infra/ssh-connect.md
+              - Executing host commands: infra/ssh-exec.md
+              - Transferring files:      infra/ssh-transfer.md
+              - Fleet orchestration:     infra/fleet.md
       - AI:
           - Building agents:       ai/agents.md
           - Creating MCP servers:  ai/mcp.md

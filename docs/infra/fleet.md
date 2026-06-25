@@ -10,18 +10,14 @@ For large-scale infrastructure operations, managing hosts individually becomes i
 
 ## The Fleet Automation Workflow
 
-Fleet automation in Starkite follows a three-step pattern:
-1. **Load**: Load host metadata from structured configuration files (such as YAML or JSON) using `inventory.file()`.
-2. **Filter**: Query and filter hosts based on attributes like environment, region, role, or resource capacity.
-3. **Execute**: Extract target host addresses and dispatch commands or file transfers concurrently.
+Fleet automation in Starkite follows a structured five-step pipeline:
 
-```mermaid
-graph TD
-    A[inventory.file] --> B[inventory.filter]
-    B --> C[inventory.addresses]
-    C --> D[ssh.config]
-    D --> E[fleet.exec]
-```
+1. **Load** (`inventory.file()`): Load host metadata and attributes from structured configuration files like YAML or JSON.
+2. **Filter** (`inventory.filter()`): Query and subset the loaded fleet based on attributes such as environment, region, or role.
+3. **Extract** (`inventory.addresses()`): Extract the network addresses or hostnames from the filtered subset of hosts.
+4. **Configure** (`ssh.config()`): Initialize a concurrent SSH client using the extracted host addresses and appropriate credentials.
+5. **Execute** (`client.exec()` / `client.upload()`): Dispatch remote commands or distribute files concurrently across the targeted servers.
+
 
 ## Step 1: Defining the Host Inventory
 
@@ -70,7 +66,7 @@ def load_fleet():
     print("Production web servers:", prod_web.count)
 
     # Filter using a predicate function (e.g., hosts with at least 8 CPUs)
-    large_nodes = inventory.filter(fleet, func=lambda h: h.get("cpu", 0) >= 8)
+    large_nodes = inventory.filter(fleet, lambda h: h.get("cpu", 0) >= 8)
     for host in large_nodes.items:
         print(host["name"], "cpus:", host["cpu"])
 ```
@@ -132,3 +128,44 @@ def rolling_update():
     # Will stop at the first failing host to prevent spreading issues
     results = client.exec("systemctl restart alice-app")
 ```
+
+---
+
+## Fleet-Wide File Distribution
+
+In addition to executing commands, you can distribute files across a fleet concurrently. By combining the `inventory` module with `client.upload()`, you can push configuration files, security policies, or application payloads to multiple remote hosts in parallel.
+
+The following script loads the host inventory, filters for the production web servers, and uploads a security policy file to all of them concurrently:
+
+```python
+def distribute_security_policy():
+    # 1. Load and filter the target fleet from inventory
+    fleet_data = inventory.file("fleet.yaml")
+    target_hosts = inventory.filter(fleet_data, env="production", role="web")
+    
+    # 2. Extract host network addresses
+    addresses = inventory.addresses(target_hosts)
+    
+    # 3. Configure the concurrent SSH client
+    client = ssh.config(
+        hosts = addresses,
+        user  = "alice",
+        key   = "~/.ssh/id_ed25519",
+        timeout = "15s",
+    )
+    
+    # 4. Upload the security policy concurrently to all target hosts
+    results = client.upload(
+        src = "policies/security-audit.json",
+        dst = "/etc/alice-app/security-audit.json",
+        mode = "0600",
+    )
+    
+    # 5. Verify the transfer status across the fleet
+    for r in results:
+        if r.ok:
+            print("Uploaded successfully to:", r.host)
+        else:
+            log.warn("Failed to distribute to:", r.host)
+```
+

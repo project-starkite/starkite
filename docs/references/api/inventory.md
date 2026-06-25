@@ -12,7 +12,7 @@ The `inventory` module loads, filters, groups, and merges inventory data from st
 |----------|---------|-------------|
 | `inventory.file(path)` | `InventoryValue` | Load an inventory from a YAML or JSON file |
 | `inventory.list(inventory)` | `list[dict]` | Return all items as a list of dictionaries |
-| `inventory.filter(inventory, func=None, **kwargs)` | `InventoryValue` | Filter items by a predicate function or keyword match |
+| `inventory.filter(inventory, filter_fn=None, **kwargs)` | `InventoryValue` | Filter items by a positional predicate function or keyword matches |
 | `inventory.group_by(inventory, key)` | `dict` | Group items by a key, returning `{value: InventoryValue}` |
 | `inventory.merge(*inventories)` | `InventoryValue` | Merge multiple inventories into one |
 | `inventory.addresses(inventory, key="address")` | `list` | Extract a list of addresses from inventory items |
@@ -51,8 +51,8 @@ print("Production hosts:", prod_hosts.count)
 ```python
 inv = inventory.file("hosts.yaml")
 
-# Filter by predicate function
-large = inventory.filter(inv, func=lambda h: h.get("cpu", 0) >= 8)
+# Filter by predicate function (must be passed as a positional argument)
+large = inventory.filter(inv, lambda h: h.get("cpu", 0) >= 8)
 for host in large.items:
     print(host["name"], "cpus:", host["cpu"])
 ```
