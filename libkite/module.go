@@ -1,6 +1,8 @@
 package libkite
 
 import (
+	"io"
+
 	"go.starlark.net/starlark"
 )
 
@@ -59,4 +61,16 @@ type VarStore interface {
 
 	// Keys returns sorted, deduplicated variable names across all priority tiers
 	Keys() []string
+}
+
+// StarlarkReader is implemented by values that wrap a Go io.Reader.
+type StarlarkReader interface {
+	starlark.Value
+	Reader() io.Reader
+}
+
+// StarlarkWriter is implemented by values that wrap a Go io.Writer.
+type StarlarkWriter interface {
+	starlark.Value
+	Writer() io.Writer
 }
