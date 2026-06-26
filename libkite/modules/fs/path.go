@@ -116,9 +116,9 @@ func (p *Path) methodNames() []string {
 		"exists", "is_file", "is_dir", "is_symlink",
 		"stat", "owner", "group",
 		// Read
-		"read_text", "read_bytes",
+		"read_text", "read_bytes", "get_reader", "write_to",
 		// Write
-		"write_text", "write_bytes", "append_text", "append_bytes",
+		"write_text", "write_bytes", "append_text", "append_bytes", "get_writer", "read_from", "append_from",
 		// File & directory ops
 		"touch", "mkdir", "remove", "rename",
 		"copy_to", "move_to", "truncate",
@@ -131,8 +131,8 @@ func isIOMethod(name string) bool {
 	switch name {
 	case "exists", "is_file", "is_dir", "is_symlink",
 		"stat", "owner", "group",
-		"read_text", "read_bytes",
-		"write_text", "write_bytes", "append_text", "append_bytes",
+		"read_text", "read_bytes", "get_reader", "write_to",
+		"write_text", "write_bytes", "append_text", "append_bytes", "get_writer", "read_from", "append_from",
 		"touch", "mkdir", "remove", "rename",
 		"copy_to", "move_to", "truncate",
 		"chmod", "chown", "symlink_to", "readlink", "hardlink_to",
@@ -185,6 +185,10 @@ func (p *Path) methodBuiltin(name string) *starlark.Builtin {
 		return starlark.NewBuiltin("fs.path.read_text", p.readTextMethod)
 	case "read_bytes":
 		return starlark.NewBuiltin("fs.path.read_bytes", p.readBytesMethod)
+	case "get_reader":
+		return starlark.NewBuiltin("fs.path.get_reader", p.getReaderMethod)
+	case "write_to":
+		return starlark.NewBuiltin("fs.path.write_to", p.writeToMethod)
 	// Write
 	case "write_text":
 		return starlark.NewBuiltin("fs.path.write_text", p.writeTextMethod)
@@ -194,6 +198,12 @@ func (p *Path) methodBuiltin(name string) *starlark.Builtin {
 		return starlark.NewBuiltin("fs.path.append_text", p.appendTextMethod)
 	case "append_bytes":
 		return starlark.NewBuiltin("fs.path.append_bytes", p.appendBytesMethod)
+	case "get_writer":
+		return starlark.NewBuiltin("fs.path.get_writer", p.getWriterMethod)
+	case "read_from":
+		return starlark.NewBuiltin("fs.path.read_from", p.readFromMethod)
+	case "append_from":
+		return starlark.NewBuiltin("fs.path.append_from", p.appendFromMethod)
 	// File & directory ops
 	case "touch":
 		return starlark.NewBuiltin("fs.path.touch", p.touchMethod)

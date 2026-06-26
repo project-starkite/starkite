@@ -1049,3 +1049,235 @@ func callMethodKw(p *Path, name string, args starlark.Tuple, kwargs ...starlark.
 func kw(name string, val starlark.Value) starlark.Tuple {
 	return starlark.Tuple{starlark.String(name), val}
 }
+
+func callValMethod(thread *starlark.Thread, val starlark.Value, name string, args ...starlark.Value) (starlark.Value, error) {
+	hasAttrs, ok := val.(starlark.HasAttrs)
+	if !ok {
+		return nil, fmt.Errorf("value does not have attributes")
+	}
+	method, err := hasAttrs.Attr(name)
+	if err != nil {
+		return nil, err
+	}
+	if method == nil {
+		return nil, fmt.Errorf("no attribute %q", name)
+	}
+	return starlark.Call(thread, method, args, nil)
+}
+
+func TestPathStreams(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "test.txt")
+
+	// 1. Test get_writer and get_reader
+	p := newTestPath(filePath)
+	wVal, err := callMethod(p, "get_writer")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// It should implement libkite.StarlarkWriter
+	_, ok := wVal.(libkite.StarlarkWriter)
+	if !ok {
+		t.Fatalf("get_writer did not return a StarlarkWriter: %T", wVal)
+	}
+
+	// Write some data via the writer method
+	_, err = callValMethod(p.thread, wVal, "write", starlark.String("hello stream"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = callValMethod(p.thread, wVal, "close")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Verify content was written
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "hello stream" {
+		t.Errorf("expected %q, got %q", "hello stream", string(data))
+	}
+
+	// Read via get_reader
+	rVal, err := callMethod(p, "get_reader")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, ok = rVal.(libkite.StarlarkReader)
+	if !ok {
+		t.Fatalf("get_reader did not return a StarlarkReader: %T", rVal)
+	}
+
+	// Read from reader using "read" method
+	readVal, err := callValMethod(p.thread, rVal, "read", starlark.MakeInt(12))
+	if err != nil {
+		t.Fatal(err)
+	}
+	readBytes, ok := readVal.(starlark.Bytes)
+	if !ok {
+		t.Fatalf("expected bytes, got %s", readVal.Type())
+	}
+	if string(readBytes) != "hello stream" {
+		t.Errorf("expected %q, got %q", "hello stream", string(readBytes))
+	}
+
+	_, err = callValMethod(p.thread, rVal, "close")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// 2. Test write_to
+	outPath := filepath.Join(dir, "out.txt")
+	pOut := newTestPath(outPath)
+	wOutVal, err := callMethod(pOut, "get_writer")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nVal, err := callMethod(p, "write_to", wOutVal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := starlark.AsInt32(nVal)
+	if err != nil || n != 12 {
+		t.Errorf("expected 12 bytes copied, got %v (err: %v)", nVal, err)
+	}
+
+	// Close the writer so the data is flushed/written
+	_, err = callValMethod(p.thread, wOutVal, "close")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	outData, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(outData) != "hello stream" {
+		t.Errorf("write_to failed, expected %q, got %q", "hello stream", string(outData))
+	}
+
+	// 3. Test read_from and append_from
+	rSrcVal, err := callMethod(p, "get_reader")
+	if err != nil {
+		t.Fatal(err)
+	}
+	readFromPath := filepath.Join(dir, "read_from.txt")
+	pReadFrom := newTestPath(readFromPath)
+
+	nVal, err = callMethod(pReadFrom, "read_from", rSrcVal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err = starlark.AsInt32(nVal)
+	if err != nil || n != 12 {
+		t.Errorf("expected 12 bytes read, got %v (err: %v)", nVal, err)
+	}
+
+	rfData, err := os.ReadFile(readFromPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(rfData) != "hello stream" {
+		t.Errorf("read_from failed, expected %q, got %q", "hello stream", string(rfData))
+	}
+
+	// Now test append_from
+	appendSrcPath := filepath.Join(dir, "append_src.txt")
+	os.WriteFile(appendSrcPath, []byte(" more"), 0644)
+	pAppendSrc := newTestPath(appendSrcPath)
+	rAppendSrcVal, err := callMethod(pAppendSrc, "get_reader")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nVal, err = callMethod(pReadFrom, "append_from", rAppendSrcVal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err = starlark.AsInt32(nVal)
+	if err != nil || n != 5 {
+		t.Errorf("expected 5 bytes appended, got %v (err: %v)", nVal, err)
+	}
+
+	rfData, err = os.ReadFile(readFromPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(rfData) != "hello stream more" {
+		t.Errorf("append_from failed, expected %q, got %q", "hello stream more", string(rfData))
+	}
+}
+
+func TestPathStreamsDryRun(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "dryrun.txt")
+	p := &Path{
+		path:   filePath,
+		thread: &starlark.Thread{Name: "test"},
+		config: &libkite.ModuleConfig{DryRun: true},
+	}
+
+	// 1. get_writer in dry-run
+	wVal, err := callMethod(p, "get_writer")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Write should succeed but not write to disk
+	_, err = callValMethod(p.thread, wVal, "write", starlark.String("dry run data"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = callValMethod(p.thread, wVal, "close")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Error("file should not have been created in dry-run mode")
+	}
+
+	// 2. read_from in dry-run
+	srcPath := filepath.Join(dir, "src.txt")
+	os.WriteFile(srcPath, []byte("data"), 0644)
+	pSrc := newTestPath(srcPath)
+	rVal, err := callMethod(pSrc, "get_reader")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	nVal, err := callMethod(p, "read_from", rVal)
+	if err != nil {
+		t.Fatal(err)
+	}
+	n, err := starlark.AsInt32(nVal)
+	if err != nil || n != 0 {
+		t.Errorf("expected 0 bytes copied in dry-run, got %d (err: %v)", n, err)
+	}
+	if _, err := os.Stat(filePath); !os.IsNotExist(err) {
+		t.Error("file should not have been created by read_from in dry-run mode")
+	}
+}
+
+func TestPathStreamsTryVariants(t *testing.T) {
+	dir := t.TempDir()
+	filePath := filepath.Join(dir, "try_streams.txt")
+	p := newTestPath(filePath)
+
+	// try_get_reader on non-existent file
+	v, err := p.Attr("try_get_reader")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := starlark.Call(p.thread, v, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := result.(*libkite.Result)
+	okVal, _ := r.Attr("ok")
+	if okVal != starlark.False {
+		t.Error("try_get_reader on missing file should have ok=False")
+	}
+}

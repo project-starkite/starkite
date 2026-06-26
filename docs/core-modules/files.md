@@ -71,6 +71,37 @@ path("copy.png").write_bytes(binary_data)
 path("data.bin").append_bytes(b"\x00\xff\x00\xff")
 ```
 
+## Polymorphic streaming
+
+For memory-efficient data piping and processing, a `Path` object can yield streaming readers and writers, or pipe data directly between streams:
+
+* **`.get_reader()`**: Returns an `io.reader` stream for reading the file.
+* **`.get_writer()`**: Returns an `io.writer` stream for writing to the file (truncating it first).
+* **`.write_to(writer)`**: Reads the file's contents and writes them to the provided `io.writer`.
+* **`.read_from(reader)`**: Reads data from the provided `io.reader` and writes it to the file (truncating it first).
+* **`.append_from(reader)`**: Reads data from the provided `io.reader` and appends it to the file.
+
+These streaming methods allow Starkite to pipe data between the filesystem and other modules (such as HTTP, SSH, or process execution) without loading entire files into memory.
+
+### Streaming examples
+
+```python
+def main():
+    source_file = path("large-payload.bin")
+    target_file = path("destination.bin")
+
+    # Open a reader stream and read in chunks
+    r = source_file.get_reader()
+    chunk1 = r.read(1024)
+    r.close()
+
+    # Pipe file contents directly to an output stream
+    w = target_file.get_writer()
+    source_file.write_to(w)
+    w.close()
+```
+
+
 ## Metadata and checks
 
 You can query file types, check existence, and inspect system metadata:

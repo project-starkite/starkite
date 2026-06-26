@@ -79,6 +79,16 @@ print(config.string)  # /home/user/config/app.yaml
 | `p.append_text(content)` | `None` | Append text to file |
 | `p.append_bytes(data)` | `None` | Append bytes to file |
 
+### File Streaming
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `p.get_reader()` | `io.reader` | Open file for streaming reads |
+| `p.get_writer()` | `io.writer` | Open file for streaming writes (truncates file) |
+| `p.write_to(writer)` | `int` | Read file and write to another `io.writer` |
+| `p.read_from(reader)` | `int` | Read from `io.reader` and write to file (truncates file) |
+| `p.append_from(reader)` | `int` | Read from `io.reader` and append to file |
+
 ### File Operations
 
 | Method | Returns | Description |
