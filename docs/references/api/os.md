@@ -19,10 +19,10 @@ The `os` module provides access to environment variables, process information, a
 | `os.pid()` | `int` | Get current process ID |
 | `os.ppid()` | `int` | Get parent process ID |
 | `os.exit(code=0)` | `None` | Exit the process with the given code |
-| `os.exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None)` | `string` | Execute a binary directly and shell-free (returns stdout) |
-| `os.try_exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None)` | `ExecResult` | Execute a binary directly and shell-free, capturing results |
-| `os.shell(cmd, env=None, cwd=None, timeout="60s", userid=None, groupid=None)` | `string` | Execute a command string in a shell (returns stdout) |
-| `os.try_shell(cmd, env=None, cwd=None, timeout="60s", userid=None, groupid=None)` | `ExecResult` | Execute a command string in a shell, capturing results |
+| `os.exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `string` | Execute a binary directly and shell-free (returns stdout) |
+| `os.try_exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `ExecResult` | Execute a binary directly and shell-free, capturing results |
+| `os.shell(cmd, env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `string` | Execute a command string in a shell (returns stdout) |
+| `os.try_shell(cmd, env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `ExecResult` | Execute a command string in a shell, capturing results |
 | `os.which(name)` | `string`/`None` | Find executable on PATH |
 | `os.username()` | `string` | Get current username |
 | `os.userid()` | `string` | Get current user ID |
@@ -111,6 +111,19 @@ result = os.try_exec(
     userid="nobody",
     groupid="nogroup",
 )
+
+# Streaming input and output (Unified Streaming Contract)
+# Pipe file content directly as subprocess stdin and redirect stdout to another file
+in_file = fs.path("input.txt")
+out_file = fs.path("output.txt")
+in_file.write_text("stream data")
+
+exec(
+    "cat",
+    input=in_file.get_reader(),
+    output=out_file.get_writer()
+)
+print("Piped output:", out_file.read_text())
 
 # Find an executable
 go_path = os.which("go")

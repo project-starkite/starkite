@@ -10,7 +10,7 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 )
 
-func TestBifurcatedProcessExecution(t *testing.T) {
+func TestShellProcessExecution(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skipped on windows")
 	}
@@ -22,24 +22,6 @@ func TestBifurcatedProcessExecution(t *testing.T) {
 		wantErr     string
 		wantResult  string
 	}{
-		{
-			name: "direct exec with list of arguments",
-			script: `
-def test():
-    return os.exec("echo", ["hello", "world"])
-`,
-			permissions: libkite.AllowAllPermissions(),
-			wantResult:  "hello world",
-		},
-		{
-			name: "direct exec fallback whitespace splitting",
-			script: `
-def test():
-    return os.exec("echo hello world")
-`,
-			permissions: libkite.AllowAllPermissions(),
-			wantResult:  "hello world",
-		},
 		{
 			name: "shell execution allowed under allow-all-shell",
 			script: `

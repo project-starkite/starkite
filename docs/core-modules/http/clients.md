@@ -89,14 +89,34 @@ Once `resp.get_reader()` is called, the stream is opened, and direct properties 
 
 ### Streaming examples
 
+#### Downloading directly to the Filesystem
+
+To stream a remote response directly to a file on disk without buffering the payload in memory:
+
 ```python
 def download_large_payload():
     resp = http.url("https://backups.example.com/archive.tar.gz").get()
     
     # Stream the download directly to a file on disk
-    # This avoids buffering the large file in memory
     archive = path("/tmp/archive.tar.gz")
     archive.read_from(resp.get_reader())
+```
+
+#### Streaming an HTTP Download directly into a Subprocess Stdin
+
+To pipe a remote response directly into a subprocess stdin (e.g. searching a remote log file without downloading it first):
+
+```python
+def search_remote_logs():
+    resp = http.url("https://logs.example.com/app.log").get()
+    
+    # Get the read stream for the network connection
+    r = resp.get_reader()
+    
+    # Stream the network response directly to the stdin of 'grep'
+    # The network stream is automatically closed when the process exits
+    errors = os.exec("grep ERROR", input=r)
+    print("Found errors:\n", errors)
 ```
 
 For more details on managing streams and piping data to files or subprocesses, see [Filesystem Polymorphic Streaming](../files.md#polymorphic-streaming).

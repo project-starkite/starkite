@@ -132,3 +132,64 @@ def test_user_alias():
     assert(user.id() == userid(), "user.id should equal userid")
     assert(user.gid() == groupid(), "user.gid should equal groupid")
     assert(user.home() == home(), "user.home should equal home")
+
+def test_exec_streaming_string_input():
+    """Test exec with string input."""
+    output = exec("cat", input="hello from string")
+    assert(output == "hello from string", "output should be 'hello from string', got '%s'" % output)
+
+def test_exec_streaming_bytes_input():
+    """Test exec with bytes input."""
+    output = exec("cat", input=bytes("hello from bytes"))
+    assert(output == "hello from bytes", "output should be 'hello from bytes', got '%s'" % output)
+
+def test_exec_streaming_pipe_files():
+    """Test piping streams between files and processes."""
+    in_path = fs.path("/tmp/starkite_in.txt")
+    out_path = fs.path("/tmp/starkite_out.txt")
+    
+    if in_path.exists():
+        in_path.remove()
+    if out_path.exists():
+        out_path.remove()
+        
+    in_path.write_text("stream file data")
+    
+    r = in_path.get_reader()
+    w = out_path.get_writer()
+    
+    res = exec("cat", input=r, output=w)
+    assert(res == "", "exec with redirected output should return empty, got '%s'" % res)
+    
+    assert(out_path.exists(), "output file should exist")
+    assert(out_path.read_text() == "stream file data", "output file content should match")
+    
+    in_path.remove()
+    out_path.remove()
+
+def test_try_exec_streaming_pipe_files():
+    """Test try_exec with piping streams between files and processes."""
+    in_path = fs.path("/tmp/starkite_in_try.txt")
+    out_path = fs.path("/tmp/starkite_out_try.txt")
+    
+    if in_path.exists():
+        in_path.remove()
+    if out_path.exists():
+        out_path.remove()
+        
+    in_path.write_text("try_exec stream data")
+    
+    r = in_path.get_reader()
+    w = out_path.get_writer()
+    
+    res = try_exec("cat", input=r, output=w)
+    assert(res.ok, "try_exec should succeed")
+    assert(res.code == 0, "exit code should be 0")
+    assert(res.stdout == "", "stdout should be empty due to redirection")
+    
+    assert(out_path.exists(), "output file should exist")
+    assert(out_path.read_text() == "try_exec stream data", "output file content should match")
+    
+    in_path.remove()
+    out_path.remove()
+

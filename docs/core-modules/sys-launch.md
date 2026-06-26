@@ -6,7 +6,7 @@ weight: 20
 
 # Launching processes
 
-Starkite provides a bifurcated process execution model that separates direct, shell-free binary execution from shell-wrapped execution. This approach enforces strong security boundaries while maintaining flexibility for developers.
+Starkite separates direct, shell-free binary execution from shell-wrapped execution. This approach enforces strong security boundaries while maintaining flexibility for developers.
 
 The `os` module provides four functions to execute commands:
 
@@ -112,6 +112,8 @@ All process execution functions accept the following optional keyword arguments:
 | `timeout` | `string` | `"60s"` | Time limit for execution (e.g., `"10s"`, `"5m"`). The process is killed if the timeout is exceeded. |
 | `userid` | `string` \| `int` | `None` | User identity under which to run the process (POSIX only). See details below. |
 | `groupid` | `string` \| `int` | `None` | Group identity under which to run the process (POSIX only). See details below. |
+| `input` | `string` \| `bytes` \| `io.reader` | `None` | Data or read stream to write to the process standard input. |
+| `output` | `io.writer` | `None` | Write stream to redirect the process standard output to. |
 
 ---
 
@@ -164,3 +166,77 @@ def run_unprivileged_task():
 ### Required Privileges
 
 Changing process credentials (setuid/setgid) requires the parent `kite` process to have sufficient operating system privileges (typically running as `root` or having `CAP_SETUID`/`CAP_SETGID` capabilities). If `kite` is run under a standard non-privileged user, the OS kernel will reject the credential switch, and `os.exec()` will return a standard OS permission error (e.g., `operation not permitted`).
+
+---
+
+## Streaming Input and Output
+
+Subprocess execution integrates with the unified streaming contract via the `input` and `output` keyword arguments. This allows piping data directly into a process's standard input and redirecting its standard output.
+
+### Streamable Inputs
+
+The `input` argument accepts:
+*   `string`: Passed directly as standard input to the command.
+*   `bytes`: Passed directly as standard input to the command.
+*   `io.reader`: An active read stream (such as a stream returned by `fs.path.get_reader()` or an HTTP client response stream). The stream is copied to the subprocess standard input.
+
+Once the command terminates (or times out), the input stream is automatically closed by the runtime.
+
+### Streamable Outputs
+
+The `output` argument accepts:
+*   `io.writer`: An active write stream (such as a stream returned by `fs.path.get_writer()`). The subprocess standard output is written directly to the stream.
+
+Once the command terminates (or times out), the output stream is automatically flushed and closed by the runtime.
+
+### Examples
+
+#### Piping a File to a Process
+
+To pipe a file's content directly into the standard input of a process:
+
+```python
+def count_lines():
+    p = fs.path("data.txt")
+    p.write_text("line 1\nline 2\nline 3\n")
+    
+    # Streams file data directly to the stdin of 'wc -l'
+    reader = p.get_reader()
+    result = os.exec("wc -l", input=reader)
+    print("Line count:", result.strip())
+```
+
+#### Piping Process Output to a File
+
+To redirect a process's standard output directly to a file:
+
+```python
+def save_system_info():
+    out_file = fs.path("sysinfo.txt")
+    
+    # Redirects stdout of 'uname -a' to the file writer
+    writer = out_file.get_writer()
+    os.exec("uname -a", output=writer)
+    
+    print("Saved content:", out_file.read_text().strip())
+```
+
+#### Multi-stage Pipeline (File-to-File via Subprocess)
+
+To stream from an input file, process it with a command, and write the output directly to another file:
+
+```python
+def process_pipeline():
+    in_file = fs.path("input.log")
+    out_file = fs.path("output.log")
+    
+    in_file.write_text("debug log entry\nerror log entry\ninfo log entry\n")
+    
+    r = in_file.get_reader()
+    w = out_file.get_writer()
+    
+    # Pipes input.log into 'grep error' and writes the output directly to output.log
+    os.exec("grep error", input=r, output=w)
+    
+    print("Filtered log:", out_file.read_text().strip())
+```

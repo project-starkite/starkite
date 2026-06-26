@@ -85,20 +85,68 @@ These streaming methods allow Starkite to pipe data between the filesystem and o
 
 ### Streaming examples
 
+#### Reading a File in Chunks
+
 ```python
-def main():
-    source_file = path("large-payload.bin")
-    target_file = path("destination.bin")
-
-    # Open a reader stream and read in chunks
-    r = source_file.get_reader()
-    chunk1 = r.read(1024)
+def read_chunked():
+    p = path("large-payload.bin")
+    r = p.get_reader()
+    
+    # Read the first 1024 bytes
+    chunk = r.read(1024)
+    print("Read chunk of size:", len(chunk))
+    
+    # Close the stream when done
     r.close()
+```
 
-    # Pipe file contents directly to an output stream
-    w = target_file.get_writer()
-    source_file.write_to(w)
+#### Piping Between Two Files
+
+```python
+def copy_file():
+    source = path("source.dat")
+    dest = path("dest.dat")
+    
+    # Open the write stream for the destination
+    w = dest.get_writer()
+    
+    # Streams the source file contents directly to the destination writer
+    # The destination writer is automatically flushed but should be closed
+    source.write_to(w)
     w.close()
+```
+
+#### Streaming from an HTTP Response directly to a File
+
+```python
+def download_large_file():
+    # Make a GET request
+    resp = http.url("https://example.com/large-archive.tar.gz").get()
+    
+    dest = path("archive.tar.gz")
+    
+    # Get the read stream from the network socket
+    r = resp.get_reader()
+    
+    # Pipe the network stream directly to the file
+    # The read stream is managed and closed automatically
+    dest.read_from(r)
+```
+
+#### Streaming a File's Contents directly into a Subprocess
+
+```python
+def count_file_lines():
+    p = path("input.txt")
+    p.write_text("line 1\nline 2\nline 3\n")
+    
+    # Get the read stream for the file
+    r = p.get_reader()
+    
+    # Stream the file directly to the stdin of the 'wc -l' command
+    # The file read stream is automatically closed when the process exits
+    line_count = os.exec("wc -l", input=r)
+    print("Lines in file:", line_count.strip())
 ```
 
 

@@ -5,6 +5,7 @@ package osmod
 import (
 	"bytes"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"os/user"
@@ -323,6 +324,8 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 	var timeoutStr starlark.Value = starlark.None
 	var useridVal starlark.Value = starlark.None
 	var groupidVal starlark.Value = starlark.None
+	var inputVal starlark.Value = starlark.None
+	var outputVal starlark.Value = starlark.None
 
 	for _, kv := range kwargs {
 		key := string(kv[0].(starlark.String))
@@ -339,6 +342,10 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 			useridVal = kv[1]
 		case "groupid":
 			groupidVal = kv[1]
+		case "input":
+			inputVal = kv[1]
+		case "output":
+			outputVal = kv[1]
 		}
 	}
 
@@ -451,6 +458,48 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 		}
 	}
 
+	var inputReader io.Reader
+	if inputVal != starlark.None {
+		switch v := inputVal.(type) {
+		case starlark.String:
+			inputReader = strings.NewReader(string(v))
+		case starlark.Bytes:
+			inputReader = bytes.NewReader([]byte(v))
+		default:
+			if sr, ok := inputVal.(libkite.StarlarkReader); ok {
+				inputReader = sr.Reader()
+			} else {
+				return nil, fmt.Errorf("os.%s: input must be a string, bytes, or io.reader, got %s", funcPrefix, inputVal.Type())
+			}
+		}
+	}
+
+	var stdoutWriter io.Writer
+	if outputVal != starlark.None {
+		if sw, ok := outputVal.(libkite.StarlarkWriter); ok {
+			stdoutWriter = sw.Writer()
+		} else {
+			return nil, fmt.Errorf("os.%s: output must be an io.writer, got %s", funcPrefix, outputVal.Type())
+		}
+	}
+
+	defer func() {
+		if inputReader != nil {
+			if rc, ok := inputReader.(io.Closer); ok {
+				rc.Close()
+			} else if closer, ok := inputVal.(io.Closer); ok {
+				closer.Close()
+			}
+		}
+		if stdoutWriter != nil {
+			if wc, ok := stdoutWriter.(io.Closer); ok {
+				wc.Close()
+			} else if closer, ok := outputVal.(io.Closer); ok {
+				closer.Close()
+			}
+		}
+	}()
+
 	var cmd *exec.Cmd
 	if useShell {
 		cmd = exec.Command(shell, "-c", cmdStr)
@@ -467,8 +516,16 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 
+	if inputReader != nil {
+		cmd.Stdin = inputReader
+	}
+
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout = &stdout
+	if stdoutWriter != nil {
+		cmd.Stdout = stdoutWriter
+	} else {
+		cmd.Stdout = &stdout
+	}
 	cmd.Stderr = &stderr
 
 	done := make(chan error, 1)
