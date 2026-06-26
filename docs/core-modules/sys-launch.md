@@ -9,10 +9,18 @@ weight: 20
 Starkite provides a bifurcated process execution model that separates direct, shell-free binary execution from shell-wrapped execution. This approach enforces strong security boundaries while maintaining flexibility for developers.
 
 The `os` module provides four functions to execute commands:
-* **`os.exec(cmd, args=[])`**: Executes a binary directly and shell-free. If the command returns a non-zero exit code, it halts execution and raises a Starlark-level error.
-* **`os.try_exec(cmd, args=[])`**: Executes a binary directly and shell-free, returning an `ExecResult` for programmatic error handling.
-* **`os.shell(cmd)`**: Runs a command string inside a shell wrapper (default: `/bin/sh -c`), allowing pipes, redirections, and environment expansion. It halts execution and raises a Starlark-level error on non-zero exit codes.
-* **`os.try_shell(cmd)`**: Runs a command string inside a shell wrapper, returning an `ExecResult` for programmatic error handling.
+
+*   **`os.exec(cmd, args=[])`**
+    Executes a binary directly and shell-free. If the command returns a non-zero exit code, it halts execution and raises a Starlark-level error.
+
+*   **`os.try_exec(cmd, args=[])`**
+    Executes a binary directly and shell-free, returning an `ExecResult` for programmatic error handling.
+
+*   **`os.shell(cmd)`**
+    Runs a command string inside a shell wrapper (default: `/bin/sh -c`), allowing pipes, redirections, and environment expansion. It halts execution and raises a Starlark-level error on non-zero exit codes.
+
+*   **`os.try_shell(cmd)`**
+    Runs a command string inside a shell wrapper, returning an `ExecResult` for programmatic error handling.
 
 ---
 
@@ -29,13 +37,21 @@ def check_os():
     print("System OS:", os_info.strip())
 ```
 
-To maintain backward compatibility, if only a single string is passed, Starkite falls back to splitting the string by whitespace to run it shell-free:
+Alternatively, if only a single string is passed, Starkite automatically splits the string by whitespace to resolve the binary and its arguments:
 
 ```python
-def check_os_fallback():
-    # Falls back to whitespace splitting: runs 'uname' with '-a'
+def check_os_single_string():
+    # Automatically splits by whitespace: runs 'uname' with '-a'
     os_info = os.exec("uname -a")
     print("System OS:", os_info.strip())
+```
+
+### Permissions
+
+Direct process execution requires the **`allow-all`** permission profile (or a custom profile explicitly granting `os.exec` permissions):
+
+```bash
+kite run ./script.star --permissions allow-all
 ```
 
 ---
@@ -49,6 +65,14 @@ def check_disk_space():
     # Shell wrapper allows pipes and redirections
     disk_info = os.shell("df -h / | tail -1")
     print("Disk Info:", disk_info.strip())
+```
+
+### Permissions
+
+Because shell execution allows powerful shell features (like pipes and redirection) that present higher security risks, it is blocked under the default `allow-all` profile. Shell-wrapped execution requires the **`allow-all-shell`** permission profile:
+
+```bash
+kite run ./script.star --permissions allow-all-shell
 ```
 
 ---
@@ -140,18 +164,3 @@ def run_unprivileged_task():
 ### Required Privileges
 
 Changing process credentials (setuid/setgid) requires the parent `kite` process to have sufficient operating system privileges (typically running as `root` or having `CAP_SETUID`/`CAP_SETGID` capabilities). If `kite` is run under a standard non-privileged user, the OS kernel will reject the credential switch, and `os.exec()` will return a standard OS permission error (e.g., `operation not permitted`).
-
-### Starkite Permission Profile
-
-Because switching process credentials and using shell execution are highly sensitive operations, the Starkite permission engine enforces the following profiles:
-
-*   **Direct Execution (`os.exec`/`os.try_exec`)**: Authorized under the **`allow-all`** profile. Identity switching for direct execution also requires `allow-all`.
-*   **Shell Execution (`os.shell`/`os.try_shell`)**: Blocked under `allow-all` and requires the **`allow-all-shell`** profile. Identity switching for shell execution also requires `allow-all-shell`.
-
-```bash
-# Run Starkite with direct execution and identity switching
-kite run ./deploy.star --permissions allow-all
-
-# Run Starkite with shell execution
-kite run ./deploy.star --permissions allow-all-shell
-```

@@ -79,7 +79,7 @@ print("Home:", os.home())
 ### Command execution
 
 ```python
-# Direct execution (whitespace splitting fallback)
+# Direct execution using a single space-separated string
 output = exec("git status")
 print(output)
 
