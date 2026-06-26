@@ -19,26 +19,33 @@ The `os` module provides access to environment variables, process information, a
 | `os.pid()` | `int` | Get current process ID |
 | `os.ppid()` | `int` | Get parent process ID |
 | `os.exit(code=0)` | `None` | Exit the process with the given code |
-| `os.exec(cmd, shell=None, env=None, cwd=None, timeout="60s", userid=None, groupid=None)` | `ExecResult` | Execute a system command |
+| `os.exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None)` | `string` | Execute a binary directly and shell-free (returns stdout) |
+| `os.try_exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None)` | `ExecResult` | Execute a binary directly and shell-free, capturing results |
+| `os.shell(cmd, env=None, cwd=None, timeout="60s", userid=None, groupid=None)` | `string` | Execute a command string in a shell (returns stdout) |
+| `os.try_shell(cmd, env=None, cwd=None, timeout="60s", userid=None, groupid=None)` | `ExecResult` | Execute a command string in a shell, capturing results |
 | `os.which(name)` | `string`/`None` | Find executable on PATH |
 | `os.username()` | `string` | Get current username |
 | `os.userid()` | `string` | Get current user ID |
 | `os.groupid()` | `string` | Get current group ID |
 | `os.home()` | `string` | Get home directory path |
 
-## Global exec() Alias
+## Global Aliases
 
-The `exec()` function is available as a top-level global, equivalent to `os.exec()`:
+The following execution functions are available as top-level globals, equivalent to their `os.` counterparts:
+* `exec(cmd, args=[])`
+* `try_exec(cmd, args=[])`
+* `shell(cmd)`
+* `try_shell(cmd)`
 
 ```python
 # These are identical
-result = exec("ls -la")
-result = os.exec("ls -la")
+result = exec("uname", ["-a"])
+result = os.exec("uname", ["-a"])
 ```
 
 ## ExecResult
 
-The `ExecResult` object returned by `os.exec()` and `exec()` has these attributes:
+The `ExecResult` object returned by `os.try_exec()`, `os.try_shell()`, `try_exec()`, and `try_shell()` has these attributes:
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
@@ -72,24 +79,35 @@ print("Home:", os.home())
 ### Command execution
 
 ```python
-# Simple command
-result = exec("git status")
+# Direct execution (whitespace splitting fallback)
+output = exec("git status")
+print(output)
+
+# Direct execution with arguments list
+result = try_exec("git", ["status"])
 if result.ok:
     print(result.stdout)
 else:
-    print("Failed:", result.stderr)
+    print("Failed:", result.error)
+
+# Shell execution (pipes and redirects)
+result = try_shell("df -h / | tail -1")
+if result.ok:
+    print(result.stdout)
 
 # With options
-result = os.exec(
-    "make build",
+result = os.try_exec(
+    "make",
+    ["build"],
     cwd="/home/user/project",
     env={"GOOS": "linux", "GOARCH": "amd64"},
     timeout="120s",
 )
 
 # With user and group execution switching (requires POSIX and allow-all permissions)
-result = os.exec(
+result = os.try_exec(
     "id",
+    [],
     userid="nobody",
     groupid="nogroup",
 )
@@ -109,4 +127,3 @@ print(os.cwd())  # /tmp
 
 > **Note:**
 All `os` functions that can fail support `try_` variants. For example, `os.try_exec()` returns a `Result` instead of raising on non-zero exit codes.
-

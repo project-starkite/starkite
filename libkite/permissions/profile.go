@@ -22,16 +22,17 @@ import (
 
 // Built-in profile names — the capability ladder, each a superset of the prior.
 const (
-	ProfileDenyAll    = "deny-all"
-	ProfileAllowFS    = "allow-fs"
-	ProfileAllowNet   = "allow-net"
-	ProfileAllowLocal = "allow-local"
-	ProfileAllowAll   = "allow-all"
+	ProfileDenyAll       = "deny-all"
+	ProfileAllowFS       = "allow-fs"
+	ProfileAllowNet      = "allow-net"
+	ProfileAllowLocal    = "allow-local"
+	ProfileAllowAll      = "allow-all"
+	ProfileAllowAllShell = "allow-all-shell"
 )
 
 // builtinProfiles lists the built-in names for error messages.
 var builtinProfiles = []string{
-	ProfileDenyAll, ProfileAllowFS, ProfileAllowNet, ProfileAllowLocal, ProfileAllowAll,
+	ProfileDenyAll, ProfileAllowFS, ProfileAllowNet, ProfileAllowLocal, ProfileAllowAll, ProfileAllowAllShell,
 }
 
 // DefaultProfileName is the reserved profile name in config.permissions that,
@@ -128,6 +129,8 @@ func builtin(value string) *libkite.PermissionConfig {
 		return libkite.AllowLocalPermissions()
 	case ProfileAllowAll:
 		return libkite.AllowAllPermissions()
+	case ProfileAllowAllShell:
+		return libkite.AllowAllShellPermissions()
 	}
 	return nil
 }

@@ -12,11 +12,12 @@ Starkite manages process execution security through two layers of defense: API-l
 
 ## 1. Interpreter-Level Execution Protection
 
-When a script attempts to execute an operating system command using `os.exec()` or `os.try_exec()`, the Starkite interpreter intercepts the call and validates the target binary's absolute path against the active permission profile:
+When a script attempts to execute an operating system command using the direct APIs (`os.exec()`, `os.try_exec()`) or the shell APIs (`os.shell()`, `os.try_shell()`), the Starkite interpreter intercepts the call and validates the target binary's absolute path against the active permission profile:
 
 * **Local Command Execution**: Running a binary located inside the script's working tree (`$CWD`) is permitted under the **`allow-local`** profile or higher. This allows scripts to run local scripts or vendored binaries, but blocks access to system-wide utilities.
-* **System Command Execution**: Running a binary located anywhere else on the host system (such as `/bin/ls`, `/usr/bin/git`, or `/usr/bin/psql`) is blocked by default and requires the **`allow-all`** profile.
-* **Identity Switching (POSIX)**: Executing a command under a specific user or group identity (using the `userid` and `groupid` optional keyword arguments) is a highly privileged operation. The interpreter requires the **`allow-all`** permission profile and validates the request against the `os.exec(switch_identity:...)` capability.
+* **System Command Execution**: Running a binary located anywhere else on the host system (such as `/bin/ls`, `/usr/bin/git`, or `/usr/bin/psql`) is blocked by default. It is authorized for direct execution under the **`allow-all`** profile, and for shell execution under the **`allow-all-shell`** profile.
+* **Shell-Wrapped Execution**: Running command strings in a shell wrapper via `os.shell()` or `os.try_shell()` is blocked by default in all profiles, including `allow-all`, and requires the **`allow-all-shell`** profile.
+* **Identity Switching (POSIX)**: Executing a command under a specific user or group identity (using the `userid` and `groupid` optional keyword arguments) is a highly privileged operation. Direct execution switching requires the **`allow-all`** profile and the `os.exec(switch_identity:...)` capability, while shell execution switching requires the **`allow-all-shell`** profile and the `os.shell(switch_identity:...)` capability.
 
 For instructions on defining custom execution rules and composing profiles, see the [Script Permissions Guide](../fundamentals/security/permission.md).
 

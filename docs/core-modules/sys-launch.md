@@ -1,38 +1,66 @@
 ---
 title: "Launching processes"
-description: "Execute local shell commands and manage sub-processes in Starkite"
+description: "Execute local commands and manage sub-processes in Starkite"
 weight: 20
 ---
 
 # Launching processes
 
-Starkite runs external CLI commands inside a shell wrapper (default: `/bin/sh -c`) and captures their stdout and stderr streams. The `os` module provides two functions to execute commands: `os.exec()` for commands that must succeed, and `os.try_exec()` for commands where you want to handle failures programmatically.
+Starkite provides a bifurcated process execution model that separates direct, shell-free binary execution from shell-wrapped execution. This approach enforces strong security boundaries while maintaining flexibility for developers.
+
+The `os` module provides four functions to execute commands:
+* **`os.exec(cmd, args=[])`**: Executes a binary directly and shell-free. If the command returns a non-zero exit code, it halts execution and raises a Starlark-level error.
+* **`os.try_exec(cmd, args=[])`**: Executes a binary directly and shell-free, returning an `ExecResult` for programmatic error handling.
+* **`os.shell(cmd)`**: Runs a command string inside a shell wrapper (default: `/bin/sh -c`), allowing pipes, redirections, and environment expansion. It halts execution and raises a Starlark-level error on non-zero exit codes.
+* **`os.try_shell(cmd)`**: Runs a command string inside a shell wrapper, returning an `ExecResult` for programmatic error handling.
 
 ---
 
-## Launching Processes
+## Direct Process Execution (`os.exec` & `os.try_exec`)
 
-Starkite executes external shell commands by launching a shell wrapper (default: `/bin/sh -c` on Unix/Linux systems) rather than executing target binaries directly via Go's standard `os/exec` package. This shell-wrapping mechanism provides several benefits to script authors, such as native support for shell pipes (`|`), input/output redirections (`>`, `<`), environment variable expansion (e.g., `$VAR`), command substitution, and filename globbing.
+By default, `os.exec()` and `os.try_exec()` execute target binaries directly and shell-free. This direct execution prevents common shell injection vulnerabilities.
 
-The `os.exec()` function is designed for commands that must succeed for the script to continue. When using `os.exec()`, if the command returns a non-zero exit code, the runtime immediately halts execution and raises a Starlark-level error. This behavior ensures that scripting pipelines fail fast when critical commands fail.
+To pass arguments to the binary, specify them as a list/tuple of strings in the second argument:
 
 ```python
 def check_os():
-    # Halts execution if uname fails
+    # Executes 'uname' directly with argument '-a'
+    os_info = os.exec("uname", ["-a"])
+    print("System OS:", os_info.strip())
+```
+
+To maintain backward compatibility, if only a single string is passed, Starkite falls back to splitting the string by whitespace to run it shell-free:
+
+```python
+def check_os_fallback():
+    # Falls back to whitespace splitting: runs 'uname' with '-a'
     os_info = os.exec("uname -a")
     print("System OS:", os_info.strip())
 ```
 
 ---
 
-## Programmatic Error Handling (`os.try_exec`)
+## Shell-Wrapped Execution (`os.shell` & `os.try_shell`)
 
-Use `os.try_exec()` when you need to handle exit status codes programmatically. It never raises a Starlark error on command failure; instead, it returns an `ExecResult` object.
+For tasks requiring shell features such as pipes (`|`), redirections (`>`, `<`), environment variable expansion (e.g., `$VAR`), command substitution, or filename globbing, use `os.shell()` or `os.try_shell()`. These run the command string inside a shell wrapper (default: `/bin/sh -c` on Unix/Linux systems):
 
 ```python
 def check_disk_space():
+    # Shell wrapper allows pipes and redirections
+    disk_info = os.shell("df -h / | tail -1")
+    print("Disk Info:", disk_info.strip())
+```
+
+---
+
+## Programmatic Error Handling (`os.try_exec` & `os.try_shell`)
+
+Use `os.try_exec()` or `os.try_shell()` when you need to handle exit status codes programmatically. They never raise a Starlark error on command failure; instead, they return an `ExecResult` object.
+
+```python
+def check_disk_space_safe():
     # Safe to handle failure programmatically
-    disk = os.try_exec(
+    disk = os.try_shell(
         "df -h / | tail -1",
         timeout = "5s",
         cwd = "/tmp",
@@ -50,11 +78,11 @@ def check_disk_space():
 
 ## Execution Options
 
-Both `os.exec()` and `os.try_exec()` accept the following optional keyword arguments:
+All process execution functions accept the following optional keyword arguments:
 
 | Option | Type | Default | Purpose |
 |--------|------|---------|---------|
-| `shell` | `string` | `"/bin/sh"` | Shell binary used to execute the command string (e.g., `"/bin/bash"`). |
+| `shell` | `string` | `"/bin/sh"` | Shell binary used to execute the command string (applicable to `os.shell` and `os.try_shell` only). |
 | `cwd` | `string` | `""` | Working directory in which to run the sub-process. |
 | `env` | `dict` | `None` | Environment variable overrides (mapping string to string) for the command execution context. |
 | `timeout` | `string` | `"60s"` | Time limit for execution (e.g., `"10s"`, `"5m"`). The process is killed if the timeout is exceeded. |
@@ -65,7 +93,7 @@ Both `os.exec()` and `os.try_exec()` accept the following optional keyword argum
 
 ## Handling Results
 
-`os.try_exec()` returns an `ExecResult` struct containing the following attributes:
+`os.try_exec()` and `os.try_shell()` return an `ExecResult` struct containing the following attributes:
 
 *   **`.ok`** (`bool`): `True` if the command exited with code `0` and no internal errors occurred.
 *   **`.code`** (`int`): The integer process exit code returned by the command.
@@ -77,7 +105,7 @@ Both `os.exec()` and `os.try_exec()` accept the following optional keyword argum
 
 ## User and Group Execution
 
-Local command execution via `os.exec()` and `os.try_exec()` natively supports running sub-processes under specified user and group identities (UID/GID) in POSIX environments (Linux, macOS).
+Local command execution natively supports running sub-processes under specified user and group identities (UID/GID) in POSIX environments (Linux, macOS).
 
 Use the `userid` and `groupid` optional keyword arguments to configure the OS credentials of the spawned process:
 
@@ -93,7 +121,7 @@ To run a command as a specific user, pass the username to `userid`:
 ```python
 def query_database():
     # Runs the psql command directly as the postgres user
-    result = os.try_exec("psql -c 'SELECT version();'", userid="postgres")
+    result = os.try_exec("psql", ["-c", "SELECT version();"], userid="postgres")
     if result.ok:
         print("Database Version:", result.stdout.strip())
 ```
@@ -115,9 +143,15 @@ Changing process credentials (setuid/setgid) requires the parent `kite` process 
 
 ### Starkite Permission Profile
 
-Because switching process credentials is a highly sensitive operation, the Starkite permission engine requires the **`allow-all`** permission profile when `userid` or `groupid` arguments are used.
+Because switching process credentials and using shell execution are highly sensitive operations, the Starkite permission engine enforces the following profiles:
+
+*   **Direct Execution (`os.exec`/`os.try_exec`)**: Authorized under the **`allow-all`** profile. Identity switching for direct execution also requires `allow-all`.
+*   **Shell Execution (`os.shell`/`os.try_shell`)**: Blocked under `allow-all` and requires the **`allow-all-shell`** profile. Identity switching for shell execution also requires `allow-all-shell`.
 
 ```bash
-# Run Starkite with required system-level permissions
-kite run ./deploy.star --allow-all
+# Run Starkite with direct execution and identity switching
+kite run ./deploy.star --permissions allow-all
+
+# Run Starkite with shell execution
+kite run ./deploy.star --permissions allow-all-shell
 ```
