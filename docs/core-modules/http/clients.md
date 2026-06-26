@@ -78,6 +78,30 @@ Passing a Starlark dictionary as the body parameter automatically serializes it 
 resp = http.url("https://api.example.com/users").post({"name": "alice"})
 ```
 
+## HTTP response streaming
+
+For memory-efficient HTTP operations (such as downloading large payloads or piping data directly between services), `http.response` supports streaming reads. Every response represents an active connection, and the script determines how to consume it:
+
+* **`resp.get_reader()`**: Returns an `io.reader` stream wrapping the active response body.
+* **`resp.get_text()`** / **`resp.get_bytes()`** / **`resp.body`**: Lazy-load and cache the entire body in memory on-demand.
+
+Once `resp.get_reader()` is called, the stream is opened, and direct properties like `.body` cannot be read (to prevent resource conflicts). If `.body` or `get_text()` is called first, the body is buffered in memory, and subsequent `get_reader()` calls will return a reader over the cached memory buffer.
+
+### Streaming examples
+
+```python
+def download_large_payload():
+    resp = http.url("https://backups.example.com/archive.tar.gz").get()
+    
+    # Stream the download directly to a file on disk
+    # This avoids buffering the large file in memory
+    archive = path("/tmp/archive.tar.gz")
+    archive.read_from(resp.get_reader())
+```
+
+For more details on managing streams and piping data to files or subprocesses, see [Filesystem Polymorphic Streaming](../files.md#polymorphic-streaming).
+
+
 ## Error handling
 
 Network failures, DNS resolution errors, and timeouts halt script execution. To handle these failures programmatically, use request methods prefixed with `try_` (such as `try_get()` or `try_post()`), which return a `Result` object.

@@ -207,13 +207,6 @@ func (u *URL) doRequest(method string, hasBody bool, args starlark.Tuple, kwargs
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	// Read response body
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-
-	return newResponse(resp, respBody), nil
+	return newResponse(resp), nil
 }

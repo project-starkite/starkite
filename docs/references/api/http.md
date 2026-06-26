@@ -46,7 +46,7 @@ The response object returned by all request methods.
 |----------|------|-------------|
 | `status_code` | `int` | HTTP status code (e.g. `200`) |
 | `status` | `string` | Status text (e.g. `"200 OK"`) |
-| `body` | `string` | Response body as text |
+| `body` | `bytes` | Response body as bytes |
 | `headers` | `dict` | Response headers |
 
 ### Methods
@@ -55,6 +55,7 @@ The response object returned by all request methods.
 |--------|---------|-------------|
 | `resp.get_text()` | `string` | Get response body as text |
 | `resp.get_bytes()` | `bytes` | Get response body as bytes |
+| `resp.get_reader()` | `io.reader` | Open active response body for streaming reads |
 
 ## http.server
 

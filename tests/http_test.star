@@ -253,3 +253,79 @@ def test_try_get():
     assert(result.value.get_text() == "try-ok", "body should be 'try-ok'")
 
     srv.shutdown()
+
+def test_response_get_reader():
+    """Test http.response.get_reader() streaming."""
+    def handler(req):
+        return "streaming-response-data"
+
+    srv = http.server()
+    srv.handle("/stream", handler)
+    srv.start(port=0)
+    port = srv.port()
+
+    resp = http.url("http://localhost:%d/stream" % port).get()
+    reader = resp.get_reader()
+    
+    # Read a chunk
+    chunk = reader.read(9)
+    assert(chunk == b"streaming", "expected 'streaming', got %s" % chunk)
+    
+    # Read the rest
+    rest = reader.read(100)
+    assert(rest == b"-response-data", "expected '-response-data', got %s" % rest)
+    
+    reader.close()
+    srv.shutdown()
+
+def test_response_get_reader_caching():
+    """Test get_reader() after body is already cached."""
+    def handler(req):
+        return "cached-body"
+
+    srv = http.server()
+    srv.handle("/cache", handler)
+    srv.start(port=0)
+    port = srv.port()
+
+    resp = http.url("http://localhost:%d/cache" % port).get()
+    
+    # Cache the body by reading text
+    text = resp.get_text()
+    assert(text == "cached-body", "expected 'cached-body', got %s" % text)
+    
+    # get_reader() should still work using cached bytes
+    reader = resp.get_reader()
+    data = reader.bytes()
+    assert(data == b"cached-body", "expected b'cached-body', got %s" % data)
+    
+    reader.close()
+    srv.shutdown()
+
+def test_response_streaming_to_file():
+    """Test streaming http response reader directly to a file."""
+    def handler(req):
+        return "piped-data"
+
+    srv = http.server()
+    srv.handle("/pipe", handler)
+    srv.start(port=0)
+    port = srv.port()
+
+    resp = http.url("http://localhost:%d/pipe" % port).get()
+    
+    # Create a temp file path
+    tmp = path("/tmp/http_pipe_test.txt")
+    if tmp.exists():
+        tmp.remove()
+        
+    # Stream response reader directly into the file
+    bytes_written = tmp.read_from(resp.get_reader())
+    assert(bytes_written == 10, "expected 10 bytes written, got %d" % bytes_written)
+    
+    # Verify file content
+    content = tmp.read_text()
+    assert(content == "piped-data", "expected 'piped-data', got '%s'" % content)
+    
+    tmp.remove()
+    srv.shutdown()

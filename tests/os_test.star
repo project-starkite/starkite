@@ -73,20 +73,20 @@ def test_exec_failure():
     assert(result.code != 0, "exit code should be non-zero")
 
 def test_exec_stderr():
-    """Test exec captures stderr via try_exec."""
-    result = try_exec("echo error >&2")
+    """Test exec captures stderr via try_shell."""
+    result = try_shell("echo error >&2")
     assert(result.ok, "command should succeed")
     assert("error" in result.stderr, "should capture stderr")
 
 def test_exec_exit_code():
-    """Test exec captures specific exit code via try_exec."""
-    result = try_exec("exit 42")
+    """Test exec captures specific exit code via try_shell."""
+    result = try_shell("exit 42")
     assert(not result.ok, "ExecResult.ok should be False")
     assert(result.code == 42, "should capture exit code 42")
 
 def test_exec_with_env():
     """Test exec with environment variables."""
-    output = exec("echo $MY_TEST_VAR", env={"MY_TEST_VAR": "test_value"})
+    output = shell("echo $MY_TEST_VAR", env={"MY_TEST_VAR": "test_value"})
     assert("test_value" in output, "should use env var")
 
 def test_exec_with_cwd():

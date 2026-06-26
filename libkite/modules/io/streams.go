@@ -106,6 +106,9 @@ func (r *starlarkReader) readCmd(thread *starlark.Thread, fn *starlark.Builtin, 
 
 	buf := make([]byte, count)
 	n, err := r.reader.Read(buf)
+	if n > 0 {
+		return starlark.Bytes(buf[:n]), nil
+	}
 	if err != nil {
 		if err == io.EOF {
 			return starlark.Bytes(""), nil
@@ -113,7 +116,7 @@ func (r *starlarkReader) readCmd(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("io.reader.read: %w", err)
 	}
 
-	return starlark.Bytes(buf[:n]), nil
+	return starlark.Bytes(""), nil
 }
 
 func (r *starlarkReader) bytesCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

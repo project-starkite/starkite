@@ -216,12 +216,12 @@ def test_uuid_format():
 
 def test_local_exec():
     """Test local command execution."""
-    output = exec("echo 'hello'")
+    output = shell("echo 'hello'")
     assert(output.strip() == "hello", "should output 'hello'")
 
 def test_local_exec_error():
     """Test local command execution with error."""
-    result = try_exec("exit 1")
+    result = try_shell("exit 1")
     assert(not result.ok, "ExecResult.ok should be False")
     assert(result.code == 1, "exit code should be 1")
 
