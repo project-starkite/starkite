@@ -33,7 +33,7 @@ build-ai: $(BIN_DIR) ## Build the lean ai edition binary (kiteai)
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)/ dist/
 
-test: test-libkite test-base test-cloud test-ai test-all ## Run all tests
+test: test-libkite test-base test-cloud test-ai test-all test-install-script ## Run all tests
 
 test-libkite: ## Run libkite (runtime) tests
 	cd libkite && go test ./...
@@ -49,6 +49,10 @@ test-ai: ## Run ai tests
 
 test-all: ## Run all-edition tests (registry composition guard)
 	cd kite && go test ./...
+
+test-install-script: ## Dry-run test the installer script
+	@echo "Testing install.sh script in dry-run mode..."
+	@INSTALL_DRY_RUN=1 ./scripts/install.sh
 
 install: kite ## Install the default kite binary to GOPATH/bin
 	cd kite && go install $(ALL_LDFLAGS) .

@@ -1,6 +1,68 @@
 version: 2
 
 builds:
+  - id: kitecmd
+    dir: ./basekite
+    main: .
+    binary: kitecmd
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
+
+  - id: kitecloud
+    dir: ./cloudkite
+    main: .
+    binary: kitecloud
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/basekite/version.Edition=cloud
+
+  - id: kiteai
+    dir: ./aikite
+    main: .
+    binary: kiteai
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
+      - -X github.com/project-starkite/starkite/basekite/version.Edition=ai
+
   - id: kite
     dir: ./kite
     main: .
@@ -23,12 +85,43 @@ builds:
       - -X github.com/project-starkite/starkite/basekite/version.Edition=all
 
 archives:
-  - id: kite
+  - id: kitecmd
+    ids:
+      - kitecmd
+    formats:
+      - binary
+    name_template: "kitecmd-{{ .Os }}-{{ .Arch }}"
+
+  - id: kitecloud
+    ids:
+      - kitecloud
+    formats:
+      - binary
+    name_template: "kitecloud-{{ .Os }}-{{ .Arch }}"
+
+  - id: kiteai
+    ids:
+      - kiteai
+    formats:
+      - binary
+    name_template: "kiteai-{{ .Os }}-{{ .Arch }}"
+
+  - id: kite-raw
     ids:
       - kite
     formats:
       - binary
     name_template: "kite-{{ .Os }}-{{ .Arch }}"
+
+  - id: kite-pkg
+    ids:
+      - kite
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "kite_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 checksum:
   name_template: checksums.txt
