@@ -124,7 +124,6 @@ nav:
           - validate: references/cli/validate.md
           - init: references/cli/init.md
           - version: references/cli/version.md
-          - edition: references/cli/edition.md
           - module: references/cli/module.md
           - update: references/cli/update.md
           - kube: references/cli/kube.md

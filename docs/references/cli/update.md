@@ -4,7 +4,7 @@ description: "Update starkite to the latest version"
 weight: 21
 ---
 
-Check for and install the latest version of starkite. Downloads the latest GitHub release and replaces the current binary. Any installed edition binaries (`kitecloud`, `kiteai`) are also updated to the same version.
+Check for and install the latest version of starkite. Downloads the latest GitHub release and replaces the current binary.
 
 ## Usage
 
@@ -23,8 +23,7 @@ kite update [--check | --force]
 
 - Refuses to update a dev build unless `--force` is passed.
 - Reports current and latest versions.
-- Updates the current binary first, then every installed edition binary in turn.
-- On partial failure (e.g., one edition fails to update), continues with the rest and reports warnings.
+- Replaces the current running binary with the downloaded version.
 
 ## Examples
 

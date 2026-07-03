@@ -25,8 +25,8 @@ kite version [--short | --json]
 
 ```bash
 kite version
-# kite version 0.1.0-dev (core)
-#   edition: core
+# kite version 0.1.0-dev (base)
+#   edition: base
 #   commit:  abc1234
 #   built:   2026-04-23T10:15:30Z
 #   go:      go1.26
@@ -46,7 +46,7 @@ kite version --short
 kite version --json
 # {
 #   "version": "0.1.0-dev",
-#   "edition": "core",
+#   "edition": "base",
 #   "commit":  "abc1234",
 #   ...
 # }
