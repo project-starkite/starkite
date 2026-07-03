@@ -1,6 +1,6 @@
 ---
 title: "Editions"
-description: "The four starkite binaries and how to switch between them"
+description: "The four starkite binaries"
 weight: 10
 ---
 
@@ -42,42 +42,3 @@ For guides, see the [Kubernetes Guide](../infra/k8s-connect.md).
 The `kiteai` edition adds LLM client integration and Model Context Protocol (MCP) support. This includes multi-provider chat and streaming APIs (`ai` module) and host-server MCP capabilities (`mcp` module).
 
 For guides, see the [AI Agents Guide](../ai/agents.md).
-
-## List and switch editions
-
-Use the `kite edition` subcommand to manage and switch between installed editions on a host. To list installed editions and verify the active one, run:
-
-```bash
-$ kite edition status
-Current edition: ai
-Version:         0.1.0-dev
-Binary edition:  base
-
-Installed editions:
-  * ai    (56 MB)
-    cloud (63 MB)
-```
-
-The `*` marker indicates the active edition.
-
-To switch editions, use `kite edition use`. If the requested edition is not locally cached, the tool automatically fetches it from GitHub Releases before activation:
-
-```bash
-kite edition use cloud      # Download + activate kitecloud
-kite edition use ai         # Download + activate kiteai
-kite edition use base       # Switch back to base
-```
-
-For local development or offline environments, install custom-built binaries using `--from`:
-
-```bash
-kite edition use cloud --from ./bin/kitecloud
-```
-
-To uninstall an edition and reclaim disk space (the default base edition cannot be removed):
-
-```bash
-kite edition remove cloud
-```
-
-For syntax and flags, see the [`kite edition` CLI Reference](../references/cli/edition.md).

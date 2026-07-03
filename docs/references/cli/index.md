@@ -32,7 +32,6 @@ Available in **every** edition.
 |---------|---------|
 | [`kite version`](version.md) | Print version information |
 | [`kite update`](update.md) | Update starkite to the latest version |
-| [`kite edition`](edition.md) | Manage starkite editions (base, cloud, ai) |
 | [`kite module`](module.md) | Manage external modules |
 
 ### Cloud commands

@@ -113,7 +113,6 @@ The `config` section contains both runtime parameters and user variables. Four r
 | `config.project` | Project metadata (name, version) read by build tooling |
 | `config.defaults` | Runtime defaults (such as `log_level` and `timeout`) |
 | `config.providers` | Default provider configurations (e.g., `ssh`), read directly by modules at construction |
-| `config.active_edition` | The active edition managed by `kite edition use` |
 
 All other keys under `config` are loaded as user variables. The following example demonstrates a `config.yaml` containing runtime settings, user variables, permissions, and sandbox profiles:
 

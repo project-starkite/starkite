@@ -48,7 +48,6 @@ func TestParseConfigFile_ThreeSections(t *testing.T) {
   providers:
     ssh:
       user: deploy
-  active_edition: cloud
   environment: dev
   labels:
     app: myapp
@@ -73,9 +72,7 @@ sandbox:
 	if v.ProviderDefaults["ssh"]["user"] != "deploy" {
 		t.Errorf("providers.ssh.user = %v", v.ProviderDefaults["ssh"])
 	}
-	if v.ActiveEdition != "cloud" {
-		t.Errorf("active_edition = %q", v.ActiveEdition)
-	}
+
 
 	// User keys under config: flatten into variables.
 	if got := v.defaultVars["environment"]; got != "dev" {

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/project-starkite/starkite/basekite/edition"
 	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/basekite/version"
 	"github.com/project-starkite/starkite/libkite"
@@ -240,20 +239,7 @@ func Execute() int {
 		RegisterEditionCommands(rootCmd)
 	}
 
-	// Edition handoff: if base edition and a non-base edition is active,
-	// exec the edition binary (replaces this process).
-	if version.IsBaseEdition() && shouldHandoff() {
-		active := edition.ActiveEdition()
-		if active != edition.EditionBase {
-			if binaryPath, err := edition.EditionBinaryPath(active); err == nil {
-				if _, err := os.Stat(binaryPath); err == nil {
-					if err := edition.ExecHandoff(binaryPath); err != nil {
-						fmt.Fprintf(os.Stderr, "warning: edition handoff failed: %v (falling back to base)\n", err)
-					}
-				}
-			}
-		}
-	}
+
 
 	// Implicit run: if the first arg is a run target (a .star file, an existing
 	// path reference, an installed namespace/name identity, or a .star arg) rather
@@ -438,14 +424,4 @@ func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
 	return true, sandbox.Backend.Run(ctx, sandbox.ExecSpec{Profile: profile})
 }
 
-// shouldHandoff returns true if this invocation should attempt edition handoff.
-// Edition management and self-update commands always run in the base binary.
-func shouldHandoff() bool {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "edition", "update":
-			return false
-		}
-	}
-	return true
-}
+

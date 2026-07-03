@@ -48,8 +48,7 @@ type Vars struct {
 	// Runtime defaults
 	RuntimeDefaults map[string]interface{}
 
-	// Active edition from config file
-	ActiveEdition string
+
 
 	// Permissions profiles defined in config.yaml's `permissions:` map,
 	// keyed by profile name.
@@ -154,10 +153,7 @@ func (v *Vars) parseConfigSection(section map[string]interface{}) {
 					}
 				}
 			}
-		case "active_edition":
-			if s, ok := value.(string); ok {
-				v.ActiveEdition = s
-			}
+
 		default:
 			// Flatten nested maps with dot notation
 			v.flattenAndStore(key, value, v.defaultVars)
