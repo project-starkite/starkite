@@ -8,59 +8,92 @@ weight: 2
 
 Starkite is distributed as a single, self-contained binary (`kite`) that bundles the command, cloud, and AI automation modules. It requires no external runtime or pre-run configuration. Select an installation method below to install `kite` on your system, or pull the container image to run scripts without local binaries.
 
-=== "Go Install"
+=== "macOS"
 
-    If you have a Go toolchain installed, run `go install` to download and compile `kite` into your `GOBIN` directory:
-
-    ```bash
-    go install github.com/project-starkite/starkite/kite@latest
-    ```
-
-=== "Download Binary"
-
-    Download the prebuilt binary for your operating system and architecture from [GitHub Releases](https://github.com/project-starkite/starkite/releases):
+    Install starkite on macOS using the Homebrew package manager:
 
     ```bash
-    # Linux (amd64)
-    curl -Lo kite https://github.com/project-starkite/starkite/releases/latest/download/kite-linux-amd64
-
-    # macOS (Apple Silicon)
-    curl -Lo kite https://github.com/project-starkite/starkite/releases/latest/download/kite-darwin-arm64
-
-    # Windows (PowerShell)
-    Invoke-WebRequest -Uri "https://github.com/project-starkite/starkite/releases/latest/download/kite-windows-amd64.exe" -OutFile kite.exe
+    brew install project-starkite/tap/kite
     ```
 
-    After downloading, make the binary executable and move it to a directory in your system `PATH`:
+=== "Linux"
+
+    Use the installer script to automatically download the prebuilt binary for your platform and CPU architecture.
+
+    To install to the default location (`/usr/local/bin/kite`):
 
     ```bash
-    chmod +x kite
-    sudo mv kite /usr/local/bin/
+    curl -fsSL https://starkite.run/install.sh | sh
     ```
 
-=== "From Source"
-
-    To compile a specific commit or build specialized editions, clone the repository and run the make commands. The repository is configured as a Go workspace with one module per edition:
+    To install to a custom directory (e.g. `~/.local/bin`) without requiring root/sudo privileges:
 
     ```bash
-    git clone https://github.com/project-starkite/starkite.git
-    cd starkite
-    make kite
+    curl -fsSL https://starkite.run/install.sh | PREFIX=~/.local/bin sh
     ```
 
-    This creates the all-in-one binary at `./bin/kite`. Move the binary to a directory in your system `PATH`:
+=== "Windows"
 
-    ```bash
-    sudo install -m 0755 ./bin/kite /usr/local/bin/kite
+    Install starkite on Windows using the Scoop package manager:
+
+    ```powershell
+    scoop bucket add starkite https://github.com/project-starkite/scoop-bucket
+    scoop install kite
     ```
 
-    To build the separate, specialized editions (`kitecmd`, `kitecloud`, and `kiteai`) in addition to the unified `kite` binary, run:
+## Download Binary
 
-    ```bash
-    make all
-    ```
+Download the prebuilt binary for your operating system and architecture from [GitHub Releases](https://github.com/project-starkite/starkite/releases):
 
-    Run `make help` to list all available compilation targets.
+```bash
+# Linux (amd64)
+curl -Lo kite https://github.com/project-starkite/starkite/releases/latest/download/kite-linux-amd64
+
+# macOS (Apple Silicon)
+curl -Lo kite https://github.com/project-starkite/starkite/releases/latest/download/kite-darwin-arm64
+
+# Windows (PowerShell)
+Invoke-WebRequest -Uri "https://github.com/project-starkite/starkite/releases/latest/download/kite-windows-amd64.exe" -OutFile kite.exe
+```
+
+After downloading, make the binary executable and move it to a directory in your system `PATH`:
+
+```bash
+chmod +x kite
+sudo mv kite /usr/local/bin/
+```
+
+## Go Install
+
+If you have a Go toolchain installed, run `go install` to download and compile `kite` into your `GOBIN` directory:
+
+```bash
+go install github.com/project-starkite/starkite/kite@latest
+```
+
+## From Source
+
+To compile a specific commit or build specialized editions, clone the repository and run the make commands. The repository is configured as a Go workspace with one module per edition:
+
+```bash
+git clone https://github.com/project-starkite/starkite.git
+cd starkite
+make kite
+```
+
+This creates the all-in-one binary at `./bin/kite`. Move the binary to a directory in your system `PATH`:
+
+```bash
+sudo install -m 0755 ./bin/kite /usr/local/bin/kite
+```
+
+To build the separate, specialized editions (`kitecmd`, `kitecloud`, and `kiteai`) in addition to the unified `kite` binary, run:
+
+```bash
+make all
+```
+
+Run `make help` to list all available compilation targets.
 
 ## Verify
 

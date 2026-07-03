@@ -109,7 +109,7 @@ kite module install <repo>            # Install a module
 kite update                           # Self-update
 ```
 
-See the [CLI reference](https://starkite.dev/references/cli/) for all commands and flags.
+See the [CLI reference](https://starkite.ai/references/cli/) for all commands and flags.
 
 ## Modules
 
@@ -151,7 +151,7 @@ yaml.source(data).write_file("output.yaml")
 | Cloud | `k8s` (in `kite` and `kitecloud`) |
 | AI | `ai`, `mcp` (in `kite` and `kiteai`) |
 
-See the [API reference](https://starkite.dev/references/api/) for full module documentation.
+See the [API reference](https://starkite.ai/references/api/) for full module documentation.
 
 ## Permission Sandbox
 
@@ -181,7 +181,7 @@ permissions:
       - os.exec
 ```
 
-Each profile is allow-list only; `deny` rules carve out exceptions and take precedence. An unspecified `--permissions` resolves to the `default` profile if defined, else `deny-all`. See the [permissions reference](https://starkite.dev/fundamentals/security/permissions/) for details.
+Each profile is allow-list only; `deny` rules carve out exceptions and take precedence. An unspecified `--permissions` resolves to the `default` profile if defined, else `deny-all`. See the [permissions reference](https://starkite.ai/fundamentals/security/permissions/) for details.
 
 ## Error Handling
 
@@ -232,7 +232,7 @@ See the [`examples/`](examples/) directory for complete working scripts covering
 
 ## Documentation
 
-Full documentation is available at [starkite.dev](https://starkite.dev/).
+Full documentation is available at [starkite.ai](https://starkite.ai/).
 
 ## License
 
