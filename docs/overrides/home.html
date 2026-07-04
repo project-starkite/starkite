@@ -49,7 +49,7 @@
     display: grid;
     grid-template-columns: 5fr 7fr;
     gap: 2rem;
-    align-items: center;
+    align-items: start;
   }
   .tx-hero__left,
   .tx-hero__right {
@@ -66,8 +66,8 @@
   }
   .tx-hero__logo {
     display: block;
-    max-height: 160px;
-    margin: 0 0 1.5rem 0;
+    max-height: 200px;
+    margin: 0 auto 1.5rem auto;
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.45));
   }
   .tx-hero .tx-hero__headline {
@@ -134,7 +134,7 @@
   }
 
   /* =====================================================
-     EXAMPLES TABSET — radio-driven tab switcher (hero right column)
+     EXAMPLES TABSET — hierarchical theme/sub-tabs (hero right column)
      ===================================================== */
   .example-tabs {
     border: 1px solid var(--md-typeset-table-color);
@@ -144,46 +144,113 @@
   .example-tabs input[type="radio"] {
     display: none;
   }
-  .example-tabs__labels {
+  .theme-tabs-header {
     display: flex;
     background: var(--md-code-bg-color);
     border-bottom: 1px solid var(--md-typeset-table-color);
   }
-  .example-tabs__labels label {
+  .theme-tabs-header label {
     flex: 1;
     text-align: center;
-    padding: 0.85rem 1rem;
+    padding: 0.75rem 0.5rem;
+    cursor: pointer;
+    font-weight: 700;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: var(--md-typeset-color);
+    opacity: 0.6;
+    transition: opacity 0.2s, border-color 0.2s, background-color 0.2s, color 0.2s;
+    border-bottom: 2px solid transparent;
+  }
+  .theme-tabs-header label:hover {
+    opacity: 1;
+    background: rgba(255, 255, 255, 0.03);
+  }
+
+  /* Active theme highlighting */
+  #theme-automation:checked ~ .theme-tabs-header label[for="theme-automation"],
+  #theme-ai:checked ~ .theme-tabs-header label[for="theme-ai"],
+  #theme-infra:checked ~ .theme-tabs-header label[for="theme-infra"],
+  #theme-security:checked ~ .theme-tabs-header label[for="theme-security"] {
+    opacity: 1;
+    color: var(--md-accent-fg-color);
+    border-bottom: 2px solid var(--md-accent-fg-color);
+  }
+
+  /* Theme containers display */
+  .theme-container {
+    display: none;
+  }
+  #theme-automation:checked ~ .theme-container[data-theme="automation"],
+  #theme-ai:checked ~ .theme-container[data-theme="ai"],
+  #theme-infra:checked ~ .theme-container[data-theme="infra"],
+  #theme-security:checked ~ .theme-container[data-theme="security"] {
+    display: block;
+  }
+
+  /* Sub-tabs header */
+  .sub-tabs-header {
+    display: flex;
+    background: #142340; /* fixed dark background for clear contrast */
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  }
+  .sub-tabs-header label {
+    flex: 1;
+    text-align: center;
+    padding: 0.6rem 0.4rem;
     cursor: pointer;
     font-weight: 600;
-    font-size: 0.95rem;
+    font-size: 0.78rem;
+    color: rgba(255, 255, 255, 0.6); /* clear light text on dark background */
+    transition: opacity 0.2s, border-color 0.2s, color 0.2s;
     border-bottom: 2px solid transparent;
-    color: var(--md-typeset-color);
-    opacity: 0.7;
-    transition: opacity 0.2s, border-color 0.2s, background-color 0.2s;
   }
-  .example-tabs__labels label:hover {
+  .sub-tabs-header label:hover {
+    color: #ffffff;
+    opacity: 0.9;
+  }
+
+  /* Active sub-tab highlighting */
+  /* Active sub-tab highlighting */
+  #sub-auto-extract:checked ~ .sub-tabs-header label[for="sub-auto-extract"],
+  #sub-auto-audit:checked ~ .sub-tabs-header label[for="sub-auto-audit"],
+  #sub-auto-serve:checked ~ .sub-tabs-header label[for="sub-auto-serve"],
+  #sub-auto-fetch:checked ~ .sub-tabs-header label[for="sub-auto-fetch"],
+  #sub-ai-serve:checked ~ .sub-tabs-header label[for="sub-ai-serve"],
+  #sub-ai-agent:checked ~ .sub-tabs-header label[for="sub-ai-agent"],
+  #sub-ai-run:checked ~ .sub-tabs-header label[for="sub-ai-run"],
+  #sub-infra-ssh:checked ~ .sub-tabs-header label[for="sub-infra-ssh"],
+  #sub-infra-pod:checked ~ .sub-tabs-header label[for="sub-infra-pod"],
+  #sub-infra-ctrl:checked ~ .sub-tabs-header label[for="sub-infra-ctrl"],
+  #sub-security-cli:checked ~ .sub-tabs-header label[for="sub-security-cli"],
+  #sub-security-profile:checked ~ .sub-tabs-header label[for="sub-security-profile"] {
     opacity: 1;
-    background: rgba(0, 0, 0, 0.03);
+    color: #ffffff;
+    border-bottom-color: #67e8f9;
   }
+
   .example-pane {
     display: none;
     padding: 1.5rem;
   }
-  /* Active-tab highlighting and pane visibility via :checked sibling */
-  #ex-system:checked ~ .example-tabs__labels label[for="ex-system"],
-  #ex-cloud:checked  ~ .example-tabs__labels label[for="ex-cloud"],
-  #ex-ai:checked     ~ .example-tabs__labels label[for="ex-ai"],
-  #ex-secure:checked ~ .example-tabs__labels label[for="ex-secure"] {
-    border-bottom-color: var(--md-accent-fg-color);
-    opacity: 1;
-    background: transparent;
-  }
-  #ex-system:checked ~ .example-pane[data-for="ex-system"],
-  #ex-cloud:checked  ~ .example-pane[data-for="ex-cloud"],
-  #ex-ai:checked     ~ .example-pane[data-for="ex-ai"],
-  #ex-secure:checked ~ .example-pane[data-for="ex-secure"] {
+
+  /* Sub-pane display rules */
+  #sub-auto-extract:checked ~ .example-pane[data-for="sub-auto-extract"],
+  #sub-auto-audit:checked ~ .example-pane[data-for="sub-auto-audit"],
+  #sub-auto-serve:checked ~ .example-pane[data-for="sub-auto-serve"],
+  #sub-auto-fetch:checked ~ .example-pane[data-for="sub-auto-fetch"],
+  #sub-ai-serve:checked ~ .example-pane[data-for="sub-ai-serve"],
+  #sub-ai-agent:checked ~ .example-pane[data-for="sub-ai-agent"],
+  #sub-ai-run:checked ~ .example-pane[data-for="sub-ai-run"],
+  #sub-infra-ssh:checked ~ .example-pane[data-for="sub-infra-ssh"],
+  #sub-infra-pod:checked ~ .example-pane[data-for="sub-infra-pod"],
+  #sub-infra-ctrl:checked ~ .example-pane[data-for="sub-infra-ctrl"],
+  #sub-security-cli:checked ~ .example-pane[data-for="sub-security-cli"],
+  #sub-security-profile:checked ~ .example-pane[data-for="sub-security-profile"] {
     display: block;
   }
+
   /* Hero-scoped tabset overrides: card look on dark navy */
   .tx-hero__right .example-tabs {
     background: var(--md-default-bg-color);
@@ -579,123 +646,425 @@
         </div>
         <div class="tx-hero__right">
           <div class="example-tabs">
-            <input type="radio" id="ex-system" name="ex" checked>
-            <input type="radio" id="ex-cloud" name="ex">
-            <input type="radio" id="ex-secure" name="ex">
-            <input type="radio" id="ex-ai" name="ex">
+            <!-- High-level Theme Radio Inputs -->
+            <input type="radio" id="theme-automation" name="theme-tabs" checked>
+            <input type="radio" id="theme-ai" name="theme-tabs">
+            <input type="radio" id="theme-infra" name="theme-tabs">
+            <input type="radio" id="theme-security" name="theme-tabs">
 
-            <div class="example-tabs__labels">
-              <label for="ex-system">System</label>
-              <label for="ex-cloud">Infrastructure</label>
-              <label for="ex-secure">Remote (SSH)</label>
-              <label for="ex-ai">AI Agents</label>
+            <!-- Theme Labels Row -->
+            <div class="theme-tabs-header">
+              <label for="theme-automation">Automation</label>
+              <label for="theme-ai">Agentic AI</label>
+              <label for="theme-infra">Infrastructure</label>
+              <label for="theme-security">Security</label>
             </div>
 
-            <div class="example-pane" data-for="ex-system">
-              <div class="terminal">
-                <div class="terminal__bar">
-                  <span class="terminal__dot terminal__dot--red"></span>
-                  <span class="terminal__dot terminal__dot--yellow"></span>
-                  <span class="terminal__dot terminal__dot--green"></span>
-                  <span class="terminal__title">local-check.star</span>
-                </div>
-                <pre><code class="language-python">#!/usr/bin/env kite
-# local-check.star — read config, process logs, and write SQL
+            <!-- THEME 1: AUTOMATION -->
+            <div class="theme-container" data-theme="automation">
+              <input type="radio" id="sub-auto-extract" name="sub-auto-tabs" checked>
+              <input type="radio" id="sub-auto-audit" name="sub-auto-tabs">
+              <input type="radio" id="sub-auto-serve" name="sub-auto-tabs">
+              <input type="radio" id="sub-auto-fetch" name="sub-auto-tabs">
+              
+              <div class="sub-tabs-header">
+                <label for="sub-auto-extract">Extract Logs</label>
+                <label for="sub-auto-audit">Audit DB</label>
+                <label for="sub-auto-serve">Serve Metrics</label>
+                <label for="sub-auto-fetch">Fetch Report</label>
+              </div>
+
+              <!-- STAGE 1: EXTRACT LOGS -->
+              <div class="example-pane" data-for="sub-auto-extract">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">extract-logs.star</span>
+                  </div>
+                  <pre><code class="language-python">#!/usr/bin/env kite
+# extract-logs.star — Read logs and store errors in DB (glob + read_text + sql)
 
 def main():
-    db_path = var_str("db_path", "data/app.db")
-    db = sql.open("sqlite3", db_path)
+    db = sql.open("sqlite", "data/errors.db")
+    db.exec("CREATE TABLE IF NOT EXISTS log_errors (host TEXT, message TEXT)")
     
-    # Process backup logs concurrently
-    backups = fs.glob("backups/*.json")
-    for f in backups:
-        data = json.decode(fs.read(f))
-        db.exec("INSERT INTO logs (host, status) VALUES (?, ?)", 
-                data["host"], data["status"])
-    
-    printf("Processed %d logs.\n", len(backups))
+    # Scan JSON log files and insert errors into database
+    files = glob("logs/*.json")
+    for f in files:
+        entry = json.decode(read_text(f))
+        if entry.get("status") == "error":
+            db.exec("INSERT INTO log_errors (host, message) VALUES (?, ?)", 
+                    entry.get("host"), entry.get("message"))
+    printf("Stored errors from %d logs.\n", len(files))
 </code></pre>
-              </div>
-            </div>
-
-            <div class="example-pane" data-for="ex-cloud">
-              <div class="terminal">
-                <div class="terminal__bar">
-                  <span class="terminal__dot terminal__dot--red"></span>
-                  <span class="terminal__dot terminal__dot--yellow"></span>
-                  <span class="terminal__dot terminal__dot--green"></span>
-                  <span class="terminal__title">k8s-controller.star</span>
                 </div>
-                <pre><code class="language-python">#!/usr/bin/env kite
-# k8s-controller.star — reconcile replica counts
-
-def reconcile(event, obj):
-    if obj.spec.replicas > 10:
-        k8s.apply({
-            "apiVersion": "apps/v1",
-            "kind": "Deployment",
-            "metadata": {"name": obj.metadata.name,
-                         "namespace": obj.metadata.namespace},
-            "spec": {"replicas": 10},
-        })
-
-k8s.control("deployments",
-    reconcile = reconcile,
-    labels    = "enforce-max=true",
-)
-</code></pre>
               </div>
-            </div>
 
-            <div class="example-pane" data-for="ex-secure">
-              <div class="terminal">
-                <div class="terminal__bar">
-                  <span class="terminal__dot terminal__dot--red"></span>
-                  <span class="terminal__dot terminal__dot--yellow"></span>
-                  <span class="terminal__dot terminal__dot--green"></span>
-                  <span class="terminal__title">fleet-check.star</span>
-                </div>
-                <pre><code class="language-python">#!/usr/bin/env kite
-# fleet-check.star — inspect remote host fleets
+              <!-- STAGE 2: AUDIT DATABASE -->
+              <div class="example-pane" data-for="sub-auto-audit">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">audit-logs.star</span>
+                  </div>
+                  <pre><code class="language-python">#!/usr/bin/env kite
+# audit-logs.star — Audit database and alert via Webhook (sql + http client)
 
 def main():
-    fleet = ssh.config(
-        hosts       = ["web-1", "web-2", "web-3"],
-        user        = "deploy",
-        key         = "~/.ssh/id_ed25519",
-        exec_policy = "concurrent",
-    )
-    for r in fleet.exec("systemctl is-active nginx"):
-        status = "Active" if r.ok else "Inactive/Failed"
-        printf("Host %s Nginx: %s\n", r.host, status)
+    db = sql.open("sqlite", "data/errors.db")
+    rows = db.query("SELECT host, message FROM log_errors")
+    
+    # Dispatch an alert if more than 5 errors accumulated
+    if len(rows) > 5:
+        payload = json.encode({"text": "Critical: %d errors accumulated" % len(rows)})
+        http.url("https://hooks.slack.com/services/...").post(body=payload)
+        printf("Dispatched alert for %d errors.\n", len(rows))
 </code></pre>
+                </div>
+              </div>
+
+              <!-- STAGE 3: SERVE METRICS -->
+              <div class="example-pane" data-for="sub-auto-serve">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">serve-metrics.star</span>
+                  </div>
+                  <pre><code class="language-python">#!/usr/bin/env kite
+# serve-metrics.star — Serve metrics database via API (sql + http server)
+
+def get_metrics(req):
+    db = sql.open("sqlite", "data/errors.db")
+    rows = db.query("SELECT host, COUNT(*) as count FROM log_errors GROUP BY host")
+    metrics = {}
+    for r in rows:
+        metrics[r["host"]] = r["count"]
+    return {"status": 200, "body": metrics}
+
+# Expose route for external scraping
+http.serve({
+    "GET /metrics": get_metrics,
+}, port=8080)
+</code></pre>
+                </div>
+              </div>
+
+              <!-- STAGE 4: FETCH REPORT -->
+              <div class="example-pane" data-for="sub-auto-fetch">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">fetch-metrics.star</span>
+                  </div>
+                  <pre><code class="language-python">#!/usr/bin/env kite
+# fetch-metrics.star — Fetch API metrics and write summary report (http client + write_text)
+
+def main():
+    # Query local metrics endpoint
+    resp = http.url("http://localhost:8080/metrics").get()
+    metrics = json.decode(resp.body)
+    
+    # Format and save system report
+    report = "SYSTEM STATUS REPORT\n====================\n"
+    for host, count in metrics.items():
+        report += "Host: %s | Errors: %d\n" % (host, count)
+        
+    write_text("reports/status.txt", report)
+    printf("Saved status report to reports/status.txt\n")
+</code></pre>
+                </div>
               </div>
             </div>
 
-            <div class="example-pane" data-for="ex-ai">
-              <div class="terminal">
-                <div class="terminal__bar">
-                  <span class="terminal__dot terminal__dot--red"></span>
-                  <span class="terminal__dot terminal__dot--yellow"></span>
-                  <span class="terminal__dot terminal__dot--green"></span>
-                  <span class="terminal__title">weather-mcp.star</span>
-                </div>
-                <pre><code class="language-python">#!/usr/bin/env kite
-# weather-mcp.star — expose tools to AI agents
+            <!-- THEME 2: AGENTIC AI -->
+            <div class="theme-container" data-theme="ai">
+              <input type="radio" id="sub-ai-serve" name="sub-ai-tabs" checked>
+              <input type="radio" id="sub-ai-agent" name="sub-ai-tabs">
+              <input type="radio" id="sub-ai-run" name="sub-ai-tabs">
+              
+              <div class="sub-tabs-header">
+                <label for="sub-ai-serve">Serve MCP</label>
+                <label for="sub-ai-agent">Connect Agent</label>
+                <label for="sub-ai-run">Run Audit</label>
+              </div>
 
-def get_weather(city):
-    """Return the current weather for a city."""
-    forecasts = {
-        "san francisco": {"temp": 64, "conditions": "foggy"},
-        "tokyo":         {"temp": 78, "conditions": "sunny"},
-    }
-    return forecasts.get(city.lower(), {"error": "no data"})
+              <!-- STAGE 1: SERVE MCP -->
+              <div class="example-pane" data-for="sub-ai-serve">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">serve-mcp.star</span>
+                  </div>
+                  <pre><code class="language-python">#!/usr/bin/env kite
+# serve-mcp.star — Expose error database as an MCP tool (mcp.serve)
 
+def query_errors(host):
+    """
+    Query log error messages for a specific host from database.
+    Args:
+        host (str): Name of the host to query.
+    """
+    db = sql.open("sqlite", "data/errors.db")
+    rows = db.query("SELECT message FROM log_errors WHERE host = ?", host)
+    return [r["message"] for r in rows]
+
+# Serve as a native Model Context Protocol tool server
 mcp.serve(
-    name  = "weather-provider",
-    tools = [get_weather],
+    name  = "error-database-provider",
+    tools = [query_errors]
 )
 </code></pre>
+                </div>
+              </div>
+
+              <!-- STAGE 2: CONNECT AGENT -->
+              <div class="example-pane" data-for="sub-ai-agent">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">mcp-agent.star</span>
+                  </div>
+                  <pre><code class="language-python">#!/usr/bin/env kite
+# mcp-agent.star — Query MCP tools inside multi-turn chat (mcp.connect + ai.chat)
+
+def main():
+    # Connect to the local error database MCP server
+    error_mcp = mcp.connect("http://localhost:8080")
+    
+    # Wrap the MCP tool in a Starlark function for schema auto-inference
+    def query_errors(host):
+        """
+        Query log error messages for a specific host from the database.
+        Args:
+            host (str): Name of the host.
+        """
+        return error_mcp.call("query_errors", host=host).text
+
+    # Initialize chat with the wrapped tool
+    chat = ai.chat(
+        system = "You are a database analyzer. Use query_errors to check logs.",
+        tools = [query_errors]
+    )
+    
+    # Assistant queries the database automatically through MCP
+    resp = chat.send("List error messages for web-server-1")
+    printf("Agent Answer: %s\n", resp.text)
+</code></pre>
+                </div>
+              </div>
+
+              <!-- STAGE 3: RUN AUDIT -->
+              <div class="example-pane" data-for="sub-ai-run">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">run-audit.star</span>
+                  </div>
+                  <pre><code class="language-python">#!/usr/bin/env kite
+# run-audit.star — Audit errors via MCP autonomously (ai.run_until)
+
+def check_audit_complete(resp):
+    return "audit complete" in resp.text.lower()
+
+def main():
+    error_mcp = mcp.connect("http://localhost:8080")
+    
+    # Wrap the MCP tool in a Starlark function for schema auto-inference
+    def query_errors(host):
+        """
+        Query log error messages for a specific host from the database.
+        Args:
+            host (str): Name of the host.
+        """
+        return error_mcp.call("query_errors", host=host).text
+
+    chat = ai.chat(
+        system = "Audit log errors. Respond 'Audit Complete' when done.",
+        tools = [query_errors]
+    )
+    
+    # Execute agent loop autonomously until the audit is completed
+    resp = ai.run_until(
+        chat,
+        "Analyze logs for all hosts and summarize critical failures",
+        stop_when = check_audit_complete,
+        max_steps = 3
+    )
+    printf("Final Audit Report: %s\n", resp.text)
+</code></pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- THEME 3: INFRASTRUCTURE -->
+            <div class="theme-container" data-theme="infra">
+              <input type="radio" id="sub-infra-ssh" name="sub-infra-tabs" checked>
+              <input type="radio" id="sub-infra-pod" name="sub-infra-tabs">
+              <input type="radio" id="sub-infra-ctrl" name="sub-infra-tabs">
+              
+              <div class="sub-tabs-header">
+                <label for="sub-infra-ssh">SSH Host Logs</label>
+                <label for="sub-infra-pod">Pod Container Logs</label>
+                <label for="sub-infra-ctrl">Error Watcher</label>
+              </div>
+
+              <!-- STAGE 1: SSH HOST LOGS -->
+              <div class="example-pane" data-for="sub-infra-ssh">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">ssh-fetch.star</span>
+                  </div>
+                  <pre><code class="language-python">#!/usr/bin/env kite
+# ssh-fetch.star — Fetch kubelet errors concurrently via SSH (ssh + write_text)
+
+def main():
+    # Connect to 3 cluster node hosts hosting the audited cluster
+    nodes = ssh.config(
+        hosts = ["kube-node-1", "kube-node-2", "kube-node-3"],
+        user  = "kube-admin",
+        key   = "~/.ssh/id_ed25519",
+    )
+    
+    # Query syslog on all nodes concurrently
+    for res in nodes.exec("journalctl -u kubelet -n 50 | grep 'ERROR'"):
+        if res.ok:
+            write_text("logs/{}.log".format(res.host), res.stdout)
+            printf("Fetched logs from node: %s\n", res.host)
+</code></pre>
+                </div>
+              </div>
+
+              <!-- STAGE 2: POD CONTAINER LOGS -->
+              <div class="example-pane" data-for="sub-infra-pod">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">k8s-fetch.star</span>
+                  </div>
+                  <pre><code class="language-python">#!/usr/bin/env kite
+# k8s-fetch.star — Retrieve container logs from cluster pods (k8s + write_text)
+
+def main():
+    # Locate pod instances for the web-server deployment
+    pods = k8s.list("pods", namespace="default", labels="app=web-server")
+    for pod in pods:
+        name = pod["metadata"]["name"]
+        # Read container stdout logs directly
+        log_content = k8s.logs(name, namespace="default", tail=100)
+        if "ERROR" in log_content:
+            write_text("logs/pod_{}.log".format(name), log_content)
+            printf("Saved logs for pod: %s\n", name)
+</code></pre>
+                </div>
+              </div>
+
+              <!-- STAGE 3: ERROR WATCHER -->
+              <div class="example-pane" data-for="sub-infra-ctrl">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">err-controller.star</span>
+                  </div>
+                  <pre><code class="language-python">#!/usr/bin/env kite
+# err-controller.star — Watch replica events and log failures to DB (k8s + sql)
+
+db = sql.open("sqlite", "data/errors.db")
+db.exec("CREATE TABLE IF NOT EXISTS k8s_errors (pod TEXT, phase TEXT)")
+
+def reconcile(event, pod):
+    phase = pod.status.phase
+    if phase == "Failed":
+        name = pod.metadata.name
+        db.exec("INSERT INTO k8s_errors VALUES (?, ?)", name, phase)
+        printf("Logged failure for pod: %s\n", name)
+
+# Watch pod events in the default namespace
+k8s.control("pods", reconcile=reconcile, namespace="default")
+</code></pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- THEME 4: SECURITY -->
+            <div class="theme-container" data-theme="security">
+              <input type="radio" id="sub-security-cli" name="sub-security-tabs" checked>
+              <input type="radio" id="sub-security-profile" name="sub-security-tabs">
+              
+              <div class="sub-tabs-header">
+                <label for="sub-security-cli">CLI Sandbox</label>
+                <label for="sub-security-profile">Permission Profile</label>
+              </div>
+
+              <div class="example-pane" data-for="sub-security-cli">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">kite sandbox launch</span>
+                  </div>
+                  <pre><code class="language-bash"># Run local script in a gVisor sandboxed kernel
+$ kite run --sandbox=gvisor local-check.star
+
+# Run with read-only root system mounts
+$ kite run --sandbox-profile=readonly-root backup.star
+
+# Deny-all permissions + strict sandbox for untrusted code
+$ kite run ./untrusted.star --permissions=deny-all --sandbox=opaque
+Error: permission denied: os.exec is not allowed
+</code></pre>
+                </div>
+              </div>
+
+              <div class="example-pane" data-for="sub-security-profile">
+                <div class="terminal">
+                  <div class="terminal__bar">
+                    <span class="terminal__dot terminal__dot--red"></span>
+                    <span class="terminal__dot terminal__dot--yellow"></span>
+                    <span class="terminal__dot terminal__dot--green"></span>
+                    <span class="terminal__title">settings.json</span>
+                  </div>
+                  <pre><code class="language-json">{
+  "profiles": {
+    "default": {
+      "permissions": {
+        "fs": ["read"],
+        "net": false,
+        "sys": false
+      }
+    },
+    "trusted": {
+      "permissions": {
+        "fs": ["read", "write"],
+        "net": ["api.github.com"],
+        "sys": true
+      }
+    }
+  }
+}
+</code></pre>
+                </div>
               </div>
             </div>
           </div>
