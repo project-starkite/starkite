@@ -169,6 +169,7 @@
   }
 
   /* Active theme highlighting */
+  #theme-default:checked ~ .theme-tabs-header label[for="theme-default"],
   #theme-automation:checked ~ .theme-tabs-header label[for="theme-automation"],
   #theme-ai:checked ~ .theme-tabs-header label[for="theme-ai"],
   #theme-infra:checked ~ .theme-tabs-header label[for="theme-infra"],
@@ -183,11 +184,115 @@
     display: none;
     padding: 1.2rem;
   }
+  #theme-default:checked ~ .theme-container[data-theme="default"],
   #theme-automation:checked ~ .theme-container[data-theme="automation"],
   #theme-ai:checked ~ .theme-container[data-theme="ai"],
   #theme-infra:checked ~ .theme-container[data-theme="infra"],
   #theme-security:checked ~ .theme-container[data-theme="security"] {
     display: block;
+  }
+
+  /* =====================================================
+     FEATURE FADER (DEFAULT TAB)
+     ===================================================== */
+  .feature-fader-wrapper {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    min-height: 420px;
+    width: 100%;
+    position: relative;
+  }
+  .fader-arrow {
+    background: none;
+    border: none;
+    color: var(--md-typeset-color);
+    opacity: 0.25;
+    cursor: pointer;
+    padding: 0.8rem;
+    transition: opacity 0.2s, transform 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10;
+  }
+  .fader-arrow:hover {
+    opacity: 0.8;
+    transform: scale(1.1);
+  }
+  .fader-arrow svg {
+    width: 2rem;
+    height: 2rem;
+    fill: currentColor;
+  }
+  .feature-fader {
+    position: relative;
+    flex: 1;
+    min-height: 420px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    padding: 2rem;
+    text-align: center;
+  }
+  .feature-slide {
+    position: absolute;
+    opacity: 0;
+    visibility: hidden;
+    width: calc(100% - 4rem);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    transform: translateY(12px);
+    transition: opacity 0.6s ease-in-out, transform 0.6s ease-in-out, visibility 0.6s;
+  }
+  .feature-slide.active {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+  .feature-slide h3 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    margin-top: 0;
+    margin-bottom: 0.8rem;
+    line-height: 1.25;
+    background: linear-gradient(135deg, var(--md-typeset-color) 40%, var(--md-accent-fg-color));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .feature-slide p {
+    font-size: 1.15rem;
+    color: var(--md-typeset-color);
+    opacity: 0.7;
+    line-height: 1.65;
+    max-width: 540px;
+    margin: 0 auto;
+  }
+  .fader-dots {
+    position: absolute;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 0.6rem;
+    z-index: 10;
+  }
+  .fader-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--md-typeset-color);
+    opacity: 0.3;
+    cursor: pointer;
+    transition: opacity 0.25s, transform 0.25s, background-color 0.25s;
+  }
+  .fader-dot.active {
+    opacity: 1;
+    background-color: var(--md-accent-fg-color);
+    transform: scale(1.25);
   }
 
   /* =====================================================
@@ -668,17 +773,71 @@
         <div class="tx-hero__right">
           <div class="example-tabs">
             <!-- High-level Theme Radio Inputs -->
-            <input type="radio" id="theme-automation" name="theme-tabs" checked>
+            <input type="radio" id="theme-default" name="theme-tabs" checked>
+            <input type="radio" id="theme-automation" name="theme-tabs">
             <input type="radio" id="theme-ai" name="theme-tabs">
             <input type="radio" id="theme-infra" name="theme-tabs">
             <input type="radio" id="theme-security" name="theme-tabs">
 
             <!-- Theme Labels Row -->
             <div class="theme-tabs-header">
+              <label for="theme-default">Features</label>
               <label for="theme-automation">Automation</label>
               <label for="theme-ai">Agentic AI</label>
               <label for="theme-infra">Infrastructure</label>
               <label for="theme-security">Security</label>
+            </div>
+
+            <!-- DEFAULT FEATURE SHOWCASE -->
+            <div class="theme-container" data-theme="default">
+              <div class="feature-fader-wrapper">
+                <button class="fader-arrow fader-arrow--left" aria-label="Previous Feature">
+                  <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
+                </button>
+                <div class="feature-fader">
+                  <div class="feature-slide active">
+                    <h3>Automation with Starlark</h3>
+                    <p>Write clean, Python-like automation scripts designed for human readability and trusted AI execution.</p>
+                  </div>
+                  <div class="feature-slide">
+                    <h3>Batteries Included</h3>
+                    <p>Deploy portable, dependency-free scripts instantly with built-in libraries for SSH, SQL, HTTP, and Kubernetes.</p>
+                  </div>
+                  <div class="feature-slide">
+                    <h3>Repeatable Automation</h3>
+                    <p>Eliminate environment drift by executing identical, repeatable automation tasks consistently across all hosts.</p>
+                  </div>
+                  <div class="feature-slide">
+                    <h3>AI Integration</h3>
+                    <p>Expose local scripts as tools and serve them instantly to external agents via the Model Context Protocol (MCP).</p>
+                  </div>
+                  <div class="feature-slide">
+                    <h3>Agentic Runtime</h3>
+                    <p>Instantly run agent loops and tool harnesses with a single binary, eliminating virtualenv and package setup.</p>
+                  </div>
+                  <div class="feature-slide">
+                    <h3>Ops & Infrastructure</h3>
+                    <p>Orchestrate Kubernetes cluster operations, multi-host nodes, and cloud resources from a single, unified CLI.</p>
+                  </div>
+                  <div class="feature-slide">
+                    <h3>Secure by Default</h3>
+                    <p>Enforce host-level protection using granular permission profiles and secure syscall-level sandboxing.</p>
+                  </div>
+                  
+                  <div class="fader-dots">
+                    <span class="fader-dot active" data-slide="0"></span>
+                    <span class="fader-dot" data-slide="1"></span>
+                    <span class="fader-dot" data-slide="2"></span>
+                    <span class="fader-dot" data-slide="3"></span>
+                    <span class="fader-dot" data-slide="4"></span>
+                    <span class="fader-dot" data-slide="5"></span>
+                    <span class="fader-dot" data-slide="6"></span>
+                  </div>
+                </div>
+                <button class="fader-arrow fader-arrow--right" aria-label="Next Feature">
+                  <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
+                </button>
+              </div>
             </div>
 
             <!-- THEME 1: AUTOMATION -->
@@ -1000,10 +1159,10 @@ permissions:
 sandbox:
   # gVisor container profile isolating filesystem and loopback network
   strict-sandbox:
-    network: none
+    network: loopback
     mounts:
-      - { src: "./logs", dest: "/logs", rw: true }
-      - { src: "./data", dest: "/data", rw: true }
+      - { source: "$CWD/logs", destination: "$CWD/logs", mode: rw }
+      - { source: "$CWD/data", destination: "$CWD/data", mode: rw }
 </code></pre>
                 </div>
 
@@ -1297,6 +1456,80 @@ Time:  9ms
       hljs.highlightElement(el);
     }
   });
+
+  // Feature Fader (Default Tab) Slideshow Controller
+  (function() {
+    const slides = document.querySelectorAll('.feature-slide');
+    const dots = document.querySelectorAll('.fader-dot');
+    const prevBtn = document.querySelector('.fader-arrow--left');
+    const nextBtn = document.querySelector('.fader-arrow--right');
+    
+    if (!slides.length) return;
+    
+    let currentIdx = 0;
+    let intervalId = null;
+    
+    function showSlide(index) {
+      slides.forEach((slide, i) => {
+        if (i === index) {
+          slide.classList.add('active');
+          dots[i].classList.add('active');
+        } else {
+          slide.classList.remove('active');
+          dots[i].classList.remove('active');
+        }
+      });
+      currentIdx = index;
+    }
+    
+    function nextSlide() {
+      let nextIdx = (currentIdx + 1) % slides.length;
+      showSlide(nextIdx);
+    }
+    
+    function prevSlide() {
+      let prevIdx = (currentIdx - 1 + slides.length) % slides.length;
+      showSlide(prevIdx);
+    }
+    
+    function startAutoplay() {
+      if (intervalId) clearInterval(intervalId);
+      intervalId = setInterval(nextSlide, 6000); // 6s delay between features
+    }
+    
+    function stopAutoplay() {
+      if (intervalId) {
+        clearInterval(intervalId);
+        intervalId = null;
+      }
+    }
+    
+    // User clicks left arrow to go back
+    if (prevBtn) {
+      prevBtn.addEventListener('click', () => {
+        stopAutoplay();
+        prevSlide();
+      });
+    }
+    
+    // User clicks right arrow to go forward
+    if (nextBtn) {
+      nextBtn.addEventListener('click', () => {
+        stopAutoplay();
+        nextSlide();
+      });
+    }
+    
+    // User clicks pagination dots
+    dots.forEach((dot, i) => {
+      dot.addEventListener('click', () => {
+        stopAutoplay();
+        showSlide(i);
+      });
+    });
+    
+    startAutoplay();
+  })();
 </script>
 
 {% endblock %}
