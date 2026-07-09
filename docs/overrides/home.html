@@ -186,7 +186,6 @@
   #theme-default:checked ~ .theme-tabs-header label[for="theme-default"],
   #theme-automation:checked ~ .theme-tabs-header label[for="theme-automation"],
   #theme-ai:checked ~ .theme-tabs-header label[for="theme-ai"],
-  #theme-infra:checked ~ .theme-tabs-header label[for="theme-infra"],
   #theme-security:checked ~ .theme-tabs-header label[for="theme-security"] {
     opacity: 1;
     color: var(--md-accent-fg-color);
@@ -201,7 +200,6 @@
   #theme-default:checked ~ .theme-container[data-theme="default"],
   #theme-automation:checked ~ .theme-container[data-theme="automation"],
   #theme-ai:checked ~ .theme-container[data-theme="ai"],
-  #theme-infra:checked ~ .theme-container[data-theme="infra"],
   #theme-security:checked ~ .theme-container[data-theme="security"] {
     display: block;
   }
@@ -213,7 +211,7 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    min-height: 420px;
+    min-height: 480px;
     width: 100%;
     position: relative;
   }
@@ -251,7 +249,7 @@
   .feature-fader {
     position: relative;
     flex: 1;
-    min-height: 420px;
+    min-height: 480px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -259,7 +257,7 @@
     padding: 2rem 4rem;
     text-align: center;
   }
-  .feature-slide {
+  .carousel-slide {
     position: absolute;
     opacity: 0;
     visibility: hidden;
@@ -271,12 +269,12 @@
     transform: translateY(12px);
     transition: opacity 0.6s ease-in-out, transform 0.6s ease-in-out, visibility 0.6s;
   }
-  .feature-slide.active {
+  .carousel-slide.active {
     opacity: 1;
     visibility: visible;
     transform: translateY(0);
   }
-  .feature-slide h3 {
+  .carousel-slide h3 {
     font-size: 2.2rem;
     font-weight: 700;
     margin-top: 0;
@@ -286,13 +284,29 @@
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
   }
-  .feature-slide p {
+  .carousel-slide p {
     font-size: 1.15rem;
     color: var(--md-typeset-color);
     opacity: 0.7;
     line-height: 1.65;
     max-width: 540px;
     margin: 0 auto;
+  }
+  .carousel-hint-link {
+    font-size: 0.8rem;
+    color: var(--md-accent-fg-color);
+    opacity: 0.85;
+    margin-top: 1.2rem;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+    text-decoration: none;
+    display: inline-block;
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    cursor: pointer;
+  }
+  .carousel-hint-link:hover {
+    opacity: 1;
+    text-decoration: underline;
   }
   .fader-dots {
     position: absolute;
@@ -322,16 +336,19 @@
      RESPONSIVE CAROUSEL STYLING (MOBILE VIEWPORTS)
      ===================================================== */
   @media screen and (max-width: 60em) {
-    .theme-tabs-header {
+    .theme-tabs-header,
+    .sub-tabs-header {
       overflow-x: auto;
       white-space: nowrap;
       -webkit-overflow-scrolling: touch;
       scrollbar-width: none;
     }
-    .theme-tabs-header::-webkit-scrollbar {
+    .theme-tabs-header::-webkit-scrollbar,
+    .sub-tabs-header::-webkit-scrollbar {
       display: none;
     }
-    .theme-tabs-header label {
+    .theme-tabs-header label,
+    .sub-tabs-header label {
       flex: 0 0 auto;
       padding: 0.75rem 1rem;
     }
@@ -339,20 +356,20 @@
 
   @media screen and (max-width: 40em) {
     .feature-fader-wrapper {
-      min-height: 320px;
+      min-height: 380px;
     }
     .feature-fader {
-      min-height: 320px;
+      min-height: 380px;
       padding: 1.5rem 2.5rem;
     }
-    .feature-slide {
+    .carousel-slide {
       width: calc(100% - 5rem);
     }
-    .feature-slide h3 {
+    .carousel-slide h3 {
       font-size: 1.45rem !important;
       margin-bottom: 0.5rem;
     }
-    .feature-slide p {
+    .carousel-slide p {
       font-size: 0.95rem !important;
       line-height: 1.5;
     }
@@ -377,6 +394,8 @@
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     border: 1px solid rgba(255, 255, 255, 0.08);
     overflow: hidden;
+    width: 100%;
+    text-align: left;
   }
   .terminal__bar {
     display: flex;
@@ -417,18 +436,15 @@
 
   /* Active sub-tab highlighting */
   #sub-auto-extract:checked ~ .terminal .sub-tabs-header label[for="sub-auto-extract"],
-  #sub-auto-audit:checked ~ .terminal .sub-tabs-header label[for="sub-auto-audit"],
   #sub-auto-serve:checked ~ .terminal .sub-tabs-header label[for="sub-auto-serve"],
   #sub-auto-fetch:checked ~ .terminal .sub-tabs-header label[for="sub-auto-fetch"],
+  #sub-auto-watch:checked ~ .terminal .sub-tabs-header label[for="sub-auto-watch"],
+  
   #sub-ai-serve:checked ~ .terminal .sub-tabs-header label[for="sub-ai-serve"],
   #sub-ai-agent:checked ~ .terminal .sub-tabs-header label[for="sub-ai-agent"],
-  #sub-ai-run:checked ~ .terminal .sub-tabs-header label[for="sub-ai-run"],
-  #sub-infra-ssh:checked ~ .terminal .sub-tabs-header label[for="sub-infra-ssh"],
-  #sub-infra-pod:checked ~ .terminal .sub-tabs-header label[for="sub-infra-pod"],
-  #sub-infra-ctrl:checked ~ .terminal .sub-tabs-header label[for="sub-infra-ctrl"],
-  #sub-security-config:checked ~ .terminal .sub-tabs-header label[for="sub-security-config"],
-  #sub-security-sandbox:checked ~ .terminal .sub-tabs-header label[for="sub-security-sandbox"],
-  #sub-security-perms:checked ~ .terminal .sub-tabs-header label[for="sub-security-perms"] {
+  
+  #sub-sec-config:checked ~ .terminal .sub-tabs-header label[for="sub-sec-config"],
+  #sub-sec-enforce:checked ~ .terminal .sub-tabs-header label[for="sub-sec-enforce"] {
     color: #ffffff;
     background: #0a1628; /* blends with the code area below */
     border-bottom: none;
@@ -448,18 +464,15 @@
 
   /* Sub-pane display rules */
   #sub-auto-extract:checked ~ .terminal .example-pane[data-for="sub-auto-extract"],
-  #sub-auto-audit:checked ~ .terminal .example-pane[data-for="sub-auto-audit"],
   #sub-auto-serve:checked ~ .terminal .example-pane[data-for="sub-auto-serve"],
   #sub-auto-fetch:checked ~ .terminal .example-pane[data-for="sub-auto-fetch"],
+  #sub-auto-watch:checked ~ .terminal .example-pane[data-for="sub-auto-watch"],
+  
   #sub-ai-serve:checked ~ .terminal .example-pane[data-for="sub-ai-serve"],
   #sub-ai-agent:checked ~ .terminal .example-pane[data-for="sub-ai-agent"],
-  #sub-ai-run:checked ~ .terminal .example-pane[data-for="sub-ai-run"],
-  #sub-infra-ssh:checked ~ .terminal .example-pane[data-for="sub-infra-ssh"],
-  #sub-infra-pod:checked ~ .terminal .example-pane[data-for="sub-infra-pod"],
-  #sub-infra-ctrl:checked ~ .terminal .example-pane[data-for="sub-infra-ctrl"],
-  #sub-security-config:checked ~ .terminal .example-pane[data-for="sub-security-config"],
-  #sub-security-sandbox:checked ~ .terminal .example-pane[data-for="sub-security-sandbox"],
-  #sub-security-perms:checked ~ .terminal .example-pane[data-for="sub-security-perms"] {
+  
+  #sub-sec-config:checked ~ .terminal .example-pane[data-for="sub-sec-config"],
+  #sub-sec-enforce:checked ~ .terminal .example-pane[data-for="sub-sec-enforce"] {
     display: block;
     animation: fadeInPane 0.22s ease-out forwards;
   }
@@ -515,12 +528,11 @@
   /* Hero-only: shrink terminal text. pre-wrap is a defense-in-depth fallback
      so even at narrow viewports no horizontal scrollbar can appear. */
   .tx-hero__right .example-pane pre {
-    font-size: 0.86rem;
+    font-size: 0.72rem;
     line-height: 1.5;
-    padding: 0.85rem 1rem;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    overflow-x: hidden;
+    padding: 0.95rem 1.15rem;
+    white-space: pre;
+    overflow-x: auto;
   }
 
   .no-scrollbar,
@@ -841,7 +853,7 @@
         <div class="tx-hero__left">
           <h1 class="tx-hero__headline">The secure scripting platform for <span class="tx-hero__accent">modern operations and AI agents</span></h1>
           <p class="tx-hero__subhead">
-            Consolidate infrastructure tasks into portable Starlark scripts that run instantly and safely across shell environments, custom harnesses, and agent loops.</p>
+            Orchestrate infrastructure tasks using portable Starlark scripts that run safely across developer terminals, custom harnesses, and agent loops.</p>
         </div>
         <div class="tx-hero__right">
           <div class="example-tabs">
@@ -849,7 +861,6 @@
             <input type="radio" id="theme-default" name="theme-tabs" checked>
             <input type="radio" id="theme-automation" name="theme-tabs">
             <input type="radio" id="theme-ai" name="theme-tabs">
-            <input type="radio" id="theme-infra" name="theme-tabs">
             <input type="radio" id="theme-security" name="theme-tabs">
 
             <!-- Theme Labels Row -->
@@ -857,7 +868,6 @@
               <label for="theme-default">Features</label>
               <label for="theme-automation">Automation</label>
               <label for="theme-ai">Agentic AI</label>
-              <label for="theme-infra">Infrastructure</label>
               <label for="theme-security">Security</label>
             </div>
 
@@ -868,31 +878,31 @@
                   <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
                 </button>
                 <div class="feature-fader">
-                  <div class="feature-slide active">
+                  <div class="carousel-slide active">
                     <h3>Automation with Starlark</h3>
                     <p>Write clean, Python-like automation scripts designed for human readability and trusted AI execution.</p>
                   </div>
-                  <div class="feature-slide">
+                  <div class="carousel-slide">
                     <h3>Batteries Included</h3>
-                    <p>Deploy portable, dependency-free scripts instantly with built-in libraries for SSH, SQL, HTTP, and Kubernetes.</p>
+                    <p>Deploy portable, dependency-free scripts directly with built-in libraries for SSH, SQL, HTTP, and Kubernetes.</p>
                   </div>
-                  <div class="feature-slide">
+                  <div class="carousel-slide">
                     <h3>Repeatable Automation</h3>
                     <p>Eliminate environment drift by executing identical, repeatable automation tasks consistently across all hosts.</p>
                   </div>
-                  <div class="feature-slide">
-                    <h3>AI Integration</h3>
-                    <p>Expose local scripts as tools and serve them instantly to external agents via the Model Context Protocol (MCP).</p>
-                  </div>
-                  <div class="feature-slide">
+                  <div class="carousel-slide">
                     <h3>Agentic Runtime</h3>
-                    <p>Instantly run agent loops and tool harnesses with a single binary, eliminating virtualenv and package setup.</p>
+                    <p>Build custom agentic loops directly in Starlark, or use the native Starkite binary as a secure, sandboxed tool execution harness for LLMs.</p>
                   </div>
-                  <div class="feature-slide">
+                  <div class="carousel-slide">
+                    <h3>MCP Tool Server</h3>
+                    <p>Expose local scripts as tools and serve them seamlessly to external agents via the Model Context Protocol (MCP).</p>
+                  </div>
+                  <div class="carousel-slide">
                     <h3>Ops & Infrastructure</h3>
                     <p>Orchestrate Kubernetes cluster operations, multi-host nodes, and cloud resources from a single, unified CLI.</p>
                   </div>
-                  <div class="feature-slide">
+                  <div class="carousel-slide">
                     <h3>Secure by Default</h3>
                     <p>Enforce host-level protection using granular permission profiles and secure syscall-level sandboxing.</p>
                   </div>
@@ -915,350 +925,258 @@
 
             <!-- THEME 1: AUTOMATION -->
             <div class="theme-container" data-theme="automation">
-              <input type="radio" id="sub-auto-extract" name="sub-auto-tabs" checked>
-              <input type="radio" id="sub-auto-audit" name="sub-auto-tabs">
-              <input type="radio" id="sub-auto-serve" name="sub-auto-tabs">
-              <input type="radio" id="sub-auto-fetch" name="sub-auto-tabs">
-              
-              <div class="terminal">
-                <div class="terminal__bar">
-                  <div class="sub-tabs-header">
-                    <label for="sub-auto-extract">Extract Logs</label>
-                    <label for="sub-auto-audit">Audit DB</label>
-                    <label for="sub-auto-serve">Serve Metrics</label>
-                    <label for="sub-auto-fetch">Fetch Report</label>
+              <div class="feature-fader-wrapper">
+                <button class="fader-arrow fader-arrow--left" aria-label="Previous Feature">
+                  <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
+                </button>
+                <div class="feature-fader">
+                  <!-- Slide 1: Intro Blurb -->
+                  <div class="carousel-slide active">
+                    <h3>Orchestrate Complex Systems</h3>
+                    <p>Run SSH tasks, query databases, spin up web servers, and track Kubernetes workloads from a single, cohesive runtime.</p>
+                    <a href="#" class="carousel-hint-link">See Starkite automation examples &rarr;</a>
                   </div>
-                </div>
+                  
+                  <!-- Slide 2: Terminal Example Playground -->
+                  <div class="carousel-slide">
+                    <input type="radio" id="sub-auto-extract" name="sub-auto-tabs" checked>
+                    <input type="radio" id="sub-auto-serve" name="sub-auto-tabs">
+                    <input type="radio" id="sub-auto-fetch" name="sub-auto-tabs">
+                    <input type="radio" id="sub-auto-watch" name="sub-auto-tabs">
+                    
+                    <div class="terminal">
+                      <div class="terminal__bar">
+                        <div class="sub-tabs-header">
+                          <label for="sub-auto-extract">Extract Logs</label>
+                          <label for="sub-auto-serve">Serve Metrics</label>
+                          <label for="sub-auto-fetch">Fetch Report</label>
+                          <label for="sub-auto-watch">Cluster Controller</label>
+                        </div>
+                      </div>
 
-                <!-- STAGE 1: EXTRACT LOGS -->
-                <div class="example-pane" data-for="sub-auto-extract">
-                  <pre><code class="language-python">#!/usr/bin/env kite
-# extract-logs.star — Read logs and store errors in DB (glob + read_text + sql)
-
-def main():
-    db = sql.open("sqlite", "data/errors.db")
-    db.exec("CREATE TABLE IF NOT EXISTS log_errors (host TEXT, message TEXT)")
-    
-    # Scan JSON log files and insert errors into database
-    files = glob("logs/*.json")
-    for f in files:
-        entry = json.decode(read_text(f))
-        if entry.get("status") == "error":
-            db.exec("INSERT INTO log_errors (host, message) VALUES (?, ?)", 
-                    entry.get("host"), entry.get("message"))
-    printf("Stored errors from %d logs.\n", len(files))
-</code></pre>
-                </div>
-
-                <!-- STAGE 2: AUDIT DATABASE -->
-                <div class="example-pane" data-for="sub-auto-audit">
-                  <pre><code class="language-python">#!/usr/bin/env kite
-# audit-logs.star — Audit database and alert via Webhook (sql + http client)
+                      <!-- STAGE 1: EXTRACT LOGS -->
+                      <div class="example-pane" data-for="sub-auto-extract">
+                        <pre><code class="language-python"># Fetch error lines from remote syslogs via SSH
+# and store them directly in a local SQLite database
 
 def main():
     db = sql.open("sqlite", "data/errors.db")
-    rows = db.query("SELECT host, message FROM log_errors")
+    db.exec("CREATE TABLE IF NOT EXISTS logs (host TEXT, msg TEXT)")
     
-    # Dispatch an alert if more than 5 errors accumulated
-    if len(rows) > 5:
-        payload = json.encode({"text": "Critical: %d errors accumulated" % len(rows)})
-        http.url("https://hooks.slack.com/services/...").post(body=payload)
-        printf("Dispatched alert for %d errors.\n", len(rows))
+    nodes = ssh.open(["node-1", "node-2"], user="admin")
+    for r in nodes.run("grep ERROR /var/log/syslog"):
+        db.exec("INSERT INTO logs VALUES (?, ?)", r.host, r.stdout)
 </code></pre>
-                </div>
+                      </div>
 
-                <!-- STAGE 3: SERVE METRICS -->
-                <div class="example-pane" data-for="sub-auto-serve">
-                  <pre><code class="language-python">#!/usr/bin/env kite
-# serve-metrics.star — Serve metrics database via API (sql + http server)
+                      <!-- STAGE 2: SERVE METRICS -->
+                      <div class="example-pane" data-for="sub-auto-serve">
+                        <pre><code class="language-python"># Expose an HTTP service endpoint that queries log count
+# statistics grouped by host from the SQLite database
 
 def get_metrics(req):
     db = sql.open("sqlite", "data/errors.db")
-    rows = db.query("SELECT host, COUNT(*) as count FROM log_errors GROUP BY host")
-    metrics = {}
-    for r in rows:
-        metrics[r["host"]] = r["count"]
-    return {"status": 200, "body": metrics}
-
-# Expose route for external scraping
-http.serve({
-    "GET /metrics": get_metrics,
-}, port=8080)
-</code></pre>
-                </div>
-
-                <!-- STAGE 4: FETCH REPORT -->
-                <div class="example-pane" data-for="sub-auto-fetch">
-                  <pre><code class="language-python">#!/usr/bin/env kite
-# fetch-metrics.star — Fetch API metrics and write summary report (http client + write_text)
-
-def main():
-    # Query local metrics endpoint
-    resp = http.url("http://localhost:8080/metrics").get()
-    metrics = json.decode(resp.body)
-    
-    # Format and save system report
-    report = "SYSTEM STATUS REPORT\n====================\n"
-    for host, count in metrics.items():
-        report += "Host: %s | Errors: %d\n" % (host, count)
-        
-    write_text("reports/status.txt", report)
-    printf("Saved status report to reports/status.txt\n")
-</code></pre>
-                </div>
-              </div>
-            </div>
-
-            <!-- THEME 2: AGENTIC AI -->
-            <div class="theme-container" data-theme="ai">
-              <input type="radio" id="sub-ai-serve" name="sub-ai-tabs" checked>
-              <input type="radio" id="sub-ai-agent" name="sub-ai-tabs">
-              <input type="radio" id="sub-ai-run" name="sub-ai-tabs">
-              
-              <div class="terminal">
-                <div class="terminal__bar">
-                  <div class="sub-tabs-header">
-                    <label for="sub-ai-serve">Serve MCP</label>
-                    <label for="sub-ai-agent">Connect Agent</label>
-                    <label for="sub-ai-run">Run Audit</label>
-                  </div>
-                </div>
-
-                <!-- STAGE 1: SERVE MCP -->
-                <div class="example-pane" data-for="sub-ai-serve">
-                  <pre><code class="language-python">#!/usr/bin/env kite
-# serve-mcp.star — Expose error database as an MCP tool (mcp.serve)
-
-def query_errors(host):
-    db = sql.open("sqlite", "data/errors.db")
-    rows = db.query("SELECT message FROM log_errors WHERE host = ?", host)
-    return [r["message"] for r in rows]
-
-# Wrap the tool to explicitly define its schema for the client
-query_errors_tool = ai.tool(
-    query_errors,
-    description = "Query database log errors for a specific host.",
-    params = {
-        "type": "object",
-        "properties": {"host": {"type": "string"}},
-        "required": ["host"]
+    return {
+        "status": 200,
+        "body": db.query("SELECT host, COUNT(*) FROM logs GROUP BY host")
     }
-)
 
-# Serve as a native Model Context Protocol tool server
-mcp.serve(
-    name  = "error-database-provider",
-    tools = [query_errors_tool]
-)
+http.serve({"GET /metrics": get_metrics}, port=8080)
 </code></pre>
-                </div>
+                      </div>
 
-                <!-- STAGE 2: CONNECT AGENT -->
-                <div class="example-pane" data-for="sub-ai-agent">
-                  <pre><code class="language-python">#!/usr/bin/env kite
-# mcp-agent.star — Query MCP tools inside multi-turn chat (mcp.connect + ai.chat)
+                      <!-- STAGE 3: FETCH REPORT -->
+                      <div class="example-pane" data-for="sub-auto-fetch">
+                        <pre><code class="language-python"># Query the metrics API endpoint and write a consolidated
+# JSON system status report to the local file system
 
 def main():
-    # Connect to the local error database MCP server
-    error_mcp = mcp.connect("http://localhost:8080")
-    
-    # Describe the MCP tool explicitly for LLM validation
-    query_errors = ai.tool(
-        error_mcp.tools.query_errors,
-        description = "Query database log errors for a specific host.",
-        params = {
-            "type": "object",
-            "properties": {"host": {"type": "string"}},
-            "required": ["host"]
-        }
-    )
-
-    # Initialize chat with the wrapped tool
-    chat = ai.chat(
-        system = "You are a database analyzer. Use query_errors to check logs.",
-        tools = [query_errors]
-    )
-    
-    # Assistant queries the database automatically through MCP
-    resp = chat.send("List error messages for web-server-1")
-    printf("Agent Answer: %s\n", resp.text)
+    resp = http.url("http://localhost:8080/metrics").get()
+    report = "STATUS REPORT\n" + json.encode(resp.body)
+    write_text("reports/status.txt", report)
+    printf("Report saved!\n")
 </code></pre>
-                </div>
+                      </div>
 
-                <!-- STAGE 3: RUN AUDIT -->
-                <div class="example-pane" data-for="sub-ai-run">
-                  <pre><code class="language-python">#!/usr/bin/env kite
-# run-audit.star — Audit errors via MCP autonomously (ai.run_until)
-
-def check_audit_complete(resp):
-    return "audit complete" in resp.text.lower()
-
-def main():
-    error_mcp = mcp.connect("http://localhost:8080")
-    
-    # Describe the MCP tool explicitly for LLM validation
-    query_errors = ai.tool(
-        error_mcp.tools.query_errors,
-        description = "Query database log errors for a specific host.",
-        params = {
-            "type": "object",
-            "properties": {"host": {"type": "string"}},
-            "required": ["host"]
-        }
-    )
-
-    chat = ai.chat(
-        system = "Audit log errors. Respond 'Audit Complete' when done.",
-        tools = [query_errors]
-    )
-    
-    # Execute agent loop autonomously until the audit is completed
-    resp = ai.run_until(
-        chat,
-        "Analyze logs for all hosts and summarize critical failures",
-        stop_when = check_audit_complete,
-        max_steps = 3
-    )
-    printf("Final Audit Report: %s\n", resp.text)
-</code></pre>
-                </div>
-              </div>
-            </div>
-
-            <!-- THEME 3: INFRASTRUCTURE -->
-            <div class="theme-container" data-theme="infra">
-              <input type="radio" id="sub-infra-ssh" name="sub-infra-tabs" checked>
-              <input type="radio" id="sub-infra-pod" name="sub-infra-tabs">
-              <input type="radio" id="sub-infra-ctrl" name="sub-infra-tabs">
-              
-              <div class="terminal">
-                <div class="terminal__bar">
-                  <div class="sub-tabs-header">
-                    <label for="sub-infra-ssh">SSH Host Logs</label>
-                    <label for="sub-infra-pod">Pod Container Logs</label>
-                    <label for="sub-infra-ctrl">Error Watcher</label>
-                  </div>
-                </div>
-
-                <!-- STAGE 1: SSH HOST LOGS -->
-                <div class="example-pane" data-for="sub-infra-ssh">
-                  <pre><code class="language-python">#!/usr/bin/env kite
-# ssh-fetch.star — Fetch kubelet errors concurrently via SSH (ssh + write_text)
-
-def main():
-    # Connect to 3 cluster node hosts hosting the audited cluster
-    nodes = ssh.config(
-        hosts = ["kube-node-1", "kube-node-2", "kube-node-3"],
-        user  = "kube-admin",
-        key   = "~/.ssh/id_ed25519",
-    )
-    
-    # Query syslog on all nodes concurrently
-    for res in nodes.exec("journalctl -u kubelet -n 50 | grep 'ERROR'"):
-        if res.ok:
-            write_text("logs/{}.log".format(res.host), res.stdout)
-            printf("Fetched logs from node: %s\n", res.host)
-</code></pre>
-                </div>
-
-                <!-- STAGE 2: POD CONTAINER LOGS -->
-                <div class="example-pane" data-for="sub-infra-pod">
-                  <pre><code class="language-python">#!/usr/bin/env kite
-# k8s-fetch.star — Retrieve container logs from cluster pods (k8s + write_text)
-
-def main():
-    # Locate pod instances for the web-server deployment
-    pods = k8s.list("pods", namespace="default", labels="app=web-server")
-    for pod in pods:
-        name = pod["metadata"]["name"]
-        # Read container stdout logs directly
-        log_content = k8s.logs(name, namespace="default", tail=100)
-        if "ERROR" in log_content:
-            write_text("logs/pod_{}.log".format(name), log_content)
-            printf("Saved logs for pod: %s\n", name)
-</code></pre>
-                </div>
-
-                <!-- STAGE 3: ERROR WATCHER -->
-                <div class="example-pane" data-for="sub-infra-ctrl">
-                  <pre><code class="language-python">#!/usr/bin/env kite
-# err-controller.star — Watch replica events and log failures to DB (k8s + sql)
+                      <!-- STAGE 4: CLUSTER CONTROLLER -->
+                      <div class="example-pane" data-for="sub-auto-watch">
+                        <pre><code class="language-python"># Use Starkite to build custom, lightweight Kubernetes cluster
+# controllers that reconcile state changes and log failed events
 
 db = sql.open("sqlite", "data/errors.db")
 db.exec("CREATE TABLE IF NOT EXISTS k8s_errors (pod TEXT, phase TEXT)")
 
 def reconcile(event, pod):
-    phase = pod.status.phase
-    if phase == "Failed":
-        name = pod.metadata.name
-        db.exec("INSERT INTO k8s_errors VALUES (?, ?)", name, phase)
-        printf("Logged failure for pod: %s\n", name)
+    if pod.status.phase == "Failed":
+        db.exec(
+            "INSERT INTO k8s_errors VALUES (?, ?)",
+            pod.metadata.name,
+            "Failed"
+        )
 
-# Watch pod events in the default namespace
 k8s.control("pods", reconcile=reconcile, namespace="default")
 </code></pre>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="fader-dots">
+                    <span class="fader-dot active" data-slide="0"></span>
+                    <span class="fader-dot" data-slide="1"></span>
+                  </div>
                 </div>
+                <button class="fader-arrow fader-arrow--right" aria-label="Next Feature">
+                  <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
+                </button>
               </div>
             </div>
 
-            <!-- THEME 4: SECURITY -->
-            <div class="theme-container" data-theme="security">
-              <input type="radio" id="sub-security-config" name="sub-security-tabs" checked>
-              <input type="radio" id="sub-security-sandbox" name="sub-security-tabs">
-              <input type="radio" id="sub-security-perms" name="sub-security-tabs">
-              
-              <div class="terminal">
-                <div class="terminal__bar">
-                  <div class="sub-tabs-header">
-                    <label for="sub-security-config">Config Profile</label>
-                    <label for="sub-security-sandbox">Enforce Sandbox</label>
-                    <label for="sub-security-perms">Enforce Permissions</label>
+            <!-- THEME 2: AGENTIC AI -->
+            <div class="theme-container" data-theme="ai">
+              <div class="feature-fader-wrapper">
+                <button class="fader-arrow fader-arrow--left" aria-label="Previous Feature">
+                  <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
+                </button>
+                <div class="feature-fader">
+                  <!-- Slide 1: Intro Blurb -->
+                  <div class="carousel-slide active">
+                    <h3>AI-Native Automation</h3>
+                    <p>Serve your Starlark functions dynamically to LLMs via MCP, or write self-directed agent loops with native multi-provider support.</p>
+                    <a href="#" class="carousel-hint-link">See Starkite AI examples &rarr;</a>
+                  </div>
+                  
+                  <!-- Slide 2: Terminal Example Playground -->
+                  <div class="carousel-slide">
+                    <input type="radio" id="sub-ai-serve" name="sub-ai-tabs" checked>
+                    <input type="radio" id="sub-ai-agent" name="sub-ai-tabs">
+                    
+                    <div class="terminal">
+                      <div class="terminal__bar">
+                        <div class="sub-tabs-header">
+                          <label for="sub-ai-serve">Serve MCP</label>
+                          <label for="sub-ai-agent">Create Agent</label>
+                        </div>
+                      </div>
+
+                      <!-- STAGE 1: SERVE MCP -->
+                      <div class="example-pane" data-for="sub-ai-serve">
+                        <pre><code class="language-python"># Expose a local database query function as an MCP tool
+# that can be dynamically called by external AI agents
+
+def query_errors(host):
+    db = sql.open("sqlite", "data/errors.db")
+    return [r["msg"] for r in db.query("SELECT msg FROM logs WHERE host = ?", host)]
+
+mcp.serve(
+    name="db-provider",
+    tools=[ai.tool(query_errors, description="Query host errors")]
+)
+</code></pre>
+                      </div>
+
+                      <!-- STAGE 2: CREATE AGENT -->
+                      <div class="example-pane" data-for="sub-ai-agent">
+                        <pre><code class="language-python"># Connect to the local MCP server and initialize a multi-turn
+# chat agent equipped with the database query tool
+
+def main():
+    mcp_client = mcp.connect("http://localhost:8080")
+    chat = ai.chat(
+        model = "gemini-1.5-flash",
+        system = "Use query_errors to check host logs.",
+        tools = [mcp_client.tools.query_errors]
+    )
+    printf("Agent: %s\n", chat.send("List error messages for node-1").text)
+</code></pre>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="fader-dots">
+                    <span class="fader-dot active" data-slide="0"></span>
+                    <span class="fader-dot" data-slide="1"></span>
                   </div>
                 </div>
+                <button class="fader-arrow fader-arrow--right" aria-label="Next Feature">
+                  <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
+                </button>
+              </div>
+            </div>
 
-                <!-- SUBTAB 1: CONFIG PROFILE -->
-                <div class="example-pane" data-for="sub-security-config">
-                  <pre><code class="language-yaml"># config.yaml — Security configuration profiles for log audit pipeline
+            <!-- THEME 3: SECURITY -->
+            <div class="theme-container" data-theme="security">
+              <div class="feature-fader-wrapper">
+                <button class="fader-arrow fader-arrow--left" aria-label="Previous Feature">
+                  <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
+                </button>
+                <div class="feature-fader">
+                  <!-- Slide 1: Intro Blurb -->
+                  <div class="carousel-slide active">
+                    <h3>Defense-in-Depth Security</h3>
+                    <p>Protect host systems from untrusted code. Enforce granular API permissions and isolate execution inside secure gVisor container sandboxes.</p>
+                    <a href="#" class="carousel-hint-link">See Starkite security examples &rarr;</a>
+                  </div>
+                  
+                  <!-- Slide 2: Terminal Example Playground -->
+                  <div class="carousel-slide">
+                    <input type="radio" id="sub-sec-config" name="sub-sec-tabs" checked>
+                    <input type="radio" id="sub-sec-enforce" name="sub-sec-tabs">
+                    
+                    <div class="terminal">
+                      <div class="terminal__bar">
+                        <div class="sub-tabs-header">
+                          <label for="sub-sec-config">Config</label>
+                          <label for="sub-sec-enforce">Enforce</label>
+                        </div>
+                      </div>
+
+                      <!-- SUBTAB 1: CONFIG -->
+                      <div class="example-pane" data-for="sub-sec-config">
+                        <pre><code class="language-yaml"># Define permission profiles and sandboxing constraints
+# to restrict script execution inside gVisor container runtimes
 
 permissions:
-  # Profile for log collector script (reads logs, writes report logs)
   log-collector:
-    allow: [fs.read, fs.write, "os.exec(journalctl)"]
-  # Profile for database queries (only database reads allowed)
-  db-auditor:
-    allow: [fs.read]
-    deny: [net, os.exec]
+    allow: [fs.read, fs.write, net.connect, "os.exec(ssh)"]
+  metrics-api:
+    allow: [fs.read, net.listen]
+    deny: [os.exec]
 
 sandbox:
-  # gVisor container profile isolating filesystem and loopback network
   strict-sandbox:
     network: loopback
     mounts:
       - { source: "$CWD/logs", destination: "$CWD/logs", mode: rw }
-      - { source: "$CWD/data", destination: "$CWD/data", mode: rw }
 </code></pre>
-                </div>
+                      </div>
 
-                <!-- SUBTAB 2: ENFORCE SANDBOX -->
-                <div class="example-pane" data-for="sub-security-sandbox">
-                  <pre><code class="language-bash"># Run log collection with default opaque gVisor sandbox
-$ kite run --sandbox=opaque ssh-fetch.star
+                      <!-- SUBTAB 2: ENFORCE -->
+                      <div class="example-pane" data-for="sub-sec-enforce">
+                        <pre><code class="language-bash"># Execute Starlark scripts with profiles and sandboxes enforced
+# to block unauthorized system calls and network requests
 
-# Run database auditing with the custom strict-sandbox profile
-$ kite run --sandbox=strict-sandbox run-audit.star
+# Run log collector script with custom permissions
+$ kite run extract-logs.star --permissions=log-collector
+
+# Run API server isolated inside a gVisor sandbox
+$ kite run serve-metrics.star --sandbox=strict-sandbox --permissions=metrics-api
+
+# Unauthorized module calls immediately throw permissions exceptions
+$ kite run serve-metrics.star --permissions=deny-all
+Error: permission denied: net.listen is not allowed
 </code></pre>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div class="fader-dots">
+                    <span class="fader-dot active" data-slide="0"></span>
+                    <span class="fader-dot" data-slide="1"></span>
+                  </div>
                 </div>
-
-                <!-- SUBTAB 3: ENFORCE PERMISSIONS -->
-                <div class="example-pane" data-for="sub-security-perms">
-                  <pre><code class="language-bash"># Enforce specific permissions profile for filesystem access
-$ kite run --permissions=log-collector ssh-fetch.star
-
-# Combine gVisor strict-sandbox and db-auditor permissions
-$ kite run run-audit.star --sandbox=strict-sandbox --permissions=db-auditor
-Error: permission denied: net.connect is not allowed
-</code></pre>
-                </div>
+                <button class="fader-arrow fader-arrow--right" aria-label="Next Feature">
+                  <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
+                </button>
               </div>
             </div>
           </div>
@@ -1530,78 +1448,137 @@ Time:  9ms
     }
   });
 
-  // Feature Fader (Default Tab) Slideshow Controller
+  // Multi-Carousel Controller with Sub-Tab Cycling Support
   (function() {
-    const slides = document.querySelectorAll('.feature-slide');
-    const dots = document.querySelectorAll('.fader-dot');
-    const prevBtn = document.querySelector('.fader-arrow--left');
-    const nextBtn = document.querySelector('.fader-arrow--right');
-    
-    if (!slides.length) return;
-    
-    let currentIdx = 0;
-    let intervalId = null;
-    
-    function showSlide(index) {
-      slides.forEach((slide, i) => {
-        if (i === index) {
-          slide.classList.add('active');
-          dots[i].classList.add('active');
+    document.querySelectorAll('.feature-fader-wrapper').forEach((wrapper) => {
+      const slides = wrapper.querySelectorAll('.carousel-slide');
+      const dots = wrapper.querySelectorAll('.fader-dot');
+      const prevBtn = wrapper.querySelector('.fader-arrow--left');
+      const nextBtn = wrapper.querySelector('.fader-arrow--right');
+      
+      if (!slides.length) return;
+      
+      // Build a comprehensive navigation state map (combines high-level slides & terminal subtabs)
+      const navStates = [];
+      slides.forEach((slide, sIdx) => {
+        const terminalRadios = slide.querySelectorAll('input[type="radio"]');
+        if (terminalRadios.length > 0) {
+          terminalRadios.forEach((radio, rIdx) => {
+            navStates.push({ slideIdx: sIdx, subtabIdx: rIdx, radioElement: radio });
+          });
         } else {
-          slide.classList.remove('active');
-          dots[i].classList.remove('active');
+          navStates.push({ slideIdx: sIdx, subtabIdx: null });
         }
       });
-      currentIdx = index;
-    }
-    
-    function nextSlide() {
-      let nextIdx = (currentIdx + 1) % slides.length;
-      showSlide(nextIdx);
-    }
-    
-    function prevSlide() {
-      let prevIdx = (currentIdx - 1 + slides.length) % slides.length;
-      showSlide(prevIdx);
-    }
-    
-    function startAutoplay() {
-      if (intervalId) clearInterval(intervalId);
-      intervalId = setInterval(nextSlide, 6000); // 6s delay between features
-    }
-    
-    function stopAutoplay() {
-      if (intervalId) {
-        clearInterval(intervalId);
-        intervalId = null;
+      
+      let currentIdx = 0;
+      let intervalId = null;
+      
+      function applyNavState(index) {
+        const state = navStates[index];
+        if (!state) return;
+        
+        // 1. Toggle correct slide visibility
+        slides.forEach((slide, sIdx) => {
+          if (sIdx === state.slideIdx) {
+            slide.classList.add('active');
+          } else {
+            slide.classList.remove('active');
+          }
+        });
+        
+        // 2. Activate matching pagination dot
+        dots.forEach((dot, dIdx) => {
+          if (dIdx === state.slideIdx) {
+            dot.classList.add('active');
+          } else {
+            dot.classList.remove('active');
+          }
+        });
+        
+        // 3. Dispatch selection change to terminal subtab radio button
+        if (state.subtabIdx !== null && state.radioElement) {
+          state.radioElement.checked = true;
+          state.radioElement.dispatchEvent(new Event('change'));
+        }
+        
+        currentIdx = index;
       }
-    }
-    
-    // User clicks left arrow to go back
-    if (prevBtn) {
-      prevBtn.addEventListener('click', () => {
-        stopAutoplay();
-        prevSlide();
+      
+      function nextSlide() {
+        let nextIdx = (currentIdx + 1) % navStates.length;
+        applyNavState(nextIdx);
+      }
+      
+      function prevSlide() {
+        let prevIdx = (currentIdx - 1 + navStates.length) % navStates.length;
+        applyNavState(prevIdx);
+      }
+      
+      function startAutoplay() {
+        const parentTheme = wrapper.closest('.theme-container');
+        const isDefaultTheme = !parentTheme || parentTheme.getAttribute('data-theme') === 'default';
+        if (isDefaultTheme) {
+          if (intervalId) clearInterval(intervalId);
+          intervalId = setInterval(nextSlide, 6000); // 6s interval
+        }
+      }
+      
+      function stopAutoplay() {
+        if (intervalId) {
+          clearInterval(intervalId);
+          intervalId = null;
+        }
+      }
+      
+      if (prevBtn) {
+        prevBtn.addEventListener('click', () => {
+          stopAutoplay();
+          prevSlide();
+        });
+      }
+      
+      if (nextBtn) {
+        nextBtn.addEventListener('click', () => {
+          stopAutoplay();
+          nextSlide();
+        });
+      }
+      
+      // Pagination dot click moves to the first state of that slide
+      dots.forEach((dot, dIdx) => {
+        dot.addEventListener('click', () => {
+          stopAutoplay();
+          const targetStateIdx = navStates.findIndex(state => state.slideIdx === dIdx);
+          if (targetStateIdx !== -1) {
+            applyNavState(targetStateIdx);
+          }
+        });
       });
-    }
-    
-    // User clicks right arrow to go forward
-    if (nextBtn) {
-      nextBtn.addEventListener('click', () => {
-        stopAutoplay();
-        nextSlide();
+      
+      // Sync manual terminal sub-tab selection clicks back to state index
+      navStates.forEach((state, idx) => {
+        if (state.radioElement) {
+          state.radioElement.addEventListener('change', () => {
+            if (state.radioElement.checked) {
+              currentIdx = idx;
+            }
+          });
+        }
       });
-    }
-    
-    // User clicks pagination dots
-    dots.forEach((dot, i) => {
-      dot.addEventListener('click', () => {
-        stopAutoplay();
-        showSlide(i);
+
+      // Advance slides programmatically when clicking the text link hint
+      wrapper.querySelectorAll('.carousel-hint-link').forEach((link) => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          stopAutoplay();
+          nextSlide();
+        });
       });
+      
+      applyNavState(0);
+      startAutoplay();
     });
-    
-    startAutoplay();
   })();
 </script>
 
