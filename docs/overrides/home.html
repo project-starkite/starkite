@@ -60,6 +60,20 @@
       grid-template-columns: 1fr;
       gap: 1.75rem;
     }
+    .tx-hero .tx-hero__headline {
+      font-size: 1.75rem !important;
+      line-height: 1.15;
+      text-align: center;
+    }
+    .tx-hero .tx-hero__subhead {
+      font-size: 1.15rem !important;
+      line-height: 1.4;
+      text-align: center;
+    }
+    .tx-hero__logo {
+      max-height: 120px !important;
+      margin-bottom: 1rem !important;
+    }
   }
   .tx-hero__left {
     text-align: left;
@@ -215,10 +229,19 @@
     align-items: center;
     justify-content: center;
     z-index: 10;
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+  }
+  .fader-arrow--left {
+    left: 0.4rem;
+  }
+  .fader-arrow--right {
+    right: 0.4rem;
   }
   .fader-arrow:hover {
     opacity: 0.8;
-    transform: scale(1.1);
+    transform: translateY(-50%) scale(1.1);
   }
   .fader-arrow svg {
     width: 2rem;
@@ -233,14 +256,14 @@
     align-items: center;
     justify-content: center;
     overflow: hidden;
-    padding: 2rem;
+    padding: 2rem 4rem;
     text-align: center;
   }
   .feature-slide {
     position: absolute;
     opacity: 0;
     visibility: hidden;
-    width: calc(100% - 4rem);
+    width: calc(100% - 8rem);
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -293,6 +316,56 @@
     opacity: 1;
     background-color: var(--md-accent-fg-color);
     transform: scale(1.25);
+  }
+
+  /* =====================================================
+     RESPONSIVE CAROUSEL STYLING (MOBILE VIEWPORTS)
+     ===================================================== */
+  @media screen and (max-width: 60em) {
+    .theme-tabs-header {
+      overflow-x: auto;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+      scrollbar-width: none;
+    }
+    .theme-tabs-header::-webkit-scrollbar {
+      display: none;
+    }
+    .theme-tabs-header label {
+      flex: 0 0 auto;
+      padding: 0.75rem 1rem;
+    }
+  }
+
+  @media screen and (max-width: 40em) {
+    .feature-fader-wrapper {
+      min-height: 320px;
+    }
+    .feature-fader {
+      min-height: 320px;
+      padding: 1.5rem 2.5rem;
+    }
+    .feature-slide {
+      width: calc(100% - 5rem);
+    }
+    .feature-slide h3 {
+      font-size: 1.45rem !important;
+      margin-bottom: 0.5rem;
+    }
+    .feature-slide p {
+      font-size: 0.95rem !important;
+      line-height: 1.5;
+    }
+    .fader-dots {
+      bottom: 1.0rem;
+    }
+    .fader-arrow {
+      padding: 0.4rem;
+    }
+    .fader-arrow svg {
+      width: 1.5rem;
+      height: 1.5rem;
+    }
   }
 
   /* =====================================================
@@ -766,9 +839,9 @@
     <div class="tx-hero">
       <div class="tx-hero__split">
         <div class="tx-hero__left">
-          <h1 class="tx-hero__headline">Scripting runtime for <span class="tx-hero__accent">systems and agentic automation</span></h1>
+          <h1 class="tx-hero__headline">The secure scripting platform for <span class="tx-hero__accent">modern operations and AI agents</span></h1>
           <p class="tx-hero__subhead">
-            Create systems and infrastructure automation scripts that are easy for humans to understand and safe for AI agents to execute.</p>
+            Consolidate infrastructure tasks into portable Starlark scripts that run instantly and safely across shell environments, custom harnesses, and agent loops.</p>
         </div>
         <div class="tx-hero__right">
           <div class="example-tabs">
