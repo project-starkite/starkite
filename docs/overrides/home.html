@@ -202,6 +202,7 @@
   #theme-ai:checked ~ .theme-container[data-theme="ai"],
   #theme-security:checked ~ .theme-container[data-theme="security"] {
     display: block;
+    animation: fadeInPane 0.22s ease-out forwards;
   }
 
   /* =====================================================
@@ -1334,12 +1335,18 @@ k8s.webhook("/validate",
 
 <h2 class="section-heading">
   <svg viewBox="0 0 24 24"><path d="M12,2A2,2 0 0,1 14,4C14,4.74 13.6,5.39 13,5.73V7H14A7,7 0 0,1 21,14H22A1,1 0 0,1 23,15V18A1,1 0 0,1 22,19H21V20A2,2 0 0,1 19,22H5A2,2 0 0,1 3,20V19H2A1,1 0 0,1 1,18V15A1,1 0 0,1 2,14H3A7,7 0 0,1 10,7H11V5.73C10.4,5.39 10,4.74 10,4A2,2 0 0,1 12,2M7.5,13A2.5,2.5 0 0,0 5,15.5A2.5,2.5 0 0,0 7.5,18A2.5,2.5 0 0,0 10,15.5A2.5,2.5 0 0,0 7.5,13M16.5,13A2.5,2.5 0 0,0 14,15.5A2.5,2.5 0 0,0 16.5,18A2.5,2.5 0 0,0 19,15.5A2.5,2.5 0 0,0 16.5,13Z"/></svg>
-  Agentic Support
+  Agentic AI
 </h2>
 <section class="feature-section">
   <div class="feature-section__split">
     <div class="feature-section__text">
-      <p>To build or extend AI-native automation, Starkite supports agentic workflows through two main patterns: exposing Starlark functions as MCP tools that external agents — Claude, Cursor, IDE assistants — invoke without glue code. Alternatively, an agent can be composed entirely in Starlark using multi-provider LLM clients (Gemini, GPT, Claude), built-in tool calling, and structured output.</p>
+      <p>Supercharge your AI-native automation. Starkite integrates with LLMs in three key ways:</p>
+      <ul style="margin: 0 0 1.25rem 1.25rem; padding: 0; line-height: 1.6;">
+        <li style="margin-bottom: 0.5rem;"><strong>MCP Tool Serving</strong>: Expose Starlark functions as instant tools for external agents (Claude, Cursor, IDEs).</li>
+        <li style="margin-bottom: 0.5rem;"><strong>Agent Loops</strong>: Orchestrate autonomous scripts with native, multi-provider LLM support.</li>
+        <li style="margin-bottom: 0.5rem;"><strong>Code Generation</strong>: Load <strong>starkite-skills</strong> to let LLMs write clean Starlark code.</li>
+      </ul>
+      <p>Because Starlark is dependency-free and sandboxed, AI agents can generate and run scripts safely without complex setup.</p>
       <a href="ai/agents/" class="feature-section__cta">Build agents</a>
     </div>
     <div class="feature-section__code">
@@ -1448,137 +1455,186 @@ Time:  9ms
     }
   });
 
-  // Multi-Carousel Controller with Sub-Tab Cycling Support
+  // Global Linear Carousel Controller (cross-theme support)
   (function() {
-    document.querySelectorAll('.feature-fader-wrapper').forEach((wrapper) => {
-      const slides = wrapper.querySelectorAll('.carousel-slide');
-      const dots = wrapper.querySelectorAll('.fader-dot');
-      const prevBtn = wrapper.querySelector('.fader-arrow--left');
-      const nextBtn = wrapper.querySelector('.fader-arrow--right');
+    const themeOrder = ['default', 'automation', 'ai', 'security'];
+    const globalStates = [];
+    
+    // 1. Build global state list
+    themeOrder.forEach((themeName) => {
+      const container = document.querySelector(`.theme-container[data-theme="${themeName}"]`);
+      if (!container) return;
       
-      if (!slides.length) return;
-      
-      // Build a comprehensive navigation state map (combines high-level slides & terminal subtabs)
-      const navStates = [];
+      const slides = container.querySelectorAll('.carousel-slide');
       slides.forEach((slide, sIdx) => {
         const terminalRadios = slide.querySelectorAll('input[type="radio"]');
         if (terminalRadios.length > 0) {
           terminalRadios.forEach((radio, rIdx) => {
-            navStates.push({ slideIdx: sIdx, subtabIdx: rIdx, radioElement: radio });
+            globalStates.push({
+              theme: themeName,
+              container: container,
+              slideIdx: sIdx,
+              subtabIdx: rIdx,
+              radioElement: radio
+            });
           });
         } else {
-          navStates.push({ slideIdx: sIdx, subtabIdx: null });
-        }
-      });
-      
-      let currentIdx = 0;
-      let intervalId = null;
-      
-      function applyNavState(index) {
-        const state = navStates[index];
-        if (!state) return;
-        
-        // 1. Toggle correct slide visibility
-        slides.forEach((slide, sIdx) => {
-          if (sIdx === state.slideIdx) {
-            slide.classList.add('active');
-          } else {
-            slide.classList.remove('active');
-          }
-        });
-        
-        // 2. Activate matching pagination dot
-        dots.forEach((dot, dIdx) => {
-          if (dIdx === state.slideIdx) {
-            dot.classList.add('active');
-          } else {
-            dot.classList.remove('active');
-          }
-        });
-        
-        // 3. Dispatch selection change to terminal subtab radio button
-        if (state.subtabIdx !== null && state.radioElement) {
-          state.radioElement.checked = true;
-          state.radioElement.dispatchEvent(new Event('change'));
-        }
-        
-        currentIdx = index;
-      }
-      
-      function nextSlide() {
-        let nextIdx = (currentIdx + 1) % navStates.length;
-        applyNavState(nextIdx);
-      }
-      
-      function prevSlide() {
-        let prevIdx = (currentIdx - 1 + navStates.length) % navStates.length;
-        applyNavState(prevIdx);
-      }
-      
-      function startAutoplay() {
-        const parentTheme = wrapper.closest('.theme-container');
-        const isDefaultTheme = !parentTheme || parentTheme.getAttribute('data-theme') === 'default';
-        if (isDefaultTheme) {
-          if (intervalId) clearInterval(intervalId);
-          intervalId = setInterval(nextSlide, 6000); // 6s interval
-        }
-      }
-      
-      function stopAutoplay() {
-        if (intervalId) {
-          clearInterval(intervalId);
-          intervalId = null;
-        }
-      }
-      
-      if (prevBtn) {
-        prevBtn.addEventListener('click', () => {
-          stopAutoplay();
-          prevSlide();
-        });
-      }
-      
-      if (nextBtn) {
-        nextBtn.addEventListener('click', () => {
-          stopAutoplay();
-          nextSlide();
-        });
-      }
-      
-      // Pagination dot click moves to the first state of that slide
-      dots.forEach((dot, dIdx) => {
-        dot.addEventListener('click', () => {
-          stopAutoplay();
-          const targetStateIdx = navStates.findIndex(state => state.slideIdx === dIdx);
-          if (targetStateIdx !== -1) {
-            applyNavState(targetStateIdx);
-          }
-        });
-      });
-      
-      // Sync manual terminal sub-tab selection clicks back to state index
-      navStates.forEach((state, idx) => {
-        if (state.radioElement) {
-          state.radioElement.addEventListener('change', () => {
-            if (state.radioElement.checked) {
-              currentIdx = idx;
-            }
+          globalStates.push({
+            theme: themeName,
+            container: container,
+            slideIdx: sIdx,
+            subtabIdx: null,
+            radioElement: null
           });
+        }
+      });
+    });
+
+    if (!globalStates.length) return;
+
+    let globalIdx = 0;
+    let autoplayInterval = null;
+
+    function applyGlobalState(index) {
+      if (index < 0) index = globalStates.length - 1;
+      if (index >= globalStates.length) index = 0;
+
+      const state = globalStates[index];
+      if (!state) return;
+
+      // Activate theme tab header input
+      const themeInput = document.getElementById('theme-' + state.theme);
+      if (themeInput && !themeInput.checked) {
+        themeInput.checked = true;
+        // Dispatch change so CSS transitions/display works immediately
+        themeInput.dispatchEvent(new Event('change'));
+      }
+
+      // Configure active slide element within active container
+      const container = state.container;
+      const slides = container.querySelectorAll('.carousel-slide');
+      slides.forEach((slide, sIdx) => {
+        if (sIdx === state.slideIdx) {
+          slide.classList.add('active');
+        } else {
+          slide.classList.remove('active');
         }
       });
 
-      // Advance slides programmatically when clicking the text link hint
-      wrapper.querySelectorAll('.carousel-hint-link').forEach((link) => {
-        link.addEventListener('click', (e) => {
-          e.preventDefault();
-          stopAutoplay();
-          nextSlide();
+      // Configure active fader dots within active container
+      const dots = container.querySelectorAll('.fader-dot');
+      dots.forEach((dot, dIdx) => {
+        if (dIdx === state.slideIdx) {
+          dot.classList.add('active');
+        } else {
+          dot.classList.remove('active');
+        }
+      });
+
+      // Select active subtab radio input inside terminal
+      if (state.subtabIdx !== null && state.radioElement) {
+        state.radioElement.checked = true;
+        state.radioElement.dispatchEvent(new Event('change'));
+      }
+
+      globalIdx = index;
+    }
+
+    function nextGlobalSlide() {
+      applyGlobalState(globalIdx + 1);
+    }
+
+    function prevGlobalSlide() {
+      applyGlobalState(globalIdx - 1);
+    }
+
+    function startGlobalAutoplay() {
+      if (autoplayInterval) clearInterval(autoplayInterval);
+      autoplayInterval = setInterval(() => {
+        const state = globalStates[globalIdx];
+        if (state && state.theme === 'default') {
+          nextGlobalSlide();
+        }
+      }, 6000);
+    }
+
+    function stopGlobalAutoplay() {
+      if (autoplayInterval) {
+        clearInterval(autoplayInterval);
+        autoplayInterval = null;
+      }
+    }
+
+    // Set up click handlers on all chevron arrows globally
+    document.querySelectorAll('.fader-arrow--left').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        stopGlobalAutoplay();
+        prevGlobalSlide();
+      });
+    });
+
+    document.querySelectorAll('.fader-arrow--right').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        stopGlobalAutoplay();
+        nextGlobalSlide();
+      });
+    });
+
+    // Set up click handlers on pagination dots globally
+    themeOrder.forEach((themeName) => {
+      const container = document.querySelector(`.theme-container[data-theme="${themeName}"]`);
+      if (!container) return;
+      const dots = container.querySelectorAll('.fader-dot');
+      dots.forEach((dot, dIdx) => {
+        dot.addEventListener('click', () => {
+          stopGlobalAutoplay();
+          const targetIdx = globalStates.findIndex(s => s.theme === themeName && s.slideIdx === dIdx);
+          if (targetIdx !== -1) {
+            applyGlobalState(targetIdx);
+          }
         });
       });
-      
-      applyNavState(0);
-      startAutoplay();
     });
+
+    // Sync manual sub-tab radio clicks with globalIdx
+    globalStates.forEach((state, idx) => {
+      if (state.radioElement) {
+        state.radioElement.addEventListener('change', () => {
+          if (state.radioElement.checked) {
+            globalIdx = idx;
+          }
+        });
+      }
+    });
+
+    // Handle text link hint clicks to advance linearly
+    document.querySelectorAll('.carousel-hint-link').forEach((link) => {
+      link.addEventListener('click', (e) => {
+        e.preventDefault();
+        stopGlobalAutoplay();
+        nextGlobalSlide();
+      });
+    });
+
+    // Reset carousel state to slide 0 when main theme/tab header is selected
+    themeOrder.forEach((themeName) => {
+      const themeInput = document.getElementById('theme-' + themeName);
+      if (themeInput) {
+        themeInput.addEventListener('change', () => {
+          if (themeInput.checked) {
+            stopGlobalAutoplay();
+            const targetIdx = globalStates.findIndex(s => s.theme === themeName);
+            if (targetIdx !== -1) {
+              applyGlobalState(targetIdx);
+            }
+            startGlobalAutoplay();
+          }
+        });
+      }
+    });
+
+    applyGlobalState(0);
+    startGlobalAutoplay();
   })();
 </script>
 
