@@ -1,6 +1,6 @@
 ---
 title: Home
-description: "A secure scripting runtime for system, infrastructure, and AI agent automation"
+description: "Secure Starlark Runtime for System, Cloud, and Agent Automation"
 weight: 1
 template: home.html
 hide:
