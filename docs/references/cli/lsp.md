@@ -42,12 +42,8 @@ grammars, and the subset tag keeps all but Starlark out of the binary.
 
 A binary built without the tag reports `unknown command "lsp"`.
 
-> **The Starlark-only build needs gotreesitter after v0.49.0.** In v0.49.0 the
-> `grammar_subset_starlark` tag does not compile, because the Starlark scanner
-> reuses helpers from the Python scanner and that file is excluded from the
-> build. The fix is [gotreesitter#724](https://github.com/odvcencio/gotreesitter/pull/724).
-> Until a release carries it, build with `-tags lsp` alone and accept the larger
-> binary.
+The Starlark-only build needs `gotreesitter` v0.50.1 or later, which `libkite`
+already requires.
 
 ## What the server provides
 

@@ -3,7 +3,7 @@ module github.com/project-starkite/starkite/libkite
 go 1.26
 
 require (
-	github.com/odvcencio/gotreesitter v0.49.0
+	github.com/odvcencio/gotreesitter v0.50.1
 	github.com/vladimirvivien/startype v0.7.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	golang.org/x/crypto v0.49.0
