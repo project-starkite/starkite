@@ -122,6 +122,7 @@ nav:
           - repl: references/cli/repl.md
           - watch: references/cli/watch.md
           - validate: references/cli/validate.md
+          - lsp: references/cli/lsp.md
           - init: references/cli/init.md
           - version: references/cli/version.md
           - module: references/cli/module.md
