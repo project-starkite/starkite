@@ -37,13 +37,20 @@ type docIndex struct {
 
 	// globals maps a bare documented name to its entry.
 	globals map[string]docEntry
+
+	// globalsByModule keeps the same bare entries under the reference file
+	// they came from. A module function is often documented only as the
+	// global alias it forwards to — fs.md writes `path(p)`, not `fs.path(p)`
+	// — so a module lookup has to be able to find it.
+	globalsByModule map[string]map[string]docEntry
 }
 
 func newDocIndex(entries []apidocs.Entry) *docIndex {
 	idx := &docIndex{
-		byModule: make(map[string]map[string]docEntry),
-		byObject: make(map[string]map[string]docEntry),
-		globals:  make(map[string]docEntry),
+		byModule:        make(map[string]map[string]docEntry),
+		byObject:        make(map[string]map[string]docEntry),
+		globals:         make(map[string]docEntry),
+		globalsByModule: make(map[string]map[string]docEntry),
 	}
 	for _, e := range entries {
 		entry := docEntry{
@@ -59,6 +66,7 @@ func newDocIndex(entries []apidocs.Entry) *docIndex {
 			if _, exists := idx.globals[e.Name]; !exists {
 				idx.globals[e.Name] = entry
 			}
+			put(idx.globalsByModule, e.Module, e.Name, entry)
 		case e.Receiver == e.Module:
 			put(idx.byModule, e.Module, e.Name, entry)
 		default:
@@ -141,6 +149,12 @@ func (idx *docIndex) lookupMember(owner, name string) (docEntry, bool) {
 		}
 	}
 	if bucket, ok := idx.byModule[module]; ok {
+		if e, ok := bucket[name]; ok {
+			return e, true
+		}
+	}
+	// The reference file documented it as a bare global alias.
+	if bucket, ok := idx.globalsByModule[module]; ok {
 		if e, ok := bucket[name]; ok {
 			return e, true
 		}

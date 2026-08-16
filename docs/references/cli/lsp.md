@@ -10,6 +10,12 @@ keywords: [lsp, language server, editor, vscode, neovim, helix, completion, diag
 Run a Language Server Protocol server for Starkite scripts over standard input
 and output. Editors start this command themselves; you rarely run it by hand.
 
+The server is [starlsp](https://github.com/M31-Labs/starlsp), a Starlark
+language server, configured with a Starkite host. starlsp knows the Starlark
+specification; Starkite supplies its module registry, its API documentation, its
+`load()` rules, and its own conventions. Every editor feature comes from the
+shared server, so Starkite gains anything starlsp gains.
+
 ```
 kite lsp
 kite lsp --probe
@@ -54,9 +60,14 @@ already requires.
 | Hover | The API reference tables |
 | Signature help | The API reference tables |
 | Go to definition | The runtime's resolver, and the module loader for `load()` |
+| Find references | The resolver's bindings |
+| Document highlight | The resolver's bindings |
+| Rename | The resolver's bindings, refused for names this file does not bind |
 | Document symbols | The syntax tree |
+| Workspace symbols | Every `.star` file under the workspace root |
 | Semantic tokens | The syntax tree and the module registry |
 | Folding ranges | The syntax tree |
+| Selection ranges | The syntax tree |
 | Document links | `load()` targets resolved through `mod.yaml` and `mod.lock` |
 
 Diagnostics come from `go.starlark.net`, which is the same code `kite run` and
@@ -75,22 +86,26 @@ confirm a build, or to find out why a name does not complete.
 
 ```console
 $ kite lsp --probe
-kite lsp 0.1.0
+starlsp 0.1.0
 
-grammar        starlark (gotreesitter)
-documented     363 signatures
-globals        89
-owners         39 (427 members)
+host           starlark+starkite
+parser         starlark (gotreesitter, pure Go)
+globals        119
+hooks          members, types, loads, lint, docs
 
-  fs                     module  2 members
-  fs.path                object  84 members
-  http                   module  8 members
-  http.url               object  10 members
+namespaces  30  ai base64 concur csv fmt fs gzip hash http inventory io json k8s
+                log mcp os regexp retry runtime sql ssh strings table template
+                test time uuid vars yaml zip
+types       10  bool bytes dict float int list range set str tuple
+...
+
+members
+  fs                2
+  fs.path          84
+  http              8
+  http.url         10
+  string           35
   ...
-
-factory return types
-  fs.path()              -> fs.path
-  http.url()             -> http.url
 ```
 
 ## Editor setup
@@ -196,6 +211,18 @@ and the runtime call the same parser, so a difference is a defect.
 $ kite lsp --probe
 Error: unknown command "lsp" for "kite"   # built without -tags lsp
 ```
+
+## Starkite-specific diagnostics
+
+Beyond what Starlark itself forbids, the server reports two runtime
+conventions:
+
+- A top-level `main()` call, which makes the runtime skip its automatic
+  entry-point invocation. The message explains the log line before you meet it.
+- A `try_` call whose `Result` is never inspected. A `try_` variant returns a
+  `Result` rather than raising, which only helps if something reads `.ok`.
+  Binding one and using it as though it were the value fails at run time with a
+  confusing message about a `Result` having no such attribute.
 
 ## See also
 

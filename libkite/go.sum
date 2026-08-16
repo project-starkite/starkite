@@ -1,3 +1,7 @@
+github.com/M31-Labs/starlsp v0.1.0 h1:oJjjVc3HFzAZo0XLAFMdXE0tL+/UeZ/siNhiQO/ivk0=
+github.com/M31-Labs/starlsp v0.1.0/go.mod h1:Aojk7Es/4MyzvmUj47Xkerh1eEpl8wCUzFHbq74eSs8=
+github.com/M31-Labs/starlsp v0.1.1 h1:681zIu/4sG9DGu9zTs7Sf0H3zYZAmV8mElkcWnshFM0=
+github.com/M31-Labs/starlsp v0.1.1/go.mod h1:Aojk7Es/4MyzvmUj47Xkerh1eEpl8wCUzFHbq74eSs8=
 github.com/creack/pty v1.1.9/go.mod h1:oKZEueFk5CKHvIhNR5MUki03XCEU+Q6VDXinZuGJ33E=
 github.com/dustin/go-humanize v1.0.1 h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=
 github.com/dustin/go-humanize v1.0.1/go.mod h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=
