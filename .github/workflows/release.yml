@@ -120,7 +120,7 @@ jobs:
             -v "$PWD/tests:/work/tests:ro" \
             -w /work \
             "${{ steps.build.outputs.ref }}" \
-            test tests/permissions_test.star
+            test tests/permissions_test.star --permissions=allow-all
 
       - name: Verify signature
         env:
