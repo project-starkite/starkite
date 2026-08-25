@@ -12,19 +12,21 @@ $ErrorActionPreference = 'Stop'
 function Install-Starkite {
     $Owner = "project-starkite"
     $Repo  = "starkite"
-    $InstallDir = if ($env:PREFIX) { $env:PREFIX } else { Join-Path $env:USERPROFILE ".starkite\bin" }
+    $HomeDir = if ($env:USERPROFILE) { $env:USERPROFILE } elseif ($env:HOME) { $env:HOME } else { "." }
+    $InstallDir = if ($env:PREFIX) { $env:PREFIX } else { Join-Path $HomeDir ".starkite\bin" }
     $DryRun = if ($env:INSTALL_DRY_RUN -eq "1" -or $env:INSTALL_DRY_RUN -eq "true") { $true } else { $false }
 
     Write-Host "--- Starkite Windows Installer ---" -ForegroundColor Cyan
 
     # 1. Detect Architecture
-    $Arch = switch ($env:PROCESSOR_ARCHITECTURE) {
-        "AMD64" { "amd64" }
-        "ARM64" { "arm64" }
-        default {
-            Write-Error "Unsupported architecture: $env:PROCESSOR_ARCHITECTURE"
-            return
-        }
+    $Arch = if ($env:PROCESSOR_ARCHITECTURE -eq "ARM64") {
+        "arm64"
+    } elseif ($env:PROCESSOR_ARCHITECTURE -eq "AMD64") {
+        "amd64"
+    } elseif ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) {
+        "arm64"
+    } else {
+        "amd64"
     }
 
     $BinaryName = "kite-windows-$Arch.exe"
@@ -89,14 +91,21 @@ function Install-Starkite {
         Copy-Item -Path $TempExe -Destination $DestPath -Force
         Write-Host "Installed kite binary to: $DestPath" -ForegroundColor Green
 
-        # 6. Add to User PATH if missing
-        $UserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
-        $PathEntries = if ($UserPath) { $UserPath -split ';' } else { @() }
-        if ($PathEntries -notcontains $InstallDir) {
-            Write-Host "Adding $InstallDir to User PATH environment variable..."
-            $NewPath = if ($UserPath) { "$UserPath;$InstallDir" } else { $InstallDir }
-            [Environment]::SetEnvironmentVariable("Path", $NewPath, [EnvironmentVariableTarget]::User)
-            $env:Path += ";$InstallDir"
+        # 6. Add to User PATH if running on Windows and missing
+        $IsWin = $IsWindows -or ($null -eq $IsWindows -and [System.Environment]::OSVersion.Platform -eq [System.PlatformID]::Win32NT)
+        if ($IsWin) {
+            try {
+                $UserPath = [Environment]::GetEnvironmentVariable("Path", [EnvironmentVariableTarget]::User)
+                $PathEntries = if ($UserPath) { $UserPath -split ';' } else { @() }
+                if ($PathEntries -notcontains $InstallDir) {
+                    Write-Host "Adding $InstallDir to User PATH environment variable..."
+                    $NewPath = if ($UserPath) { "$UserPath;$InstallDir" } else { $InstallDir }
+                    [Environment]::SetEnvironmentVariable("Path", $NewPath, [EnvironmentVariableTarget]::User)
+                    $env:Path += ";$InstallDir"
+                }
+            } catch {
+                Write-Warning "Could not update User PATH environment variable: $_"
+            }
         }
 
         Write-Host "`nSuccessfully installed starkite! Open a new terminal and run: kite version" -ForegroundColor Cyan

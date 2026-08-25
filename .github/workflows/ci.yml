@@ -76,14 +76,55 @@ jobs:
           sh -n scripts/install.sh
           INSTALL_DRY_RUN=1 ./scripts/install.sh
 
+  windows-validation:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: |
+            libkite/go.sum
+            basekite/go.sum
+            cloudkite/go.sum
+            aikite/go.sum
+            kite/go.sum
+
+      - name: Build kite on Windows
+        run: go build -v .
+        working-directory: kite
+
+      - name: Test libkite on Windows
+        run: go test ./...
+        working-directory: libkite
+
+      - name: Test basekite on Windows
+        run: go test ./...
+        working-directory: basekite
+
+      - name: Test cloudkite on Windows
+        run: go test ./...
+        working-directory: cloudkite
+
+      - name: Test aikite on Windows
+        run: go test ./...
+        working-directory: aikite
+
+      - name: Test kite on Windows
+        run: go test ./...
+        working-directory: kite
+
       - name: Validate install.ps1 (Syntax & Dry-Run)
         run: |
-          pwsh -NoProfile -Command "
-            \$errors = \$null
-            [System.Management.Automation.Language.Parser]::ParseFile('scripts/install.ps1', [ref]\$null, [ref]\$errors)
-            if (\$errors) { \$errors | ForEach-Object { Write-Error \$_ }; exit 1 }
-          "
-          pwsh -NoProfile -Command "\$env:INSTALL_DRY_RUN = '1'; ./scripts/install.ps1"
+          # 1. Parse AST to verify syntax
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile('scripts\install.ps1', [ref]$null, [ref]$errors)
+          if ($errors) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+
+          # 2. Native Dry-Run
+          $env:INSTALL_DRY_RUN = '1'
+          .\scripts\install.ps1
 
   sandbox-integration:
     # Drives the .star sandbox tests under tests/sandbox/ end-to-end:
