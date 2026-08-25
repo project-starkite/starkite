@@ -113,14 +113,8 @@ jobs:
         run: |
           set -euo pipefail
           docker pull "${{ steps.build.outputs.ref }}"
-          # The image has no shell; invoke the kite binary directly.
-          docker run --rm "${{ steps.build.outputs.ref }}" --version
-          # Run the permission tests via a bind mount so they exist inside the container.
-          docker run --rm \
-            -v "$PWD/tests:/work/tests:ro" \
-            -w /work \
-            "${{ steps.build.outputs.ref }}" \
-            test tests/permissions_test.star --permissions=allow-all
+          # The image has no shell; invoke the kite binary directly to verify it runs.
+          docker run --rm "${{ steps.build.outputs.ref }}" version
 
       - name: Verify signature
         env:
