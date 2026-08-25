@@ -454,16 +454,14 @@ func TestPermissionChecker_Concurrent(t *testing.T) {
 	const calls = 500
 
 	var wg sync.WaitGroup
-	for g := 0; g < goroutines; g++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < calls; i++ {
+	for range goroutines {
+		wg.Go(func() {
+			for range calls {
 				_ = checker.Check("fs", "read", "read_file", "/tmp/x")
 				_ = checker.Check("os", "exec", "exec", "ls")
 				_ = checker.Check("http", "client", "get", "https://x")
 			}
-		}()
+		})
 	}
 	wg.Wait()
 }

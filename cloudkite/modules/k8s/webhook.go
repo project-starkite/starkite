@@ -107,13 +107,13 @@ func (wh *webhookHandler) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) 
 		return
 	}
 
-	var review map[string]interface{}
+	var review map[string]any
 	if err := json.Unmarshal(body, &review); err != nil {
 		gohttp.Error(w, "invalid JSON", gohttp.StatusBadRequest)
 		return
 	}
 
-	request, ok := review["request"].(map[string]interface{})
+	request, ok := review["request"].(map[string]any)
 	if !ok {
 		gohttp.Error(w, "missing request field", gohttp.StatusBadRequest)
 		return
@@ -125,14 +125,14 @@ func (wh *webhookHandler) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) 
 		return
 	}
 
-	object, ok := request["object"].(map[string]interface{})
+	object, ok := request["object"].(map[string]any)
 	if !ok {
 		gohttp.Error(w, "missing request.object", gohttp.StatusBadRequest)
 		return
 	}
 
 	// Deep-copy object for mutation so original stays unmodified for diffing
-	var originalSnapshot map[string]interface{}
+	var originalSnapshot map[string]any
 	if wh.mutateFn != nil {
 		origBytes, err := json.Marshal(object)
 		if err != nil {
@@ -157,7 +157,7 @@ func (wh *webhookHandler) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) 
 
 	// Dispatch to the appropriate handler.
 	// If both validate and mutate are set, validate runs first — rejection skips mutation.
-	var response map[string]interface{}
+	var response map[string]any
 
 	if wh.validateFn != nil {
 		result, callErr := starlark.Call(childThread, wh.validateFn, starlark.Tuple{objectAttr}, nil)
@@ -177,8 +177,8 @@ func (wh *webhookHandler) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) 
 	writeAdmissionResponse(w, response)
 }
 
-func writeAdmissionResponse(w gohttp.ResponseWriter, response map[string]interface{}) {
-	reviewResponse := map[string]interface{}{
+func writeAdmissionResponse(w gohttp.ResponseWriter, response map[string]any) {
+	reviewResponse := map[string]any{
 		"apiVersion": "admission.k8s.io/v1",
 		"kind":       "AdmissionReview",
 		"response":   response,
@@ -193,33 +193,33 @@ func writeAdmissionResponse(w gohttp.ResponseWriter, response map[string]interfa
 // Response builders
 // ============================================================================
 
-func buildValidationResponse(uid string, result starlark.Value, err error) map[string]interface{} {
-	resp := map[string]interface{}{"uid": uid}
+func buildValidationResponse(uid string, result starlark.Value, err error) map[string]any {
+	resp := map[string]any{"uid": uid}
 
 	if err != nil {
 		resp["allowed"] = false
-		resp["status"] = map[string]interface{}{"message": err.Error()}
+		resp["status"] = map[string]any{"message": err.Error()}
 		return resp
 	}
 
 	dict, ok := result.(*starlark.Dict)
 	if !ok {
 		resp["allowed"] = false
-		resp["status"] = map[string]interface{}{"message": fmt.Sprintf("validate handler must return dict, got %s", result.Type())}
+		resp["status"] = map[string]any{"message": fmt.Sprintf("validate handler must return dict, got %s", result.Type())}
 		return resp
 	}
 
 	allowed, found, getErr := dict.Get(starlark.String("allowed"))
 	if getErr != nil || !found {
 		resp["allowed"] = false
-		resp["status"] = map[string]interface{}{"message": "validate handler must return dict with 'allowed' key"}
+		resp["status"] = map[string]any{"message": "validate handler must return dict with 'allowed' key"}
 		return resp
 	}
 
 	allowedBool, ok := allowed.(starlark.Bool)
 	if !ok {
 		resp["allowed"] = false
-		resp["status"] = map[string]interface{}{"message": fmt.Sprintf("'allowed' must be bool, got %s", allowed.Type())}
+		resp["status"] = map[string]any{"message": fmt.Sprintf("'allowed' must be bool, got %s", allowed.Type())}
 		return resp
 	}
 
@@ -227,39 +227,39 @@ func buildValidationResponse(uid string, result starlark.Value, err error) map[s
 
 	if msg, found, getErr := dict.Get(starlark.String("message")); getErr == nil && found {
 		if s, ok := starlark.AsString(msg); ok && s != "" {
-			resp["status"] = map[string]interface{}{"message": s}
+			resp["status"] = map[string]any{"message": s}
 		}
 	}
 
 	return resp
 }
 
-func buildMutationResponse(uid string, original map[string]interface{}, result starlark.Value, err error) map[string]interface{} {
-	resp := map[string]interface{}{"uid": uid, "allowed": true}
+func buildMutationResponse(uid string, original map[string]any, result starlark.Value, err error) map[string]any {
+	resp := map[string]any{"uid": uid, "allowed": true}
 
 	if err != nil {
 		resp["allowed"] = false
-		resp["status"] = map[string]interface{}{"message": err.Error()}
+		resp["status"] = map[string]any{"message": err.Error()}
 		return resp
 	}
 
-	var modified map[string]interface{}
+	var modified map[string]any
 	switch v := result.(type) {
 	case *AttrDict:
 		modified = v.data
 	case *starlark.Dict:
-		var goVal interface{}
+		var goVal any
 		if convErr := startype.Starlark(v).Go(&goVal); convErr != nil {
 			resp["allowed"] = false
-			resp["status"] = map[string]interface{}{"message": fmt.Sprintf("mutate handler return conversion error: %v", convErr)}
+			resp["status"] = map[string]any{"message": fmt.Sprintf("mutate handler return conversion error: %v", convErr)}
 			return resp
 		}
-		if m, ok := goVal.(map[string]interface{}); ok {
+		if m, ok := goVal.(map[string]any); ok {
 			modified = m
 		}
 	default:
 		resp["allowed"] = false
-		resp["status"] = map[string]interface{}{"message": fmt.Sprintf("mutate handler must return dict or AttrDict, got %s", result.Type())}
+		resp["status"] = map[string]any{"message": fmt.Sprintf("mutate handler must return dict or AttrDict, got %s", result.Type())}
 		return resp
 	}
 
@@ -271,21 +271,21 @@ func buildMutationResponse(uid string, original map[string]interface{}, result s
 	originalBytes, err := json.Marshal(original)
 	if err != nil {
 		resp["allowed"] = false
-		resp["status"] = map[string]interface{}{"message": fmt.Sprintf("failed to marshal original: %v", err)}
+		resp["status"] = map[string]any{"message": fmt.Sprintf("failed to marshal original: %v", err)}
 		return resp
 	}
 
 	modifiedBytes, err := json.Marshal(modified)
 	if err != nil {
 		resp["allowed"] = false
-		resp["status"] = map[string]interface{}{"message": fmt.Sprintf("failed to marshal modified: %v", err)}
+		resp["status"] = map[string]any{"message": fmt.Sprintf("failed to marshal modified: %v", err)}
 		return resp
 	}
 
 	patches, err := jsonpatch.CreatePatch(originalBytes, modifiedBytes)
 	if err != nil {
 		resp["allowed"] = false
-		resp["status"] = map[string]interface{}{"message": fmt.Sprintf("failed to generate patch: %v", err)}
+		resp["status"] = map[string]any{"message": fmt.Sprintf("failed to generate patch: %v", err)}
 		return resp
 	}
 
@@ -293,7 +293,7 @@ func buildMutationResponse(uid string, original map[string]interface{}, result s
 		patchBytes, marshalErr := json.Marshal(patches)
 		if marshalErr != nil {
 			resp["allowed"] = false
-			resp["status"] = map[string]interface{}{"message": fmt.Sprintf("failed to marshal patches: %v", marshalErr)}
+			resp["status"] = map[string]any{"message": fmt.Sprintf("failed to marshal patches: %v", marshalErr)}
 			return resp
 		}
 		resp["patchType"] = "JSONPatch"

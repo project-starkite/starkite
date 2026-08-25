@@ -1,6 +1,8 @@
 package http
 
 import (
+	"slices"
+
 	"go.starlark.net/starlark"
 )
 
@@ -23,8 +25,8 @@ func callChain(thread *starlark.Thread, middlewares []starlark.Callable,
 		},
 	}
 
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		mw := middlewares[i]
+	for _, mw := range slices.Backward(middlewares) {
+
 		captured := next
 		next = &middlewareStep{
 			name: "middleware",

@@ -141,7 +141,12 @@ func isInstalledRef(ref string) bool {
 	if strings.HasSuffix(ref, ".star") {
 		return false
 	}
-	if strings.HasPrefix(ref, "./") || strings.HasPrefix(ref, "../") || filepath.IsAbs(ref) {
+	if ref == "." || ref == ".." ||
+		strings.HasPrefix(ref, "./") || strings.HasPrefix(ref, "../") ||
+		strings.HasPrefix(ref, ".\\") || strings.HasPrefix(ref, "..\\") ||
+		strings.HasPrefix(ref, "/") || strings.HasPrefix(ref, "\\") ||
+		filepath.IsAbs(ref) ||
+		filepath.VolumeName(ref) != "" {
 		return false
 	}
 	return strings.Contains(ref, "/")

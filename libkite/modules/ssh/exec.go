@@ -3,6 +3,7 @@ package ssh
 import (
 	"bytes"
 	"fmt"
+	"maps"
 	"strings"
 	"sync"
 
@@ -63,9 +64,7 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 
 	// Build environment
 	env := make(map[string]string)
-	for k, v := range c.defaultEnv {
-		env[k] = v
-	}
+	maps.Copy(env, c.defaultEnv)
 	if envDict != nil {
 		for _, item := range envDict.Items() {
 			if k, ok := starlark.AsString(item[0]); ok {

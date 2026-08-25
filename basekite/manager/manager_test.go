@@ -406,7 +406,7 @@ func initGitRepo(t *testing.T, ns, name, body string) (repoDir, commit string) {
 	}
 	git("init")
 	git("add", "-A")
-	git("commit", "-m", "init")
+	git("-c", "commit.gpgsign=false", "commit", "-m", "init")
 	commit, err := GitGetCurrentCommit(repoDir)
 	if err != nil {
 		t.Fatalf("get commit: %v", err)
@@ -451,7 +451,10 @@ func TestManagerInstallFromGitTag(t *testing.T) {
 		t.Skip("git not available")
 	}
 	repo, _ := initGitRepo(t, "acme", "leaf", "def main():\n    pass\n")
-	tag := exec.Command("git", "-C", repo, "tag", "v1.0.0")
+	tag := exec.Command("git", "-C", repo, "-c", "tag.gpgsign=false", "tag", "v1.0.0")
+	tag.Env = append(os.Environ(),
+		"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@example.com",
+		"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@example.com")
 	if out, err := tag.CombinedOutput(); err != nil {
 		t.Fatalf("git tag: %v\n%s", err, out)
 	}

@@ -638,7 +638,7 @@ func TestServerConcurrentRequests(t *testing.T) {
 
 	// Fire all requests concurrently
 	start := time.Now()
-	for i := 0; i < numRequests; i++ {
+	for i := range numRequests {
 		go func(id int) {
 			url := fmt.Sprintf("http://localhost:%d/slow/%d", port, id)
 			resp, err := http.Get(url)
@@ -654,7 +654,7 @@ func TestServerConcurrentRequests(t *testing.T) {
 
 	// Collect all results
 	seen := make(map[string]bool)
-	for i := 0; i < numRequests; i++ {
+	for range numRequests {
 		r := <-results
 		if r.err != nil {
 			t.Fatalf("request failed: %v", r.err)

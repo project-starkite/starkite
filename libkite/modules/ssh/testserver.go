@@ -195,11 +195,9 @@ func (ts *TestServer) acceptLoop() {
 				continue
 			}
 		}
-		ts.wg.Add(1)
-		go func() {
-			defer ts.wg.Done()
+		ts.wg.Go(func() {
 			ts.handleConn(conn)
-		}()
+		})
 	}
 }
 

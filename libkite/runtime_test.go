@@ -127,11 +127,9 @@ func TestRuntime_Call_ConcurrentCalls(t *testing.T) {
 	const iters = 100
 	var wg sync.WaitGroup
 	var fail atomic.Int32
-	for w := 0; w < workers; w++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := 0; i < iters; i++ {
+	for range workers {
+		wg.Go(func() {
+			for i := range iters {
 				v, err := rt.Call(context.Background(), "sq", nil, map[string]any{"n": int64(i)})
 				if err != nil {
 					fail.Add(1)
@@ -143,7 +141,7 @@ func TestRuntime_Call_ConcurrentCalls(t *testing.T) {
 					return
 				}
 			}
-		}()
+		})
 	}
 	wg.Wait()
 	if fail.Load() != 0 {
@@ -206,7 +204,7 @@ func TestRuntime_Call_NilContext_Allowed(t *testing.T) {
 
 	// nil ctx: no cancel wiring; watcher goroutine must not start.
 	before := runtime.NumGoroutine()
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		if _, err := rt.Call(nil, "one", nil, nil); err != nil { //nolint:staticcheck // intentional nil
 			t.Fatalf("Call(nil): %v", err)
 		}
@@ -226,7 +224,7 @@ func TestRuntime_Call_ContextGoroutineCleanup(t *testing.T) {
 	}
 
 	before := runtime.NumGoroutine()
-	for i := 0; i < 500; i++ {
+	for range 500 {
 		ctx, cancel := context.WithCancel(context.Background())
 		if _, err := rt.Call(ctx, "nop", nil, nil); err != nil {
 			cancel()
@@ -276,9 +274,7 @@ func TestRuntime_ExecuteRepl_ConcurrentWithCall_NoRace(t *testing.T) {
 	stop := make(chan struct{})
 	var wg sync.WaitGroup
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for i := 0; ; i++ {
 			select {
 			case <-stop:
@@ -287,11 +283,9 @@ func TestRuntime_ExecuteRepl_ConcurrentWithCall_NoRace(t *testing.T) {
 			}
 			_ = rt.ExecuteRepl(context.Background(), fmt.Sprintf(`def f%d(): return %d`, i, i))
 		}
-	}()
+	})
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		for {
 			select {
 			case <-stop:
@@ -301,7 +295,7 @@ func TestRuntime_ExecuteRepl_ConcurrentWithCall_NoRace(t *testing.T) {
 			_, _ = rt.Call(context.Background(), "seed", nil, nil)
 			_, _ = rt.GetGlobalVal("seed")
 		}
-	}()
+	})
 
 	time.Sleep(100 * time.Millisecond)
 	close(stop)
@@ -394,8 +388,7 @@ def throw():
 	if err == nil {
 		t.Fatal("want error")
 	}
-	var evalErr *starlark.EvalError
-	if !errors.As(err, &evalErr) {
+	if _, ok := errors.AsType[*starlark.EvalError](err); !ok {
 		t.Errorf("err not *starlark.EvalError chain: %T %v", err, err)
 	}
 }

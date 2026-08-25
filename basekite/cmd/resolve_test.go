@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -89,6 +90,29 @@ func TestResolveRunTarget(t *testing.T) {
 	t.Run("bare single segment is not runnable", func(t *testing.T) {
 		if _, _, err := resolveRunTarget("mymod"); err == nil {
 			t.Error("expected error for bare single-segment reference")
+		}
+	})
+
+	t.Run("windows backslash path prefix", func(t *testing.T) {
+		if runtime.GOOS != "windows" {
+			t.Skip("windows path prefix test only applies on windows")
+		}
+		cwd, err := os.Getwd()
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer func() {
+			_ = os.Chdir(cwd)
+		}()
+		if err := os.Chdir(dir); err != nil {
+			t.Fatal(err)
+		}
+		entry, isModule, err := resolveRunTarget(".\\loose.star")
+		if err != nil {
+			t.Fatalf("unexpected error resolving .\\loose.star: %v", err)
+		}
+		if entry != ".\\loose.star" || isModule {
+			t.Errorf("got (%q, %v), want (\".\\\\loose.star\", false)", entry, isModule)
 		}
 	})
 }

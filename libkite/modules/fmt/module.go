@@ -78,7 +78,7 @@ func (m *Module) printf(thread *starlark.Thread, fn *starlark.Builtin, args star
 
 // println prints values separated by spaces with a trailing newline.
 func (m *Module) println(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	goArgs := make([]interface{}, len(args))
+	goArgs := make([]any, len(args))
 	for i, arg := range args {
 		var goVal any
 		if err := startype.Starlark(arg).Go(&goVal); err != nil {
@@ -121,7 +121,7 @@ func formatString(args starlark.Tuple) (string, error) {
 	}
 
 	// Convert remaining args to Go values
-	goArgs := make([]interface{}, len(args)-1)
+	goArgs := make([]any, len(args)-1)
 	for i, arg := range args[1:] {
 		var goVal any
 		if err := startype.Starlark(arg).Go(&goVal); err != nil {

@@ -193,14 +193,22 @@ func decodeMount(m mountSpec, cwd, home string) (Mount, error) {
 		return Mount{}, fmt.Errorf("unknown mode %q (want %q or %q)", m.Mode, MountRO, MountRW)
 	}
 
-	if !filepath.IsAbs(out.Destination) {
+	if !isContainerAbs(out.Destination) {
 		return Mount{}, fmt.Errorf("destination %q must be an absolute path", out.Destination)
 	}
-	if out.Type == MountBind && !filepath.IsAbs(out.Source) {
+	if out.Type == MountBind && !isHostAbs(out.Source) {
 		return Mount{}, fmt.Errorf("source %q must be an absolute path", out.Source)
 	}
 
 	return out, nil
+}
+
+func isContainerAbs(p string) bool {
+	return strings.HasPrefix(p, "/") || filepath.IsAbs(p)
+}
+
+func isHostAbs(p string) bool {
+	return filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, "/") || strings.HasPrefix(p, "\\")
 }
 
 // composeProfile builds a profile on top of a built-in rung: the rung's

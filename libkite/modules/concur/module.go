@@ -51,7 +51,7 @@ func iterableToSlice(v starlark.Value) ([]starlark.Value, error) {
 	case *starlark.List:
 		n := x.Len()
 		out := make([]starlark.Value, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			out[i] = x.Index(i)
 		}
 		return out, nil
@@ -165,7 +165,7 @@ func (m *Module) concurMap(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
+	for i := range n {
 		// Check context before launching goroutine
 		if ctx.Err() != nil {
 			errors[i] = fmt.Errorf("timeout exceeded")
@@ -207,7 +207,7 @@ func (m *Module) concurMap(thread *starlark.Thread, fn *starlark.Builtin, args s
 
 	if p.OnError == "continue" {
 		wrapped := make([]starlark.Value, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if errors[i] != nil {
 				wrapped[i] = libkite.ResultErr(errors[i].Error())
 			} else {
@@ -276,7 +276,7 @@ func (m *Module) concurEach(thread *starlark.Thread, fn *starlark.Builtin, args 
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if ctx.Err() != nil {
 			errors[i] = fmt.Errorf("timeout exceeded")
 			continue
@@ -313,7 +313,7 @@ func (m *Module) concurEach(thread *starlark.Thread, fn *starlark.Builtin, args 
 
 	if p.OnError == "continue" {
 		wrapped := make([]starlark.Value, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if errors[i] != nil {
 				wrapped[i] = libkite.ResultErr(errors[i].Error())
 			} else {
@@ -387,7 +387,7 @@ func (m *Module) concurExec(thread *starlark.Thread, fn *starlark.Builtin, args 
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < n; i++ {
+	for i := range n {
 		if ctx.Err() != nil {
 			errors[i] = fmt.Errorf("timeout exceeded")
 			continue
@@ -416,7 +416,7 @@ func (m *Module) concurExec(thread *starlark.Thread, fn *starlark.Builtin, args 
 
 	if onError == "continue" {
 		wrapped := make([]starlark.Value, n)
-		for i := 0; i < n; i++ {
+		for i := range n {
 			if errors[i] != nil {
 				wrapped[i] = libkite.ResultErr(errors[i].Error())
 			} else {

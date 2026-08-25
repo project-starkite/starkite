@@ -247,7 +247,7 @@ func verifyChecksumFromURL(checksumURL, actualHash, binaryName string) error {
 	}
 
 	expectedHash := ""
-	for _, line := range strings.Split(string(body), "\n") {
+	for line := range strings.SplitSeq(string(body), "\n") {
 		parts := strings.Fields(line)
 		if len(parts) == 2 && parts[1] == binaryName {
 			expectedHash = parts[0]

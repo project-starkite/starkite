@@ -239,8 +239,6 @@ func Execute() int {
 		RegisterEditionCommands(rootCmd)
 	}
 
-
-
 	// Implicit run: if the first arg is a run target (a .star file, an existing
 	// path reference, an installed namespace/name identity, or a .star arg) rather
 	// flag or subcommand, insert "run".
@@ -253,8 +251,7 @@ func Execute() int {
 
 	if err := rootCmd.Execute(); err != nil {
 		// ExitError with code 0 — silent success (e.g. exit(0))
-		var exitErr *libkite.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*libkite.ExitError](err); ok {
 			return exitErr.Code
 		}
 
@@ -266,26 +263,24 @@ func Execute() int {
 }
 
 // looksLikeRunTarget reports whether arg is something `kite run` can execute —
-// a path reference (./, ../, /), an installed namespace/name identity, or a
+// a path reference (./, ../, /, .\, ..\, \), an installed namespace/name identity, or a
 // .star argument — so it can be run without an explicit "run". Subcommand names
-// never contain a slash, and malformed forms (e.g. a bare "file.star" missing
+// never contain a slash or backslash, and malformed forms (e.g. a bare "file.star" missing
 // its path prefix) still route to run so resolveRunTarget can produce the
 // precise error.
 func looksLikeRunTarget(arg string) bool {
-	return isPathArg(arg) || strings.Contains(arg, "/") || strings.HasSuffix(arg, ".star")
+	return isPathArg(arg) || strings.Contains(arg, "/") || strings.Contains(arg, "\\") || strings.HasSuffix(arg, ".star")
 }
 
 // exitCodeFromError extracts an exit code from an error
 func exitCodeFromError(err error) int {
 	// Check for libkite errors with exit codes
-	var scriptErr *libkite.ScriptError
-	if errors.As(err, &scriptErr) {
+	if scriptErr, ok := errors.AsType[*libkite.ScriptError](err); ok {
 		return scriptErr.ExitCode
 	}
 
 	// Check for exit() calls
-	var exitErr *libkite.ExitError
-	if errors.As(err, &exitErr) {
+	if exitErr, ok := errors.AsType[*libkite.ExitError](err); ok {
 		return exitErr.Code
 	}
 
@@ -334,7 +329,7 @@ func GetVarFiles() []string {
 }
 
 // PrintDebug prints debug messages if debug mode is enabled
-func PrintDebug(format string, args ...interface{}) {
+func PrintDebug(format string, args ...any) {
 	if debugMode {
 		fmt.Printf("[DEBUG] "+format+"\n", args...)
 	}
@@ -423,5 +418,3 @@ func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
 	}
 	return true, sandbox.Backend.Run(ctx, sandbox.ExecSpec{Profile: profile})
 }
-
-

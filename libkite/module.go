@@ -51,10 +51,10 @@ type ModuleConfig struct {
 // VarStore is the interface for variable access used by modules.
 type VarStore interface {
 	// Get retrieves a variable value by key
-	Get(key string) (interface{}, bool)
+	Get(key string) (any, bool)
 
 	// GetWithDefault retrieves a variable value with a default fallback
-	GetWithDefault(key string, defaultValue interface{}) interface{}
+	GetWithDefault(key string, defaultValue any) any
 
 	// GetString retrieves a variable value as a string
 	GetString(key string) string

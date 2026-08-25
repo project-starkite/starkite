@@ -2,6 +2,7 @@ package genai
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"sync"
 	"time"
@@ -35,13 +36,9 @@ func (c *Config) snapshot() configView {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	keys := make(map[string]string, len(c.APIKeys))
-	for k, v := range c.APIKeys {
-		keys[k] = v
-	}
+	maps.Copy(keys, c.APIKeys)
 	urls := make(map[string]string, len(c.BaseURLs))
-	for k, v := range c.BaseURLs {
-		urls[k] = v
-	}
+	maps.Copy(urls, c.BaseURLs)
 	return configView{apiKeys: keys, baseURLs: urls}
 }
 
@@ -102,10 +99,10 @@ func (m *Module) configBuiltin(thread *starlark.Thread, fn *starlark.Builtin, ar
 	}
 
 	var params struct {
-		DefaultModel string                 `name:"default_model"`
-		APIKeys      map[string]interface{} `name:"api_keys"`
-		BaseURLs     map[string]interface{} `name:"base_urls"`
-		Timeout      string                 `name:"timeout"`
+		DefaultModel string         `name:"default_model"`
+		APIKeys      map[string]any `name:"api_keys"`
+		BaseURLs     map[string]any `name:"base_urls"`
+		Timeout      string         `name:"timeout"`
 	}
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, fmt.Errorf("ai.config: %w", err)
@@ -146,7 +143,7 @@ func (m *Module) configBuiltin(thread *starlark.Thread, fn *starlark.Builtin, ar
 
 // stringDict coerces a startype-decoded map[string]interface{} into
 // map[string]string, erroring on non-string values.
-func stringDict(in map[string]interface{}, name string) (map[string]string, error) {
+func stringDict(in map[string]any, name string) (map[string]string, error) {
 	if in == nil {
 		return map[string]string{}, nil
 	}

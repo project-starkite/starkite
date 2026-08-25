@@ -104,8 +104,11 @@ func TestLoadProfile_host(t *testing.T) {
 	home, _ := os.UserHomeDir()
 	m := mountByDest(p)
 
-	// $HOME and /usr exist everywhere this test runs; both must be ro.
+	// $HOME and /usr exist on POSIX hosts; both must be ro when present on the host.
 	for _, ro := range []string{home, "/usr"} {
+		if _, err := os.Stat(ro); err != nil {
+			continue
+		}
 		mt, ok := m[ro]
 		if !ok {
 			t.Fatalf("host rung must mount %s", ro)
@@ -165,6 +168,7 @@ func TestLoadProfile_defaultReserved(t *testing.T) {
 	t.Run("no config: bare default falls back to opaque", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
 		t.Chdir(t.TempDir())
 
 		p, err := LoadProfile(DefaultProfileName)
@@ -179,6 +183,7 @@ func TestLoadProfile_defaultReserved(t *testing.T) {
 	t.Run("config default as alias", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
 		work := t.TempDir()
 		writeFile(t, filepath.Join(work, "config.yaml"), "sandbox:\n  default: net-access\n")
 		t.Chdir(work)
@@ -195,6 +200,7 @@ func TestLoadProfile_defaultReserved(t *testing.T) {
 	t.Run("config default as full spec", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
+		t.Setenv("USERPROFILE", home)
 		work := t.TempDir()
 		writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
@@ -219,6 +225,7 @@ sandbox:
 func TestProfileAlias(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	work := t.TempDir()
 	writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
@@ -255,6 +262,7 @@ func TestBuiltinShadowing(t *testing.T) {
 	// A config profile named after a rung is ignored: built-ins win.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	work := t.TempDir()
 	writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
@@ -275,6 +283,7 @@ sandbox:
 func TestUserProfile_missingSourceErrors(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	work := t.TempDir()
 	writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
@@ -295,6 +304,7 @@ sandbox:
 func TestOldRungNamesError(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Chdir(t.TempDir())
 
 	if _, err := LoadProfile("strict"); err == nil {
@@ -471,6 +481,7 @@ func TestLoadProfile_RemovedSyntaxesError(t *testing.T) {
 	// unknown profile names.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Chdir(t.TempDir())
 	for _, v := range []string{"./myprofile.yaml", "profiles.yaml#k8s", "/abs/p.yml"} {
 		if _, err := LoadProfile(v); err == nil {
@@ -484,6 +495,7 @@ func TestLoadProfile_fromNamed_userConfig(t *testing.T) {
 	// sections (config:, permissions:) are tolerated.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Chdir(t.TempDir())
 	cfgDir := filepath.Join(home, ".starkite")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
@@ -524,6 +536,7 @@ func TestLoadProfile_fromNamed_projectLocalConfig(t *testing.T) {
 	// same name in ~/.starkite/config.yaml.
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	cfgDir := filepath.Join(home, ".starkite")
 	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -576,6 +589,7 @@ func writeFile(t *testing.T, path, content string) {
 func TestComposeProfile_base(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	work := t.TempDir()
 	cache := filepath.Join(work, "cache")
 	if err := os.MkdirAll(cache, 0o755); err != nil {
@@ -677,6 +691,7 @@ sandbox:
 func TestComposeProfile_errors(t *testing.T) {
 	home := t.TempDir()
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	work := t.TempDir()
 	writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:

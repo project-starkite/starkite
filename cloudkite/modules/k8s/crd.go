@@ -36,7 +36,7 @@ func crdConstructor(thread *starlark.Thread, fn *starlark.Builtin, args starlark
 	singular := strings.ToLower(p.Kind)
 
 	// Build OpenAPI v3 schema from spec dict
-	specSchema := map[string]interface{}{
+	specSchema := map[string]any{
 		"type": "object",
 	}
 	if specDict != nil && specDict.Len() > 0 {
@@ -51,13 +51,13 @@ func crdConstructor(thread *starlark.Thread, fn *starlark.Builtin, args starlark
 	}
 
 	// Build status schema
-	var statusSchema map[string]interface{}
+	var statusSchema map[string]any
 	if statusDict != nil && statusDict.Len() > 0 {
 		props, required, err := buildOpenAPIProperties(statusDict)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.obj.crd: status: %w", err)
 		}
-		statusSchema = map[string]interface{}{
+		statusSchema = map[string]any{
 			"type":       "object",
 			"properties": props,
 		}
@@ -67,30 +67,30 @@ func crdConstructor(thread *starlark.Thread, fn *starlark.Builtin, args starlark
 	}
 
 	// Build the full openAPIV3Schema
-	schemaProps := map[string]interface{}{
+	schemaProps := map[string]any{
 		"spec": specSchema,
 	}
 	if statusSchema != nil {
 		schemaProps["status"] = statusSchema
 	}
 
-	openAPISchema := map[string]interface{}{
+	openAPISchema := map[string]any{
 		"type":       "object",
 		"properties": schemaProps,
 	}
 
 	// Build version entry
-	versionEntry := map[string]interface{}{
+	versionEntry := map[string]any{
 		"name":    p.Version,
 		"served":  true,
 		"storage": true,
-		"schema": map[string]interface{}{
+		"schema": map[string]any{
 			"openAPIV3Schema": openAPISchema,
 		},
 	}
 	if statusSchema != nil {
-		versionEntry["subresources"] = map[string]interface{}{
-			"status": map[string]interface{}{},
+		versionEntry["subresources"] = map[string]any{
+			"status": map[string]any{},
 		}
 	}
 
@@ -103,21 +103,21 @@ func crdConstructor(thread *starlark.Thread, fn *starlark.Builtin, args starlark
 	// Build the full object data as a nested map that ToDict will serialize
 	data := map[string]any{
 		"name": p.Plural + "." + p.Group,
-		"_raw": map[string]interface{}{
+		"_raw": map[string]any{
 			"apiVersion": "apiextensions.k8s.io/v1",
 			"kind":       "CustomResourceDefinition",
-			"metadata": map[string]interface{}{
+			"metadata": map[string]any{
 				"name": p.Plural + "." + p.Group,
 			},
-			"spec": map[string]interface{}{
+			"spec": map[string]any{
 				"group": p.Group,
-				"names": map[string]interface{}{
+				"names": map[string]any{
 					"kind":     p.Kind,
 					"plural":   p.Plural,
 					"singular": singular,
 				},
 				"scope":    p.Scope,
-				"versions": []interface{}{versionEntry},
+				"versions": []any{versionEntry},
 			},
 		},
 	}
@@ -125,7 +125,7 @@ func crdConstructor(thread *starlark.Thread, fn *starlark.Builtin, args starlark
 	return &CRDResource{
 		schema: crdSchema,
 		data:   data,
-		raw:    data["_raw"].(map[string]interface{}),
+		raw:    data["_raw"].(map[string]any),
 	}, nil
 }
 
@@ -133,7 +133,7 @@ func crdConstructor(thread *starlark.Thread, fn *starlark.Builtin, args starlark
 type CRDResource struct {
 	schema *ResourceSchema
 	data   map[string]any
-	raw    map[string]interface{}
+	raw    map[string]any
 }
 
 var _ KubeObject = (*CRDResource)(nil)
@@ -177,8 +177,8 @@ func (r *CRDResource) ToDict() *starlark.Dict {
 // buildOpenAPIProperties converts a Starlark dict of field definitions to OpenAPI v3 properties.
 // Input format: {"field_name": {"type": "string", "required": True, "default": "value"}}
 // Returns: (properties map, required field names list, error)
-func buildOpenAPIProperties(dict *starlark.Dict) (map[string]interface{}, []string, error) {
-	props := make(map[string]interface{})
+func buildOpenAPIProperties(dict *starlark.Dict) (map[string]any, []string, error) {
+	props := make(map[string]any)
 	var required []string
 
 	for _, item := range dict.Items() {
@@ -206,8 +206,8 @@ func buildOpenAPIProperties(dict *starlark.Dict) (map[string]interface{}, []stri
 	return props, required, nil
 }
 
-func buildOpenAPIProp(def *starlark.Dict) (map[string]interface{}, bool, error) {
-	prop := make(map[string]interface{})
+func buildOpenAPIProp(def *starlark.Dict) (map[string]any, bool, error) {
+	prop := make(map[string]any)
 	isRequired := false
 
 	for _, item := range def.Items() {
@@ -226,7 +226,7 @@ func buildOpenAPIProp(def *starlark.Dict) (map[string]interface{}, bool, error) 
 				isRequired = bool(b)
 			}
 		case "default":
-			var goVal interface{}
+			var goVal any
 			if err := startype.Starlark(item[1]).Go(&goVal); err == nil {
 				prop["default"] = goVal
 			}

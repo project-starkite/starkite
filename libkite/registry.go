@@ -3,6 +3,7 @@ package libkite
 import (
 	"fmt"
 	"io"
+	"maps"
 	"sync"
 
 	"go.starlark.net/starlark"
@@ -139,9 +140,7 @@ func (r *Registry) All() map[ModuleName]Module {
 	defer r.mu.RUnlock()
 
 	result := make(map[ModuleName]Module, len(r.modules))
-	for k, v := range r.modules {
-		result[k] = v
-	}
+	maps.Copy(result, r.modules)
 	return result
 }
 
@@ -177,14 +176,10 @@ func (r *Registry) Predeclared() starlark.StringDict {
 	result := make(starlark.StringDict, len(r.loaded)+len(r.aliases))
 
 	// Add namespaced modules
-	for k, v := range r.loaded {
-		result[k] = v
-	}
+	maps.Copy(result, r.loaded)
 
 	// Add global aliases
-	for k, v := range r.aliases {
-		result[k] = v
-	}
+	maps.Copy(result, r.aliases)
 
 	return result
 }

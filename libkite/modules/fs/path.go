@@ -264,12 +264,23 @@ func pathParts(path string) *starlark.List {
 	// Clean path first
 	cleaned := filepath.Clean(path)
 	var parts []string
-	if filepath.IsAbs(cleaned) {
-		parts = append(parts, "/")
-		cleaned = cleaned[1:]
+	if filepath.IsAbs(cleaned) || strings.HasPrefix(cleaned, "/") || strings.HasPrefix(cleaned, "\\") {
+		if vol := filepath.VolumeName(cleaned); vol != "" {
+			parts = append(parts, vol+"\\")
+			cleaned = cleaned[len(vol)+1:]
+		} else {
+			parts = append(parts, "/")
+			cleaned = strings.TrimPrefix(strings.TrimPrefix(cleaned, "/"), "\\")
+		}
 	}
 	if cleaned != "" && cleaned != "." {
-		parts = append(parts, strings.Split(cleaned, string(filepath.Separator))...)
+		for _, part := range strings.FieldsFunc(cleaned, func(r rune) bool {
+			return r == '/' || r == '\\'
+		}) {
+			if part != "" {
+				parts = append(parts, part)
+			}
+		}
 	}
 	elems := make([]starlark.Value, len(parts))
 	for i, part := range parts {
@@ -331,7 +342,7 @@ func (p *Path) resolveMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark
 }
 
 func (p *Path) isAbsoluteMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	return starlark.Bool(filepath.IsAbs(p.path)), nil
+	return starlark.Bool(filepath.IsAbs(p.path) || strings.HasPrefix(p.path, "/") || strings.HasPrefix(p.path, "\\") || filepath.VolumeName(p.path) != ""), nil
 }
 
 func (p *Path) isRelativeToMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

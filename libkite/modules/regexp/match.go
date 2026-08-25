@@ -102,7 +102,7 @@ func newMatch(re *regexp.Regexp, input string, loc []int) *Match {
 	groups := make([]string, numGroups)
 	matched := make([]bool, numGroups)
 
-	for i := 0; i < numGroups; i++ {
+	for i := range numGroups {
 		s, e := loc[2*i], loc[2*i+1]
 		if s == -1 {
 			matched[i] = false

@@ -7,8 +7,8 @@ printf("Hostname: %s\n", hostname())
 printf("User:     %s\n", username())
 printf("Cwd:      %s\n", cwd())
 
-uname = os.exec("uname -s").strip()
-printf("Kernel:   %s\n", uname)
+kernel = os.exec("cmd.exe", ["/c", "ver"]).strip() if runtime.platform() == "windows" else os.exec("uname -s").strip()
+printf("Kernel:   %s\n", kernel)
 
 printf("Time:     %s\n", time.format(time.now(), time.RFC3339))
 printf("Home:     %s\n", env("HOME", "/tmp"))

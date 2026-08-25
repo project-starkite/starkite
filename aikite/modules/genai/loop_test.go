@@ -90,7 +90,7 @@ final = r.text
 func TestRunUntil_DefaultMaxSteps10(t *testing.T) {
 	_, fake, globals := loadModule(t)
 	// Script 12 responses; default cap should stop at 10.
-	for i := 0; i < 12; i++ {
+	for range 12 {
 		fake.script = append(fake.script, &GenerateResult{Text: "x", Model: "openai/x"})
 	}
 

@@ -22,10 +22,10 @@ type starlarkReader struct {
 }
 
 var (
-	_ starlark.Value          = (*starlarkReader)(nil)
-	_ starlark.HasAttrs       = (*starlarkReader)(nil)
+	_ starlark.Value         = (*starlarkReader)(nil)
+	_ starlark.HasAttrs      = (*starlarkReader)(nil)
 	_ libkite.StarlarkReader = (*starlarkReader)(nil)
-	_ io.Closer               = (*starlarkReader)(nil)
+	_ io.Closer              = (*starlarkReader)(nil)
 )
 
 // NewReader wraps r as an io.reader Starlark value.
@@ -52,7 +52,7 @@ func NewReaderWithCloser(r io.Reader, closer io.Closer, name string) starlark.Va
 
 func (r *starlarkReader) String() string        { return fmt.Sprintf("<io.reader name=%q>", r.name) }
 func (r *starlarkReader) Type() string          { return "io.reader" }
-func (r *starlarkReader) Freeze()              {}
+func (r *starlarkReader) Freeze()               {}
 func (r *starlarkReader) Truth() starlark.Bool  { return starlark.True }
 func (r *starlarkReader) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: io.reader") }
 
@@ -178,11 +178,13 @@ var (
 	_ starlark.Iterator = (*starlarkLineIterator)(nil)
 )
 
-func (it *starlarkLineIterator) String() string        { return "<io.line_iterator>" }
-func (it *starlarkLineIterator) Type() string          { return "io.line_iterator" }
+func (it *starlarkLineIterator) String() string       { return "<io.line_iterator>" }
+func (it *starlarkLineIterator) Type() string         { return "io.line_iterator" }
 func (it *starlarkLineIterator) Freeze()              {}
-func (it *starlarkLineIterator) Truth() starlark.Bool  { return starlark.True }
-func (it *starlarkLineIterator) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: io.line_iterator") }
+func (it *starlarkLineIterator) Truth() starlark.Bool { return starlark.True }
+func (it *starlarkLineIterator) Hash() (uint32, error) {
+	return 0, fmt.Errorf("unhashable type: io.line_iterator")
+}
 
 func (it *starlarkLineIterator) Iterate() starlark.Iterator { return it }
 
@@ -246,10 +248,10 @@ type starlarkWriter struct {
 }
 
 var (
-	_ starlark.Value          = (*starlarkWriter)(nil)
-	_ starlark.HasAttrs       = (*starlarkWriter)(nil)
+	_ starlark.Value         = (*starlarkWriter)(nil)
+	_ starlark.HasAttrs      = (*starlarkWriter)(nil)
 	_ libkite.StarlarkWriter = (*starlarkWriter)(nil)
-	_ io.Closer               = (*starlarkWriter)(nil)
+	_ io.Closer              = (*starlarkWriter)(nil)
 )
 
 // NewWriter wraps w as an io.writer Starlark value.
@@ -276,7 +278,7 @@ func NewWriterWithCloser(w io.Writer, closer io.Closer, name string) starlark.Va
 
 func (w *starlarkWriter) String() string        { return fmt.Sprintf("<io.writer name=%q>", w.name) }
 func (w *starlarkWriter) Type() string          { return "io.writer" }
-func (w *starlarkWriter) Freeze()              {}
+func (w *starlarkWriter) Freeze()               {}
 func (w *starlarkWriter) Truth() starlark.Bool  { return starlark.True }
 func (w *starlarkWriter) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: io.writer") }
 

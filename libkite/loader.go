@@ -2,6 +2,7 @@ package libkite
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -148,7 +149,10 @@ func (rt *Runtime) resolveModulePathFrom(module, callerPath string) (string, err
 func isPathRef(ref string) bool {
 	return ref == "." || ref == ".." ||
 		strings.HasPrefix(ref, "./") || strings.HasPrefix(ref, "../") ||
-		filepath.IsAbs(ref)
+		strings.HasPrefix(ref, ".\\") || strings.HasPrefix(ref, "..\\") ||
+		strings.HasPrefix(ref, "/") || strings.HasPrefix(ref, "\\") ||
+		filepath.IsAbs(ref) ||
+		filepath.VolumeName(ref) != ""
 }
 
 // resolveInstalledModule resolves "namespace/name" to its directory in the
@@ -358,9 +362,7 @@ func (rt *Runtime) buildModulePredeclared(config *starlark.Dict) starlark.String
 	predecl := make(starlark.StringDict, len(rt.predecl)+1)
 
 	// Copy all predeclared symbols
-	for k, v := range rt.predecl {
-		predecl[k] = v
-	}
+	maps.Copy(predecl, rt.predecl)
 
 	// Add _config if provided
 	if config != nil {

@@ -146,7 +146,7 @@ func TestMapPreservesOrder(t *testing.T) {
 	}
 
 	list := result.(*starlark.List)
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		got, _ := starlark.AsInt32(list.Index(i))
 		if int(got) != i {
 			t.Errorf("index %d: got %d, want %d", i, got, i)
@@ -157,22 +157,22 @@ func TestMapPreservesOrder(t *testing.T) {
 func TestMapWorkers(t *testing.T) {
 	thread := testThread()
 
-	var peak int64
-	var current int64
+	var peak atomic.Int64
+	var current atomic.Int64
 	fn := makeBuiltin("work", func(_ *starlark.Thread, args starlark.Tuple) (starlark.Value, error) {
-		c := atomic.AddInt64(&current, 1)
+		c := current.Add(1)
 		// Update peak atomically
 		for {
-			p := atomic.LoadInt64(&peak)
+			p := peak.Load()
 			if c <= p {
 				break
 			}
-			if atomic.CompareAndSwapInt64(&peak, p, c) {
+			if peak.CompareAndSwap(p, c) {
 				break
 			}
 		}
 		time.Sleep(10 * time.Millisecond)
-		atomic.AddInt64(&current, -1)
+		current.Add(-1)
 		return args[0], nil
 	})
 
@@ -191,7 +191,7 @@ func TestMapWorkers(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	p := atomic.LoadInt64(&peak)
+	p := peak.Load()
 	if p > 3 {
 		t.Errorf("peak concurrency %d exceeded workers limit of 3", p)
 	}

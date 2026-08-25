@@ -54,7 +54,7 @@ func (m *Module) FactoryMethod() string        { return "" }
 
 // InventoryValue represents an inventory of hosts/resources.
 type InventoryValue struct {
-	items []map[string]interface{}
+	items []map[string]any
 }
 
 func (inv *InventoryValue) String() string {
@@ -112,10 +112,10 @@ func (m *Module) loadFile(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, err
 	}
 
-	var items []map[string]interface{}
+	var items []map[string]any
 	if err := yaml.Unmarshal(data, &items); err != nil {
 		// Try parsing as a dict with groups
-		var grouped map[string][]map[string]interface{}
+		var grouped map[string][]map[string]any
 		if err2 := yaml.Unmarshal(data, &grouped); err2 != nil {
 			return nil, fmt.Errorf("failed to parse inventory file: %w", err)
 		}
@@ -167,7 +167,7 @@ func (m *Module) filter(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, fmt.Errorf("filter requires at least an inventory argument")
 	}
 
-	var filtered []map[string]interface{}
+	var filtered []map[string]any
 
 	for _, item := range inv.items {
 		include := true
@@ -226,7 +226,7 @@ func (m *Module) groupBy(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		return nil, err
 	}
 
-	groups := make(map[string][]map[string]interface{})
+	groups := make(map[string][]map[string]any)
 	for _, item := range inv.items {
 		groupVal := ""
 		if v, ok := item[key]; ok {
@@ -246,7 +246,7 @@ func (m *Module) groupBy(thread *starlark.Thread, fn *starlark.Builtin, args sta
 // merge merges multiple inventories.
 // Usage: inventory.merge(inv1, inv2, ...)
 func (m *Module) merge(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var merged []map[string]interface{}
+	var merged []map[string]any
 
 	for _, arg := range args {
 		inv, ok := arg.(*InventoryValue)

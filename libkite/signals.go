@@ -3,6 +3,7 @@ package libkite
 import (
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 
 	"go.starlark.net/starlark"
@@ -89,8 +90,8 @@ func (rt *Runtime) runDeferred() {
 	rt.deferMu.Unlock()
 
 	// Run in LIFO order
-	for i := len(fns) - 1; i >= 0; i-- {
-		starlark.Call(rt.thread, fns[i], nil, nil)
+	for _, fn := range slices.Backward(fns) {
+		starlark.Call(rt.thread, fn, nil, nil)
 	}
 	rt.runGoCleanups()
 }

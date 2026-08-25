@@ -73,7 +73,10 @@ func resolveRunTarget(arg string) (entryPath string, isModule bool, err error) {
 func isPathArg(arg string) bool {
 	return arg == "." || arg == ".." ||
 		strings.HasPrefix(arg, "./") || strings.HasPrefix(arg, "../") ||
-		filepath.IsAbs(arg)
+		strings.HasPrefix(arg, ".\\") || strings.HasPrefix(arg, "..\\") ||
+		strings.HasPrefix(arg, "/") || strings.HasPrefix(arg, "\\") ||
+		filepath.IsAbs(arg) ||
+		filepath.VolumeName(arg) != ""
 }
 
 // resolveModuleDeps resolves the dependency closure of a module directory before

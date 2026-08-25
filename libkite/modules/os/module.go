@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
+	"maps"
 	"os"
 	"os/exec"
 	"os/user"
@@ -91,23 +92,23 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 
 		// Create global aliases
 		m.aliases = starlark.StringDict{
-			"env":      starlark.NewBuiltin("env", m.env_),
-			"setenv":   starlark.NewBuiltin("setenv", m.setenv),
-			"cwd":      starlark.NewBuiltin("cwd", m.cwd),
-			"chdir":    starlark.NewBuiltin("chdir", m.chdir),
-			"hostname": starlark.NewBuiltin("hostname", m.hostname),
-			"pid":      starlark.NewBuiltin("pid", m.pid),
-			"ppid":     starlark.NewBuiltin("ppid", m.ppid),
-			"exit":     starlark.NewBuiltin("exit", m.exit),
+			"env":       starlark.NewBuiltin("env", m.env_),
+			"setenv":    starlark.NewBuiltin("setenv", m.setenv),
+			"cwd":       starlark.NewBuiltin("cwd", m.cwd),
+			"chdir":     starlark.NewBuiltin("chdir", m.chdir),
+			"hostname":  starlark.NewBuiltin("hostname", m.hostname),
+			"pid":       starlark.NewBuiltin("pid", m.pid),
+			"ppid":      starlark.NewBuiltin("ppid", m.ppid),
+			"exit":      starlark.NewBuiltin("exit", m.exit),
 			"exec":      starlark.NewBuiltin("exec", m.execCmd),
 			"try_exec":  starlark.NewBuiltin("try_exec", m.tryExecCmd),
 			"shell":     starlark.NewBuiltin("shell", m.shellCmd),
 			"try_shell": starlark.NewBuiltin("try_shell", m.tryShellCmd),
 			"which":     starlark.NewBuiltin("which", m.which),
-			"username": starlark.NewBuiltin("username", m.username),
-			"userid":   starlark.NewBuiltin("userid", m.userid),
-			"groupid":  starlark.NewBuiltin("groupid", m.groupid),
-			"home":     starlark.NewBuiltin("home", m.home),
+			"username":  starlark.NewBuiltin("username", m.username),
+			"userid":    starlark.NewBuiltin("userid", m.userid),
+			"groupid":   starlark.NewBuiltin("groupid", m.groupid),
+			"home":      starlark.NewBuiltin("home", m.home),
 			// User alias struct
 			"user": m.createUserAlias(),
 		}
@@ -354,6 +355,10 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 	var hasUID bool
 	var hasGID bool
 
+	if (useridVal != starlark.None || groupidVal != starlark.None) && !supportsUserSwitch {
+		return nil, fmt.Errorf("os.%s: userid and groupid execution switching is not supported on this platform", funcPrefix)
+	}
+
 	if useridVal != starlark.None {
 		hasUID = true
 		if s, ok := starlark.AsString(useridVal); ok {
@@ -400,18 +405,12 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 		}
 	}
 
-	if (hasUID || hasGID) && !supportsUserSwitch {
-		return nil, fmt.Errorf("os.%s: userid and groupid execution switching is not supported on this platform", funcPrefix)
-	}
-
 	m.mu.RLock()
 	shell := m.shell
 	workDir := m.workDir
 	timeout := m.timeout
 	baseEnv := make(map[string]string, len(m.env))
-	for k, v := range m.env {
-		baseEnv[k] = v
-	}
+	maps.Copy(baseEnv, m.env)
 	m.mu.RUnlock()
 
 	if s, ok := starlark.AsString(shellStr); ok && s != "" {

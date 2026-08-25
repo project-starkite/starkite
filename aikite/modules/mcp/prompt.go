@@ -74,7 +74,7 @@ func buildPromptEntry(name string, callable starlark.Callable) (*promptEntry, er
 	n := fn.NumParams()
 	e.arguments = make([]*mcpsdk.PromptArgument, 0, n)
 	e.paramNames = make([]string, 0, n)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		pname, _ := fn.Param(i)
 		e.paramNames = append(e.paramNames, pname)
 		e.arguments = append(e.arguments, &mcpsdk.PromptArgument{

@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -111,8 +112,8 @@ func TestPathParent(t *testing.T) {
 	if !ok {
 		t.Fatalf("parent is not a Path: %T", v)
 	}
-	if parent.path != "/var/log" {
-		t.Errorf("parent.path = %q, want %q", parent.path, "/var/log")
+	if parent.path != filepath.FromSlash("/var/log") {
+		t.Errorf("parent.path = %q, want %q", parent.path, filepath.FromSlash("/var/log"))
 	}
 }
 
@@ -158,8 +159,8 @@ func TestPathJoin(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := v.(*Path)
-	if result.path != "/etc/nginx/nginx.conf" {
-		t.Errorf("join = %q, want %q", result.path, "/etc/nginx/nginx.conf")
+	if result.path != filepath.FromSlash("/etc/nginx/nginx.conf") {
+		t.Errorf("join = %q, want %q", result.path, filepath.FromSlash("/etc/nginx/nginx.conf"))
 	}
 }
 
@@ -170,8 +171,8 @@ func TestPathWithName(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := v.(*Path)
-	if result.path != "/var/log/messages" {
-		t.Errorf("with_name = %q, want %q", result.path, "/var/log/messages")
+	if result.path != filepath.FromSlash("/var/log/messages") {
+		t.Errorf("with_name = %q, want %q", result.path, filepath.FromSlash("/var/log/messages"))
 	}
 }
 
@@ -182,8 +183,8 @@ func TestPathWithSuffix(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := v.(*Path)
-	if result.path != "/var/log/app.txt" {
-		t.Errorf("with_suffix = %q, want %q", result.path, "/var/log/app.txt")
+	if result.path != filepath.FromSlash("/var/log/app.txt") {
+		t.Errorf("with_suffix = %q, want %q", result.path, filepath.FromSlash("/var/log/app.txt"))
 	}
 }
 
@@ -246,8 +247,8 @@ func TestPathRelativeTo(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := v.(*Path)
-	if result.path != "log/syslog" {
-		t.Errorf("relative_to = %q, want %q", result.path, "log/syslog")
+	if result.path != filepath.FromSlash("log/syslog") {
+		t.Errorf("relative_to = %q, want %q", result.path, filepath.FromSlash("log/syslog"))
 	}
 }
 
@@ -309,13 +310,18 @@ func TestPathExpanduserNoTilde(t *testing.T) {
 // ============================================================================
 
 func TestPathExists(t *testing.T) {
-	p := newTestPath("/etc/passwd")
+	tmp := filepath.Join(t.TempDir(), "test_exists.txt")
+	if err := os.WriteFile(tmp, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := newTestPath(tmp)
 	v, err := callMethod(p, "exists")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v != starlark.True {
-		t.Error("/etc/passwd should exist")
+		t.Error("test file should exist")
 	}
 
 	p = newTestPath("/nonexistent/path/12345")
@@ -329,49 +335,64 @@ func TestPathExists(t *testing.T) {
 }
 
 func TestPathIsFile(t *testing.T) {
-	p := newTestPath("/etc/passwd")
+	tmpDir := t.TempDir()
+	tmpFile := filepath.Join(tmpDir, "test_file.txt")
+	if err := os.WriteFile(tmpFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	p := newTestPath(tmpFile)
 	v, err := callMethod(p, "is_file")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v != starlark.True {
-		t.Error("/etc/passwd should be a file")
+		t.Error("tmpFile should be a file")
 	}
 
-	p = newTestPath("/tmp")
+	p = newTestPath(tmpDir)
 	v, err = callMethod(p, "is_file")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v != starlark.False {
-		t.Error("/tmp should not be a file")
+		t.Error("tmpDir should not be a file")
 	}
 }
 
 func TestPathIsDir(t *testing.T) {
-	p := newTestPath("/tmp")
+	tmpDir := t.TempDir()
+	p := newTestPath(tmpDir)
 	v, err := callMethod(p, "is_dir")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v != starlark.True {
-		t.Error("/tmp should be a directory")
+		t.Error("tmpDir should be a directory")
 	}
 }
 
 func TestPathIsSymlink(t *testing.T) {
-	p := newTestPath("/etc/passwd")
+	tmpFile := filepath.Join(t.TempDir(), "not_symlink.txt")
+	if err := os.WriteFile(tmpFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := newTestPath(tmpFile)
 	v, err := callMethod(p, "is_symlink")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if v.(starlark.Bool) != starlark.False {
-		t.Error("/etc/passwd should not be a symlink")
+		t.Error("regular file should not be a symlink")
 	}
 }
 
 func TestPathStat(t *testing.T) {
-	p := newTestPath("/etc/passwd")
+	tmpFile := filepath.Join(t.TempDir(), "stat_test.txt")
+	if err := os.WriteFile(tmpFile, []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	p := newTestPath(tmpFile)
 	v, err := callMethod(p, "stat")
 	if err != nil {
 		t.Fatal(err)
@@ -388,6 +409,9 @@ func TestPathStat(t *testing.T) {
 }
 
 func TestPathOwner(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fs.path.owner not supported on windows")
+	}
 	p := newTestPath("/etc/passwd")
 	v, err := callMethod(p, "owner")
 	if err != nil {
@@ -403,6 +427,9 @@ func TestPathOwner(t *testing.T) {
 }
 
 func TestPathGroup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fs.path.group not supported on windows")
+	}
 	p := newTestPath("/etc/passwd")
 	v, err := callMethod(p, "group")
 	if err != nil {
@@ -552,6 +579,9 @@ func TestPathRename(t *testing.T) {
 }
 
 func TestPathChmod(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod mode bits not supported on windows")
+	}
 	tmp := filepath.Join(t.TempDir(), "chmod_test.txt")
 	os.WriteFile(tmp, []byte("x"), 0644)
 
@@ -713,8 +743,8 @@ func TestPathSlashOperator(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := v.(*Path)
-	if result.path != "/etc/nginx" {
-		t.Errorf("/ operator = %q, want %q", result.path, "/etc/nginx")
+	if result.path != filepath.FromSlash("/etc/nginx") {
+		t.Errorf("/ operator = %q, want %q", result.path, filepath.FromSlash("/etc/nginx"))
 	}
 
 	// Path / Path
@@ -724,8 +754,8 @@ func TestPathSlashOperator(t *testing.T) {
 		t.Fatal(err)
 	}
 	final := v.(*Path)
-	if final.path != "/etc/nginx/nginx.conf" {
-		t.Errorf("/ operator = %q, want %q", final.path, "/etc/nginx/nginx.conf")
+	if final.path != filepath.FromSlash("/etc/nginx/nginx.conf") {
+		t.Errorf("/ operator = %q, want %q", final.path, filepath.FromSlash("/etc/nginx/nginx.conf"))
 	}
 }
 
@@ -849,6 +879,9 @@ func TestPathParts_Empty(t *testing.T) {
 // ============================================================================
 
 func TestPathOwnerCurrentUser(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("fs.path.owner not supported on windows")
+	}
 	// Write to temp file owned by current user
 	tmp := filepath.Join(t.TempDir(), "owner_test.txt")
 	os.WriteFile(tmp, []byte("x"), 0644)
@@ -876,8 +909,8 @@ func TestPathClean(t *testing.T) {
 		t.Fatal(err)
 	}
 	result := v.(*Path)
-	if result.path != "/var/log/syslog" {
-		t.Errorf("clean = %q, want %q", result.path, "/var/log/syslog")
+	if result.path != filepath.FromSlash("/var/log/syslog") {
+		t.Errorf("clean = %q, want %q", result.path, filepath.FromSlash("/var/log/syslog"))
 	}
 }
 

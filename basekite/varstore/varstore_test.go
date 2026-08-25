@@ -73,7 +73,6 @@ sandbox:
 		t.Errorf("providers.ssh.user = %v", v.ProviderDefaults["ssh"])
 	}
 
-
 	// User keys under config: flatten into variables.
 	if got := v.defaultVars["environment"]; got != "dev" {
 		t.Errorf("environment var = %v", got)
@@ -136,7 +135,7 @@ func TestTryParseJSON_EmptyString(t *testing.T) {
 
 func TestTryParseJSON_Array(t *testing.T) {
 	result := tryParseJSON(`[1, 2, 3]`)
-	slice, ok := result.([]interface{})
+	slice, ok := result.([]any)
 	if !ok {
 		t.Fatalf("expected []interface{}, got %T", result)
 	}
@@ -147,7 +146,7 @@ func TestTryParseJSON_Array(t *testing.T) {
 
 func TestTryParseJSON_Object(t *testing.T) {
 	result := tryParseJSON(`{"app": "web"}`)
-	m, ok := result.(map[string]interface{})
+	m, ok := result.(map[string]any)
 	if !ok {
 		t.Fatalf("expected map[string]interface{}, got %T", result)
 	}
@@ -169,7 +168,7 @@ func TestTryParseJSON_InvalidJSON(t *testing.T) {
 
 func TestTryParseJSON_WithWhitespace(t *testing.T) {
 	result := tryParseJSON(`  [1, 2]  `)
-	slice, ok := result.([]interface{})
+	slice, ok := result.([]any)
 	if !ok {
 		t.Fatalf("expected []interface{}, got %T", result)
 	}
@@ -220,15 +219,15 @@ func TestKeys_Empty(t *testing.T) {
 
 func TestFlattenAndStore_PreservesMap(t *testing.T) {
 	v := New()
-	store := make(map[string]interface{})
-	input := map[string]interface{}{
+	store := make(map[string]any)
+	input := map[string]any{
 		"app": "web",
 		"env": "prod",
 	}
 	v.flattenAndStore("labels", input, store)
 
 	// Check the original map is preserved at the prefix key
-	m, ok := store["labels"].(map[string]interface{})
+	m, ok := store["labels"].(map[string]any)
 	if !ok {
 		t.Fatalf("expected map at 'labels', got %T", store["labels"])
 	}
@@ -247,9 +246,9 @@ func TestFlattenAndStore_PreservesMap(t *testing.T) {
 
 func TestFlattenAndStore_NestedMaps(t *testing.T) {
 	v := New()
-	store := make(map[string]interface{})
-	input := map[string]interface{}{
-		"resources": map[string]interface{}{
+	store := make(map[string]any)
+	input := map[string]any{
+		"resources": map[string]any{
 			"cpu":    "500m",
 			"memory": "256Mi",
 		},
@@ -257,13 +256,13 @@ func TestFlattenAndStore_NestedMaps(t *testing.T) {
 	v.flattenAndStore("config", input, store)
 
 	// Top-level map preserved
-	_, ok := store["config"].(map[string]interface{})
+	_, ok := store["config"].(map[string]any)
 	if !ok {
 		t.Fatal("expected map at 'config'")
 	}
 
 	// Nested map preserved
-	_, ok = store["config.resources"].(map[string]interface{})
+	_, ok = store["config.resources"].(map[string]any)
 	if !ok {
 		t.Fatal("expected map at 'config.resources'")
 	}
@@ -290,7 +289,7 @@ func TestLoadFromCLI_JSONDetection(t *testing.T) {
 	if !ok {
 		t.Fatal("expected 'ports' to exist")
 	}
-	if _, ok := ports.([]interface{}); !ok {
+	if _, ok := ports.([]any); !ok {
 		t.Fatalf("expected []interface{} for ports, got %T", ports)
 	}
 
@@ -299,7 +298,7 @@ func TestLoadFromCLI_JSONDetection(t *testing.T) {
 	if !ok {
 		t.Fatal("expected 'labels' to exist")
 	}
-	if _, ok := labels.(map[string]interface{}); !ok {
+	if _, ok := labels.(map[string]any); !ok {
 		t.Fatalf("expected map[string]interface{} for labels, got %T", labels)
 	}
 

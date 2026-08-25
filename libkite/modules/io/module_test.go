@@ -25,10 +25,10 @@ func TestIOStreams(t *testing.T) {
 	tests := []struct {
 		name       string
 		script     string
-		setup      func() (starlark.Tuple, interface{})
+		setup      func() (starlark.Tuple, any)
 		wantResult string
 		wantErr    string
-		verify     func(t *testing.T, ctx interface{})
+		verify     func(t *testing.T, ctx any)
 	}{
 		{
 			name: "reader read bytes",
@@ -37,7 +37,7 @@ def test(r):
     res = r.read(5)
     return str(res)
 `,
-			setup: func() (starlark.Tuple, interface{}) {
+			setup: func() (starlark.Tuple, any) {
 				r := NewReader(strings.NewReader("hello world"), "test_input")
 				return starlark.Tuple{r}, nil
 			},
@@ -50,7 +50,7 @@ def test(r):
     res = r.bytes()
     return str(res)
 `,
-			setup: func() (starlark.Tuple, interface{}) {
+			setup: func() (starlark.Tuple, any) {
 				r := NewReader(strings.NewReader("hello world"), "test_input")
 				return starlark.Tuple{r}, nil
 			},
@@ -65,7 +65,7 @@ def test(r):
         lines.append(line.strip())
     return ", ".join(lines)
 `,
-			setup: func() (starlark.Tuple, interface{}) {
+			setup: func() (starlark.Tuple, any) {
 				r := NewReader(strings.NewReader("line1\nline2\nline3"), "test_input")
 				return starlark.Tuple{r}, nil
 			},
@@ -81,13 +81,13 @@ def test(w):
     w.close()
     return "ok"
 `,
-			setup: func() (starlark.Tuple, interface{}) {
+			setup: func() (starlark.Tuple, any) {
 				var buf bytes.Buffer
 				w := NewWriter(&buf, "test_output")
 				return starlark.Tuple{w}, &buf
 			},
 			wantResult: "ok",
-			verify: func(t *testing.T, ctx interface{}) {
+			verify: func(t *testing.T, ctx any) {
 				buf := ctx.(*bytes.Buffer)
 				if got := buf.String(); got != "hello world" {
 					t.Errorf("writer output = %q, want %q", got, "hello world")
@@ -102,7 +102,7 @@ def test(w, r):
     w.close()
     return str(n)
 `,
-			setup: func() (starlark.Tuple, interface{}) {
+			setup: func() (starlark.Tuple, any) {
 				var buf bytes.Buffer
 				w := NewWriter(&buf, "test_output")
 				tr := &trackingReader{Reader: strings.NewReader("piped data")}
@@ -110,7 +110,7 @@ def test(w, r):
 				return starlark.Tuple{w, r}, tr
 			},
 			wantResult: "10",
-			verify: func(t *testing.T, ctx interface{}) {
+			verify: func(t *testing.T, ctx any) {
 				tr := ctx.(*trackingReader)
 				if !tr.closed {
 					t.Error("expected source reader to be automatically closed upon piping completion")
@@ -149,7 +149,7 @@ def test(w, r):
 			}
 
 			var args starlark.Tuple
-			var ctx interface{}
+			var ctx any
 			if tc.setup != nil {
 				args, ctx = tc.setup()
 			}

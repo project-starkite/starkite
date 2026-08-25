@@ -78,7 +78,7 @@ func TestLoadedModule_DenialAttributed(t *testing.T) {
 func TestEntryScriptDenial_NoModuleAttribution(t *testing.T) {
 	dir := t.TempDir()
 	entryPath := filepath.Join(dir, "entry.star")
-	entry := "exec(\"echo hi\")\n"
+	entry := "exec(\"hostname\")\n"
 	if err := os.WriteFile(entryPath, []byte(entry), 0o644); err != nil {
 		t.Fatalf("write entry: %v", err)
 	}
@@ -94,7 +94,7 @@ func TestEntryScriptDenial_NoModuleAttribution(t *testing.T) {
 // A loaded module may use any capability the runtime permission grants.
 func TestLoadedModule_AllowedWithinRuntimePermission(t *testing.T) {
 	entryPath, entry := writeModuleAndEntry(t,
-		"def reach():\n    return exec(\"echo hi\").strip()\n",
+		"def reach():\n    return exec(\"hostname\").strip()\n",
 		"load(\"./mod.star\", \"mod\")\nresult = mod.reach()\n",
 	)
 	if err := runEntry(t, libkite.AllowAllPermissions(), entryPath, entry); err != nil {

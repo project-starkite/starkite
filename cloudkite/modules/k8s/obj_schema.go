@@ -1,6 +1,8 @@
 package k8s
 
 import (
+	"maps"
+
 	"go.starlark.net/starlark"
 )
 
@@ -15,12 +17,8 @@ var metadataFields = map[string]*FieldSpec{
 // mergeFields creates a new field map from metadata + spec fields.
 func mergeFields(specFields map[string]*FieldSpec) map[string]*FieldSpec {
 	result := make(map[string]*FieldSpec, len(metadataFields)+len(specFields))
-	for k, v := range metadataFields {
-		result[k] = v
-	}
-	for k, v := range specFields {
-		result[k] = v
-	}
+	maps.Copy(result, metadataFields)
+	maps.Copy(result, specFields)
 	return result
 }
 
@@ -265,9 +263,7 @@ var podTemplateFields = map[string]*FieldSpec{
 // mergeWithPodFields adds podTemplateFields to a spec field map for workload schemas.
 func mergeWithPodFields(specFields map[string]*FieldSpec) map[string]*FieldSpec {
 	result := mergeFields(specFields)
-	for k, v := range podTemplateFields {
-		result[k] = v
-	}
+	maps.Copy(result, podTemplateFields)
 	return result
 }
 

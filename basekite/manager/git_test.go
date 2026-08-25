@@ -83,7 +83,7 @@ func TestGitClone(t *testing.T) {
 			t.Fatalf("git add failed: %v", err)
 		}
 
-		cmd = exec.Command("git", "-C", srcDir, "commit", "-m", "initial")
+		cmd = exec.Command("git", "-C", srcDir, "-c", "commit.gpgsign=false", "commit", "-m", "initial")
 		cmd.Env = append(os.Environ(),
 			"GIT_AUTHOR_NAME=Test",
 			"GIT_AUTHOR_EMAIL=test@test.com",
@@ -154,7 +154,7 @@ func TestGitGetCurrentCommit(t *testing.T) {
 		t.Fatalf("git add failed: %v", err)
 	}
 
-	cmd = exec.Command("git", "-C", tmpDir, "commit", "-m", "initial")
+	cmd = exec.Command("git", "-C", tmpDir, "-c", "commit.gpgsign=false", "commit", "-m", "initial")
 	cmd.Env = append(os.Environ(),
 		"GIT_AUTHOR_NAME=Test",
 		"GIT_AUTHOR_EMAIL=test@test.com",
@@ -202,7 +202,7 @@ func TestGitGetCurrentBranch(t *testing.T) {
 		t.Fatalf("git add failed: %v", err)
 	}
 
-	cmd = exec.Command("git", "-C", tmpDir, "commit", "-m", "initial")
+	cmd = exec.Command("git", "-C", tmpDir, "-c", "commit.gpgsign=false", "commit", "-m", "initial")
 	cmd.Env = append(os.Environ(),
 		"GIT_AUTHOR_NAME=Test",
 		"GIT_AUTHOR_EMAIL=test@test.com",

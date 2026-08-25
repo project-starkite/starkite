@@ -186,18 +186,18 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 // since encoding/json doesn't support the former.
 func convertForJSON(v any) any {
 	switch val := v.(type) {
-	case map[interface{}]interface{}:
-		m := make(map[string]interface{}, len(val))
+	case map[any]any:
+		m := make(map[string]any, len(val))
 		for k, v := range val {
 			m[fmt.Sprintf("%v", k)] = convertForJSON(v)
 		}
 		return m
-	case map[string]interface{}:
+	case map[string]any:
 		for k, v := range val {
 			val[k] = convertForJSON(v)
 		}
 		return val
-	case []interface{}:
+	case []any:
 		for i, v := range val {
 			val[i] = convertForJSON(v)
 		}

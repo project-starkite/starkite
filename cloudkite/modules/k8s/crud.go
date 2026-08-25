@@ -3,6 +3,7 @@ package k8s
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"strings"
 
 	"github.com/vladimirvivien/startype"
@@ -706,7 +707,7 @@ func injectOwnerRef(obj *unstructuredObj, owner starlark.Value) error {
 	case *AttrDict:
 		apiVersion, _ = o.data["apiVersion"].(string)
 		kind, _ = o.data["kind"].(string)
-		if meta, ok := o.data["metadata"].(map[string]interface{}); ok {
+		if meta, ok := o.data["metadata"].(map[string]any); ok {
 			name, _ = meta["name"].(string)
 			uid, _ = meta["uid"].(string)
 		}
@@ -735,7 +736,7 @@ func injectOwnerRef(obj *unstructuredObj, owner starlark.Value) error {
 		return fmt.Errorf("owner missing required fields (apiVersion=%q, kind=%q, name=%q, uid=%q)", apiVersion, kind, name, uid)
 	}
 
-	ref := map[string]interface{}{
+	ref := map[string]any{
 		"apiVersion":         apiVersion,
 		"kind":               kind,
 		"name":               name,
@@ -744,12 +745,12 @@ func injectOwnerRef(obj *unstructuredObj, owner starlark.Value) error {
 		"blockOwnerDeletion": true,
 	}
 
-	metadata, ok := obj.Object["metadata"].(map[string]interface{})
+	metadata, ok := obj.Object["metadata"].(map[string]any)
 	if !ok {
-		metadata = make(map[string]interface{})
+		metadata = make(map[string]any)
 		obj.Object["metadata"] = metadata
 	}
-	refs, _ := metadata["ownerReferences"].([]interface{})
+	refs, _ := metadata["ownerReferences"].([]any)
 	metadata["ownerReferences"] = append(refs, ref)
 	return nil
 }
@@ -793,7 +794,7 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 	switch o := objValue.(type) {
 	case *AttrDict:
 		objKind, _ = o.data["kind"].(string)
-		if meta, ok := o.data["metadata"].(map[string]interface{}); ok {
+		if meta, ok := o.data["metadata"].(map[string]any); ok {
 			objName, _ = meta["name"].(string)
 			objNs, _ = meta["namespace"].(string)
 		}
@@ -850,13 +851,11 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("k8s.status: get %s %q: %w", objKind, objName, err)
 	}
 
-	currentStatus, _ := current.Object["status"].(map[string]interface{})
+	currentStatus, _ := current.Object["status"].(map[string]any)
 	if currentStatus == nil {
-		currentStatus = make(map[string]interface{})
+		currentStatus = make(map[string]any)
 	}
-	for k, v := range statusMap {
-		currentStatus[k] = v
-	}
+	maps.Copy(currentStatus, statusMap)
 	current.Object["status"] = currentStatus
 
 	updated, err := c.dynClient.Resource(gvr).Namespace(objNs).UpdateStatus(ctx, current, metav1.UpdateOptions{})

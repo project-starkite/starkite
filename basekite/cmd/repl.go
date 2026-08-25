@@ -131,8 +131,8 @@ func startRepl(cmd *cobra.Command, args []string) error {
 		}
 
 		// Handle multiline input
-		if strings.HasSuffix(line, "\\") {
-			multilineBuffer.WriteString(strings.TrimSuffix(line, "\\"))
+		if before, ok := strings.CutSuffix(line, "\\"); ok {
+			multilineBuffer.WriteString(before)
 			multilineBuffer.WriteString("\n")
 			inMultiline = true
 			continue

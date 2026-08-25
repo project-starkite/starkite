@@ -676,7 +676,7 @@ func InferNamespaceName(repo string) (namespace, name string) {
 // splitNonEmpty splits s on sep and drops empty fields.
 func splitNonEmpty(s, sep string) []string {
 	var out []string
-	for _, p := range strings.Split(s, sep) {
+	for p := range strings.SplitSeq(s, sep) {
 		if p != "" {
 			out = append(out, p)
 		}
@@ -695,17 +695,21 @@ func fileExists(path string) bool {
 
 // isLocalPath returns true if source looks like a local filesystem path.
 func isLocalPath(source string) bool {
-	if filepath.IsAbs(source) {
+	if filepath.IsAbs(source) || filepath.VolumeName(source) != "" {
+		return true
+	}
+	// Direct slash or backslash prefix
+	if strings.HasPrefix(source, "/") || strings.HasPrefix(source, "\\") {
 		return true
 	}
 	// Relative paths starting with . or ..
 	if source == "." || source == ".." ||
-		strings.HasPrefix(source, "."+string(filepath.Separator)) ||
-		strings.HasPrefix(source, ".."+string(filepath.Separator)) {
+		strings.HasPrefix(source, "./") || strings.HasPrefix(source, "../") ||
+		strings.HasPrefix(source, ".\\") || strings.HasPrefix(source, "..\\") {
 		return true
 	}
 	// Home directory expansion
-	if strings.HasPrefix(source, "~"+string(filepath.Separator)) || source == "~" {
+	if strings.HasPrefix(source, "~/") || strings.HasPrefix(source, "~\\") || source == "~" {
 		return true
 	}
 	return false
@@ -719,9 +723,13 @@ func parseStarlarkManifest(dir string) (*libkite.ModuleManifest, error) {
 
 // expandHome expands a leading ~ to the user's home directory.
 func expandHome(p string) string {
-	if p == "~" || strings.HasPrefix(p, "~"+string(filepath.Separator)) {
+	if p == "~" {
 		if home, err := os.UserHomeDir(); err == nil {
-			return filepath.Join(home, strings.TrimPrefix(p, "~"))
+			return home
+		}
+	} else if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, "~\\") {
+		if home, err := os.UserHomeDir(); err == nil {
+			return filepath.Join(home, p[2:])
 		}
 	}
 	return p

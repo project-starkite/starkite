@@ -87,7 +87,7 @@ func (f *JsonFile) decodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		return nil, fmt.Errorf("json.file.decode: %w", err)
 	}
 
-	var v interface{}
+	var v any
 	if err := json.Unmarshal(data, &v); err != nil {
 		return nil, fmt.Errorf("json.file.decode: %w", err)
 	}

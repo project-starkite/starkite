@@ -5,6 +5,7 @@ package varstore
 import (
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -28,27 +29,25 @@ type Vars struct {
 	mu sync.RWMutex
 
 	// Variables from CLI --var flags (highest priority)
-	cliVars map[string]interface{}
+	cliVars map[string]any
 
 	// Variables from --var-file files
-	fileVars map[string]interface{}
+	fileVars map[string]any
 
 	// Variables from default config files
-	defaultVars map[string]interface{}
+	defaultVars map[string]any
 
 	// Variables from STARKITE_VAR_* environment variables
-	envVars map[string]interface{}
+	envVars map[string]any
 
 	// Provider-specific defaults from config
-	ProviderDefaults map[string]map[string]interface{}
+	ProviderDefaults map[string]map[string]any
 
 	// Project configuration section
-	ProjectConfig map[string]interface{}
+	ProjectConfig map[string]any
 
 	// Runtime defaults
-	RuntimeDefaults map[string]interface{}
-
-
+	RuntimeDefaults map[string]any
 
 	// Permissions profiles defined in config.yaml's `permissions:` map,
 	// keyed by profile name.
@@ -58,13 +57,13 @@ type Vars struct {
 // New creates a new Vars instance.
 func New() *Vars {
 	return &Vars{
-		cliVars:          make(map[string]interface{}),
-		fileVars:         make(map[string]interface{}),
-		defaultVars:      make(map[string]interface{}),
-		envVars:          make(map[string]interface{}),
-		ProviderDefaults: make(map[string]map[string]interface{}),
-		ProjectConfig:    make(map[string]interface{}),
-		RuntimeDefaults:  make(map[string]interface{}),
+		cliVars:          make(map[string]any),
+		fileVars:         make(map[string]any),
+		defaultVars:      make(map[string]any),
+		envVars:          make(map[string]any),
+		ProviderDefaults: make(map[string]map[string]any),
+		ProjectConfig:    make(map[string]any),
+		RuntimeDefaults:  make(map[string]any),
 	}
 }
 
@@ -103,7 +102,7 @@ func (v *Vars) LoadDefaults() error {
 //	permissions:   named permission profiles (selected via --permissions)
 //	sandbox:       named sandbox profiles (consumed by the sandbox loader)
 func (v *Vars) parseConfigFile(data []byte) error {
-	var config map[string]interface{}
+	var config map[string]any
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return err
 	}
@@ -111,7 +110,7 @@ func (v *Vars) parseConfigFile(data []byte) error {
 	for key, value := range config {
 		switch key {
 		case "config":
-			m, ok := value.(map[string]interface{})
+			m, ok := value.(map[string]any)
 			if !ok {
 				return fmt.Errorf("config section must be a map")
 			}
@@ -134,21 +133,21 @@ func (v *Vars) parseConfigFile(data []byte) error {
 
 // parseConfigSection handles the config: section: the runtime keys are parsed
 // specially; every other key flattens into user variables.
-func (v *Vars) parseConfigSection(section map[string]interface{}) {
+func (v *Vars) parseConfigSection(section map[string]any) {
 	for key, value := range section {
 		switch key {
 		case "project":
-			if m, ok := value.(map[string]interface{}); ok {
+			if m, ok := value.(map[string]any); ok {
 				v.ProjectConfig = m
 			}
 		case "defaults":
-			if m, ok := value.(map[string]interface{}); ok {
+			if m, ok := value.(map[string]any); ok {
 				v.RuntimeDefaults = m
 			}
 		case "providers":
-			if m, ok := value.(map[string]interface{}); ok {
+			if m, ok := value.(map[string]any); ok {
 				for pname, pconfig := range m {
-					if pc, ok := pconfig.(map[string]interface{}); ok {
+					if pc, ok := pconfig.(map[string]any); ok {
 						v.ProviderDefaults[pname] = pc
 					}
 				}
@@ -163,7 +162,7 @@ func (v *Vars) parseConfigSection(section map[string]interface{}) {
 
 // decodePermissions converts the raw `permissions:` config section into typed
 // profile specs by round-tripping through YAML.
-func decodePermissions(value interface{}) (map[string]permissions.ProfileSpec, error) {
+func decodePermissions(value any) (map[string]permissions.ProfileSpec, error) {
 	raw, err := yaml.Marshal(value)
 	if err != nil {
 		return nil, err
@@ -178,9 +177,9 @@ func decodePermissions(value interface{}) (map[string]permissions.ProfileSpec, e
 // flattenAndStore flattens nested maps into dot-notation keys.
 // Maps are preserved at the prefix key before recursing into children,
 // so both var_dict("labels") and var("labels.app") work.
-func (v *Vars) flattenAndStore(prefix string, value interface{}, store map[string]interface{}) {
+func (v *Vars) flattenAndStore(prefix string, value any, store map[string]any) {
 	switch val := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		store[prefix] = value // preserve the unflattened map
 		for k, v2 := range val {
 			newKey := prefix + "." + k
@@ -214,7 +213,7 @@ func (v *Vars) LoadFromFile(path string) error {
 		return fmt.Errorf("failed to read var file %s: %w", path, err)
 	}
 
-	var vars map[string]interface{}
+	var vars map[string]any
 	if err := yaml.Unmarshal(data, &vars); err != nil {
 		return fmt.Errorf("failed to parse var file %s: %w", path, err)
 	}
@@ -250,9 +249,9 @@ func (v *Vars) LoadFromEnv() {
 		if len(parts) != 2 {
 			continue
 		}
-		if strings.HasPrefix(parts[0], prefix) {
+		if after, ok := strings.CutPrefix(parts[0], prefix); ok {
 			// STARKITE_VAR_DATABASE_HOST -> database.host
-			key := strings.ToLower(strings.TrimPrefix(parts[0], prefix))
+			key := strings.ToLower(after)
 			key = strings.ReplaceAll(key, "_", ".")
 			v.envVars[key] = parts[1]
 		}
@@ -260,7 +259,7 @@ func (v *Vars) LoadFromEnv() {
 }
 
 // Get retrieves a variable value by key with priority resolution.
-func (v *Vars) Get(key string) (interface{}, bool) {
+func (v *Vars) Get(key string) (any, bool) {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
@@ -282,7 +281,7 @@ func (v *Vars) Get(key string) (interface{}, bool) {
 }
 
 // GetWithDefault retrieves a variable value with a default fallback.
-func (v *Vars) GetWithDefault(key string, defaultValue interface{}) interface{} {
+func (v *Vars) GetWithDefault(key string, defaultValue any) any {
 	if val, ok := v.Get(key); ok {
 		return val
 	}
@@ -298,7 +297,7 @@ func (v *Vars) GetString(key string) string {
 }
 
 // MustGet retrieves a variable value or returns an error if not found.
-func (v *Vars) MustGet(key string) (interface{}, error) {
+func (v *Vars) MustGet(key string) (any, error) {
 	if val, ok := v.Get(key); ok {
 		return val, nil
 	}
@@ -306,32 +305,24 @@ func (v *Vars) MustGet(key string) (interface{}, error) {
 }
 
 // Set sets a variable value at CLI priority (highest).
-func (v *Vars) Set(key string, value interface{}) {
+func (v *Vars) Set(key string, value any) {
 	v.mu.Lock()
 	defer v.mu.Unlock()
 	v.cliVars[key] = value
 }
 
 // All returns all variables merged by priority.
-func (v *Vars) All() map[string]interface{} {
+func (v *Vars) All() map[string]any {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 
 	// Add in reverse priority order (lowest first, so higher priority overwrites)
-	for k, val := range v.envVars {
-		result[k] = val
-	}
-	for k, val := range v.defaultVars {
-		result[k] = val
-	}
-	for k, val := range v.fileVars {
-		result[k] = val
-	}
-	for k, val := range v.cliVars {
-		result[k] = val
-	}
+	maps.Copy(result, v.envVars)
+	maps.Copy(result, v.defaultVars)
+	maps.Copy(result, v.fileVars)
+	maps.Copy(result, v.cliVars)
 
 	return result
 }
@@ -349,13 +340,13 @@ func (v *Vars) Keys() []string {
 
 // tryParseJSON attempts to parse a string as JSON if it starts with [ or {.
 // Returns the parsed value on success, or the original string on failure.
-func tryParseJSON(s string) interface{} {
+func tryParseJSON(s string) any {
 	s = strings.TrimSpace(s)
 	if len(s) == 0 {
 		return s
 	}
 	if s[0] == '[' || s[0] == '{' {
-		var parsed interface{}
+		var parsed any
 		if err := json.Unmarshal([]byte(s), &parsed); err == nil {
 			return parsed
 		}
@@ -364,15 +355,13 @@ func tryParseJSON(s string) interface{} {
 }
 
 // GetProviderDefaults returns defaults for a specific provider.
-func (v *Vars) GetProviderDefaults(provider string) map[string]interface{} {
+func (v *Vars) GetProviderDefaults(provider string) map[string]any {
 	v.mu.RLock()
 	defer v.mu.RUnlock()
 
 	if defaults, ok := v.ProviderDefaults[provider]; ok {
-		result := make(map[string]interface{}, len(defaults))
-		for k, val := range defaults {
-			result[k] = val
-		}
+		result := make(map[string]any, len(defaults))
+		maps.Copy(result, defaults)
 		return result
 	}
 	return nil

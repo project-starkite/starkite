@@ -256,16 +256,16 @@ func (m *Module) varDict(thread *starlark.Thread, fn *starlark.Builtin, args sta
 
 // toStarlarkList converts a Go value to *starlark.List.
 // Handles: []interface{} (from YAML/JSON), string (attempt JSON parse).
-func toStarlarkList(value interface{}, name string) (starlark.Value, error) {
+func toStarlarkList(value any, name string) (starlark.Value, error) {
 	switch v := value.(type) {
-	case []interface{}:
+	case []any:
 		return goSliceToStarlarkList(v)
 	case string:
-		var parsed interface{}
+		var parsed any
 		if err := json.Unmarshal([]byte(v), &parsed); err != nil {
 			return nil, fmt.Errorf("var_list: cannot parse %q as list for variable %q", v, name)
 		}
-		slice, ok := parsed.([]interface{})
+		slice, ok := parsed.([]any)
 		if !ok {
 			return nil, fmt.Errorf("var_list: value for %q is not a list", name)
 		}
@@ -277,16 +277,16 @@ func toStarlarkList(value interface{}, name string) (starlark.Value, error) {
 
 // toStarlarkDict converts a Go value to *starlark.Dict.
 // Handles: map[string]interface{} (from YAML/JSON), string (attempt JSON parse).
-func toStarlarkDict(value interface{}, name string) (starlark.Value, error) {
+func toStarlarkDict(value any, name string) (starlark.Value, error) {
 	switch v := value.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		return goMapToStarlarkDict(v)
 	case string:
-		var parsed interface{}
+		var parsed any
 		if err := json.Unmarshal([]byte(v), &parsed); err != nil {
 			return nil, fmt.Errorf("var_dict: cannot parse %q as dict for variable %q", v, name)
 		}
-		m, ok := parsed.(map[string]interface{})
+		m, ok := parsed.(map[string]any)
 		if !ok {
 			return nil, fmt.Errorf("var_dict: value for %q is not a dict", name)
 		}
@@ -297,7 +297,7 @@ func toStarlarkDict(value interface{}, name string) (starlark.Value, error) {
 }
 
 // goSliceToStarlarkList converts []interface{} to *starlark.List using startype.
-func goSliceToStarlarkList(slice []interface{}) (*starlark.List, error) {
+func goSliceToStarlarkList(slice []any) (*starlark.List, error) {
 	elems := make([]starlark.Value, 0, len(slice))
 	for _, item := range slice {
 		sv, err := startype.Go(item).ToStarlarkValue()
@@ -310,7 +310,7 @@ func goSliceToStarlarkList(slice []interface{}) (*starlark.List, error) {
 }
 
 // goMapToStarlarkDict converts map[string]interface{} to *starlark.Dict using startype.
-func goMapToStarlarkDict(m map[string]interface{}) (*starlark.Dict, error) {
+func goMapToStarlarkDict(m map[string]any) (*starlark.Dict, error) {
 	dict := starlark.NewDict(len(m))
 	for k, v := range m {
 		sv, err := startype.Go(v).ToStarlarkValue()

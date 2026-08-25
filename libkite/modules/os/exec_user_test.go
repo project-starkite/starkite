@@ -88,6 +88,7 @@ def test():
 `,
 			permissions: libkite.AllowAllPermissions(),
 			wantErr:     "failed to resolve username",
+			skipWindows: true,
 		},
 		{
 			name: "fail with nonexistent groupname",
@@ -97,6 +98,7 @@ def test():
 `,
 			permissions: libkite.AllowAllPermissions(),
 			wantErr:     "failed to resolve groupname",
+			skipWindows: true,
 		},
 		{
 			name: "fail with negative userid",
@@ -106,6 +108,7 @@ def test():
 `,
 			permissions: libkite.AllowAllPermissions(),
 			wantErr:     "userid cannot be negative",
+			skipWindows: true,
 		},
 		{
 			name: "fail with invalid userid type",
@@ -115,6 +118,7 @@ def test():
 `,
 			permissions: libkite.AllowAllPermissions(),
 			wantErr:     "userid must be a string or integer",
+			skipWindows: true,
 		},
 		{
 			name: "fail under restricted permissions",

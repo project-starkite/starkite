@@ -397,8 +397,8 @@ func shortenRepoURL(url string) string {
 	url = strings.TrimSuffix(url, ".git")
 
 	// Convert git@ format
-	if strings.HasPrefix(url, "git@") {
-		url = strings.TrimPrefix(url, "git@")
+	if after, ok := strings.CutPrefix(url, "git@"); ok {
+		url = after
 		url = strings.Replace(url, ":", "/", 1)
 	}
 

@@ -34,7 +34,7 @@ import (
 // Also supports dict-style mutation (obj["metadata"]["labels"]["key"] = "value").
 // A shared RWMutex protects the entire object tree for concurrency safety.
 type AttrDict struct {
-	data map[string]interface{}
+	data map[string]any
 	mu   *sync.RWMutex
 }
 
@@ -105,7 +105,7 @@ func (d *AttrDict) SetKey(k, v starlark.Value) error {
 	if !ok {
 		return fmt.Errorf("AttrDict key must be string, got %s", k.Type())
 	}
-	var goVal interface{}
+	var goVal any
 	if err := startype.Starlark(v).Go(&goVal); err != nil {
 		return fmt.Errorf("AttrDict SetKey: %w", err)
 	}
@@ -117,14 +117,14 @@ func (d *AttrDict) SetKey(k, v starlark.Value) error {
 
 // goToStarlarkValue converts a Go value to a Starlark value.
 // Maps are wrapped as AttrDict (sharing the root mutex). Scalars use startype.
-func goToStarlarkValue(val interface{}, mu *sync.RWMutex) starlark.Value {
+func goToStarlarkValue(val any, mu *sync.RWMutex) starlark.Value {
 	if val == nil {
 		return starlark.None
 	}
 	switch v := val.(type) {
-	case map[string]interface{}:
+	case map[string]any:
 		return &AttrDict{data: v, mu: mu}
-	case []interface{}:
+	case []any:
 		elems := make([]starlark.Value, len(v))
 		for i, item := range v {
 			elems[i] = goToStarlarkValue(item, mu)
@@ -324,29 +324,23 @@ func (c *controller) run() (starlark.Value, error) {
 
 	// Start watch goroutine with reconnect
 	var wg sync.WaitGroup
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		c.watchLoop()
-	}()
+	})
 
 	// Start resync goroutine if configured
 	if c.resync > 0 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			c.resyncLoop()
-		}()
+		})
 	}
 
 	// Start owned resource watch goroutines
 	for _, ownedKind := range c.watchOwned {
 		kind := ownedKind
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			c.watchOwnedLoop(kind)
-		}()
+		})
 	}
 
 	// Start worker goroutines (leader-only if leader election enabled)
@@ -367,11 +361,9 @@ func (c *controller) run() (starlark.Value, error) {
 // startWorkers launches worker goroutines that process the queue.
 func (c *controller) startWorkers(wg *sync.WaitGroup) {
 	for i := 0; i < c.workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			c.workerLoop()
-		}()
+		})
 	}
 }
 
@@ -401,9 +393,7 @@ func (c *controller) runWithLeaderElection(wg *sync.WaitGroup) {
 		},
 	}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		leaderelection.RunOrDie(c.ctx, leaderelection.LeaderElectionConfig{
 			Lock:            lock,
 			LeaseDuration:   15 * time.Second,
@@ -426,7 +416,7 @@ func (c *controller) runWithLeaderElection(wg *sync.WaitGroup) {
 				},
 			},
 		})
-	}()
+	})
 }
 
 // ============================================================================
@@ -456,10 +446,7 @@ func (c *controller) watchLoop() {
 			return
 		case <-time.After(backoff):
 		}
-		backoff = backoff * 2
-		if backoff > maxBackoff {
-			backoff = maxBackoff
-		}
+		backoff = min(backoff*2, maxBackoff)
 	}
 }
 
@@ -611,10 +598,7 @@ func (c *controller) watchOwnedLoop(ownedKind string) {
 			return
 		case <-time.After(backoff):
 		}
-		backoff = backoff * 2
-		if backoff > maxBackoff {
-			backoff = maxBackoff
-		}
+		backoff = min(backoff*2, maxBackoff)
 	}
 }
 

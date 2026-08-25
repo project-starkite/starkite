@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -285,8 +287,8 @@ func (rt *Runtime) runGoCleanups() {
 	fns := rt.goCleanups
 	rt.goCleanups = nil
 	rt.cleanupMu.Unlock()
-	for i := len(fns) - 1; i >= 0; i-- {
-		fns[i]()
+	for _, fn := range slices.Backward(fns) {
+		fn()
 	}
 }
 
@@ -405,8 +407,7 @@ func topLevelDefinesFunc(file *syntax.File, name string) bool {
 
 // unwrapExit walks the error chain for *exitError and returns its code.
 func unwrapExit(err error) (int, bool) {
-	var ee *exitError
-	if errors.As(err, &ee) {
+	if ee, ok := errors.AsType[*exitError](err); ok {
 		return ee.code, true
 	}
 	return 0, false
@@ -500,9 +501,7 @@ func (rt *Runtime) Eval(ctx context.Context, src string) (starlark.Value, error)
 	}
 	rt.mu.RLock()
 	env := make(starlark.StringDict, len(rt.predecl))
-	for k, v := range rt.predecl {
-		env[k] = v
-	}
+	maps.Copy(env, rt.predecl)
 	rt.mu.RUnlock()
 	thread := rt.NewThread("eval")
 	stop := watchCtx(ctx, thread)
@@ -747,7 +746,7 @@ func (rt *Runtime) PrintVariables() {
 
 	// Use the All() method if available
 	type allProvider interface {
-		All() map[string]interface{}
+		All() map[string]any
 	}
 
 	if ap, ok := rt.config.VarStore.(allProvider); ok {
@@ -780,6 +779,6 @@ func (rt *Runtime) Cleanup() {
 }
 
 // toStarlarkValue converts a Go value to a Starlark value.
-func toStarlarkValue(v interface{}) (starlark.Value, error) {
+func toStarlarkValue(v any) (starlark.Value, error) {
 	return startype.Go[any](v).ToStarlarkValue()
 }

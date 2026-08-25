@@ -91,7 +91,7 @@ func (f *YamlFile) decodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		return nil, fmt.Errorf("yaml.file.decode: %w", err)
 	}
 
-	var v interface{}
+	var v any
 	if err := goyaml.Unmarshal(data, &v); err != nil {
 		return nil, fmt.Errorf("yaml.file.decode: %w", err)
 	}
@@ -126,7 +126,7 @@ func (f *YamlFile) decodeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args
 	decoder := goyaml.NewDecoder(bytes.NewReader(data))
 	var results []starlark.Value
 	for {
-		var v interface{}
+		var v any
 		if err := decoder.Decode(&v); err != nil {
 			if err == io.EOF {
 				break

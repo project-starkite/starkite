@@ -1,6 +1,7 @@
 package k8s
 
 import (
+	"slices"
 	"testing"
 
 	"go.starlark.net/starlark"
@@ -216,13 +217,7 @@ func TestKubeResource_AttrNames(t *testing.T) {
 	}
 
 	// Should include to_dict
-	found := false
-	for _, n := range names {
-		if n == "to_dict" {
-			found = true
-			break
-		}
-	}
+	found := slices.Contains(names, "to_dict")
 	if !found {
 		t.Error("AttrNames() missing 'to_dict'")
 	}

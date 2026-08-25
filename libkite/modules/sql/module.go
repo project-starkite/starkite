@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -133,12 +134,7 @@ func (m *Module) open(thread *starlark.Thread, fn *starlark.Builtin, args starla
 
 // driverRegistered reports whether the named database/sql driver is built in.
 func driverRegistered(name string) bool {
-	for _, d := range sql.Drivers() {
-		if d == name {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(sql.Drivers(), name)
 }
 
 // isMemoryDSN reports whether a sqlite DSN names an in-memory database.

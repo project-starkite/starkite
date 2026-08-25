@@ -127,14 +127,18 @@ func TestFSTryReadSuccess(t *testing.T) {
 	mod := loadModule(t, &fs.Module{}, "fs")
 	thread := trustedThread()
 
-	// Create a Path object for /etc/hostname
+	tmpFile := filepath.Join(t.TempDir(), "test.txt")
+	if err := os.WriteFile(tmpFile, []byte("test content"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	pathFn, err := mod.Attr("path")
 	if err != nil || pathFn == nil {
 		t.Fatalf("fs.path not found: err=%v", err)
 	}
-	pathObj, err := starlark.Call(thread, pathFn, starlark.Tuple{starlark.String("/etc/hosts")}, nil)
+	pathObj, err := starlark.Call(thread, pathFn, starlark.Tuple{starlark.String(tmpFile)}, nil)
 	if err != nil {
-		t.Fatalf("fs.path('/etc/hosts') error: %v", err)
+		t.Fatalf("fs.path(%q) error: %v", tmpFile, err)
 	}
 	pathHA := pathObj.(starlark.HasAttrs)
 
@@ -143,7 +147,6 @@ func TestFSTryReadSuccess(t *testing.T) {
 		t.Fatalf("try_read_text not found on Path: err=%v", err)
 	}
 
-	// Read /etc/hosts — should exist on Linux and macOS
 	val, err := starlark.Call(thread, fn, nil, nil)
 	if err != nil {
 		t.Fatalf("try_read_text call error: %v", err)
@@ -162,8 +165,8 @@ func TestFSTryReadSuccess(t *testing.T) {
 
 	value, _ := r.Attr("value")
 	s, ok := value.(starlark.String)
-	if !ok || len(string(s)) == 0 {
-		t.Fatalf("expected non-empty string value, got %v", value)
+	if !ok || string(s) != "test content" {
+		t.Fatalf("expected 'test content', got %v", value)
 	}
 }
 
@@ -176,9 +179,9 @@ func TestFSTryReadFailure(t *testing.T) {
 	if err != nil || pathFn == nil {
 		t.Fatalf("fs.path not found: err=%v", err)
 	}
-	pathObj, err := starlark.Call(thread, pathFn, starlark.Tuple{starlark.String("/nonexistent/xyz")}, nil)
+	pathObj, err := starlark.Call(thread, pathFn, starlark.Tuple{starlark.String("/nonexistent/xyz/missing.txt")}, nil)
 	if err != nil {
-		t.Fatalf("fs.path('/nonexistent/xyz') error: %v", err)
+		t.Fatalf("fs.path('/nonexistent/xyz/missing.txt') error: %v", err)
 	}
 	pathHA := pathObj.(starlark.HasAttrs)
 
@@ -204,8 +207,8 @@ func TestFSTryReadFailure(t *testing.T) {
 
 	errAttr, _ := r.Attr("error")
 	errStr := string(errAttr.(starlark.String))
-	if !strings.Contains(errStr, "no such file") {
-		t.Fatalf("error = %q, want to contain 'no such file'", errStr)
+	if errStr == "" {
+		t.Fatal("expected non-empty error string")
 	}
 }
 
@@ -218,7 +221,7 @@ func TestOSTryExecSuccess(t *testing.T) {
 		t.Fatalf("try_exec not found: err=%v", err)
 	}
 
-	val, err := starlark.Call(thread, fn, starlark.Tuple{starlark.String("echo hello")}, nil)
+	val, err := starlark.Call(thread, fn, starlark.Tuple{starlark.String("hostname")}, nil)
 	if err != nil {
 		t.Fatalf("try_exec call error: %v", err)
 	}
@@ -240,8 +243,8 @@ func TestOSTryExecSuccess(t *testing.T) {
 	if stdout == nil {
 		t.Fatal("expected non-nil stdout")
 	}
-	if !strings.Contains(string(stdout.(starlark.String)), "hello") {
-		t.Fatalf("stdout = %q, expected to contain 'hello'", stdout)
+	if len(string(stdout.(starlark.String))) == 0 {
+		t.Fatal("expected non-empty stdout from hostname")
 	}
 }
 

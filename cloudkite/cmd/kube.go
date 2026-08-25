@@ -263,7 +263,7 @@ func runGenWebhookArtifacts(cmd *cobra.Command, args []string) error {
 	}
 
 	// Parse rules into JSON
-	var parsedRules []map[string]interface{}
+	var parsedRules []map[string]any
 	for _, rule := range whRules {
 		parsed, err := parseRule(rule)
 		if err != nil {
@@ -331,10 +331,10 @@ func runGenWebhookArtifacts(cmd *cobra.Command, args []string) error {
 }
 
 // parseRule parses "group=apps version=v1 resource=deployments operations=CREATE,UPDATE"
-func parseRule(rule string) (map[string]interface{}, error) {
-	result := map[string]interface{}{}
-	parts := strings.Fields(rule)
-	for _, part := range parts {
+func parseRule(rule string) (map[string]any, error) {
+	result := map[string]any{}
+	parts := strings.FieldsSeq(rule)
+	for part := range parts {
 		kv := strings.SplitN(part, "=", 2)
 		if len(kv) != 2 {
 			return nil, fmt.Errorf("expected key=value, got %q", part)

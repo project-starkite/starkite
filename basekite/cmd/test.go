@@ -161,15 +161,13 @@ func runTestFilesParallel(testFiles []string, workers int, perms *libkite.Permis
 
 	// Start workers
 	var wg sync.WaitGroup
-	for i := 0; i < workers; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+	for range workers {
+		wg.Go(func() {
 			for testFile := range work {
 				fileResults := runTestFile(testFile, perms)
 				resultsChan <- fileResults
 			}
-		}()
+		})
 	}
 
 	// Wait for all workers to finish

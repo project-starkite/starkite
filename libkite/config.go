@@ -17,7 +17,7 @@ type Config struct {
 	Modules []string
 
 	// Globals are variables injected into every script.
-	Globals map[string]interface{}
+	Globals map[string]any
 
 	// Print overrides the default print function.
 	// If nil, output goes to stdout.
@@ -103,7 +103,7 @@ func WithModules(modules ...string) ConfigOption {
 }
 
 // WithGlobals sets global variables.
-func WithGlobals(globals map[string]interface{}) ConfigOption {
+func WithGlobals(globals map[string]any) ConfigOption {
 	return func(c *Config) {
 		c.Globals = globals
 	}

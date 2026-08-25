@@ -33,12 +33,12 @@ var knownProviders = map[string]struct{}{
 // (provider, model, error). Returns an error if the string has no "/" or the
 // provider prefix is not recognized.
 func parseModelString(s string) (provider, model string, err error) {
-	slash := strings.Index(s, "/")
-	if slash == -1 {
+	before, after, ok := strings.Cut(s, "/")
+	if !ok {
 		return "", "", fmt.Errorf("model must be of the form 'provider/name' (e.g. 'openai/gpt-4o-mini'), got %q", s)
 	}
-	provider = s[:slash]
-	model = s[slash+1:]
+	provider = before
+	model = after
 	if provider == "" || model == "" {
 		return "", "", fmt.Errorf("model identifier has empty provider or name: %q", s)
 	}

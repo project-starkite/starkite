@@ -18,9 +18,9 @@ import (
 
 // Response is a Starlark value representing an HTTP response.
 type Response struct {
-	statusCode  int
-	status      string
-	headers     *starlark.Dict
+	statusCode int
+	status     string
+	headers    *starlark.Dict
 
 	// Streaming support
 	rawResp      *http.Response

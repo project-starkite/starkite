@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 
@@ -214,15 +215,15 @@ func ParseRule(pattern string) (*Rule, error) {
 // bare identifiers separated by commas. Returns (nil, inner) when the contents
 // don't contain a valid function-list prefix.
 func splitFuncsAndResource(inner string) ([]string, string) {
-	colon := strings.Index(inner, ":")
-	if colon < 0 {
+	before, after, ok := strings.Cut(inner, ":")
+	if !ok {
 		return nil, inner
 	}
-	prefix := inner[:colon]
+	prefix := before
 	if !isFuncList(prefix) {
 		return nil, inner
 	}
-	return strings.Split(prefix, ","), inner[colon+1:]
+	return strings.Split(prefix, ","), after
 }
 
 // isFuncList reports whether s matches `ident(,ident)*` with non-empty idents.
@@ -230,7 +231,7 @@ func isFuncList(s string) bool {
 	if s == "" {
 		return false
 	}
-	for _, name := range strings.Split(s, ",") {
+	for name := range strings.SplitSeq(s, ",") {
 		if !isIdent(name) {
 			return false
 		}
@@ -268,38 +269,33 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 	}
 
 	if r.Functions != nil {
-		found := false
-		for _, fn := range r.Functions {
-			if fn == function {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(r.Functions, function)
 		if !found {
 			return false
 		}
 	}
 
 	if r.Resource != "" && resource != "" {
-		pattern := r.Resource
+		pattern := filepath.ToSlash(r.Resource)
+		res := filepath.ToSlash(resource)
 		// Bare "*" or "**" matches any non-empty resource (filepath.Match
 		// treats "*" as not crossing path separators, which surprises users).
 		if pattern == "*" || pattern == "**" {
 			return true
 		}
-		matched, err := filepath.Match(pattern, resource)
+		matched, err := filepath.Match(pattern, res)
 		if err != nil {
 			// Try as a prefix match for directory patterns
-			if strings.HasSuffix(pattern, "**") {
-				prefix := strings.TrimSuffix(pattern, "**")
-				return strings.HasPrefix(resource, prefix)
+			if before, ok := strings.CutSuffix(pattern, "**"); ok {
+				prefix := before
+				return strings.HasPrefix(res, prefix)
 			}
 			return false
 		}
 
 		// Also handle ** patterns (match any depth)
 		if !matched && strings.Contains(pattern, "**") {
-			matched = matchDoublestar(pattern, resource)
+			matched = matchDoublestar(pattern, res)
 		}
 
 		if !matched {
@@ -315,16 +311,18 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 // fails closed rather than matching the empty path).
 func expandPathVariables(pattern, cwd, home string) string {
 	if cwd != "" {
-		pattern = strings.ReplaceAll(pattern, "$CWD", cwd)
+		pattern = strings.ReplaceAll(pattern, "$CWD", filepath.ToSlash(cwd))
 	}
 	if home != "" {
-		pattern = strings.ReplaceAll(pattern, "$HOME", home)
+		pattern = strings.ReplaceAll(pattern, "$HOME", filepath.ToSlash(home))
 	}
 	return pattern
 }
 
 // matchDoublestar handles ** glob patterns that match any directory depth.
 func matchDoublestar(pattern, path string) bool {
+	pattern = filepath.ToSlash(pattern)
+	path = filepath.ToSlash(path)
 	// Simple implementation: ** matches any number of path segments
 	parts := strings.Split(pattern, "**")
 	if len(parts) != 2 {
@@ -378,8 +376,8 @@ func Check(thread *starlark.Thread, module, category, function, resource string)
 func attributeModule(thread *starlark.Thread) string {
 	if stack := thread.CallStack(); len(stack) > 0 {
 		entryFile := stack[0].Pos.Filename()
-		for i := len(stack) - 1; i >= 0; i-- {
-			f := stack[i].Pos.Filename()
+		for _, s := range slices.Backward(stack) {
+			f := s.Pos.Filename()
 			// Skip non-file frames (builtins are "<builtin>") and the entry script.
 			if !strings.HasSuffix(f, ".star") || f == entryFile {
 				continue

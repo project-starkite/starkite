@@ -9,15 +9,15 @@ import (
 
 // mockVarStore implements libkite.VarStore for testing.
 type mockVarStore struct {
-	data map[string]interface{}
+	data map[string]any
 }
 
-func (m *mockVarStore) Get(key string) (interface{}, bool) {
+func (m *mockVarStore) Get(key string) (any, bool) {
 	v, ok := m.data[key]
 	return v, ok
 }
 
-func (m *mockVarStore) GetWithDefault(key string, def interface{}) interface{} {
+func (m *mockVarStore) GetWithDefault(key string, def any) any {
 	if v, ok := m.data[key]; ok {
 		return v
 	}
@@ -43,7 +43,7 @@ func (m *mockVarStore) Keys() []string {
 }
 
 func TestToStarlarkList_Slice(t *testing.T) {
-	val, err := toStarlarkList([]interface{}{1.0, 2.0, 3.0}, "ports")
+	val, err := toStarlarkList([]any{1.0, 2.0, 3.0}, "ports")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestToStarlarkList_UnsupportedType(t *testing.T) {
 }
 
 func TestToStarlarkDict_Map(t *testing.T) {
-	val, err := toStarlarkDict(map[string]interface{}{"app": "web", "env": "prod"}, "labels")
+	val, err := toStarlarkDict(map[string]any{"app": "web", "env": "prod"}, "labels")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,8 +148,8 @@ func TestToStarlarkDict_UnsupportedType(t *testing.T) {
 }
 
 func TestToStarlarkDict_Nested(t *testing.T) {
-	val, err := toStarlarkDict(map[string]interface{}{
-		"resources": map[string]interface{}{
+	val, err := toStarlarkDict(map[string]any{
+		"resources": map[string]any{
 			"cpu":    "500m",
 			"memory": "256Mi",
 		},
@@ -172,7 +172,7 @@ func TestToStarlarkDict_Nested(t *testing.T) {
 }
 
 func TestGoSliceToStarlarkList_StringElements(t *testing.T) {
-	list, err := goSliceToStarlarkList([]interface{}{"web", "prod", "v2"})
+	list, err := goSliceToStarlarkList([]any{"web", "prod", "v2"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestGoSliceToStarlarkList_StringElements(t *testing.T) {
 }
 
 func TestGoSliceToStarlarkList_Empty(t *testing.T) {
-	list, err := goSliceToStarlarkList([]interface{}{})
+	list, err := goSliceToStarlarkList([]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +195,7 @@ func TestGoSliceToStarlarkList_Empty(t *testing.T) {
 }
 
 func TestGoMapToStarlarkDict_Empty(t *testing.T) {
-	dict, err := goMapToStarlarkDict(map[string]interface{}{})
+	dict, err := goMapToStarlarkDict(map[string]any{})
 	if err != nil {
 		t.Fatal(err)
 	}
