@@ -23,13 +23,13 @@ Starkite is distributed as a single, self-contained binary (`kite`) that bundles
     To install to the default location (`/usr/local/bin/kite`):
 
     ```bash
-    curl -fsSL https://starkite.run/install.sh | sh
+    curl -fsSL https://install.starkite.run | sh
     ```
 
     To install to a custom directory (e.g. `~/.local/bin`) without requiring root/sudo privileges:
 
     ```bash
-    curl -fsSL https://starkite.run/install.sh | PREFIX=~/.local/bin sh
+    curl -fsSL https://install.starkite.run | PREFIX=~/.local/bin sh
     ```
 
 === "Windows"

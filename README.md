@@ -35,9 +35,41 @@ Use `kite` unless binary size or attack surface is a real constraint — init co
 
 ## Installation
 
-Download pre-built binaries from [GitHub Releases](https://github.com/project-starkite/starkite/releases). Release assets follow the `<binary>-<os>-<arch>` pattern: `kite-linux-amd64`, `kitecmd-darwin-arm64`, `kitecloud-windows-amd64.exe`, etc.
+Install the all-in-one `kite` binary using your preferred method:
 
-Or build from source — the repository is a Go workspace with one module per edition:
+### Package Managers
+
+* **macOS / Linux (Homebrew)**:
+  ```bash
+  brew install project-starkite/tap/kite
+  ```
+
+* **Linux / macOS (POSIX Installer Script)**:
+  ```bash
+  curl -fsSL https://install.starkite.run | sh
+  ```
+
+* **Windows (Scoop)**:
+  ```powershell
+  scoop bucket add starkite https://github.com/project-starkite/scoop-bucket
+  scoop install kite
+  ```
+
+### Direct Download
+
+Pre-built binaries for Linux, macOS, and Windows are available on [GitHub Releases](https://github.com/project-starkite/starkite/releases) (`kite-linux-amd64`, `kite-darwin-arm64`, `kite-windows-amd64.exe`, etc.).
+
+### Container Image
+
+Run `kite` directly via the signed Chainguard-based OCI image:
+
+```bash
+docker run --rm ghcr.io/project-starkite/starkite:latest exec 'print(hostname())'
+```
+
+### Build from Source
+
+The repository is configured as a Go workspace:
 
 ```bash
 git clone https://github.com/project-starkite/starkite.git
@@ -51,21 +83,7 @@ make build-ai           # ./bin/kiteai     (base + LLM/MCP)
 make all                # all four at once
 ```
 
-Move the binary onto your `PATH`:
-
-```bash
-sudo install -m 0755 ./bin/kite /usr/local/bin/kite
-```
-
-Or run it as a container — the all-in-one `kite` is published as a signed
-distroless image:
-
-```bash
-docker run --rm ghcr.io/project-starkite/starkite:latest exec 'print(hostname())'
-```
-
-See [Container install](docs/getting-started/install/container.md) for
-multi-arch details, signature verification, and Kubernetes usage.
+See the [Installation Guide](docs/getting-started/install.md) for full configuration, signature verification, and container workflows.
 
 ## Quick Start
 
