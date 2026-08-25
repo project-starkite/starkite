@@ -71,6 +71,20 @@ jobs:
         run: go test -race ./...
         working-directory: sandbox/gvisor
 
+      - name: Validate install.sh (Syntax & Dry-Run)
+        run: |
+          sh -n scripts/install.sh
+          INSTALL_DRY_RUN=1 ./scripts/install.sh
+
+      - name: Validate install.ps1 (Syntax & Dry-Run)
+        run: |
+          pwsh -NoProfile -Command "
+            \$errors = \$null
+            [System.Management.Automation.Language.Parser]::ParseFile('scripts/install.ps1', [ref]\$null, [ref]\$errors)
+            if (\$errors) { \$errors | ForEach-Object { Write-Error \$_ }; exit 1 }
+          "
+          pwsh -NoProfile -Command "\$env:INSTALL_DRY_RUN = '1'; ./scripts/install.ps1"
+
   sandbox-integration:
     # Drives the .star sandbox tests under tests/sandbox/ end-to-end:
     # builds kite, configures the kernel for unprivileged user namespaces,

@@ -34,7 +34,13 @@ Starkite is distributed as a single, self-contained binary (`kite`) that bundles
 
 === "Windows"
 
-    Install starkite on Windows using the Scoop package manager:
+    Install using the PowerShell installer script:
+
+    ```powershell
+    irm https://install.starkite.run/install.ps1 | iex
+    ```
+
+    Or install using the Scoop package manager:
 
     ```powershell
     scoop bucket add starkite https://github.com/project-starkite/scoop-bucket

@@ -49,6 +49,11 @@ Install the all-in-one `kite` binary using your preferred method:
   curl -fsSL https://install.starkite.run | sh
   ```
 
+* **Windows (PowerShell Installer Script)**:
+  ```powershell
+  irm https://install.starkite.run/install.ps1 | iex
+  ```
+
 * **Windows (Scoop)**:
   ```powershell
   scoop bucket add starkite https://github.com/project-starkite/scoop-bucket
