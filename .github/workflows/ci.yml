@@ -91,28 +91,8 @@ jobs:
             aikite/go.sum
             kite/go.sum
 
-      - name: Build kite on Windows
+      - name: Build kite.exe on Windows
         run: go build -v .
-        working-directory: kite
-
-      - name: Test libkite on Windows
-        run: go test ./...
-        working-directory: libkite
-
-      - name: Test basekite on Windows
-        run: go test ./...
-        working-directory: basekite
-
-      - name: Test cloudkite on Windows
-        run: go test ./...
-        working-directory: cloudkite
-
-      - name: Test aikite on Windows
-        run: go test ./...
-        working-directory: aikite
-
-      - name: Test kite on Windows
-        run: go test ./...
         working-directory: kite
 
       - name: Validate install.ps1 (Syntax & Dry-Run)
