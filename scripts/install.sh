@@ -2,11 +2,11 @@
 # starkite installer script
 # Safe, POSIX-compliant, and dry-run capable.
 # Usage:
-#   curl -fsSL https://install.starkite.run | sh
+#   curl -fsSL https://install.starkite.run/install.sh | sh
 #   With options:
-#   curl -fsSL https://install.starkite.run | PREFIX=/usr/bin sh
+#   curl -fsSL https://install.starkite.run/install.sh | PREFIX=/usr/bin sh
 #   Dry-run mode:
-#   curl -fsSL https://install.starkite.run | INSTALL_DRY_RUN=1 sh
+#   curl -fsSL https://install.starkite.run/install.sh | INSTALL_DRY_RUN=1 sh
 
 set -eu
 
