@@ -107,7 +107,7 @@ func TestDownloadAndReplace(t *testing.T) {
 	})
 	mux.HandleFunc("/checksums.txt", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(fmt.Sprintf("%s  %s\n", binaryHash, binaryName)))
+		w.Write(fmt.Appendf(nil, "%s  %s\n", binaryHash, binaryName))
 	})
 	server := httptest.NewServer(mux)
 	defer server.Close()

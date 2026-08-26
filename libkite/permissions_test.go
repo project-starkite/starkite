@@ -427,11 +427,12 @@ func joinComma(parts []string) string {
 	if len(parts) == 0 {
 		return ""
 	}
-	out := parts[0]
+	var out strings.Builder
+	out.WriteString(parts[0])
 	for _, p := range parts[1:] {
-		out += "," + p
+		out.WriteString("," + p)
 	}
-	return out
+	return out.String()
 }
 
 // TestPermissionChecker_Concurrent verifies the RWMutex-guarded Check is

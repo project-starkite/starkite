@@ -3,6 +3,7 @@ package resolver
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/project-starkite/starkite/basekite/manager"
@@ -16,14 +17,15 @@ func writeModuleSource(t *testing.T, dir, namespace, name string, deps map[strin
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatalf("mkdir %s: %v", dir, err)
 	}
-	manifest := "namespace: " + namespace + "\nname: " + name + "\nversion: 0.1.0\n"
+	var manifest strings.Builder
+	manifest.WriteString("namespace: " + namespace + "\nname: " + name + "\nversion: 0.1.0\n")
 	if len(deps) > 0 {
-		manifest += "dependencies:\n"
+		manifest.WriteString("dependencies:\n")
 		for id, src := range deps {
-			manifest += "  " + id + ": " + src + "\n"
+			manifest.WriteString("  " + id + ": " + src + "\n")
 		}
 	}
-	if err := os.WriteFile(filepath.Join(dir, "mod.yaml"), []byte(manifest), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, "mod.yaml"), []byte(manifest.String()), 0o644); err != nil {
 		t.Fatalf("write mod.yaml: %v", err)
 	}
 	if err := os.WriteFile(filepath.Join(dir, "main.star"), []byte("def main():\n    pass\n"), 0o644); err != nil {

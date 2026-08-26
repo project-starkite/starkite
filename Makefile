@@ -5,7 +5,7 @@ BINARY_NAME=kite
 VERSION=$(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
 BUILD_TIME=$(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 GIT_COMMIT=$(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
-COMMON_LDFLAGS=-X github.com/project-starkite/starkite/basekite/version.Version=$(VERSION) -X github.com/project-starkite/starkite/basekite/version.BuildTime=$(BUILD_TIME) -X github.com/project-starkite/starkite/basekite/version.GitCommit=$(GIT_COMMIT)
+COMMON_LDFLAGS=-s -w -X github.com/project-starkite/starkite/basekite/version.Version=$(VERSION) -X github.com/project-starkite/starkite/basekite/version.BuildTime=$(BUILD_TIME) -X github.com/project-starkite/starkite/basekite/version.GitCommit=$(GIT_COMMIT)
 BASE_LDFLAGS=-ldflags "$(COMMON_LDFLAGS)"
 CLOUD_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/basekite/version.Edition=cloud"
 AI_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/basekite/version.Edition=ai"
