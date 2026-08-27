@@ -47,7 +47,7 @@
   }
   .tx-hero__split {
     display: grid;
-    grid-template-columns: 5fr 7fr;
+    grid-template-columns: 1fr 1.15fr;
     gap: 2rem;
     align-items: start;
   }
@@ -66,12 +66,12 @@
       text-align: center;
     }
     .tx-hero .tx-hero__subhead {
-      font-size: 1.15rem !important;
-      line-height: 1.4;
+      font-size: 1.1rem !important;
+      line-height: 1.45;
       text-align: center;
     }
     .tx-hero__logo {
-      max-height: 120px !important;
+      max-height: 96px !important;
       margin-bottom: 1rem !important;
     }
   }
@@ -80,16 +80,16 @@
   }
   .tx-hero__logo {
     display: block;
-    max-height: 200px;
+    max-height: 160px;
     margin: 0 auto 1.5rem auto;
     filter: drop-shadow(0 4px 12px rgba(0, 0, 0, 0.45));
   }
   .tx-hero .tx-hero__headline {
-    font-size: 2.25rem;
+    font-size: 2.35rem;
     font-weight: 900;
     line-height: 1.12;
     letter-spacing: -0.015em;
-    margin: 0 0 0.5rem 0;
+    margin: 0 0 0.85rem 0;
     color: #ffffff;
     overflow-wrap: break-word;
   }
@@ -97,35 +97,97 @@
     color: #67e8f9;
   }
   .tx-hero .tx-hero__subhead {
-    font-size: 1.5rem;
-    font-weight: 600;
-    line-height: 1.25;
+    font-size: 1.22rem;
+    font-weight: 400;
+    line-height: 1.55;
     letter-spacing: -0.005em;
     margin: 0 0 1.25rem 0;
-    color: #ffffff;
-    opacity: 0.82;
+    color: rgba(255, 255, 255, 0.85);
     overflow-wrap: break-word;
   }
-  .tx-hero .tx-hero__desc {
-    color: #ffffff;
+  .hero-install-box {
+    display: inline-flex;
+    align-items: center;
+    background: rgba(14, 30, 54, 0.92);
+    border: 1px solid rgba(103, 232, 249, 0.35);
+    border-radius: 0.35rem;
+    padding: 0.45rem 0.85rem;
+    margin: 0;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), 0 0 16px rgba(103, 232, 249, 0.12);
   }
-  .tx-hero__desc {
-    font-size: 0.95rem;
-    line-height: 1.6;
-    margin: 0 0 1.5rem 0;
-    color: var(--md-primary-bg-color);
-    opacity: 0.85;
+  .hero-install-prompt {
+    color: #67e8f9;
+    font-weight: 700;
+    margin-right: 0.65rem;
+    user-select: none;
+    font-family: var(--md-code-font-family, monospace);
+  }
+  .md-typeset .hero-install-box code,
+  .hero-install-box code,
+  .hero-install-cmd {
+    color: #e6edf3 !important;
+    background: transparent !important;
+    background-color: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    font-family: var(--md-code-font-family, monospace);
+    font-size: 0.77rem;
+    flex: 1;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+  .hero-install-cmd .cmd-bin {
+    color: #79c0ff; /* VS Code / GitHub Dark function blue */
+    font-weight: 600;
+  }
+  .hero-install-cmd .cmd-flag {
+    color: #ffa657; /* argument orange */
+  }
+  .hero-install-cmd .cmd-url {
+    color: #a5d6ff; /* string cyan */
+  }
+  .hero-install-cmd .cmd-pipe {
+    color: #ff7b72; /* operator coral */
+    margin: 0 0.15rem;
+  }
+  .hero-copy-btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    cursor: pointer;
+    padding: 0.25rem 0.45rem;
+    margin-left: 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.25rem;
+    transition: color 0.15s, background 0.15s;
+  }
+  .hero-copy-btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.12);
+  }
+  .hero-copy-btn svg {
+    width: 1.05rem;
+    height: 1.05rem;
+    fill: currentColor;
   }
   .tx-hero__ctas {
     display: flex;
-    gap: 0.6rem;
+    gap: 1rem;
     flex-wrap: wrap;
+    align-items: center;
     justify-content: center;
     margin-top: 2rem;
   }
   .tx-hero .md-button {
     margin: 0;
-    font-size: 0.78rem;
+    font-size: 0.82rem;
+    font-weight: 600;
+    padding: 0.52rem 1.4rem;
+    border-radius: 0.35rem;
     color: var(--md-primary-bg-color);
     border-color: var(--md-primary-bg-color);
   }
@@ -148,444 +210,262 @@
   }
 
   /* =====================================================
-     EXAMPLES TABSET — hierarchical theme/sub-tabs (hero right column)
+     HERO RIGHT COLUMN — Unified Terminal Window with Carousel
      ===================================================== */
-  .example-tabs {
-    border: 1px solid var(--md-typeset-table-color);
+  .hero-terminal {
+    background: #0d1e34;
+    border: 1px solid rgba(103, 232, 249, 0.35);
     border-radius: 0.5rem;
     overflow: hidden;
-  }
-  .example-tabs input[type="radio"] {
-    display: none;
-  }
-  .theme-tabs-header {
-    display: flex;
-    background: var(--md-code-bg-color);
-    border-bottom: 1px solid var(--md-typeset-table-color);
-  }
-  .theme-tabs-header label {
-    flex: 1;
-    text-align: center;
-    padding: 0.75rem 0.5rem;
-    cursor: pointer;
-    font-weight: 700;
-    font-size: 0.8rem;
-    text-transform: uppercase;
-    letter-spacing: 0.03em;
-    color: var(--md-typeset-color);
-    opacity: 0.6;
-    transition: opacity 0.2s, border-color 0.2s, background-color 0.2s, color 0.2s;
-    border-bottom: 3px solid transparent;
-  }
-  .theme-tabs-header label:hover {
-    opacity: 1;
-    background: rgba(255, 255, 255, 0.03);
-  }
-
-  /* Active theme highlighting */
-  #theme-default:checked ~ .theme-tabs-header label[for="theme-default"],
-  #theme-automation:checked ~ .theme-tabs-header label[for="theme-automation"],
-  #theme-ai:checked ~ .theme-tabs-header label[for="theme-ai"],
-  #theme-security:checked ~ .theme-tabs-header label[for="theme-security"] {
-    opacity: 1;
-    color: var(--md-accent-fg-color);
-    border-bottom: 3px solid var(--md-accent-fg-color);
-  }
-
-  /* Theme containers display */
-  .theme-container {
-    display: none;
-    padding: 1.2rem;
-  }
-  #theme-default:checked ~ .theme-container[data-theme="default"],
-  #theme-automation:checked ~ .theme-container[data-theme="automation"],
-  #theme-ai:checked ~ .theme-container[data-theme="ai"],
-  #theme-security:checked ~ .theme-container[data-theme="security"] {
-    display: block;
-    animation: fadeInPane 0.22s ease-out forwards;
-  }
-
-  /* =====================================================
-     FEATURE FADER (DEFAULT TAB)
-     ===================================================== */
-  .feature-fader-wrapper {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    min-height: 480px;
-    width: 100%;
-    position: relative;
-  }
-  .fader-arrow {
-    background: none;
-    border: none;
-    color: var(--md-typeset-color);
-    opacity: 0.25;
-    cursor: pointer;
-    padding: 0.8rem;
-    transition: opacity 0.2s, transform 0.2s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    z-index: 10;
-    position: absolute;
-    top: 50%;
-    transform: translateY(-50%);
-  }
-  .fader-arrow--left {
-    left: 0.4rem;
-  }
-  .fader-arrow--right {
-    right: 0.4rem;
-  }
-  .fader-arrow:hover {
-    opacity: 0.8;
-    transform: translateY(-50%) scale(1.1);
-  }
-  .fader-arrow svg {
-    width: 2rem;
-    height: 2rem;
-    fill: currentColor;
-  }
-  .feature-fader {
-    position: relative;
-    flex: 1;
-    min-height: 480px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    padding: 2rem 4rem;
-    text-align: center;
-  }
-  .carousel-slide {
-    position: absolute;
-    opacity: 0;
-    visibility: hidden;
-    width: calc(100% - 8rem);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    transform: translateY(12px);
-    transition: opacity 0.6s ease-in-out, transform 0.6s ease-in-out, visibility 0.6s;
-  }
-  .carousel-slide.active {
-    opacity: 1;
-    visibility: visible;
-    transform: translateY(0);
-  }
-  .carousel-slide h3 {
-    font-size: 2.2rem;
-    font-weight: 700;
-    margin-top: 0;
-    margin-bottom: 0.8rem;
-    line-height: 1.25;
-    background: linear-gradient(135deg, var(--md-typeset-color) 40%, var(--md-accent-fg-color));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-  }
-  .carousel-slide p {
-    font-size: 1.15rem;
-    color: var(--md-typeset-color);
-    opacity: 0.7;
-    line-height: 1.65;
-    max-width: 540px;
-    margin: 0 auto;
-  }
-  .carousel-hint-link {
-    font-size: 0.8rem;
-    color: var(--md-accent-fg-color);
-    opacity: 0.85;
-    margin-top: 1.2rem;
-    font-weight: 500;
-    letter-spacing: 0.02em;
-    text-decoration: none;
-    display: inline-block;
-    transition: opacity 0.2s ease, transform 0.2s ease;
-    cursor: pointer;
-  }
-  .carousel-hint-link:hover {
-    opacity: 1;
-    text-decoration: underline;
-  }
-  .fader-dots {
-    position: absolute;
-    bottom: 1.5rem;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    gap: 0.6rem;
-    z-index: 10;
-  }
-  .fader-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background-color: var(--md-typeset-color);
-    opacity: 0.3;
-    cursor: pointer;
-    transition: opacity 0.25s, transform 0.25s, background-color 0.25s;
-  }
-  .fader-dot.active {
-    opacity: 1;
-    background-color: var(--md-accent-fg-color);
-    transform: scale(1.25);
-  }
-
-  /* =====================================================
-     RESPONSIVE CAROUSEL STYLING (MOBILE VIEWPORTS)
-     ===================================================== */
-  @media screen and (max-width: 60em) {
-    .theme-tabs-header,
-    .sub-tabs-header {
-      overflow-x: auto;
-      white-space: nowrap;
-      -webkit-overflow-scrolling: touch;
-      scrollbar-width: none;
-    }
-    .theme-tabs-header::-webkit-scrollbar,
-    .sub-tabs-header::-webkit-scrollbar {
-      display: none;
-    }
-    .theme-tabs-header label,
-    .sub-tabs-header label {
-      flex: 0 0 auto;
-      padding: 0.75rem 1rem;
-    }
-  }
-
-  @media screen and (max-width: 40em) {
-    .feature-fader-wrapper {
-      min-height: 380px;
-    }
-    .feature-fader {
-      min-height: 380px;
-      padding: 1.5rem 2.5rem;
-    }
-    .carousel-slide {
-      width: calc(100% - 5rem);
-    }
-    .carousel-slide h3 {
-      font-size: 1.45rem !important;
-      margin-bottom: 0.5rem;
-    }
-    .carousel-slide p {
-      font-size: 0.95rem !important;
-      line-height: 1.5;
-    }
-    .fader-dots {
-      bottom: 1.0rem;
-    }
-    .fader-arrow {
-      padding: 0.4rem;
-    }
-    .fader-arrow svg {
-      width: 1.5rem;
-      height: 1.5rem;
-    }
-  }
-
-  /* =====================================================
-     TERMINAL CONSOLIDATION — tabs in the title bar
-     ===================================================== */
-  .terminal {
-    background: #0a1628;
-    border-radius: 0.5rem;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    overflow: hidden;
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 35px rgba(103, 232, 249, 0.22), 0 0 75px rgba(103, 232, 249, 0.10);
     width: 100%;
     text-align: left;
   }
-  .terminal__bar {
+  .hero-terminal input[type="radio"] {
+    display: none;
+  }
+  .hero-terminal__bar {
     display: flex;
     align-items: center;
-    background: #142340;
-    border-bottom: 1px solid #1f2f55;
-    height: 2.5rem;
+    background: #12253f;
+    border-bottom: 1px solid rgba(103, 232, 249, 0.22);
+    height: 2.6rem;
+    padding: 0 0.85rem;
     user-select: none;
+    gap: 0.75rem;
+  }
+  .hero-terminal__dots {
+    display: flex;
+    gap: 6px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .hero-terminal__dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  .hero-terminal__dot--red { background: #ff5370; }
+  .hero-terminal__dot--yellow { background: #ffcb6b; }
+  .hero-terminal__dot--green { background: #c3e88d; }
+
+  .hero-tab-nav {
+    display: flex;
+    flex: 1;
+    overflow-x: auto;
+    scrollbar-width: none;
+    gap: 0.25rem;
+    align-items: center;
+  }
+  .hero-tab-nav::-webkit-scrollbar {
+    display: none;
+  }
+  .hero-tab-nav label {
+    padding: 0.35rem 0.65rem;
+    cursor: pointer;
+    font-weight: 600;
+    font-size: 0.76rem;
+    letter-spacing: 0.01em;
+    color: rgba(255, 255, 255, 0.55);
+    border-radius: 0.3rem;
+    transition: color 0.15s, background 0.15s;
+    white-space: nowrap;
+  }
+  .hero-tab-nav label:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.06);
+  }
+  #hero-tab-auto:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-auto"],
+  #hero-tab-k8s:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-k8s"],
+  #hero-tab-ai:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-ai"],
+  #hero-tab-sec:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-sec"] {
+    color: #89ddff;
+    background: rgba(137, 221, 255, 0.14);
   }
 
-  /* Sub-tabs header inside terminal bar */
-  .sub-tabs-header {
-    display: flex;
-    height: 100%;
-    flex: 1;
-  }
-  .sub-tabs-header label {
+  .hero-terminal__copy {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.55);
+    cursor: pointer;
+    padding: 0.25rem 0.4rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 0 1.25rem;
-    height: 100%;
-    cursor: pointer;
-    font-weight: 500;
-    font-size: 0.8rem;
-    font-family: inherit;
-    color: rgba(255, 255, 255, 0.45);
-    background: #142340;
-    border-right: 1px solid #1f2f55;
-    transition: background-color 0.15s, color 0.15s;
-    margin-bottom: 0; /* reset */
-    border-bottom: none;
+    border-radius: 0.25rem;
+    transition: color 0.15s, background 0.15s;
+    flex-shrink: 0;
   }
-  .sub-tabs-header label:hover {
+  .hero-terminal__copy:hover {
     color: #ffffff;
-    background: rgba(255, 255, 255, 0.03);
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .hero-terminal__copy svg {
+    width: 0.95rem;
+    height: 0.95rem;
+    fill: currentColor;
   }
 
-  /* Active sub-tab highlighting */
-  #sub-auto-extract:checked ~ .terminal .sub-tabs-header label[for="sub-auto-extract"],
-  #sub-auto-serve:checked ~ .terminal .sub-tabs-header label[for="sub-auto-serve"],
-  #sub-auto-fetch:checked ~ .terminal .sub-tabs-header label[for="sub-auto-fetch"],
-  #sub-auto-watch:checked ~ .terminal .sub-tabs-header label[for="sub-auto-watch"],
-  
-  #sub-ai-serve:checked ~ .terminal .sub-tabs-header label[for="sub-ai-serve"],
-  #sub-ai-agent:checked ~ .terminal .sub-tabs-header label[for="sub-ai-agent"],
-  
-  #sub-sec-config:checked ~ .terminal .sub-tabs-header label[for="sub-sec-config"],
-  #sub-sec-enforce:checked ~ .terminal .sub-tabs-header label[for="sub-sec-enforce"] {
-    color: #ffffff;
-    background: #0a1628; /* blends with the code area below */
-    border-bottom: none;
-    font-weight: 600;
+  .hero-tab-pane {
+    display: none;
+  }
+  #hero-tab-auto:checked ~ .hero-tab-pane[data-tab="auto"],
+  #hero-tab-k8s:checked ~ .hero-tab-pane[data-tab="k8s"],
+  #hero-tab-ai:checked ~ .hero-tab-pane[data-tab="ai"],
+  #hero-tab-sec:checked ~ .hero-tab-pane[data-tab="sec"] {
+    display: block;
   }
 
-  @keyframes fadeInPane {
-    from {
+  .hero-slide {
+    display: none;
+    opacity: 0;
+  }
+  .hero-slide.active {
+    display: block;
+    opacity: 1;
+    animation: heroSlideFade 0.22s ease-out forwards;
+  }
+  @keyframes heroSlideFade {
+    0% {
       opacity: 0;
-      transform: translateY(3px);
+      transform: translateY(4px);
     }
-    to {
+    100% {
       opacity: 1;
       transform: translateY(0);
     }
   }
 
-  /* Sub-pane display rules */
-  #sub-auto-extract:checked ~ .terminal .example-pane[data-for="sub-auto-extract"],
-  #sub-auto-serve:checked ~ .terminal .example-pane[data-for="sub-auto-serve"],
-  #sub-auto-fetch:checked ~ .terminal .example-pane[data-for="sub-auto-fetch"],
-  #sub-auto-watch:checked ~ .terminal .example-pane[data-for="sub-auto-watch"],
-  
-  #sub-ai-serve:checked ~ .terminal .example-pane[data-for="sub-ai-serve"],
-  #sub-ai-agent:checked ~ .terminal .example-pane[data-for="sub-ai-agent"],
-  
-  #sub-sec-config:checked ~ .terminal .example-pane[data-for="sub-sec-config"],
-  #sub-sec-enforce:checked ~ .terminal .example-pane[data-for="sub-sec-enforce"] {
-    display: block;
-    animation: fadeInPane 0.22s ease-out forwards;
-  }
-
-  .example-pane {
-    display: none;
-    padding: 0;
-  }
-
-  /* Hero-scoped tabset overrides: card look on dark navy */
-  .tx-hero__right .example-tabs {
-    background: var(--md-default-bg-color);
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    border-radius: 0.5rem;
-    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-    overflow: hidden;
-    width: 100%;
-    max-width: 100%;
-  }
-  .tx-hero__right .example-pane {
-    padding: 0;
-  }
-  .tx-hero__right .example-tabs__labels label {
-    padding: 0.6rem 0.5rem;
-    font-size: 0.82rem;
-  }
-
-  /* =====================================================
-     CODE EDITOR PANE — clean dark navy pane matching the card
-     ===================================================== */
-  .example-pane pre {
+  .hero-terminal__code pre {
     margin: 0;
-    padding: 0.9rem 1.1rem;
-    background: #0a1628;
-    color: #e6edf3;
-    overflow-x: auto;
-    font-size: 0.91rem;
-    line-height: 1.5;
-    height: 420px;
+    padding: 1.15rem 1.35rem;
+    background: #0a182c;
+    color: #eeffff;
+    font-size: 0.94rem;
+    line-height: 1.54;
+    height: 19rem;
     box-sizing: border-box;
-  }
-  .example-pane pre code {
-    background: transparent;
-    color: inherit;
-    padding: 0;
-    font-family: var(--md-code-font-family);
-  }
-  /* Keep terminal bg (not the github-dark default) when hljs class is added */
-  .example-pane pre code.hljs {
-    background: transparent;
-    padding: 0;
-  }
-  /* Hero-only: shrink terminal text. pre-wrap is a defense-in-depth fallback
-     so even at narrow viewports no horizontal scrollbar can appear. */
-  .tx-hero__right .example-pane pre {
-    font-size: 0.72rem;
-    line-height: 1.5;
-    padding: 0.95rem 1.15rem;
-    white-space: pre;
-    overflow-x: auto;
-  }
-
-  .no-scrollbar,
-  .install-content pre,
-  .run-card pre,
-  .feature-section pre {
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .no-scrollbar::-webkit-scrollbar,
-  .install-content pre::-webkit-scrollbar,
-  .run-card pre::-webkit-scrollbar,
-  .feature-section pre::-webkit-scrollbar,
-  .no-scrollbar::-webkit-scrollbar-thumb,
-  .install-content pre::-webkit-scrollbar-thumb,
-  .run-card pre::-webkit-scrollbar-thumb,
-  .feature-section pre::-webkit-scrollbar-thumb,
-  .no-scrollbar::-webkit-scrollbar-track,
-  .install-content pre::-webkit-scrollbar-track,
-  .run-card pre::-webkit-scrollbar-track,
-  .feature-section pre::-webkit-scrollbar-track {
-    display: none !important;
-    width: 0 !important;
-    height: 0 !important;
-    background: transparent !important;
-    -webkit-appearance: none !important;
-    visibility: hidden !important;
-    opacity: 0 !important;
-  }
-
-  /* Style custom scrollbar for pre in hero cards */
-  .example-pane pre {
+    overflow: hidden;
+    font-family: var(--md-code-font-family, monospace);
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
-    overflow-y: auto;
   }
-  .example-pane pre::-webkit-scrollbar {
-    width: 5px !important;
-    height: 5px !important;
-    display: block !important;
+
+  .hero-terminal__footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: #0e2139;
+    border-top: 1px solid rgba(103, 232, 249, 0.18);
+    padding: 0.35rem 0.85rem;
+    font-size: 0.72rem;
+    color: rgba(255, 255, 255, 0.55);
+    user-select: none;
   }
-  .example-pane pre::-webkit-scrollbar-track {
+  .hero-carousel__nav {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .hero-carousel__btn {
+    background: transparent;
+    border: none;
+    color: rgba(255, 255, 255, 0.5);
+    cursor: pointer;
+    padding: 0.15rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.2rem;
+    transition: color 0.15s, background 0.15s;
+  }
+  .hero-carousel__btn:hover {
+    color: #ffffff;
+    background: rgba(255, 255, 255, 0.1);
+  }
+  .hero-carousel__btn svg {
+    width: 0.95rem;
+    height: 0.95rem;
+    fill: currentColor;
+  }
+  .hero-carousel__dots {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0 0.25rem;
+  }
+  .hero-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.25);
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.15s;
+  }
+  .hero-dot.active {
+    background: #89ddff;
+    transform: scale(1.25);
+  }
+  .hero-terminal__status {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    font-family: var(--md-code-font-family, monospace);
+  }
+  .hero-terminal__file {
+    color: rgba(255, 255, 255, 0.75);
+    font-weight: 500;
+  }
+  .hero-terminal__stepper {
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 0.68rem;
+  }
+  .md-typeset .hero-terminal__code pre code,
+  .hero-terminal__code pre code {
     background: transparent !important;
-    display: block !important;
+    background-color: transparent !important;
+    color: #eeffff !important;
+    padding: 0 !important;
+    font-size: inherit !important;
+    font-family: inherit !important;
+    line-height: inherit !important;
   }
-  .example-pane pre::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.18) !important;
-    border-radius: 3px !important;
-    display: block !important;
+  /* Bazel / Starlark VS Code Theme Palette */
+  .hero-terminal .hljs-keyword,
+  .hero-terminal .hljs-literal {
+    color: #ff5370 !important; /* Coral red for keywords (def, if, else, for, in, return) */
   }
-  .example-pane pre::-webkit-scrollbar-thumb:hover {
-    background-color: rgba(255, 255, 255, 0.35) !important;
+  .hero-terminal .hljs-built_in {
+    color: #c792ea !important; /* Lavender purple for builtin methods (open, exec, run, query, serve, control, strip) */
+  }
+  .hero-terminal .hljs-title,
+  .hero-terminal .hljs-title.function_,
+  .hero-terminal .hljs-function {
+    color: #ffcb6b !important; /* Warm gold for function definitions (main, reconcile, query_fleet) */
+  }
+  .hero-terminal .hljs-string,
+  .hero-terminal .hljs-meta-string,
+  .hero-terminal .hljs-subst,
+  .hero-terminal .hljs-symbol {
+    color: #89ddff !important; /* Cyan / Sky Blue for all text and string literals */
+  }
+  .hero-terminal .hljs-comment,
+  .hero-terminal .hljs-meta {
+    color: #676e95 !important; /* Muted slate for comments */
+    font-style: italic;
+  }
+  .hero-terminal .hljs-number {
+    color: #f78c6c !important; /* Coral orange for numbers */
+  }
+  .hero-terminal .hljs-params,
+  .hero-terminal .hljs-variable {
+    color: #eeffff !important; /* Crisp white for variables */
+  }
+  .hero-terminal .hljs-attr {
+    color: #c792ea !important; /* Lavender for attributes & keys */
   }
 
   /* =====================================================
@@ -848,345 +728,254 @@
 
 <section class="tx-container">
   <div class="md-grid md-typeset">
-   <img src="assets/images/starkite-logo.svg" alt="Starkite" class="tx-hero__logo">
+    <img src="assets/images/starkite-logo.svg" alt="Starkite" class="tx-hero__logo">
     <div class="tx-hero">
       <div class="tx-hero__split">
         <div class="tx-hero__left">
           <h1 class="tx-hero__headline">Secure Starlark Runtime for <span class="tx-hero__accent">System, Cloud, and Agent Automation</span></h1>
           <p class="tx-hero__subhead">
-            Build portable automation scripts with Go-backed standard modules that run identically across developer terminals, Kubernetes clusters, and AI agent loops.</p>
+            Build portable automation scripts with Go-backed standard modules that run identically across developer terminals, Kubernetes clusters, and AI agent loops.
+          </p>
         </div>
-        <div class="tx-hero__right">
-          <div class="example-tabs">
-            <!-- High-level Theme Radio Inputs -->
-            <input type="radio" id="theme-default" name="theme-tabs" checked>
-            <input type="radio" id="theme-automation" name="theme-tabs">
-            <input type="radio" id="theme-ai" name="theme-tabs">
-            <input type="radio" id="theme-security" name="theme-tabs">
 
-            <!-- Theme Labels Row -->
-            <div class="theme-tabs-header">
-              <label for="theme-default">Features</label>
-              <label for="theme-automation">Automation</label>
-              <label for="theme-ai">Agentic AI</label>
-              <label for="theme-security">Security</label>
+        <div class="tx-hero__right">
+          <div class="hero-terminal">
+            <!-- Radio inputs for tabs -->
+            <input type="radio" id="hero-tab-auto" name="hero-tab" checked>
+            <input type="radio" id="hero-tab-k8s" name="hero-tab">
+            <input type="radio" id="hero-tab-ai" name="hero-tab">
+            <input type="radio" id="hero-tab-sec" name="hero-tab">
+
+            <div class="hero-terminal__bar">
+              <div class="hero-terminal__dots">
+                <span class="hero-terminal__dot hero-terminal__dot--red"></span>
+                <span class="hero-terminal__dot hero-terminal__dot--yellow"></span>
+                <span class="hero-terminal__dot hero-terminal__dot--green"></span>
+              </div>
+
+              <div class="hero-tab-nav">
+                <label for="hero-tab-auto">Automation</label>
+                <label for="hero-tab-k8s">Kubernetes</label>
+                <label for="hero-tab-ai">Agentic AI</label>
+                <label for="hero-tab-sec">Security</label>
+              </div>
+
+              <button class="hero-terminal__copy" onclick="copyActiveSnippet(this)" aria-label="Copy active code" title="Copy code">
+                <svg viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"/></svg>
+              </button>
             </div>
 
-            <!-- DEFAULT FEATURE SHOWCASE -->
-            <div class="theme-container" data-theme="default">
-              <div class="feature-fader-wrapper">
-                <button class="fader-arrow fader-arrow--left" aria-label="Previous Feature">
-                  <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
-                </button>
-                <div class="feature-fader">
-                  <div class="carousel-slide active">
-                    <h3>Automation with Starlark</h3>
-                    <p>Write clean, Python-like automation scripts designed for human readability and trusted AI execution.</p>
-                  </div>
-                  <div class="carousel-slide">
-                    <h3>Batteries Included</h3>
-                    <p>Deploy portable, dependency-free scripts directly with built-in libraries for SSH, SQL, HTTP, and Kubernetes.</p>
-                  </div>
-                  <div class="carousel-slide">
-                    <h3>Repeatable Automation</h3>
-                    <p>Eliminate environment drift by executing identical, repeatable automation tasks consistently across all hosts.</p>
-                  </div>
-                  <div class="carousel-slide">
-                    <h3>Agentic Runtime</h3>
-                    <p>Build custom agentic loops directly in Starlark, or use the native Starkite binary as a secure, sandboxed tool execution harness for LLMs.</p>
-                  </div>
-                  <div class="carousel-slide">
-                    <h3>MCP Tool Server</h3>
-                    <p>Expose local scripts as tools and serve them seamlessly to external agents via the Model Context Protocol (MCP).</p>
-                  </div>
-                  <div class="carousel-slide">
-                    <h3>Ops & Infrastructure</h3>
-                    <p>Orchestrate Kubernetes cluster operations, multi-host nodes, and cloud resources from a single, unified CLI.</p>
-                  </div>
-                  <div class="carousel-slide">
-                    <h3>Secure by Default</h3>
-                    <p>Enforce host-level protection using granular permission profiles and secure syscall-level sandboxing.</p>
-                  </div>
-                  
-                  <div class="fader-dots">
-                    <span class="fader-dot active" data-slide="0"></span>
-                    <span class="fader-dot" data-slide="1"></span>
-                    <span class="fader-dot" data-slide="2"></span>
-                    <span class="fader-dot" data-slide="3"></span>
-                    <span class="fader-dot" data-slide="4"></span>
-                    <span class="fader-dot" data-slide="5"></span>
-                    <span class="fader-dot" data-slide="6"></span>
-                  </div>
+            <!-- TAB 1: AUTOMATION -->
+            <div class="hero-tab-pane" data-tab="auto">
+              <!-- Slide 0: SSH Fleet Execution -->
+              <div class="hero-slide active" data-filename="ssh_fleet.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-auto-0" class="language-python"># Execute commands concurrently across remote hosts over SSH
+def main():
+    client = ssh.config(
+        hosts = ["web-1", "web-2", "web-3"],
+        user = "ops",
+        timeout = "10s",
+    )
+    for res in client.run("uptime"):
+        print(res.host, "->", res.stdout.strip())</code></pre>
                 </div>
-                <button class="fader-arrow fader-arrow--right" aria-label="Next Feature">
-                  <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
-                </button>
+              </div>
+              <!-- Slide 1: API Server -->
+              <div class="hero-slide" data-filename="http_server.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-auto-1" class="language-python"># Launch an embedded HTTP server handling webhook callbacks
+def handle_webhook(req):
+    event = json.decode(req.body)
+    return {"status": 200, "body": event.get("type", "ping")}
+
+def main():
+    srv = http.server()
+    srv.handle("POST /webhook", handle_webhook)
+    srv.serve(port=8080)</code></pre>
+                </div>
+              </div>
+              <!-- Slide 2: HTTP Client -->
+              <div class="hero-slide" data-filename="http_client.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-auto-2" class="language-python"># Dispatch HTTP API requests and handle response payloads
+def main():
+    resp = http.url("https://httpbin.org/json").get(
+        headers = {"Accept": "application/json"},
+        timeout = "5s",
+    )
+    print("Status Code:", resp.status_code)
+    print("Response Data:", resp.json()["slideshow"]["title"])</code></pre>
+                </div>
               </div>
             </div>
 
-            <!-- THEME 1: AUTOMATION -->
-            <div class="theme-container" data-theme="automation">
-              <div class="feature-fader-wrapper">
-                <button class="fader-arrow fader-arrow--left" aria-label="Previous Feature">
-                  <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
-                </button>
-                <div class="feature-fader">
-                  <!-- Slide 1: Intro Blurb -->
-                  <div class="carousel-slide active">
-                    <h3>Orchestrate Complex Systems</h3>
-                    <p>Run SSH tasks, query databases, spin up web servers, and track Kubernetes workloads from a single, cohesive runtime.</p>
-                    <a href="#" class="carousel-hint-link">See Starkite automation examples &rarr;</a>
-                  </div>
-                  
-                  <!-- Slide 2: Terminal Example Playground -->
-                  <div class="carousel-slide">
-                    <input type="radio" id="sub-auto-extract" name="sub-auto-tabs" checked>
-                    <input type="radio" id="sub-auto-serve" name="sub-auto-tabs">
-                    <input type="radio" id="sub-auto-fetch" name="sub-auto-tabs">
-                    <input type="radio" id="sub-auto-watch" name="sub-auto-tabs">
-                    
-                    <div class="terminal">
-                      <div class="terminal__bar">
-                        <div class="sub-tabs-header">
-                          <label for="sub-auto-extract">Extract Logs</label>
-                          <label for="sub-auto-serve">Serve Metrics</label>
-                          <label for="sub-auto-fetch">Fetch Report</label>
-                          <label for="sub-auto-watch">Cluster Controller</label>
-                        </div>
-                      </div>
-
-                      <!-- STAGE 1: EXTRACT LOGS -->
-                      <div class="example-pane" data-for="sub-auto-extract">
-                        <pre><code class="language-python"># Fetch error lines from remote syslogs via SSH
-# and store them directly in a local SQLite database
-
+            <!-- TAB 2: KUBERNETES -->
+            <div class="hero-tab-pane" data-tab="k8s">
+              <!-- Slide 0: Query & Inspect -->
+              <div class="hero-slide active" data-filename="list_pods.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-k8s-0" class="language-python"># Inspect status of running pods across a namespace
 def main():
-    db = sql.open("sqlite", "data/errors.db")
-    db.exec("CREATE TABLE IF NOT EXISTS logs (host TEXT, msg TEXT)")
-    
-    nodes = ssh.open(["node-1", "node-2"], user="admin")
-    for r in nodes.run("grep ERROR /var/log/syslog"):
-        db.exec("INSERT INTO logs VALUES (?, ?)", r.host, r.stdout)
-</code></pre>
-                      </div>
-
-                      <!-- STAGE 2: SERVE METRICS -->
-                      <div class="example-pane" data-for="sub-auto-serve">
-                        <pre><code class="language-python"># Expose an HTTP service endpoint that queries log count
-# statistics grouped by host from the SQLite database
-
-def get_metrics(req):
-    db = sql.open("sqlite", "data/errors.db")
-    return {
-        "status": 200,
-        "body": db.query("SELECT host, COUNT(*) FROM logs GROUP BY host")
-    }
-
-http.serve({"GET /metrics": get_metrics}, port=8080)
-</code></pre>
-                      </div>
-
-                      <!-- STAGE 3: FETCH REPORT -->
-                      <div class="example-pane" data-for="sub-auto-fetch">
-                        <pre><code class="language-python"># Query the metrics API endpoint and write a consolidated
-# JSON system status report to the local file system
-
+    client = k8s.config(namespace="staging")
+    pods = client.list("pods")
+    for pod in pods:
+        print(pod.metadata.name, pod.status.phase)</code></pre>
+                </div>
+              </div>
+              <!-- Slide 1: Workload Deploy & Scale -->
+              <div class="hero-slide" data-filename="deploy_workload.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-k8s-1" class="language-python"># Deploy container workload and dynamically scale replica count
 def main():
-    resp = http.url("http://localhost:8080/metrics").get()
-    report = "STATUS REPORT\n" + json.encode(resp.body)
-    write_text("reports/status.txt", report)
-    printf("Report saved!\n")
-</code></pre>
-                      </div>
-
-                      <!-- STAGE 4: CLUSTER CONTROLLER -->
-                      <div class="example-pane" data-for="sub-auto-watch">
-                        <pre><code class="language-python"># Use Starkite to build custom, lightweight Kubernetes cluster
-# controllers that reconcile state changes and log failed events
-
-db = sql.open("sqlite", "data/errors.db")
-db.exec("CREATE TABLE IF NOT EXISTS k8s_errors (pod TEXT, phase TEXT)")
-
+    client = k8s.config(namespace="production")
+    res = client.deploy(name="web", image="nginx:1.27", replicas=3)
+    client.scale(kind="deployment", name="web", replicas=5)
+    print("Deployment scaled:", res["deployment"])</code></pre>
+                </div>
+              </div>
+              <!-- Slide 2: Reconcile Controller -->
+              <div class="hero-slide" data-filename="pod_controller.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-k8s-2" class="language-python"># Continuous Kubernetes controller reconciling cluster state and drift
 def reconcile(event, pod):
-    if pod.status.phase == "Failed":
-        db.exec(
-            "INSERT INTO k8s_errors VALUES (?, ?)",
-            pod.metadata.name,
-            "Failed"
+    if pod.status.phase in ["Failed", "CrashLoopBackOff"]:
+        http.url("https://alerts.internal/k8s").post(
+            json = {"pod": pod.metadata.name, "phase": pod.status.phase},
         )
 
-k8s.control("pods", reconcile=reconcile, namespace="default")
-</code></pre>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div class="fader-dots">
-                    <span class="fader-dot active" data-slide="0"></span>
-                    <span class="fader-dot" data-slide="1"></span>
-                  </div>
+def main():
+    k8s.control("pods", reconcile=reconcile, namespace="default")</code></pre>
                 </div>
-                <button class="fader-arrow fader-arrow--right" aria-label="Next Feature">
-                  <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
-                </button>
               </div>
             </div>
 
-            <!-- THEME 2: AGENTIC AI -->
-            <div class="theme-container" data-theme="ai">
-              <div class="feature-fader-wrapper">
-                <button class="fader-arrow fader-arrow--left" aria-label="Previous Feature">
-                  <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
-                </button>
-                <div class="feature-fader">
-                  <!-- Slide 1: Intro Blurb -->
-                  <div class="carousel-slide active">
-                    <h3>AI-Native Automation</h3>
-                    <p>Serve your Starlark functions dynamically to LLMs via MCP, or write self-directed agent loops with native multi-provider support.</p>
-                    <a href="#" class="carousel-hint-link">See Starkite AI examples &rarr;</a>
-                  </div>
-                  
-                  <!-- Slide 2: Terminal Example Playground -->
-                  <div class="carousel-slide">
-                    <input type="radio" id="sub-ai-serve" name="sub-ai-tabs" checked>
-                    <input type="radio" id="sub-ai-agent" name="sub-ai-tabs">
-                    
-                    <div class="terminal">
-                      <div class="terminal__bar">
-                        <div class="sub-tabs-header">
-                          <label for="sub-ai-serve">Serve MCP</label>
-                          <label for="sub-ai-agent">Create Agent</label>
-                        </div>
-                      </div>
-
-                      <!-- STAGE 1: SERVE MCP -->
-                      <div class="example-pane" data-for="sub-ai-serve">
-                        <pre><code class="language-python"># Expose a local database query function as an MCP tool
-# that can be dynamically called by external AI agents
-
-def query_errors(host):
-    db = sql.open("sqlite", "data/errors.db")
-    return [r["msg"] for r in db.query("SELECT msg FROM logs WHERE host = ?", host)]
-
-mcp.serve(
-    name="db-provider",
-    tools=[ai.tool(query_errors, description="Query host errors")]
-)
-</code></pre>
-                      </div>
-
-                      <!-- STAGE 2: CREATE AGENT -->
-                      <div class="example-pane" data-for="sub-ai-agent">
-                        <pre><code class="language-python"># Connect to the local MCP server and initialize a multi-turn
-# chat agent equipped with the database query tool
+            <!-- TAB 3: AGENTIC AI -->
+            <div class="hero-tab-pane" data-tab="ai">
+              <!-- Slide 0: MCP Tool Definition (Starlark) -->
+              <div class="hero-slide active" data-filename="mcp_server.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-ai-0" class="language-python"># Model Context Protocol server publishing discoverable agent tools
+def get_pod_health():
+    """Return status summary of running pods across staging."""
+    client = k8s.config(namespace="staging")
+    return [
+        {"pod": p.metadata.name, "phase": p.status.phase}
+        for p in client.list("pods")
+    ]
 
 def main():
-    mcp_client = mcp.connect("http://localhost:8080")
-    chat = ai.chat(
-        model = "gemini-1.5-flash",
-        system = "Use query_errors to check host logs.",
-        tools = [mcp_client.tools.query_errors]
-    )
-    printf("Agent: %s\n", chat.send("List error messages for node-1").text)
-</code></pre>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div class="fader-dots">
-                    <span class="fader-dot active" data-slide="0"></span>
-                    <span class="fader-dot" data-slide="1"></span>
-                  </div>
+    mcp.serve(tools=[get_pod_health])</code></pre>
                 </div>
-                <button class="fader-arrow fader-arrow--right" aria-label="Next Feature">
-                  <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
-                </button>
+              </div>
+              <!-- Slide 1: Declarative MCP Config (JSON) -->
+              <div class="hero-slide" data-filename="mcp_config.json">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-ai-1" class="language-json">// Register Starkite MCP tools inside Claude, Cursor, or agent harnesses
+{
+  "mcpServers": {
+    "k8s-diagnostics": {
+      "command": "kite",
+      "args": ["run", "./tools/k8s_mcp.star", "--permissions=k8s-read"]
+    }
+  }
+}</code></pre>
+                </div>
+              </div>
+              <!-- Slide 2: Programmatic Agent Harness (TypeScript) -->
+              <div class="hero-slide" data-filename="agent_harness.ts">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-ai-2" class="language-typescript">// Connect TypeScript agent harness to Starkite sandboxed MCP server
+import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+
+const client = new Client({ name: "sre-agent", version: "1.0.0" });
+await client.connect(new StdioClientTransport({
+  command: "kite",
+  args: ["run", "./tools/k8s_mcp.star", "--permissions=k8s-read"],
+}));
+
+const health = await client.callTool({ name: "get_pod_health" });</code></pre>
+                </div>
               </div>
             </div>
 
-            <!-- THEME 3: SECURITY -->
-            <div class="theme-container" data-theme="security">
-              <div class="feature-fader-wrapper">
-                <button class="fader-arrow fader-arrow--left" aria-label="Previous Feature">
+            <!-- TAB 4: SECURITY -->
+            <div class="hero-tab-pane" data-tab="sec">
+              <!-- Slide 0 (Simple) -->
+              <div class="hero-slide active" data-filename="safe_job.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-sec-0" class="language-python"># Execute untrusted logic within strict runtime permission boundaries
+def main():
+    data = file.read("data/input.json")
+    records = json.decode(data)
+    file.write(
+        "data/result.json",
+        json.encode({"count": len(records)}),
+    )
+    print("Job completed safely within policy bounds.")</code></pre>
+                </div>
+              </div>
+              <!-- Slide 1 (Intermediate) -->
+              <div class="hero-slide" data-filename="config.yaml">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-sec-1" class="language-yaml"># Declarative capability profiles gating syscalls and network access
+permissions:
+  ci-runner:
+    allow:
+      - fs.read($CWD/**)
+      - "os.exec(git)"
+      - http.client
+    deny:
+      - os.shell
+      - "fs.write(/etc/*)"</code></pre>
+                </div>
+              </div>
+              <!-- Slide 2 (Advanced) -->
+              <div class="hero-slide" data-filename="sandbox_run.sh">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-sec-2" class="language-bash"># Isolate untrusted scripts with gVisor kernel and capability profiles
+$ kite run ./safe_job.star \
+    --sandbox=opaque \
+    --allow-fs
+
+$ kite run ./deploy.star \
+    --permissions=ci-runner</code></pre>
+                </div>
+              </div>
+            </div>
+
+            <div class="hero-terminal__footer">
+              <div class="hero-carousel__nav">
+                <button class="hero-carousel__btn" onclick="prevSlide()" aria-label="Previous example" title="Previous example">
                   <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
                 </button>
-                <div class="feature-fader">
-                  <!-- Slide 1: Intro Blurb -->
-                  <div class="carousel-slide active">
-                    <h3>Defense-in-Depth Security</h3>
-                    <p>Protect host systems from untrusted code. Enforce granular API permissions and isolate execution inside secure gVisor container sandboxes.</p>
-                    <a href="#" class="carousel-hint-link">See Starkite security examples &rarr;</a>
-                  </div>
-                  
-                  <!-- Slide 2: Terminal Example Playground -->
-                  <div class="carousel-slide">
-                    <input type="radio" id="sub-sec-config" name="sub-sec-tabs" checked>
-                    <input type="radio" id="sub-sec-enforce" name="sub-sec-tabs">
-                    
-                    <div class="terminal">
-                      <div class="terminal__bar">
-                        <div class="sub-tabs-header">
-                          <label for="sub-sec-config">Config</label>
-                          <label for="sub-sec-enforce">Enforce</label>
-                        </div>
-                      </div>
-
-                      <!-- SUBTAB 1: CONFIG -->
-                      <div class="example-pane" data-for="sub-sec-config">
-                        <pre><code class="language-yaml"># Define permission profiles and sandboxing constraints
-# to restrict script execution inside gVisor container runtimes
-
-permissions:
-  log-collector:
-    allow: [fs.read, fs.write, net.connect, "os.exec(ssh)"]
-  metrics-api:
-    allow: [fs.read, net.listen]
-    deny: [os.exec]
-
-sandbox:
-  strict-sandbox:
-    network: loopback
-    mounts:
-      - { source: "$CWD/logs", destination: "$CWD/logs", mode: rw }
-</code></pre>
-                      </div>
-
-                      <!-- SUBTAB 2: ENFORCE -->
-                      <div class="example-pane" data-for="sub-sec-enforce">
-                        <pre><code class="language-bash"># Execute Starlark scripts with profiles and sandboxes enforced
-# to block unauthorized system calls and network requests
-
-# Run log collector script with custom permissions
-$ kite run extract-logs.star --permissions=log-collector
-
-# Run API server isolated inside a gVisor sandbox
-$ kite run serve-metrics.star --sandbox=strict-sandbox --permissions=metrics-api
-
-# Unauthorized module calls immediately throw permissions exceptions
-$ kite run serve-metrics.star --permissions=deny-all
-Error: permission denied: net.listen is not allowed
-</code></pre>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div class="fader-dots">
-                    <span class="fader-dot active" data-slide="0"></span>
-                    <span class="fader-dot" data-slide="1"></span>
-                  </div>
+                <div class="hero-carousel__dots" id="hero-carousel-dots">
+                  <!-- Dynamically populated per active tab in JS -->
                 </div>
-                <button class="fader-arrow fader-arrow--right" aria-label="Next Feature">
+                <button class="hero-carousel__btn" onclick="nextSlide()" aria-label="Next example" title="Next example">
                   <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
                 </button>
               </div>
+              <div class="hero-terminal__status">
+                <span class="hero-terminal__file" id="hero-current-file">ssh_fleet.star</span>
+                <span class="hero-terminal__stepper" id="hero-current-step">1 / 3</span>
+              </div>
             </div>
+
           </div>
         </div>
       </div>
+
       <div class="tx-hero__ctas">
-        <a href="getting-started/" class="md-button">Get Started</a>
-        <a href="infra/kubernetes/" class="md-button md-button--primary">Infrastructure</a>
-        <a href="ai/agents/" class="md-button md-button--primary">AI Agents</a>
+        <a href="getting-started/" class="md-button md-button--primary">Get Started</a>
+        <div class="hero-install-box">
+          <span class="hero-install-prompt">$</span>
+          <code class="hero-install-cmd"><span class="cmd-bin">curl</span> <span class="cmd-flag">-fsSL</span> <span class="cmd-url">https://install.starkite.run/install.sh</span> <span class="cmd-pipe">|</span> <span class="cmd-bin">sh</span></code>
+          <button class="hero-copy-btn" onclick="copyText('curl -fsSL https://install.starkite.run/install.sh | sh', this)" aria-label="Copy install command" title="Copy to clipboard">
+            <svg viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"/></svg>
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -1442,199 +1231,176 @@ Time:  9ms
   </div>
 </div>
 
-<!-- Syntax highlighting for the Examples terminal blocks (home page only). -->
+<!-- Syntax highlighting for the terminal and code blocks (home page only). -->
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/highlight.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/python.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/bash.min.js"></script>
 <script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/yaml.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/typescript.min.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/highlightjs/cdn-release@11/build/languages/json.min.js"></script>
 <script>
-  document.querySelectorAll('.example-pane pre code, .run-card pre code, .feature-section pre code').forEach(el => {
+  // Instant highlight execution
+  document.querySelectorAll('.hero-terminal pre code, .run-card pre code, .feature-section pre code').forEach(el => {
     if (typeof hljs !== 'undefined') {
       hljs.highlightElement(el);
     }
   });
 
-  // Global Linear Carousel Controller (cross-theme support)
-  (function() {
-    const themeOrder = ['default', 'automation', 'ai', 'security'];
-    const globalStates = [];
-    
-    // 1. Build global state list
-    themeOrder.forEach((themeName) => {
-      const container = document.querySelector(`.theme-container[data-theme="${themeName}"]`);
-      if (!container) return;
-      
-      const slides = container.querySelectorAll('.carousel-slide');
-      slides.forEach((slide, sIdx) => {
-        const terminalRadios = slide.querySelectorAll('input[type="radio"]');
-        if (terminalRadios.length > 0) {
-          terminalRadios.forEach((radio, rIdx) => {
-            globalStates.push({
-              theme: themeName,
-              container: container,
-              slideIdx: sIdx,
-              subtabIdx: rIdx,
-              radioElement: radio
-            });
-          });
-        } else {
-          globalStates.push({
-            theme: themeName,
-            container: container,
-            slideIdx: sIdx,
-            subtabIdx: null,
-            radioElement: null
-          });
-        }
-      });
-    });
+  // Carousel State per tab
+  const tabSlideIndices = {
+    'auto': 0,
+    'k8s': 0,
+    'ai': 0,
+    'sec': 0
+  };
 
-    if (!globalStates.length) return;
-
-    let globalIdx = 0;
-    let autoplayInterval = null;
-
-    function applyGlobalState(index) {
-      if (index < 0) index = globalStates.length - 1;
-      if (index >= globalStates.length) index = 0;
-
-      const state = globalStates[index];
-      if (!state) return;
-
-      // Activate theme tab header input
-      const themeInput = document.getElementById('theme-' + state.theme);
-      if (themeInput && !themeInput.checked) {
-        themeInput.checked = true;
-        // Dispatch change so CSS transitions/display works immediately
-        themeInput.dispatchEvent(new Event('change'));
-      }
-
-      // Configure active slide element within active container
-      const container = state.container;
-      const slides = container.querySelectorAll('.carousel-slide');
-      slides.forEach((slide, sIdx) => {
-        if (sIdx === state.slideIdx) {
-          slide.classList.add('active');
-        } else {
-          slide.classList.remove('active');
-        }
-      });
-
-      // Configure active fader dots within active container
-      const dots = container.querySelectorAll('.fader-dot');
-      dots.forEach((dot, dIdx) => {
-        if (dIdx === state.slideIdx) {
-          dot.classList.add('active');
-        } else {
-          dot.classList.remove('active');
-        }
-      });
-
-      // Select active subtab radio input inside terminal
-      if (state.subtabIdx !== null && state.radioElement) {
-        state.radioElement.checked = true;
-        state.radioElement.dispatchEvent(new Event('change'));
-      }
-
-      globalIdx = index;
+  function getActiveTab() {
+    const tabs = ['auto', 'k8s', 'ai', 'sec'];
+    for (const t of tabs) {
+      const radio = document.getElementById('hero-tab-' + t);
+      if (radio && radio.checked) return t;
     }
+    return 'auto';
+  }
 
-    function nextGlobalSlide() {
-      applyGlobalState(globalIdx + 1);
-    }
+  function updateCarouselUI() {
+    const tab = getActiveTab();
+    const pane = document.querySelector(`.hero-tab-pane[data-tab="${tab}"]`);
+    if (!pane) return;
+    const slides = pane.querySelectorAll('.hero-slide');
+    const currentIndex = tabSlideIndices[tab] || 0;
 
-    function prevGlobalSlide() {
-      applyGlobalState(globalIdx - 1);
-    }
-
-    function startGlobalAutoplay() {
-      if (autoplayInterval) clearInterval(autoplayInterval);
-      autoplayInterval = setInterval(() => {
-        const state = globalStates[globalIdx];
-        if (state && state.theme === 'default') {
-          nextGlobalSlide();
-        }
-      }, 6000);
-    }
-
-    function stopGlobalAutoplay() {
-      if (autoplayInterval) {
-        clearInterval(autoplayInterval);
-        autoplayInterval = null;
-      }
-    }
-
-    // Set up click handlers on all chevron arrows globally
-    document.querySelectorAll('.fader-arrow--left').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        stopGlobalAutoplay();
-        prevGlobalSlide();
-      });
-    });
-
-    document.querySelectorAll('.fader-arrow--right').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        stopGlobalAutoplay();
-        nextGlobalSlide();
-      });
-    });
-
-    // Set up click handlers on pagination dots globally
-    themeOrder.forEach((themeName) => {
-      const container = document.querySelector(`.theme-container[data-theme="${themeName}"]`);
-      if (!container) return;
-      const dots = container.querySelectorAll('.fader-dot');
-      dots.forEach((dot, dIdx) => {
-        dot.addEventListener('click', () => {
-          stopGlobalAutoplay();
-          const targetIdx = globalStates.findIndex(s => s.theme === themeName && s.slideIdx === dIdx);
-          if (targetIdx !== -1) {
-            applyGlobalState(targetIdx);
-          }
-        });
-      });
-    });
-
-    // Sync manual sub-tab radio clicks with globalIdx
-    globalStates.forEach((state, idx) => {
-      if (state.radioElement) {
-        state.radioElement.addEventListener('change', () => {
-          if (state.radioElement.checked) {
-            globalIdx = idx;
-          }
-        });
+    slides.forEach((slide, idx) => {
+      if (idx === currentIndex) {
+        slide.classList.add('active');
+        const filename = slide.getAttribute('data-filename') || '';
+        const fileEl = document.getElementById('hero-current-file');
+        const stepEl = document.getElementById('hero-current-step');
+        if (fileEl) fileEl.textContent = filename;
+        if (stepEl) stepEl.textContent = (idx + 1) + ' / ' + slides.length;
+      } else {
+        slide.classList.remove('active');
       }
     });
 
-    // Handle text link hint clicks to advance linearly
-    document.querySelectorAll('.carousel-hint-link').forEach((link) => {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        stopGlobalAutoplay();
-        nextGlobalSlide();
-      });
-    });
-
-    // Reset carousel state to slide 0 when main theme/tab header is selected
-    themeOrder.forEach((themeName) => {
-      const themeInput = document.getElementById('theme-' + themeName);
-      if (themeInput) {
-        themeInput.addEventListener('change', () => {
-          if (themeInput.checked) {
-            stopGlobalAutoplay();
-            const targetIdx = globalStates.findIndex(s => s.theme === themeName);
-            if (targetIdx !== -1) {
-              applyGlobalState(targetIdx);
-            }
-            startGlobalAutoplay();
-          }
-        });
+    const dotsContainer = document.getElementById('hero-carousel-dots');
+    if (dotsContainer) {
+      let dotsHTML = '';
+      for (let i = 0; i < slides.length; i++) {
+        dotsHTML += `<button class="hero-dot ${i === currentIndex ? 'active' : ''}" onclick="goToSlide(${i})" aria-label="Slide ${i + 1}"></button>`;
       }
-    });
+      dotsContainer.innerHTML = dotsHTML;
+    }
+  }
 
-    applyGlobalState(0);
-    startGlobalAutoplay();
-  })();
+  function goToSlide(index) {
+    const tab = getActiveTab();
+    const pane = document.querySelector(`.hero-tab-pane[data-tab="${tab}"]`);
+    if (!pane) return;
+    const slides = pane.querySelectorAll('.hero-slide');
+    if (index >= 0 && index < slides.length) {
+      tabSlideIndices[tab] = index;
+      updateCarouselUI();
+    }
+  }
+
+  const allTabs = ['auto', 'k8s', 'ai', 'sec'];
+
+  function nextSlide() {
+    const currentTab = getActiveTab();
+    const pane = document.querySelector(`.hero-tab-pane[data-tab="${currentTab}"]`);
+    if (!pane) return;
+    const slides = pane.querySelectorAll('.hero-slide');
+    const currentIdx = tabSlideIndices[currentTab] || 0;
+
+    if (currentIdx + 1 < slides.length) {
+      tabSlideIndices[currentTab] = currentIdx + 1;
+      updateCarouselUI();
+    } else {
+      const currentTabIdx = allTabs.indexOf(currentTab);
+      const nextTabIdx = (currentTabIdx + 1) % allTabs.length;
+      const nextTab = allTabs[nextTabIdx];
+      const radio = document.getElementById('hero-tab-' + nextTab);
+      if (radio) {
+        radio.checked = true;
+      }
+      tabSlideIndices[nextTab] = 0;
+      updateCarouselUI();
+    }
+  }
+
+  function prevSlide() {
+    const currentTab = getActiveTab();
+    const pane = document.querySelector(`.hero-tab-pane[data-tab="${currentTab}"]`);
+    if (!pane) return;
+    const currentIdx = tabSlideIndices[currentTab] || 0;
+
+    if (currentIdx > 0) {
+      tabSlideIndices[currentTab] = currentIdx - 1;
+      updateCarouselUI();
+    } else {
+      const currentTabIdx = allTabs.indexOf(currentTab);
+      const prevTabIdx = (currentTabIdx - 1 + allTabs.length) % allTabs.length;
+      const prevTab = allTabs[prevTabIdx];
+      const radio = document.getElementById('hero-tab-' + prevTab);
+      if (radio) {
+        radio.checked = true;
+      }
+      const prevPane = document.querySelector(`.hero-tab-pane[data-tab="${prevTab}"]`);
+      const prevSlides = prevPane ? prevPane.querySelectorAll('.hero-slide') : [];
+      tabSlideIndices[prevTab] = prevSlides.length > 0 ? prevSlides.length - 1 : 0;
+      updateCarouselUI();
+    }
+  }
+
+  // Hook up radio button change listeners - always reset sub page to 1
+  document.querySelectorAll('.hero-terminal input[type="radio"]').forEach(radio => {
+    radio.addEventListener('change', function () {
+      const tab = this.id.replace('hero-tab-', '');
+      tabSlideIndices[tab] = 0;
+      updateCarouselUI();
+    });
+  });
+
+  // Copy helpers with visual feedback
+  function copyText(text, btn) {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(text).then(() => {
+      showCopyFeedback(btn);
+    });
+  }
+
+  function copySnippet(elementId, btn) {
+    const el = document.getElementById(elementId);
+    if (!el || !navigator.clipboard) return;
+    navigator.clipboard.writeText(el.innerText || el.textContent).then(() => {
+      showCopyFeedback(btn);
+    });
+  }
+
+  function copyActiveSnippet(btn) {
+    const tab = getActiveTab();
+    const pane = document.querySelector(`.hero-tab-pane[data-tab="${tab}"]`);
+    if (!pane) return;
+    const activeSlide = pane.querySelector('.hero-slide.active') || pane.querySelector('.hero-slide');
+    if (!activeSlide) return;
+    const codeEl = activeSlide.querySelector('code');
+    if (!codeEl || !navigator.clipboard) return;
+    navigator.clipboard.writeText(codeEl.innerText || codeEl.textContent).then(() => {
+      showCopyFeedback(btn);
+    });
+  }
+
+  function showCopyFeedback(btn) {
+    const originalHTML = btn.innerHTML;
+    btn.innerHTML = '<span style="font-size:0.68rem; font-weight:600; color:#67e8f9; font-family:var(--md-text-font-family, sans-serif);">Copied!</span>';
+    setTimeout(() => {
+      btn.innerHTML = originalHTML;
+    }, 2000);
+  }
+
+  // Initial sync
+  updateCarouselUI();
 </script>
 
 {% endblock %}
