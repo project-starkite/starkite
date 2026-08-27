@@ -352,32 +352,25 @@
     scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
   }
 
-  .hero-terminal__footer {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    background: #0e2139;
-    border-top: 1px solid rgba(103, 232, 249, 0.18);
-    padding: 0.35rem 0.85rem;
-    font-size: 0.72rem;
-    color: rgba(255, 255, 255, 0.55);
-    user-select: none;
-  }
   .hero-carousel__nav {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
+    justify-content: center;
+    gap: 0.55rem;
+    padding: 0.45rem 0 0.65rem 0;
+    background: #0a182c;
+    user-select: none;
   }
   .hero-carousel__btn {
     background: transparent;
     border: none;
-    color: rgba(255, 255, 255, 0.5);
+    color: rgba(255, 255, 255, 0.45);
     cursor: pointer;
-    padding: 0.15rem;
+    padding: 0.15rem 0.25rem;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 0.2rem;
+    border-radius: 0.25rem;
     transition: color 0.15s, background 0.15s;
   }
   .hero-carousel__btn:hover {
@@ -385,19 +378,19 @@
     background: rgba(255, 255, 255, 0.1);
   }
   .hero-carousel__btn svg {
-    width: 0.95rem;
-    height: 0.95rem;
+    width: 1.05rem;
+    height: 1.05rem;
     fill: currentColor;
   }
   .hero-carousel__dots {
     display: flex;
     align-items: center;
-    gap: 0.35rem;
-    margin: 0 0.25rem;
+    gap: 0.45rem;
+    margin: 0 0.35rem;
   }
   .hero-dot {
-    width: 6px;
-    height: 6px;
+    width: 6.5px;
+    height: 6.5px;
     border-radius: 50%;
     background: rgba(255, 255, 255, 0.25);
     border: none;
@@ -406,22 +399,8 @@
     transition: background 0.15s, transform 0.15s;
   }
   .hero-dot.active {
-    background: #89ddff;
-    transform: scale(1.25);
-  }
-  .hero-terminal__status {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    font-family: var(--md-code-font-family, monospace);
-  }
-  .hero-terminal__file {
-    color: rgba(255, 255, 255, 0.75);
-    font-weight: 500;
-  }
-  .hero-terminal__stepper {
-    color: rgba(255, 255, 255, 0.4);
-    font-size: 0.68rem;
+    background: #67e8f9;
+    transform: scale(1.3);
   }
   .md-typeset .hero-terminal__code pre code,
   .hero-terminal__code pre code {
@@ -732,9 +711,12 @@
     <div class="tx-hero">
       <div class="tx-hero__split">
         <div class="tx-hero__left">
-          <h1 class="tx-hero__headline">Secure Starlark Runtime for <span class="tx-hero__accent">System, Cloud, and Agent Automation</span></h1>
+          <h1 class="tx-hero__headline">Secure Scripting Runtime for <span class="tx-hero__accent">Systems, Cloud, and AI Agents Automation</span></h1>
           <p class="tx-hero__subhead">
-            Build portable automation scripts with Go-backed standard modules that run identically across developer terminals, Kubernetes clusters, and AI agent loops.
+            Starkite wraps the power of the Go standard library into a lightweight, fast, and secure scripting runtime. Based on the Python-like Starlark scripting language,
+            Starkite script is designed to be simple for human to understand 
+            Starkite exposes a rich set of modules for .
+            Replace fragile shell scripts and uncontained Python with dependency-free, sandboxed Starlark. Built on Go standard modules that execute identically across developer terminals, CI pipelines, Kubernetes clusters, and MCP agent harnesses.
           </p>
         </div>
 
@@ -770,21 +752,23 @@
               <!-- Slide 0: SSH Fleet Execution -->
               <div class="hero-slide active" data-filename="ssh_fleet.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-auto-0" class="language-python"># Execute commands concurrently across remote hosts over SSH
+                  <pre><code id="code-auto-0" class="language-python"># Execute remote commands across hosts with SSH
+
 def main():
     client = ssh.config(
         hosts = ["web-1", "web-2", "web-3"],
         user = "ops",
         timeout = "10s",
     )
-    for res in client.run("uptime"):
+    for res in client.exec("uptime"):
         print(res.host, "->", res.stdout.strip())</code></pre>
                 </div>
               </div>
               <!-- Slide 1: API Server -->
               <div class="hero-slide" data-filename="http_server.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-auto-1" class="language-python"># Launch an embedded HTTP server handling webhook callbacks
+                  <pre><code id="code-auto-1" class="language-python"># Easily create HTTP servers and API endpoints
+
 def handle_webhook(req):
     event = json.decode(req.body)
     return {"status": 200, "body": event.get("type", "ping")}
@@ -798,14 +782,16 @@ def main():
               <!-- Slide 2: HTTP Client -->
               <div class="hero-slide" data-filename="http_client.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-auto-2" class="language-python"># Dispatch HTTP API requests and handle response payloads
+                  <pre><code id="code-auto-2" class="language-python"># Create clients to handle remote HTTP services/APIs
+
 def main():
     resp = http.url("https://httpbin.org/json").get(
         headers = {"Accept": "application/json"},
         timeout = "5s",
     )
+    data = json.decode(resp.body)
     print("Status Code:", resp.status_code)
-    print("Response Data:", resp.json()["slideshow"]["title"])</code></pre>
+    print("Response Data:", data["slideshow"]["title"])</code></pre>
                 </div>
               </div>
             </div>
@@ -815,33 +801,34 @@ def main():
               <!-- Slide 0: Query & Inspect -->
               <div class="hero-slide active" data-filename="list_pods.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-k8s-0" class="language-python"># Inspect status of running pods across a namespace
+                  <pre><code id="code-k8s-0" class="language-python"># Easily query Kubernetes cluster resources
+
 def main():
-    client = k8s.config(namespace="staging")
-    pods = client.list("pods")
+    pods = k8s.list("pods", namespace="staging")
     for pod in pods:
-        print(pod.metadata.name, pod.status.phase)</code></pre>
+        print(pod["metadata"]["name"], pod["status"]["phase"])</code></pre>
                 </div>
               </div>
               <!-- Slide 1: Workload Deploy & Scale -->
               <div class="hero-slide" data-filename="deploy_workload.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-k8s-1" class="language-python"># Deploy container workload and dynamically scale replica count
+                  <pre><code id="code-k8s-1" class="language-python"># Deploy and manage Kubernetes cluster workloads
+
 def main():
-    client = k8s.config(namespace="production")
-    res = client.deploy(name="web", image="nginx:1.27", replicas=3)
-    client.scale(kind="deployment", name="web", replicas=5)
+    res = k8s.deploy(name="web", image="nginx:1.27", replicas=3)
+    k8s.scale("deployment", name="web", replicas=5)
     print("Deployment scaled:", res["deployment"])</code></pre>
                 </div>
               </div>
               <!-- Slide 2: Reconcile Controller -->
               <div class="hero-slide" data-filename="pod_controller.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-k8s-2" class="language-python"># Continuous Kubernetes controller reconciling cluster state and drift
+                  <pre><code id="code-k8s-2" class="language-python"># Easily create Kubernetes controllers and admission webhooks
+
 def reconcile(event, pod):
-    if pod.status.phase in ["Failed", "CrashLoopBackOff"]:
+    if pod["status"]["phase"] in ["Failed", "CrashLoopBackOff"]:
         http.url("https://alerts.internal/k8s").post(
-            json = {"pod": pod.metadata.name, "phase": pod.status.phase},
+            {"pod": pod["metadata"]["name"], "phase": pod["status"]["phase"]},
         )
 
 def main():
@@ -855,13 +842,14 @@ def main():
               <!-- Slide 0: MCP Tool Definition (Starlark) -->
               <div class="hero-slide active" data-filename="mcp_server.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-ai-0" class="language-python"># Model Context Protocol server publishing discoverable agent tools
+                  <pre><code id="code-ai-0" class="language-python"># Expose functions as MCP servers for your agentic tools
+
 def get_pod_health():
     """Return status summary of running pods across staging."""
-    client = k8s.config(namespace="staging")
+    pods = k8s.list("pods", namespace="staging")
     return [
-        {"pod": p.metadata.name, "phase": p.status.phase}
-        for p in client.list("pods")
+        {"pod": p["metadata"]["name"], "phase": p["status"]["phase"]}
+        for p in pods
     ]
 
 def main():
@@ -871,7 +859,8 @@ def main():
               <!-- Slide 1: Declarative MCP Config (JSON) -->
               <div class="hero-slide" data-filename="mcp_config.json">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-ai-1" class="language-json">// Register Starkite MCP tools inside Claude, Cursor, or agent harnesses
+                  <pre><code id="code-ai-1" class="language-json">// Use Starkite MCP tools with Claude, Cursor, or any agent harness
+
 {
   "mcpServers": {
     "k8s-diagnostics": {
@@ -885,7 +874,8 @@ def main():
               <!-- Slide 2: Programmatic Agent Harness (TypeScript) -->
               <div class="hero-slide" data-filename="agent_harness.ts">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-ai-2" class="language-typescript">// Connect TypeScript agent harness to Starkite sandboxed MCP server
+                  <pre><code id="code-ai-2" class="language-typescript">// Use the Starkite runtime in your own harness code 
+
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
@@ -902,65 +892,61 @@ const health = await client.callTool({ name: "get_pod_health" });</code></pre>
 
             <!-- TAB 4: SECURITY -->
             <div class="hero-tab-pane" data-tab="sec">
-              <!-- Slide 0 (Simple) -->
-              <div class="hero-slide active" data-filename="safe_job.star">
+              <!-- Slide 0: Declarative Capability Policy -->
+              <div class="hero-slide active" data-filename="config.yaml">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-sec-0" class="language-python"># Execute untrusted logic within strict runtime permission boundaries
+                  <pre><code id="code-sec-0" class="language-yaml"># Define granular permission and execution sanbox profiles
+
+permissions:
+  safe-job:
+    allow:
+      - "fs.read($CWD/data/*)"
+      - "fs.write($CWD/data/*)"
+    deny:
+      - os.exec
+      - os.shell
+      - http.client</code></pre>
+                </div>
+              </div>
+              <!-- Slide 1: Sandboxed Script Logic -->
+              <div class="hero-slide" data-filename="safe_job.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-sec-1" class="language-python"># Code makes function calls and access to restricted resources
+
 def main():
-    data = file.read("data/input.json")
+    data = path("data/input.json").read_text()
     records = json.decode(data)
-    file.write(
-        "data/result.json",
+    path("data/result.json").write_text(
         json.encode({"count": len(records)}),
     )
     print("Job completed safely within policy bounds.")</code></pre>
                 </div>
               </div>
-              <!-- Slide 1 (Intermediate) -->
-              <div class="hero-slide" data-filename="config.yaml">
-                <div class="hero-terminal__code">
-                  <pre><code id="code-sec-1" class="language-yaml"># Declarative capability profiles gating syscalls and network access
-permissions:
-  ci-runner:
-    allow:
-      - fs.read($CWD/**)
-      - "os.exec(git)"
-      - http.client
-    deny:
-      - os.shell
-      - "fs.write(/etc/*)"</code></pre>
-                </div>
-              </div>
-              <!-- Slide 2 (Advanced) -->
+              <!-- Slide 2: Combined Kernel & Capability Execution -->
               <div class="hero-slide" data-filename="sandbox_run.sh">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-sec-2" class="language-bash"># Isolate untrusted scripts with gVisor kernel and capability profiles
-$ kite run ./safe_job.star \
-    --sandbox=opaque \
-    --allow-fs
+                  <pre><code id="code-sec-2" class="language-bash"># Run scripts with pre-defined or custom permissions
+$ kite run ./safe_job.star --permissions=safe-job
 
-$ kite run ./deploy.star \
-    --permissions=ci-runner</code></pre>
+# Or, place sandbox boundary around system calls
+$ kite run ./safe_job.star --sandbox=opaque --permissions=safe-job
+
+                  </code></pre>
                 </div>
               </div>
             </div>
 
-            <div class="hero-terminal__footer">
-              <div class="hero-carousel__nav">
-                <button class="hero-carousel__btn" onclick="prevSlide()" aria-label="Previous example" title="Previous example">
-                  <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
-                </button>
-                <div class="hero-carousel__dots" id="hero-carousel-dots">
-                  <!-- Dynamically populated per active tab in JS -->
-                </div>
-                <button class="hero-carousel__btn" onclick="nextSlide()" aria-label="Next example" title="Next example">
-                  <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
-                </button>
+            <!-- Centered carousel navigation controls -->
+            <div class="hero-carousel__nav">
+              <button class="hero-carousel__btn" onclick="prevSlide()" aria-label="Previous example" title="Previous example">
+                <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
+              </button>
+              <div class="hero-carousel__dots" id="hero-carousel-dots">
+                <!-- Dynamically populated per active tab in JS -->
               </div>
-              <div class="hero-terminal__status">
-                <span class="hero-terminal__file" id="hero-current-file">ssh_fleet.star</span>
-                <span class="hero-terminal__stepper" id="hero-current-step">1 / 3</span>
-              </div>
+              <button class="hero-carousel__btn" onclick="nextSlide()" aria-label="Next example" title="Next example">
+                <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
+              </button>
             </div>
 
           </div>
