@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -64,9 +65,13 @@ func (ps *profileSpec) UnmarshalYAML(node *yaml.Node) error {
 // the same decoder parses both embedded and user-defined profiles. Base,
 // when set, names a built-in rung the body composes on top of.
 type profileBody struct {
-	Base    string      `yaml:"base,omitempty"`
-	Network string      `yaml:"network,omitempty"`
-	Mounts  []mountSpec `yaml:"mounts,omitempty"`
+	Base      string      `yaml:"base,omitempty"`
+	Driver    string      `yaml:"driver,omitempty"`
+	Image     string      `yaml:"image,omitempty"`
+	Network   string      `yaml:"network,omitempty"`
+	MaxMemory string      `yaml:"max_memory,omitempty"`
+	Timeout   string      `yaml:"timeout,omitempty"`
+	Mounts    []mountSpec `yaml:"mounts,omitempty"`
 }
 
 // mountSpec is the YAML form of a single mount entry. Defaults applied
@@ -126,12 +131,38 @@ func decodeProfile(name string, data []byte, origin string) (Profile, error) {
 	}
 	home, _ := os.UserHomeDir() // empty home leaves $HOME unexpanded → abs-path validation fails closed
 
-	p := Profile{Name: name}
+	p := Profile{
+		Name:   name,
+		Driver: body.Driver,
+		Image:  body.Image,
+	}
+	if p.Driver == "" {
+		p.Driver = DriverDefault
+	}
+
+	if body.MaxMemory != "" {
+		mem, err := parseMemoryMB(body.MaxMemory)
+		if err != nil {
+			return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
+		}
+		p.MaxMemoryMB = mem
+	}
+
+	if body.Timeout != "" {
+		dur, err := parseDuration(body.Timeout)
+		if err != nil {
+			return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
+		}
+		p.Timeout = dur
+	}
+
 	switch body.Network {
 	case string(NetworkHost):
 		p.Network = NetworkHost
 	case string(NetworkLoopback):
 		p.Network = NetworkLoopback
+	case string(NetworkNone):
+		p.Network = NetworkNone
 	case "":
 		return Profile{}, fmt.Errorf("sandbox: profile %q%s: network mode is required (one of %q, %q)",
 			name, fmtOrigin(origin), NetworkHost, NetworkLoopback)
@@ -230,13 +261,47 @@ func composeProfile(name string, body profileBody, origin string) (Profile, erro
 		return Profile{}, err
 	}
 
-	p := Profile{Name: name, Network: base.Network}
+	p := Profile{
+		Name:        name,
+		Driver:      base.Driver,
+		Image:       base.Image,
+		Network:     base.Network,
+		MaxMemoryMB: base.MaxMemoryMB,
+		Timeout:     base.Timeout,
+	}
+
+	if body.Driver != "" {
+		p.Driver = body.Driver
+	}
+	if p.Driver == "" {
+		p.Driver = DriverDefault
+	}
+	if body.Image != "" {
+		p.Image = body.Image
+	}
+	if body.MaxMemory != "" {
+		mem, err := parseMemoryMB(body.MaxMemory)
+		if err != nil {
+			return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
+		}
+		p.MaxMemoryMB = mem
+	}
+	if body.Timeout != "" {
+		dur, err := parseDuration(body.Timeout)
+		if err != nil {
+			return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
+		}
+		p.Timeout = dur
+	}
+
 	switch body.Network {
 	case "":
 	case string(NetworkHost):
 		p.Network = NetworkHost
 	case string(NetworkLoopback):
 		p.Network = NetworkLoopback
+	case string(NetworkNone):
+		p.Network = NetworkNone
 	default:
 		return Profile{}, fmt.Errorf("sandbox: profile %q%s: unknown network mode %q (want %q or %q)",
 			name, fmtOrigin(origin), body.Network, NetworkHost, NetworkLoopback)
@@ -281,6 +346,38 @@ func composeProfile(name string, body profileBody, origin string) (Profile, erro
 		}
 	}
 	return p, nil
+}
+
+func parseMemoryMB(s string) (int64, error) {
+	if s == "" {
+		return 0, nil
+	}
+	s = strings.TrimSpace(s)
+	multiplier := int64(1)
+	upper := strings.ToUpper(s)
+	if strings.HasSuffix(upper, "GB") || strings.HasSuffix(upper, "G") {
+		multiplier = 1024
+		s = strings.TrimRight(s, "gGbB")
+	} else if strings.HasSuffix(upper, "MB") || strings.HasSuffix(upper, "M") {
+		multiplier = 1
+		s = strings.TrimRight(s, "mMbB")
+	} else if strings.HasSuffix(upper, "KB") || strings.HasSuffix(upper, "K") {
+		multiplier = 0
+		s = strings.TrimRight(s, "kKbB")
+	}
+	var val int64
+	_, err := fmt.Sscanf(s, "%d", &val)
+	if err != nil {
+		return 0, fmt.Errorf("invalid memory format: %q", s)
+	}
+	return val * multiplier, nil
+}
+
+func parseDuration(s string) (time.Duration, error) {
+	if s == "" {
+		return 0, nil
+	}
+	return time.ParseDuration(s)
 }
 
 // validateSources checks that every bind-mount source exists on the host.

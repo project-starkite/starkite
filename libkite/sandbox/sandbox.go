@@ -13,6 +13,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"time"
 )
 
 // ExecSpec describes a script execution that should happen inside a sandbox.
@@ -78,6 +79,9 @@ func PlatformError() error {
 type NetworkMode string
 
 const (
+	// NetworkNone disables all network capabilities.
+	NetworkNone NetworkMode = "none"
+
 	// NetworkHost shares the host's network namespace with the contained
 	// process. Network reachability matches the host. Used by the
 	// net-access and host rungs.
@@ -125,16 +129,20 @@ type Mount struct {
 }
 
 // Profile is the resolved sandbox configuration: the platform-agnostic
-// description that the runtime backend translates to a runsc/OCI spec.
+// description that the runtime backend translates to a driver execution spec.
 //
 // Profile is loaded by LoadProfile from one of the built-in YAML files
 // embedded into the binary, or from a config.yaml "sandbox:" entry. Both
 // built-ins live as .yaml files in libkite/sandbox/profiles/ and are
 // embedded via go:embed.
 type Profile struct {
-	Name    string      // empty for "no sandbox"
-	Network NetworkMode // host | loopback
-	Mounts  []Mount
+	Name        string        // empty for "no sandbox"
+	Driver      string        // driver name: "default", "podman", "docker", "landlock", "seatbelt", etc.
+	Image       string        // container image (for container/podman/docker drivers)
+	Network     NetworkMode   // none | host | loopback
+	Mounts      []Mount       // filesystem mount list
+	MaxMemoryMB int64         // memory limit in megabytes (0 = unconstrained)
+	Timeout     time.Duration // execution timeout (0 = unconstrained)
 }
 
 // IsZero reports whether the profile is the empty value, i.e. the caller

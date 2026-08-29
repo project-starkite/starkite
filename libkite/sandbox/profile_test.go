@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestLoadProfile_empty(t *testing.T) {
@@ -733,4 +734,75 @@ sandbox:
 			t.Error("base: default must error (rungs only)")
 		}
 	})
+}
+
+func TestDecodeProfile_DriverAndConstraints(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	work := t.TempDir()
+	writeFile(t, filepath.Join(work, "config.yaml"), `
+sandbox:
+  podman-builder:
+    driver: podman
+    image: golang:1.24-alpine
+    network: none
+    max_memory: 1GB
+    timeout: 30s
+    mounts:
+      - destination: /tmp
+        type: tmpfs
+`)
+	t.Chdir(work)
+
+	p, err := LoadProfile("podman-builder")
+	if err != nil {
+		t.Fatalf("LoadProfile(podman-builder): %v", err)
+	}
+
+	if p.Driver != DriverPodman {
+		t.Errorf("p.Driver = %q, want %q", p.Driver, DriverPodman)
+	}
+	if p.Image != "golang:1.24-alpine" {
+		t.Errorf("p.Image = %q, want 'golang:1.24-alpine'", p.Image)
+	}
+	if p.Network != NetworkNone {
+		t.Errorf("p.Network = %q, want %q", p.Network, NetworkNone)
+	}
+	if p.MaxMemoryMB != 1024 {
+		t.Errorf("p.MaxMemoryMB = %d, want 1024", p.MaxMemoryMB)
+	}
+	if p.Timeout != 30*time.Second {
+		t.Errorf("p.Timeout = %v, want 30s", p.Timeout)
+	}
+}
+
+func TestComposeProfile_DriverInheritance(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	work := t.TempDir()
+	writeFile(t, filepath.Join(work, "config.yaml"), `
+sandbox:
+  custom-seatbelt:
+    base: host
+    driver: seatbelt
+    max_memory: 512MB
+`)
+	t.Chdir(work)
+
+	p, err := LoadProfile("custom-seatbelt")
+	if err != nil {
+		t.Fatalf("LoadProfile(custom-seatbelt): %v", err)
+	}
+
+	if p.Driver != DriverSeatbelt {
+		t.Errorf("p.Driver = %q, want %q", p.Driver, DriverSeatbelt)
+	}
+	if p.MaxMemoryMB != 512 {
+		t.Errorf("p.MaxMemoryMB = %d, want 512", p.MaxMemoryMB)
+	}
+	if p.Network != NetworkHost {
+		t.Errorf("p.Network = %v, want host (inherited from base)", p.Network)
+	}
 }
