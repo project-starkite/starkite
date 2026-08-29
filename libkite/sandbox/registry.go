@@ -15,6 +15,7 @@ const (
 	DriverSeatbelt = "seatbelt"
 	DriverPodman   = "podman"
 	DriverDocker   = "docker"
+	DriverNerdctl  = "nerdctl"
 	DriverGVisor   = "gvisor"
 	DriverWasm     = "wasm"
 )
@@ -147,7 +148,7 @@ func (r *Registry) AutoDetect() (Driver, error) {
 	}
 
 	// Fallback to any available registered driver
-	for _, name := range []string{DriverLandlock, DriverSeatbelt, DriverPodman, DriverDocker, DriverGVisor, DriverWasm} {
+	for _, name := range []string{DriverLandlock, DriverSeatbelt, DriverPodman, DriverDocker, DriverNerdctl, DriverGVisor, DriverWasm} {
 		if d, ok := r.drivers[name]; ok && d.Available() {
 			return d, nil
 		}
