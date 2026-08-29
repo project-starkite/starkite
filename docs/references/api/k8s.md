@@ -26,7 +26,7 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | [Context helpers](#context-helpers) | `context`, `namespace_name`, `version`, `api_resources` |
 | [Controllers](#controllers) | `control` |
 | [Webhooks](#admission-webhooks) | `webhook` |
-| [Objects](#object-constructors) | `k8s.obj.crd`, `k8s.yaml`, `k8s.config` |
+| [Object constructors & utils](#object-constructors) | `k8s.obj.*`, `k8s.yaml`, `k8s.config` |
 
 ## CRUD
 
@@ -333,7 +333,74 @@ See the [webhooks guide](../../infra/k8s-webhooks.md) for a full end-to-end work
 
 ## Object constructors
 
-The `k8s.obj` namespace provides typed constructors for building Kubernetes resources programmatically.
+The `k8s.obj` namespace provides declarative constructors for building validated Kubernetes resource manifests and sub-objects programmatically.
+
+### Resource constructors
+
+| Constructor | Returns | Description |
+|-------------|---------|-------------|
+| `k8s.obj.deployment(name, replicas=1, containers=[], labels={}, annotations={}, selector={}, template=None)` | `KubeResource` | Construct a Deployment manifest |
+| `k8s.obj.service(name, ports=[], selector={}, type="ClusterIP", labels={}, annotations={})` | `KubeResource` | Construct a Service manifest |
+| `k8s.obj.config_map(name, data={}, binary_data={}, labels={}, annotations={})` | `KubeResource` | Construct a ConfigMap manifest |
+| `k8s.obj.secret(name, data={}, string_data={}, type="Opaque", labels={}, annotations={})` | `KubeResource` | Construct a Secret manifest |
+| `k8s.obj.pod(name, containers=[], restart_policy="Always", labels={}, annotations={})` | `KubeResource` | Construct a Pod manifest |
+| `k8s.obj.job(name, containers=[], completions=1, parallelism=1, labels={}, annotations={})` | `KubeResource` | Construct a Job manifest |
+| `k8s.obj.cron_job(name, schedule, job_template=None, containers=[], labels={}, annotations={})` | `KubeResource` | Construct a CronJob manifest |
+| `k8s.obj.stateful_set(name, service_name="", replicas=1, containers=[], labels={}, annotations={})` | `KubeResource` | Construct a StatefulSet manifest |
+| `k8s.obj.daemon_set(name, containers=[], labels={}, annotations={})` | `KubeResource` | Construct a DaemonSet manifest |
+| `k8s.obj.ingress(name, rules=[], tls=[], ingress_class_name="", labels={}, annotations={})` | `KubeResource` | Construct an Ingress manifest |
+| `k8s.obj.persistent_volume_claim(name, access_modes=[], storage="", storage_class_name="", labels={})` | `KubeResource` | Construct a PersistentVolumeClaim |
+| `k8s.obj.namespace(name, labels={}, annotations={})` | `KubeResource` | Construct a Namespace manifest |
+| `k8s.obj.service_account(name, labels={}, annotations={})` | `KubeResource` | Construct a ServiceAccount manifest |
+| `k8s.obj.crd(group, version, kind, plural, scope="Namespaced", spec={}, status={})` | `CRDResource` | Construct a CustomResourceDefinition manifest |
+
+### Sub-object constructors
+
+| Constructor | Returns | Description |
+|-------------|---------|-------------|
+| `k8s.obj.container(name, image, ports=[], env=[], command=[], args=[], volume_mounts=[], resources=None, liveness_probe=None, readiness_probe=None)` | `KubeResource` | Container specification |
+| `k8s.obj.container_port(container_port, name="", protocol="TCP", host_port=0)` | `KubeResource` | Container port definition |
+| `k8s.obj.service_port(port, target_port=0, name="", protocol="TCP", node_port=0)` | `KubeResource` | Service port definition |
+| `k8s.obj.env_var(name, value="", value_from={})` | `KubeResource` | Environment variable definition |
+| `k8s.obj.env_from(config_map_ref={}, secret_ref={}, prefix="")` | `KubeResource` | Environment variable source from ConfigMap or Secret |
+| `k8s.obj.probe(http_get={}, tcp_socket={}, exec={}, initial_delay_seconds=0, period_seconds=10, timeout_seconds=1, failure_threshold=3)` | `KubeResource` | Health probe configuration |
+| `k8s.obj.volume(name, config_map={}, secret={}, pvc={}, host_path={}, empty_dir={})` | `KubeResource` | Pod volume definition |
+| `k8s.obj.volume_mount(name, mount_path, sub_path="", read_only=False)` | `KubeResource` | Container volume mount |
+
+### Example — construct and apply workload
+
+```python
+# Construct Deployment and Service with typed constructors
+dep = k8s.obj.deployment(
+    name = "web",
+    replicas = 3,
+    labels = {"app": "web", "tier": "frontend"},
+    containers = [
+        k8s.obj.container(
+            name = "nginx",
+            image = "nginx:1.27",
+            ports = [k8s.obj.container_port(container_port=80, name="http")],
+            env = [
+                k8s.obj.env_var(name="PORT", value="80"),
+                k8s.obj.env_var(name="ENV", value="production"),
+            ],
+            readiness_probe = k8s.obj.probe(http_get={"path": "/", "port": 80}, initial_delay_seconds=5),
+        ),
+    ],
+)
+
+svc = k8s.obj.service(
+    name = "web",
+    labels = {"app": "web"},
+    selector = {"app": "web"},
+    ports = [
+        k8s.obj.service_port(port=80, target_port=80, name="http"),
+    ],
+)
+
+# Apply directly using Server-Side Apply
+k8s.apply([dep, svc], namespace="default")
+```
 
 ### `k8s.obj.crd()`
 
@@ -394,8 +461,8 @@ print(k8s.yaml(crd))
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `k8s.yaml(manifest)` | `string` | Render a manifest dict as YAML |
-| `k8s.config(kubeconfig="", context="", namespace="")` | `None` | Configure the default k8s client (kubeconfig path, context, default namespace). Usually inferred from env |
+| `k8s.yaml(manifest)` | `string` | Render a manifest dict or KubeResource as YAML |
+| `k8s.config(kubeconfig="", context="", namespace="")` | `Client` | Return a configured Kubernetes client bound to the given kubeconfig path, context, and namespace |
 
 ## Examples
 
@@ -404,12 +471,12 @@ print(k8s.yaml(crd))
 ```python
 # Get a specific pod
 pod = k8s.get("pod", "web-abc123", namespace="default")
-print(pod["status"]["phase"])
+print(pod.status.phase)
 
 # List pods by label
 pods = k8s.list("pod", namespace="default", labels="app=web")
 for p in pods:
-    print(p["metadata"]["name"], p["status"]["phase"])
+    print(p.metadata.name, p.status.phase)
 ```
 
 ### Create from YAML
@@ -433,10 +500,12 @@ k8s.apply({
 ### Deploy and expose
 
 ```python
-k8s.deploy("web", "nginx:latest", replicas=3, port=80, namespace="default",
+result = k8s.deploy("web", "nginx:latest", replicas=3, port=80, namespace="default",
     labels={"app": "web", "tier": "frontend"},
     env={"ENV": "production"},
 )
+printf("Deployed: %s, Service: %s\n", result.deployment, result.service)
+
 k8s.expose("deployment", "web", port=80, type="LoadBalancer", namespace="default")
 ```
 
@@ -455,7 +524,7 @@ k8s.rollout("deployment", "web", action="restart", namespace="default")
 
 # Check rollout status
 status = k8s.rollout("deployment", "web", action="status", namespace="default")
-print(status)
+printf("Complete: %s, Ready: %d/%d\n", status.complete, status.ready, status.replicas)
 
 # Pause a rollout (e.g., during debugging)
 k8s.rollout("deployment", "web", action="pause", namespace="default")
@@ -513,11 +582,11 @@ k8s.annotate("deployment", "web", {"deploy-note": "hotfix"}, namespace="default"
 
 ```python
 ver = k8s.version()
-print("Kubernetes:", ver["gitVersion"])
+print("Kubernetes:", ver.git_version)
 
 resources = k8s.api_resources()
 for r in resources:
-    print(r["name"], r["kind"])
+    print(r.name, r.kind)
 ```
 
 > **Note:**
