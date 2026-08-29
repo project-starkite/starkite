@@ -652,13 +652,12 @@ func (c *K8sClient) version(thread *starlark.Thread, fn *starlark.Builtin, args 
 		return nil, fmt.Errorf("k8s.version: %w", err)
 	}
 
-	dict := starlark.NewDict(4)
-	dict.SetKey(starlark.String("major"), starlark.String(info.Major))
-	dict.SetKey(starlark.String("minor"), starlark.String(info.Minor))
-	dict.SetKey(starlark.String("git_version"), starlark.String(info.GitVersion))
-	dict.SetKey(starlark.String("platform"), starlark.String(info.Platform))
-
-	return dict, nil
+	return NewAttrDict(map[string]any{
+		"major":       info.Major,
+		"minor":       info.Minor,
+		"git_version": info.GitVersion,
+		"platform":    info.Platform,
+	}), nil
 }
 
 // apiResources returns available API resources on the server.
@@ -676,18 +675,17 @@ func (c *K8sClient) apiResources(thread *starlark.Thread, fn *starlark.Builtin, 
 	var results []starlark.Value
 	for _, list := range lists {
 		for _, res := range list.APIResources {
-			d := starlark.NewDict(5)
-			d.SetKey(starlark.String("name"), starlark.String(res.Name))
-			d.SetKey(starlark.String("kind"), starlark.String(res.Kind))
-			d.SetKey(starlark.String("group_version"), starlark.String(list.GroupVersion))
-			d.SetKey(starlark.String("namespaced"), starlark.Bool(res.Namespaced))
-
-			verbs := make([]starlark.Value, len(res.Verbs))
+			verbs := make([]any, len(res.Verbs))
 			for j, v := range res.Verbs {
-				verbs[j] = starlark.String(v)
+				verbs[j] = v
 			}
-			d.SetKey(starlark.String("verbs"), starlark.NewList(verbs))
-
+			d := NewAttrDict(map[string]any{
+				"name":          res.Name,
+				"kind":          res.Kind,
+				"group_version": list.GroupVersion,
+				"namespaced":    res.Namespaced,
+				"verbs":         verbs,
+			})
 			results = append(results, d)
 		}
 	}
@@ -826,13 +824,18 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 		objNs = c.namespace
 	}
 
-	statusDict, ok := statusValue.(*starlark.Dict)
-	if !ok {
-		return nil, fmt.Errorf("k8s.status: status must be a dict, got %s", statusValue.Type())
-	}
-	statusMap, err := startype.Dict(statusDict).ToMap()
-	if err != nil {
-		return nil, fmt.Errorf("k8s.status: %w", err)
+	var statusMap map[string]any
+	switch s := statusValue.(type) {
+	case *AttrDict:
+		statusMap = s.ToMap()
+	case *starlark.Dict:
+		var err error
+		statusMap, err = startype.Dict(s).ToMap()
+		if err != nil {
+			return nil, fmt.Errorf("k8s.status: %w", err)
+		}
+	default:
+		return nil, fmt.Errorf("k8s.status: status must be a dict or AttrDict, got %s", statusValue.Type())
 	}
 
 	gvr, _, err := c.resolver.Resolve(objKind)

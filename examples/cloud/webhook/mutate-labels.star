@@ -6,9 +6,11 @@
 #       --var tls_cert=/tmp/cert.pem --var tls_key=/tmp/key.pem
 
 def mutate(obj):
-    # Get or create labels via dict-style access
-    labels = obj["metadata"]["labels"]
-    labels["managed-by"] = "starkite"
+    # Use dot notation for reading, bracket indexing for in-place mutation
+    printf("Mutating deployment %s/%s\n", obj.metadata.namespace, obj.metadata.name)
+    if not obj.metadata.get("labels"):
+        obj["metadata"]["labels"] = {}
+    obj["metadata"]["labels"]["managed-by"] = "starkite"
     return obj
 
 tls_cert = var_str("tls_cert", "/certs/tls.crt")

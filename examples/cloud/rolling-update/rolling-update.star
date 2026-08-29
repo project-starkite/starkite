@@ -15,7 +15,7 @@ def preflight(k, name, new_image):
     printf("Pre-flight: checking deployment/%s...\n", name)
 
     dep = k.get("deployment", name)
-    current_image = dep["spec"]["template"]["spec"]["containers"][0]["image"]
+    current_image = dep.spec.template.spec.containers[0].image
 
     if current_image == new_image:
         printf("Already running %s — nothing to do.\n", new_image)
@@ -24,8 +24,8 @@ def preflight(k, name, new_image):
     printf("  Current image: %s\n", current_image)
     printf("  Target image:  %s\n", new_image)
 
-    desired = dep["spec"].get("replicas", 1)
-    available = dep["status"].get("availableReplicas", 0)
+    desired = dep.spec.get("replicas", 1)
+    available = dep.status.get("availableReplicas", 0)
     if available < desired:
         printf("  WARNING: deployment is already degraded (%d/%d available)\n", available, desired)
 
@@ -33,25 +33,25 @@ def make_watcher(errors, max_restarts):
     """Return a watch handler that tracks pod health during rollout."""
     # Handler receives (event_type, object) as two separate args
     def on_pod_event(event_type, pod):
-        pod_name = pod["metadata"]["name"]
-        phase = pod["status"].get("phase", "Unknown")
+        pod_name = pod.metadata.name
+        phase = pod.status.get("phase", "Unknown")
 
         if event_type == "DELETED":
             return  # normal during rolling update
 
         # Check for crash-looping containers
-        for cs in pod["status"].get("containerStatuses", []):
+        for cs in pod.status.get("containerStatuses", []):
             restarts = cs.get("restartCount", 0)
             waiting = cs.get("state", {}).get("waiting", {})
             reason = waiting.get("reason", "")
 
             if restarts > max_restarts:
                 errors.append("container %s in %s restarted %d times" % (
-                    cs["name"], pod_name, restarts))
+                    cs.name, pod_name, restarts))
                 return False  # stop watching
 
             if reason in ("CrashLoopBackOff", "ImagePullBackOff", "ErrImagePull"):
-                errors.append("%s in %s: %s" % (cs["name"], pod_name, reason))
+                errors.append("%s in %s: %s" % (cs.name, pod_name, reason))
                 return False  # stop watching
 
         if event_type == "MODIFIED" and phase == "Running":
@@ -98,12 +98,12 @@ def main():
     printf("\nVerifying rollout status...\n")
     status = k.rollout("deployment", name, action="status")
 
-    if status["complete"]:
+    if status.complete:
         printf("Rollout complete: %d/%d replicas ready.\n",
-            status["ready"], status["replicas"])
+            status.ready, status.replicas)
     else:
         printf("Rollout still in progress: %d/%d ready.\n",
-            status["ready"], status["replicas"])
+            status.ready, status.replicas)
         printf("Waiting for completion...\n")
         k.wait_for("deployment", name, condition="available", timeout="5m")
 

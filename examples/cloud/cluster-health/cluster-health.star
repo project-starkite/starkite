@@ -15,8 +15,8 @@ def check_nodes(k, issues):
     printf("Nodes:\n")
     nodes = k.list("nodes")
     for node in nodes:
-        name = node["metadata"]["name"]
-        conditions = {c["type"]: c["status"] for c in node["status"].get("conditions", [])}
+        name = node.metadata.name
+        conditions = {c.type: c.status for c in node.status.get("conditions", [])}
 
         ready = conditions.get("Ready", "Unknown")
         pressure = []
@@ -50,7 +50,7 @@ def check_node_resources(k):
         cap = n.get("capacity", {})
         alloc = n.get("allocatable", {})
         printf("  %-25s %10s %10s %10s %10s\n",
-            n["name"],
+            n.name,
             cap.get("cpu", "?"),
             alloc.get("cpu", "?"),
             cap.get("memory", "?"),
@@ -63,17 +63,17 @@ def check_deployments(k, namespaces, skip_system, issues):
     healthy_deps = 0
 
     for ns in namespaces:
-        ns_name = ns["metadata"]["name"]
+        ns_name = ns.metadata.name
         if skip_system and ns_name.startswith("kube-"):
             continue
 
         deps = k.list("deployments", namespace=ns_name)
         for dep in deps:
             total_deps += 1
-            dep_name = dep["metadata"]["name"]
-            desired = dep["spec"].get("replicas", 1)
-            available = dep["status"].get("availableReplicas", 0)
-            ready = dep["status"].get("readyReplicas", 0)
+            dep_name = dep.metadata.name
+            desired = dep.spec.get("replicas", 1)
+            available = dep.status.get("availableReplicas", 0)
+            ready = dep.status.get("readyReplicas", 0)
 
             if available >= desired:
                 healthy_deps += 1
@@ -90,14 +90,14 @@ def check_pods(k, namespaces, skip_system, issues):
     problem_count = 0
 
     for ns in namespaces:
-        ns_name = ns["metadata"]["name"]
+        ns_name = ns.metadata.name
         if skip_system and ns_name.startswith("kube-"):
             continue
 
         pods = k.list("pods", namespace=ns_name)
         for pod in pods:
-            phase = pod["status"].get("phase", "Unknown")
-            pod_name = pod["metadata"]["name"]
+            phase = pod.status.get("phase", "Unknown")
+            pod_name = pod.metadata.name
 
             if phase in ("Pending", "Unknown"):
                 problem_count += 1
@@ -106,14 +106,14 @@ def check_pods(k, namespaces, skip_system, issues):
                 continue
 
             # Check for crash-looping containers
-            for cs in pod["status"].get("containerStatuses", []):
+            for cs in pod.status.get("containerStatuses", []):
                 restarts = cs.get("restartCount", 0)
                 if restarts > 5:
                     problem_count += 1
                     issues.append("Pod %s/%s container %s restarted %d times" % (
-                        ns_name, pod_name, cs["name"], restarts))
+                        ns_name, pod_name, cs.name, restarts))
                     printf("  ! %-20s %-40s %d restarts (%s)\n",
-                        ns_name, pod_name, restarts, cs["name"])
+                        ns_name, pod_name, restarts, cs.name)
 
     if problem_count == 0:
         printf("  (none)\n")
@@ -131,7 +131,7 @@ def main():
 
     printf("Cluster: %s\n", k.context())
     info = k.version()
-    printf("Version: %s (platform: %s)\n\n", info["git_version"], info["platform"])
+    printf("Version: %s (platform: %s)\n\n", info.git_version, info.platform)
 
     nodes = check_nodes(k, issues)
     check_node_resources(k)

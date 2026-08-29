@@ -135,9 +135,10 @@ func (c *K8sClient) watchCollect(watcher watch.Interface, ctx context.Context) (
 				continue
 			}
 
-			eventDict := starlark.NewDict(2)
-			eventDict.SetKey(starlark.String("type"), starlark.String(string(event.Type)))
-			eventDict.SetKey(starlark.String("object"), dict)
+			eventDict := NewAttrDict(map[string]any{
+				"type":   string(event.Type),
+				"object": dict,
+			})
 			events = append(events, eventDict)
 		}
 	}
@@ -219,11 +220,11 @@ func (c *K8sClient) waitFor(thread *starlark.Thread, fn *starlark.Builtin, args 
 		select {
 		case <-ctx.Done():
 			dict, _ := unstructuredToDict(obj)
-			result := starlark.NewDict(3)
-			result.SetKey(starlark.String("ready"), starlark.False)
-			result.SetKey(starlark.String("resource"), dict)
-			result.SetKey(starlark.String("message"), starlark.String("timeout waiting for condition"))
-			return result, nil
+			return NewAttrDict(map[string]any{
+				"ready":    false,
+				"resource": dict,
+				"message":  "timeout waiting for condition",
+			}), nil
 
 		case event, ok := <-watcher.ResultChan():
 			if !ok {
@@ -313,15 +314,11 @@ func mapConditionName(condition string) string {
 
 func waitResult(ready bool, obj *unstructuredObj, message string) (starlark.Value, error) {
 	dict, _ := unstructuredToDict(obj)
-	result := starlark.NewDict(3)
-	result.SetKey(starlark.String("ready"), starlark.Bool(ready))
-	if dict != nil {
-		result.SetKey(starlark.String("resource"), dict)
-	} else {
-		result.SetKey(starlark.String("resource"), starlark.None)
-	}
-	result.SetKey(starlark.String("message"), starlark.String(message))
-	return result, nil
+	return NewAttrDict(map[string]any{
+		"ready":    ready,
+		"resource": dict,
+		"message":  message,
+	}), nil
 }
 
 // unstructuredNestedSlice extracts a nested slice from an unstructured object.

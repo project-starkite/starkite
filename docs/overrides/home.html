@@ -713,8 +713,8 @@
         <div class="tx-hero__left">
           <h1 class="tx-hero__headline">Secure Scripting Runtime for <span class="tx-hero__accent">Systems, Cloud, and Agent Automation</span></h1>
           <p class="tx-hero__subhead">
-            Starkite combines the simplicity of the Starlark scripting language with a rich set of modules backed by the Go standard libary.
-            Use it to replace brittle single-threaded shell scripts with high-performance automation of system, infrastructure, and agentic workloads.
+            Starkite combines the simplicity of the Starlark scripting language with a set of feature-rich modules backed by the Go standard libary.
+            Use it to replace brittle single-threaded operation scripts with high-performance automation for system, infrastructure, and agentic workloads.
           </p>
         </div>
 
@@ -804,7 +804,7 @@ def main():
 def main():
     pods = k8s.list("pods", namespace="staging")
     for pod in pods:
-        print(pod["metadata"]["name"], pod["status"]["phase"])</code></pre>
+        print(pod.metadata.name, pod.status.phase)</code></pre>
                 </div>
               </div>
               <!-- Slide 1: Workload Deploy & Scale -->
@@ -815,7 +815,7 @@ def main():
 def main():
     res = k8s.deploy(name="web", image="nginx:1.27", replicas=3)
     k8s.scale("deployment", name="web", replicas=5)
-    print("Deployment scaled:", res["deployment"])</code></pre>
+    print("Deployment scaled:", res.deployment)</code></pre>
                 </div>
               </div>
               <!-- Slide 2: Reconcile Controller -->
@@ -824,9 +824,9 @@ def main():
                   <pre><code id="code-k8s-2" class="language-python"># Easily create Kubernetes controllers and admission webhooks
 
 def reconcile(event, pod):
-    if pod["status"]["phase"] in ["Failed", "CrashLoopBackOff"]:
+    if pod.status.phase in ["Failed", "CrashLoopBackOff"]:
         http.url("https://alerts.internal/k8s").post(
-            {"pod": pod["metadata"]["name"], "phase": pod["status"]["phase"]},
+            {"pod": pod.metadata.name, "phase": pod.status.phase},
         )
 
 def main():
@@ -846,7 +846,7 @@ def get_pod_health():
     """Return status summary of running pods across staging."""
     pods = k8s.list("pods", namespace="staging")
     return [
-        {"pod": p["metadata"]["name"], "phase": p["status"]["phase"]}
+        {"pod": p.metadata.name, "phase": p.status.phase}
         for p in pods
     ]
 

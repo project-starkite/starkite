@@ -57,6 +57,7 @@ programmable YAML generator. Variables are passed via `--var key=value` flags.
 | Example | Description |
 |---------|-------------|
 | [cluster-health](cluster-health/) | Read-only cluster health audit — nodes, deployments, stuck pods |
+| [object-traversal](object-traversal/) | Deep inspection, dot notation, `starlark.Mapping` & `IterableMapping` operations |
 | [namespace-stack](namespace-stack/) | Scaffold a namespace with ResourceQuota + LimitRange + RBAC |
 | [debug-pod](debug-pod/) | Pod debugging toolkit — describe, logs, exec, port-forward |
 

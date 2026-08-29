@@ -289,12 +289,11 @@ func (c *K8sClient) execCmd(thread *starlark.Thread, fn *starlark.Builtin, args 
 		exitCode = 1
 	}
 
-	result := starlark.NewDict(3)
-	result.SetKey(starlark.String("stdout"), starlark.String(stdout.String()))
-	result.SetKey(starlark.String("stderr"), starlark.String(stderr.String()))
-	result.SetKey(starlark.String("code"), starlark.MakeInt(exitCode))
-
-	return result, nil
+	return NewAttrDict(map[string]any{
+		"stdout": stdout.String(),
+		"stderr": stderr.String(),
+		"code":   int64(exitCode),
+	}), nil
 }
 
 // portForward establishes a port-forward to a pod.

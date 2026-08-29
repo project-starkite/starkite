@@ -17,18 +17,28 @@ type (
 	unstructuredList = unstructured.UnstructuredList
 )
 
-// dictToUnstructured converts a *starlark.Dict to an *unstructured.Unstructured.
-func dictToUnstructured(dict *starlark.Dict) (*unstructured.Unstructured, error) {
-	m, err := startype.Dict(dict).ToMap()
-	if err != nil {
-		return nil, fmt.Errorf("dict to map: %w", err)
+// dictToUnstructured converts a Starlark dictionary or AttrDict to an *unstructured.Unstructured.
+func dictToUnstructured(val starlark.Value) (*unstructured.Unstructured, error) {
+	switch v := val.(type) {
+	case *AttrDict:
+		return &unstructured.Unstructured{Object: v.ToMap()}, nil
+	case *starlark.Dict:
+		m, err := startype.Dict(v).ToMap()
+		if err != nil {
+			return nil, fmt.Errorf("dict to map: %w", err)
+		}
+		return &unstructured.Unstructured{Object: m}, nil
+	default:
+		return nil, fmt.Errorf("expected dict or AttrDict, got %s", val.Type())
 	}
-	return &unstructured.Unstructured{Object: m}, nil
 }
 
-// unstructuredToDict converts an *unstructured.Unstructured to a *starlark.Dict.
-func unstructuredToDict(obj *unstructured.Unstructured) (*starlark.Dict, error) {
-	return startype.Map(obj.Object).ToDict()
+// unstructuredToDict converts an *unstructured.Unstructured to an *AttrDict.
+func unstructuredToDict(obj *unstructured.Unstructured) (*AttrDict, error) {
+	if obj == nil {
+		return nil, nil
+	}
+	return unstructuredToAttrDict(obj), nil
 }
 
 // parseYAML parses a YAML string into a *starlark.Dict.
@@ -67,12 +77,14 @@ func yamlToUnstructuredList(yamlStr string) ([]*unstructured.Unstructured, error
 	return result, nil
 }
 
-// resolveManifest converts a Starlark value to a *starlark.Dict.
-// Handles KubeObject (via ToDict), *starlark.Dict (passthrough), and YAML strings.
-func resolveManifest(val starlark.Value) (*starlark.Dict, error) {
+// resolveManifest converts a Starlark value to a *starlark.Dict or *AttrDict.
+// Handles KubeObject (via ToDict), *AttrDict, *starlark.Dict, and YAML strings.
+func resolveManifest(val starlark.Value) (starlark.Value, error) {
 	switch v := val.(type) {
 	case KubeObject:
 		return v.ToDict(), nil
+	case *AttrDict:
+		return v, nil
 	case *starlark.Dict:
 		return v, nil
 	case starlark.String:
@@ -83,12 +95,19 @@ func resolveManifest(val starlark.Value) (*starlark.Dict, error) {
 }
 
 // parseManifest converts a Starlark value to a list of Unstructured objects.
-// Handles: KubeObject, *starlark.Dict, YAML string (including multi-doc), *starlark.List.
+// Handles: KubeObject, *AttrDict, *starlark.Dict, YAML string (including multi-doc), *starlark.List.
 func parseManifest(val starlark.Value) ([]*unstructured.Unstructured, error) {
 	switch v := val.(type) {
 	case KubeObject:
 		dict := v.ToDict()
 		obj, err := dictToUnstructured(dict)
+		if err != nil {
+			return nil, err
+		}
+		return []*unstructured.Unstructured{obj}, nil
+
+	case *AttrDict:
+		obj, err := dictToUnstructured(v)
 		if err != nil {
 			return nil, err
 		}
@@ -120,7 +139,7 @@ func parseManifest(val starlark.Value) ([]*unstructured.Unstructured, error) {
 	}
 }
 
-// toYAMLString converts a Starlark value (KubeObject, dict, or list) to a YAML string.
+// toYAMLString converts a Starlark value (KubeObject, AttrDict, dict, or list) to a YAML string.
 func toYAMLString(val starlark.Value) (string, error) {
 	switch v := val.(type) {
 	case KubeObject:
@@ -129,6 +148,9 @@ func toYAMLString(val starlark.Value) (string, error) {
 			return "", err
 		}
 		return marshalYAML(m)
+
+	case *AttrDict:
+		return marshalYAML(v.ToMap())
 
 	case *starlark.Dict:
 		m, err := startype.Dict(v).ToMap()

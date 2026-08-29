@@ -142,7 +142,11 @@ func TestResolveManifest_YAML(t *testing.T) {
 	if err != nil {
 		t.Fatalf("resolveManifest error: %v", err)
 	}
-	kind, _, _ := result.Get(starlark.String("kind"))
+	mapping, ok := result.(starlark.Mapping)
+	if !ok {
+		t.Fatalf("expected mapping, got %s", result.Type())
+	}
+	kind, _, _ := mapping.Get(starlark.String("kind"))
 	if s, ok := kind.(starlark.String); !ok || string(s) != "Pod" {
 		t.Errorf("kind = %v, want Pod", kind)
 	}

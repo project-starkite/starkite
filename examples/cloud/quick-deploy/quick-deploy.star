@@ -29,10 +29,10 @@ def main():
         labels={"team": "platform", "managed-by": "starctl"},
         env={"APP_NAME": name})
 
-    # deploy() returns {"deployment": name_str, "service": name_str}
-    printf("  Deployment: %s\n", result["deployment"])
+    # deploy() returns AttrDict with .deployment and .service
+    printf("  Deployment: %s\n", result.deployment)
     if result.get("service"):
-        printf("  Service:    %s (ClusterIP)\n", result["service"])
+        printf("  Service:    %s (ClusterIP)\n", result.service)
 
     # --- Scale up --------------------------------------------------------------
     new_count = replicas + 2
@@ -53,9 +53,9 @@ def main():
 
     pods = k.top_pods(sort_by="cpu", timeout="15s")
     for p in pods:
-        if name in p["name"]:
+        if name in p.name:
             printf("  %-40s %8s %12s %s\n",
-                p["name"], p["cpu_request"], p["memory_request"], p["status"])
+                p.name, p.cpu_request, p.memory_request, p.status)
 
     printf("\nDone. %s is running in namespace %s.\n", name, ns)
 

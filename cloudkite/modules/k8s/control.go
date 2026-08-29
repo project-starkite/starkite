@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -25,123 +24,6 @@ import (
 
 	"github.com/project-starkite/starkite/libkite"
 )
-
-// ============================================================================
-// AttrDict — recursive dot-access wrapper for Kubernetes objects
-// ============================================================================
-
-// AttrDict wraps a map for dot-access in Starlark (obj.metadata.name).
-// Also supports dict-style mutation (obj["metadata"]["labels"]["key"] = "value").
-// A shared RWMutex protects the entire object tree for concurrency safety.
-type AttrDict struct {
-	data map[string]any
-	mu   *sync.RWMutex
-}
-
-var (
-	_ starlark.Value     = (*AttrDict)(nil)
-	_ starlark.HasAttrs  = (*AttrDict)(nil)
-	_ starlark.Mapping   = (*AttrDict)(nil)
-	_ starlark.HasSetKey = (*AttrDict)(nil)
-)
-
-func (d *AttrDict) String() string {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	return fmt.Sprintf("AttrDict(%d keys)", len(d.data))
-}
-
-func (d *AttrDict) Type() string { return "AttrDict" }
-func (d *AttrDict) Freeze()      {}
-func (d *AttrDict) Hash() (uint32, error) {
-	return 0, fmt.Errorf("unhashable type: AttrDict")
-}
-
-func (d *AttrDict) Truth() starlark.Bool {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	return starlark.Bool(len(d.data) > 0)
-}
-
-func (d *AttrDict) Attr(name string) (starlark.Value, error) {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	val, ok := d.data[name]
-	if !ok {
-		return starlark.None, nil
-	}
-	return goToStarlarkValue(val, d.mu), nil
-}
-
-func (d *AttrDict) AttrNames() []string {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	names := make([]string, 0, len(d.data))
-	for k := range d.data {
-		names = append(names, k)
-	}
-	sort.Strings(names)
-	return names
-}
-
-// Get implements starlark.Mapping for dict-style read: obj["key"]
-func (d *AttrDict) Get(key starlark.Value) (v starlark.Value, found bool, err error) {
-	s, ok := starlark.AsString(key)
-	if !ok {
-		return starlark.None, false, nil
-	}
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-	val, ok := d.data[s]
-	if !ok {
-		return starlark.None, false, nil
-	}
-	return goToStarlarkValue(val, d.mu), true, nil
-}
-
-// SetKey implements starlark.HasSetKey for dict-style write: obj["key"] = value
-func (d *AttrDict) SetKey(k, v starlark.Value) error {
-	key, ok := starlark.AsString(k)
-	if !ok {
-		return fmt.Errorf("AttrDict key must be string, got %s", k.Type())
-	}
-	var goVal any
-	if err := startype.Starlark(v).Go(&goVal); err != nil {
-		return fmt.Errorf("AttrDict SetKey: %w", err)
-	}
-	d.mu.Lock()
-	d.data[key] = goVal
-	d.mu.Unlock()
-	return nil
-}
-
-// goToStarlarkValue converts a Go value to a Starlark value.
-// Maps are wrapped as AttrDict (sharing the root mutex). Scalars use startype.
-func goToStarlarkValue(val any, mu *sync.RWMutex) starlark.Value {
-	if val == nil {
-		return starlark.None
-	}
-	switch v := val.(type) {
-	case map[string]any:
-		return &AttrDict{data: v, mu: mu}
-	case []any:
-		elems := make([]starlark.Value, len(v))
-		for i, item := range v {
-			elems[i] = goToStarlarkValue(item, mu)
-		}
-		return starlark.NewList(elems)
-	default:
-		sv, err := startype.Go(val).ToStarlarkValue()
-		if err != nil {
-			return starlark.String(fmt.Sprintf("%v", val))
-		}
-		return sv
-	}
-}
-
-func unstructuredToAttrDict(obj *unstructured.Unstructured) *AttrDict {
-	return &AttrDict{data: obj.Object, mu: &sync.RWMutex{}}
-}
 
 // ============================================================================
 // Controller — k8s.control() implementation

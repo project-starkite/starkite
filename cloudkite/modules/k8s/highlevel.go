@@ -122,8 +122,9 @@ func (c *K8sClient) deployHighLevel(thread *starlark.Thread, fn *starlark.Builti
 		return nil, fmt.Errorf("k8s.deploy: apply deployment: %w", err)
 	}
 
-	result := starlark.NewDict(2)
-	result.SetKey(starlark.String("deployment"), starlark.String(p.Name))
+	result := NewAttrDict(map[string]any{
+		"deployment": p.Name,
+	})
 
 	// Create Service if port specified
 	if p.Port > 0 {
@@ -156,7 +157,7 @@ func (c *K8sClient) deployHighLevel(thread *starlark.Thread, fn *starlark.Builti
 		if err != nil {
 			return nil, fmt.Errorf("k8s.deploy: apply service: %w", err)
 		}
-		result.SetKey(starlark.String("service"), starlark.String(p.Name))
+		result.data["service"] = p.Name
 	}
 
 	return result, nil
@@ -266,15 +267,21 @@ func (c *K8sClient) run(thread *starlark.Thread, fn *starlark.Builtin, args star
 	}
 done:
 
-	result := starlark.NewDict(2)
-	result.SetKey(starlark.String("name"), starlark.String(created.GetName()))
+	result := NewAttrDict(map[string]any{
+		"name": created.GetName(),
+	})
 
 	// Get logs
 	logVal, err := c.logs(thread, fn, starlark.Tuple{starlark.String(p.Name)}, []starlark.Tuple{
 		{starlark.String("namespace"), starlark.String(ns)},
 	})
 	if err == nil {
-		result.SetKey(starlark.String("logs"), logVal)
+		var goLog any
+		if startype.Starlark(logVal).Go(&goLog) == nil {
+			result.data["logs"] = goLog
+		} else {
+			result.data["logs"] = logVal.String()
+		}
 	}
 
 	// Cleanup if rm=True
@@ -595,34 +602,35 @@ func (c *K8sClient) rollout(thread *starlark.Thread, fn *starlark.Builtin, args 
 }
 
 func rolloutStatusFromObj(obj *unstructuredObj) (starlark.Value, error) {
-	result := starlark.NewDict(5)
-
 	replicas, _, _ := nestedField(obj.Object, "status", "replicas")
 	ready, _, _ := nestedField(obj.Object, "status", "readyReplicas")
 	updated, _, _ := nestedField(obj.Object, "status", "updatedReplicas")
 	available, _, _ := nestedField(obj.Object, "status", "availableReplicas")
 
-	toInt := func(v any) starlark.Value {
+	toInt := func(v any) int64 {
 		switch n := v.(type) {
 		case int64:
-			return starlark.MakeInt64(n)
+			return n
 		case float64:
-			return starlark.MakeInt(int(n))
+			return int64(n)
 		default:
-			return starlark.MakeInt(0)
+			return 0
 		}
 	}
 
-	result.SetKey(starlark.String("replicas"), toInt(replicas))
-	result.SetKey(starlark.String("ready"), toInt(ready))
-	result.SetKey(starlark.String("updated"), toInt(updated))
-	result.SetKey(starlark.String("available"), toInt(available))
+	repInt := toInt(replicas)
+	readyInt := toInt(ready)
+	updatedInt := toInt(updated)
+	availInt := toInt(available)
+	complete := repInt == readyInt && repInt == updatedInt && repInt == availInt
 
-	// Check if rollout is complete
-	complete := replicas == ready && replicas == updated && replicas == available
-	result.SetKey(starlark.String("complete"), starlark.Bool(complete))
-
-	return result, nil
+	return NewAttrDict(map[string]any{
+		"replicas":  repInt,
+		"ready":     readyInt,
+		"updated":   updatedInt,
+		"available": availInt,
+		"complete":  complete,
+	}), nil
 }
 
 // setImage updates the container image on a workload.

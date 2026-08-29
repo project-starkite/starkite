@@ -98,12 +98,11 @@ func (c *K8sClient) drain(thread *starlark.Thread, fn *starlark.Builtin, args st
 		}
 	}
 
-	result := starlark.NewDict(3)
-	result.SetKey(starlark.String("node"), starlark.String(p.Node))
-	result.SetKey(starlark.String("evicted"), starlark.NewList(evicted))
-	result.SetKey(starlark.String("errors"), starlark.NewList(errors))
-
-	return result, nil
+	return NewAttrDict(map[string]any{
+		"node":    p.Node,
+		"evicted": evicted,
+		"errors":  errors,
+	}), nil
 }
 
 // cordon marks a node as unschedulable.
@@ -314,29 +313,21 @@ func (c *K8sClient) topNodes(thread *starlark.Thread, fn *starlark.Builtin, args
 
 	var results []starlark.Value
 	for _, node := range nodeList.Items {
-		d := starlark.NewDict(4)
-		d.SetKey(starlark.String("name"), starlark.String(node.GetName()))
-
-		// Extract capacity and allocatable from status
+		var capMap, allocMap map[string]any
 		capacity, _, _ := nestedField(node.Object, "status", "capacity")
-		allocatable, _, _ := nestedField(node.Object, "status", "allocatable")
-
 		if cap, ok := capacity.(map[string]any); ok {
-			capDict := starlark.NewDict(3)
-			for k, v := range cap {
-				capDict.SetKey(starlark.String(k), starlark.String(fmt.Sprint(v)))
-			}
-			d.SetKey(starlark.String("capacity"), capDict)
+			capMap = cap
 		}
-
+		allocatable, _, _ := nestedField(node.Object, "status", "allocatable")
 		if alloc, ok := allocatable.(map[string]any); ok {
-			allocDict := starlark.NewDict(3)
-			for k, v := range alloc {
-				allocDict.SetKey(starlark.String(k), starlark.String(fmt.Sprint(v)))
-			}
-			d.SetKey(starlark.String("allocatable"), allocDict)
+			allocMap = alloc
 		}
 
+		d := NewAttrDict(map[string]any{
+			"name":        node.GetName(),
+			"capacity":    capMap,
+			"allocatable": allocMap,
+		})
 		results = append(results, d)
 	}
 
@@ -379,12 +370,7 @@ func (c *K8sClient) topPods(thread *starlark.Thread, fn *starlark.Builtin, args 
 
 	var results []starlark.Value
 	for _, pod := range podList.Items {
-		d := starlark.NewDict(5)
-		d.SetKey(starlark.String("name"), starlark.String(pod.GetName()))
-		d.SetKey(starlark.String("namespace"), starlark.String(pod.GetNamespace()))
-
 		phase, _, _ := unstructuredNestedString(pod.Object, "status", "phase")
-		d.SetKey(starlark.String("status"), starlark.String(phase))
 
 		// Extract resource requests from containers
 		containers, _, _ := unstructuredNestedSlice(pod.Object, "spec", "containers")
@@ -403,9 +389,14 @@ func (c *K8sClient) topPods(thread *starlark.Thread, fn *starlark.Builtin, args 
 				}
 			}
 		}
-		d.SetKey(starlark.String("cpu_request"), starlark.String(totalCPU))
-		d.SetKey(starlark.String("memory_request"), starlark.String(totalMem))
 
+		d := NewAttrDict(map[string]any{
+			"name":           pod.GetName(),
+			"namespace":      pod.GetNamespace(),
+			"status":         phase,
+			"cpu_request":    totalCPU,
+			"memory_request": totalMem,
+		})
 		results = append(results, d)
 	}
 
@@ -507,10 +498,10 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 			count++
 		}
 
-		result := starlark.NewDict(2)
-		result.SetKey(starlark.String("files"), starlark.MakeInt(count))
-		result.SetKey(starlark.String("direction"), starlark.String("from_pod"))
-		return result, nil
+		return NewAttrDict(map[string]any{
+			"files":     count,
+			"direction": "from_pod",
+		}), nil
 	}
 
 	if isPodDst {
@@ -542,10 +533,10 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 			return nil, fmt.Errorf("k8s.cp: %w", err)
 		}
 
-		result := starlark.NewDict(2)
-		result.SetKey(starlark.String("source"), starlark.String(p.Src))
-		result.SetKey(starlark.String("direction"), starlark.String("to_pod"))
-		return result, nil
+		return NewAttrDict(map[string]any{
+			"source":    p.Src,
+			"direction": "to_pod",
+		}), nil
 	}
 
 	return nil, fmt.Errorf("k8s.cp: source or destination must reference a pod (use pod:path format)")
@@ -595,48 +586,42 @@ func (c *K8sClient) describe(thread *starlark.Thread, fn *starlark.Builtin, args
 		return nil, fmt.Errorf("k8s.describe: %w", err)
 	}
 
-	result := starlark.NewDict(5)
-
-	// Resource details
-	resourceDict, _ := unstructuredToDict(obj)
-	result.SetKey(starlark.String("resource"), resourceDict)
-
 	// Conditions
+	var condList []starlark.Value
 	conditions, found, _ := unstructuredNestedSlice(obj.Object, "status", "conditions")
 	if found {
-		var condList []starlark.Value
 		for _, c := range conditions {
 			if m, ok := c.(map[string]any); ok {
-				d := starlark.NewDict(4)
-				for k, v := range m {
-					d.SetKey(starlark.String(k), starlark.String(fmt.Sprint(v)))
-				}
-				condList = append(condList, d)
+				condList = append(condList, NewAttrDict(m))
 			}
 		}
-		result.SetKey(starlark.String("conditions"), starlark.NewList(condList))
 	}
 
 	// Events for this resource
+	var eventList []starlark.Value
 	eventGVR, _, _ := c.resolver.Resolve("events")
 	fieldSelector := fmt.Sprintf("involvedObject.name=%s,involvedObject.namespace=%s", p.Name, ns)
 	events, err := c.dynClient.Resource(eventGVR).Namespace(ns).List(ctx, metav1.ListOptions{
 		FieldSelector: fieldSelector,
 	})
 	if err == nil {
-		var eventList []starlark.Value
 		for _, event := range events.Items {
-			d := starlark.NewDict(4)
-			d.SetKey(starlark.String("type"), starlark.String(getNestedString(event.Object, "type")))
-			d.SetKey(starlark.String("reason"), starlark.String(getNestedString(event.Object, "reason")))
-			d.SetKey(starlark.String("message"), starlark.String(getNestedString(event.Object, "message")))
-			d.SetKey(starlark.String("count"), starlark.String(fmt.Sprint(getNestedField(event.Object, "count"))))
+			d := NewAttrDict(map[string]any{
+				"type":    getNestedString(event.Object, "type"),
+				"reason":  getNestedString(event.Object, "reason"),
+				"message": getNestedString(event.Object, "message"),
+				"count":   fmt.Sprint(getNestedField(event.Object, "count")),
+			})
 			eventList = append(eventList, d)
 		}
-		result.SetKey(starlark.String("events"), starlark.NewList(eventList))
 	}
 
-	return result, nil
+	resDict := unstructuredToAttrDict(obj)
+	return NewAttrDict(map[string]any{
+		"resource":   resDict,
+		"conditions": condList,
+		"events":     eventList,
+	}), nil
 }
 
 func getNestedString(obj map[string]any, key string) string {

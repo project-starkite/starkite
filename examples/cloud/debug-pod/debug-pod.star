@@ -12,11 +12,11 @@
 
 def print_pod_info(info):
     """Print basic pod metadata."""
-    resource = info["resource"]
-    printf("  Phase:   %s\n", resource["status"].get("phase", "Unknown"))
-    printf("  Node:    %s\n", resource["spec"].get("nodeName", "unassigned"))
-    printf("  IP:      %s\n", resource["status"].get("podIP", "none"))
-    printf("  Started: %s\n", resource["status"].get("startTime", "unknown"))
+    resource = info.resource
+    printf("  Phase:   %s\n", resource.status.get("phase", "Unknown"))
+    printf("  Node:    %s\n", resource.spec.get("nodeName", "unassigned"))
+    printf("  IP:      %s\n", resource.status.get("podIP", "none"))
+    printf("  Started: %s\n", resource.status.get("startTime", "unknown"))
 
 def print_conditions(info):
     """Print pod conditions."""
@@ -25,22 +25,23 @@ def print_conditions(info):
         printf("  (none)\n")
         return
     for c in conditions:
-        marker = "+" if c["status"] == "True" else "-"
-        printf("  %s %-25s %s\n", marker, c["type"], c.get("message", ""))
+        marker = "+" if c.status == "True" else "-"
+        printf("  %s %-25s %s\n", marker, c.type, c.get("message", ""))
 
 def print_containers(resource):
     """Print container statuses with waiting reasons."""
-    for cs in resource["status"].get("containerStatuses", []):
-        state_key = list(cs.get("state", {}).keys())
-        state = state_key[0] if state_key else "unknown"
+    for cs in resource.status.get("containerStatuses", []):
+        state_dict = cs.get("state", {})
+        state_keys = list(state_dict.keys())
+        state = state_keys[0] if state_keys else "unknown"
         printf("  %-20s state=%-12s ready=%-5s restarts=%d\n",
-            cs["name"], state, str(cs.get("ready", False)), cs.get("restartCount", 0))
+            cs.name, state, str(cs.get("ready", False)), cs.get("restartCount", 0))
 
         if state == "waiting":
-            waiting = cs["state"]["waiting"]
+            waiting = cs.state.waiting
             printf("    reason: %s\n", waiting.get("reason", ""))
             if waiting.get("message"):
-                printf("    message: %s\n", waiting["message"])
+                printf("    message: %s\n", waiting.message)
 
 def print_events(info):
     """Print recent events."""
@@ -88,14 +89,14 @@ def run_diagnostics(k, pod_name, container):
             result = k.exec(pod_name, cmd, container=container)
         else:
             result = k.exec(pod_name, cmd)
-        if result["code"] == 0:
-            lines = result["stdout"].strip().split("\n")
+        if result.code == 0:
+            lines = result.stdout.strip().split("\n")
             preview = "\n    ".join(lines[:5])
             if len(lines) > 5:
                 preview += "\n    ... (%d more lines)" % (len(lines) - 5)
             printf("\n  $ %s\n    %s\n", cmd_str, preview)
         else:
-            printf("\n  $ %s\n    (exit %d) %s\n", cmd_str, result["code"], result["stderr"].strip())
+            printf("\n  $ %s\n    (exit %d) %s\n", cmd_str, result.code, result.stderr.strip())
 
 def main():
     pod_name = var_str("pod.name")
@@ -120,7 +121,7 @@ def main():
 
     # --- Container statuses ----------------------------------------------------
     printf("\n[3/5] Containers\n")
-    print_containers(info["resource"])
+    print_containers(info.resource)
 
     # --- Events ----------------------------------------------------------------
     printf("\n[4/5] Recent events\n")

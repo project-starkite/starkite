@@ -223,8 +223,8 @@ def main():
     printf("Deploying MySQL...\n")
     k.apply([db_dep, db_svc])
     result = k.wait_for("deployment", "wordpress-db", condition="available", timeout="2m")
-    if not result["ready"]:
-        printf("MySQL did not become ready: %s\n", result["message"])
+    if not result.ready:
+        printf("MySQL did not become ready: %s\n", result.message)
         fail("mysql deployment failed")
     printf("MySQL is ready.\n")
 
@@ -232,8 +232,8 @@ def main():
     printf("Deploying WordPress...\n")
     k.apply([wp_dep, wp_svc])
     result = k.wait_for("deployment", "wordpress", condition="available", timeout="3m")
-    if not result["ready"]:
-        printf("WordPress did not become ready: %s\n", result["message"])
+    if not result.ready:
+        printf("WordPress did not become ready: %s\n", result.message)
         fail("wordpress deployment failed")
     printf("WordPress is ready.\n")
 

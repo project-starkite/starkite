@@ -109,12 +109,12 @@ def main():
     printf("Waiting for deployment/%s to be available...\n", name)
     result = k.wait_for("deployment", name, condition="available", timeout="5m")
 
-    if result["ready"]:
+    if result.ready:
         printf("Stack deployed successfully.\n")
         printf("  Deployment: %s (%d replicas)\n", name, replicas)
         printf("  Service:    %s -> :%d\n", name, 80)
         printf("  ConfigMap:  %s-config\n", name)
     else:
-        printf("Deployment did not become ready: %s\n", result["message"])
+        printf("Deployment did not become ready: %s\n", result.message)
         fail("deployment failed")
 
