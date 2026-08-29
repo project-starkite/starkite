@@ -6,65 +6,167 @@ weight: 15
 
 # Object representation
 
-Starkite represents Kubernetes resources using standard Starlark dictionaries and a specialized wrapper called `AttrDict`. This dual representation provides clean read-only traversal and secure read/write mutations.
+Starkite separates Kubernetes object workflows into two complementary phases:
 
-## Read-Only Access (Dot Notation)
+1. **Object Construction (Authoring)**: Synthesizing manifests before submission using the `k8s.obj` constructor namespace with schema validation and boilerplate reduction.
+2. **Object Representation & Traversal (Runtime)**: Inspecting, querying, and mutating live cluster resources using `AttrDict` with recursive dot notation and Starlark dictionary interfaces.
 
-When reading fields from a Kubernetes resource (such as in a controller reconcile loop or a validating webhook), Starkite allows you to use dot notation to traverse nested structures.
+---
+
+## Object Construction
+
+When authoring new Kubernetes resources in Starlark, the `k8s.obj` namespace provides declarative constructors for standard workloads, configurations, networking, and pod sub-objects.
+
+### Why Use `k8s.obj`
+* **Schema Validation at Construction Time**: Validates parameter types, enforces required arguments (e.g., `ports` in `k8s.obj.service()`), and rejects unrecognized fields to prevent typos before submitting to the API server.
+* **Boilerplate Reduction**: Automatically sets `apiVersion` and `kind`, and derives `spec.selector.matchLabels` and `spec.template.metadata.labels` from top-level labels.
+* **Structured Sub-Objects**: Provides typed constructors for nested structures such as `k8s.obj.container()`, `k8s.obj.volume()`, `k8s.obj.probe()`, `k8s.obj.service_port()`, and `k8s.obj.env_var()`.
+
+### Example: Building Workloads
 
 ```python
-def check_deployment_details(obj):
-    # Traverses directly into metadata and spec using dot notation
-    name = obj.metadata.name
-    namespace = obj.metadata.namespace
-    replicas = obj.spec.replicas
-    
-    # Nested arrays are accessed using standard list index
-    image = obj.spec.template.spec.containers[0].image
-    
-    print("Deployment:", name, "Image:", image)
+# Construct a Deployment with nested container and probe sub-objects
+dep = k8s.obj.deployment(
+    name = "web",
+    replicas = 3,
+    labels = {"app": "web", "tier": "frontend"},
+    containers = [
+        k8s.obj.container(
+            name = "nginx",
+            image = "nginx:1.27",
+            ports = [k8s.obj.container_port(container_port=80, name="http")],
+            env = [
+                k8s.obj.env_var(name="PORT", value="80"),
+                k8s.obj.env_var(name="ENV", value="production"),
+            ],
+            readiness_probe = k8s.obj.probe(http_get={"path": "/healthz", "port": 80}, initial_delay_seconds=5),
+        ),
+    ],
+)
+
+# Construct a matching Service
+svc = k8s.obj.service(
+    name = "web",
+    labels = {"app": "web"},
+    selector = {"app": "web"},
+    ports = [
+        k8s.obj.service_port(port=80, target_port=80, name="http"),
+    ],
+)
+
+# Apply both objects using Server-Side Apply
+k8s.apply([dep, svc], namespace="production")
+```
+
+Constructors return a `KubeResource` value that can be passed directly to `k8s.apply()`, encoded to YAML via `k8s.yaml()`, or converted to a standard dictionary with `.to_dict()`.
+
+---
+
+## Runtime Representation & Dot Notation
+
+Once a resource is created in the cluster or retrieved from the Kubernetes API, the API server populates runtime metadata (such as `.metadata.uid`, `.metadata.generation`, `.metadata.creationTimestamp`) and lifecycle status (`.status.phase`, `.status.conditions`).
+
+Starkite returns all live cluster query results (`k8s.get()`, `k8s.list()`, `k8s.watch()`, `k8s.control()`, `k8s.deploy()`, `k8s.wait_for()`) as `AttrDict` instances.
+
+### Dot-Notation Traversal
+
+`AttrDict` enables direct attribute navigation across arbitrary nesting levels:
+
+```python
+def inspect_live_deployment():
+    # Query live state from the cluster
+    dep = k8s.get("deployment", "web", namespace="production")
+
+    # Traverse nested fields via dot notation
+    name = dep.metadata.name
+    generation = dep.metadata.generation
+    desired_replicas = dep.spec.replicas
+    available_replicas = dep.status.get("availableReplicas", 0)
+
+    # Access nested list items and sub-fields
+    image = dep.spec.template.spec.containers[0].image
+
+    print("Deployment:", name, "Replicas:", available_replicas, "/", desired_replicas)
+    print("Container Image:", image)
 ```
 
 ### Key Behaviors of Dot Notation
-* **Read-Only**: Dot notation is strictly read-only. Attempting to assign a value using dot notation (e.g., `obj.spec.replicas = 5`) raises a Starlark runtime error.
-* **Graceful Null Safety**: If a nested field or parent key is missing in the underlying resource, dot notation returns `None` instead of raising a key error. This simplifies checks:
-  ```python
-  # Safe even if metadata or labels do not exist on the object
-  labels = obj.metadata.labels
-  if labels == None:
-      print("No labels defined")
-  ```
+* **Recursive Wrapping**: Accessing a child dictionary (e.g., `dep.spec.template`) automatically preserves dot notation throughout the entire object graph.
+* **Null Safety**: Missing fields return `None` or allow fallback via `.get(key, default)` without raising `KeyError` exceptions.
+* **Read-Only Traversal**: Field assignment via dot notation (`dep.spec.replicas = 5`) is rejected at runtime; modifications require dictionary bracket indexing.
 
 ---
 
-## Read/Write Access (Bracket Notation)
+## Dictionary Operations
 
-When you need to modify an existing resource (such as in a mutating webhook) or construct a new manifest from scratch, you must use standard Starlark dictionary bracket notation (`[]`).
+`AttrDict` provides full compatibility with standard dictionary indexing and helper methods:
 
 ```python
-def mutate_deployment_labels(obj):
-    # Ensure the labels dictionary is initialized
-    if obj["metadata"].get("labels") == None:
+def check_labels(pod):
+    # Bracket indexing
+    kind = pod["kind"]
+    pod_name = pod["metadata"]["name"]
+
+    # Safe lookup with defaults
+    labels = pod.metadata.get("labels", {})
+    tier = labels.get("tier", "standard")
+```
+
+---
+
+## Dictionary Iteration
+
+`AttrDict` supports standard dictionary iteration and inspection methods:
+
+```python
+def inspect_resource(obj):
+    # Count fields
+    print("Field count:", len(obj))
+    print("Top-level keys:", list(obj.keys()))
+
+    # Iterate keys
+    for key in obj:
+        print("Key:", key)
+
+    # Iterate key-value pairs
+    labels = obj.metadata.get("labels", {})
+    for key, value in labels.items():
+        print("  Label:", key, "=", value)
+```
+
+---
+
+## In-Place Mutation
+
+When modifying objects within mutating admission webhooks or controller reconcile loops, update fields in-place using bracket indexing (`[]`):
+
+```python
+def mutate_admission_payload(obj):
+    # Read using dot notation
+    print("Inspecting incoming deployment:", obj.metadata.name)
+
+    # Mutate in-place using bracket indexing
+    if not obj.metadata.get("labels"):
         obj["metadata"]["labels"] = {}
-        
-    # Modify fields in-place using bracket notation
+
     obj["metadata"]["labels"]["managed-by"] = "starkite"
-    obj["spec"]["replicas"] = 3
-    
-    # Return the mutated object
+    obj["spec"]["replicas"] = 2
+
+    # Modified data propagates to the parent object for RFC 6902 patch calculation
     return obj
 ```
 
-### Key Behaviors of Bracket Notation
-* **Read and Write**: Bracket notation allows both reading and writing of keys.
-* **Mutation Propagation**: Nested dictionaries in Starkite share their underlying data. Modifying a key in a nested dictionary (e.g., `obj["spec"]["replicas"] = 3`) propagates the change to the parent object automatically.
-* **JSON/YAML Conversion**: When you pass a dictionary to `k8s.apply()` or `yaml.encode()`, Starkite serializes the Starlark dictionary directly into standard JSON or YAML.
-
 ---
 
-## Summary of Access Patterns
+## Summary of Operations
 
-| Access Style | Syntax Example | Operations | Missing Keys | Common Use Case |
-|:---|:---|:---|:---|:---|
-| **Dot Notation** | `obj.spec.replicas` | Read-only | Returns `None` | Controllers, Validating Webhooks, Metrics inspection |
-| **Bracket Notation** | `obj["spec"]["replicas"] = 3` | Read & Write | Raises error if parent key missing | Mutating Webhooks, Manifest generation |
+| Operation | Syntax | Returns / Behavior | Common Use Cases |
+|:---|:---|:---|:---|
+| **Authoring** | `k8s.obj.deployment(name="app", ...)` | `KubeResource` | Building declarative manifests with schema checking |
+| **Dot Traversal** | `pod.metadata.name`, `pod.status.phase` | Value or `None` | Inspection, controllers, validating webhooks |
+| **Bracket Index** | `pod["metadata"]["name"]` | Value | Standard dictionary compatibility |
+| **Safe Fetch** | `pod.get("spec", {})` | Value or default | Reading optional or conditional fields |
+| **Item Iteration** | `for k, v in pod.metadata.labels.items():` | Key-value tuples | Label inspection, auditing, filtering |
+| **In-Place Mutation** | `pod["metadata"]["labels"]["env"] = "prod"` | Mutates in-place | Mutating webhooks, controller drift corrections |
+| **Serialization** | `json.encode(pod)`, `k8s.apply(pod)` | Encoded string / API call | Direct API apply, manifest export |
+| **Native Dict** | `pod.to_dict()` | Standard Starlark `dict` | Conversion to plain dictionary |

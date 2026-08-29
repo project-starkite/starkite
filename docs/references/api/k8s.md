@@ -32,15 +32,15 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `k8s.get(kind, name, namespace="", timeout="")` | `dict` | Get a single resource |
-| `k8s.list(kind, namespace="", labels="", fields="", timeout="")` | `list[dict]` | List resources with optional label/field selectors |
-| `k8s.create(manifest, namespace="", dry_run=False, timeout="")` | `dict` | Create a resource from a manifest (dict or YAML string) |
-| `k8s.apply(manifest, namespace="", field_manager="starkite", dry_run=False, force=False, timeout="")` | `dict` | Apply a resource (server-side apply) |
+| `k8s.get(kind, name, namespace="", timeout="")` | `AttrDict` | Get a single resource |
+| `k8s.list(kind, namespace="", labels="", fields="", timeout="")` | `list[AttrDict]` | List resources with optional label/field selectors |
+| `k8s.create(manifest, namespace="", dry_run=False, timeout="")` | `AttrDict` | Create a resource from a manifest (dict, AttrDict, or YAML string) |
+| `k8s.apply(manifest, namespace="", field_manager="starkite", dry_run=False, force=False, timeout="")` | `AttrDict` | Apply a resource (server-side apply) |
 | `k8s.delete(kind, name, namespace="", propagation="Background", timeout="")` | `None` | Delete a resource |
-| `k8s.patch(kind, name, patch, namespace="", type="merge", timeout="")` | `dict` | Patch a resource. `type`: `"merge"`, `"strategic"`, or `"json"` |
-| `k8s.label(kind, name, labels, namespace="", timeout="")` | `dict` | Set labels on a resource |
-| `k8s.annotate(kind, name, annotations, namespace="", timeout="")` | `dict` | Set annotations on a resource |
-| `k8s.status(obj, status, namespace="", timeout="")` | `dict` | Update the status subresource of a resource. Pass the full resource dict as `obj` and the new status dict as `status` |
+| `k8s.patch(kind, name, patch, namespace="", type="merge", timeout="")` | `AttrDict` | Patch a resource. `type`: `"merge"`, `"strategic"`, or `"json"` |
+| `k8s.label(kind, name, labels, namespace="", timeout="")` | `AttrDict` | Set labels on a resource |
+| `k8s.annotate(kind, name, annotations, namespace="", timeout="")` | `AttrDict` | Set annotations on a resource |
+| `k8s.status(obj, status, namespace="", timeout="")` | `AttrDict` | Update the status subresource of a resource. Pass the resource as `obj` and the new status dict as `status` |
 
 ### Example — status subresource update
 
@@ -54,14 +54,14 @@ k8s.status(obj, {"ready": True, "message": "initialized"}, namespace="default")
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `k8s.watch(kind, namespace="", labels="", timeout="", handler=None)` | `list` or `None` | Watch a resource kind. If `handler` is supplied, call it per event (`handler(event_type, obj)`) and return `None`; otherwise collect events and return a list of `{"type": ..., "object": ...}` dicts. `timeout` caps wall-clock duration |
-| `k8s.wait_for(kind, name, condition="", namespace="", timeout="")` | `dict` | Block until the named resource meets the given condition (e.g., `"Available"`, `"Ready"`, `"Complete"`) or the timeout expires. Returns the final observed resource |
+| `k8s.watch(kind, namespace="", labels="", timeout="", handler=None)` | `list[AttrDict]` or `None` | Watch a resource kind. If `handler` is supplied, call it per event (`handler(event_type, obj)`) and return `None`; otherwise collect events and return a list of `{"type": ..., "object": ...}` AttrDicts. `timeout` caps wall-clock duration |
+| `k8s.wait_for(kind, name, condition="", namespace="", timeout="")` | `AttrDict` | Block until the named resource meets the given condition (e.g., `"Available"`, `"Ready"`, `"Complete"`) or the timeout expires. Returns `{"ready": bool, "resource": AttrDict, "message": str}` |
 
 ### Example — watch deployments in a namespace
 
 ```python
 def on_event(event_type, obj):
-    printf("%s: %s\n", event_type, obj["metadata"]["name"])
+    printf("%s: %s\n", event_type, obj.metadata.name)
 
 k8s.watch("deployment", namespace="default", timeout="30s", handler=on_event)
 ```
@@ -69,8 +69,10 @@ k8s.watch("deployment", namespace="default", timeout="30s", handler=on_event)
 ### Example — wait for rollout
 
 ```python
-k8s.wait_for("deployment", "web", condition="Available",
-             namespace="default", timeout="5m")
+result = k8s.wait_for("deployment", "web", condition="Available",
+                      namespace="default", timeout="5m")
+if result.ready:
+    print("Deployment is ready")
 ```
 
 ## High-level workloads
@@ -79,25 +81,25 @@ k8s.wait_for("deployment", "web", condition="Available",
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `k8s.deploy(name, image, replicas=1, port=0, namespace="", labels=None, env=None, timeout="")` | `dict` | Create a Deployment |
-| `k8s.run(name, image, command=None, namespace="", restart="Never", rm=False, timeout="3m")` | `dict` | Run a one-off Pod (like `kubectl run`) |
-| `k8s.expose(kind, name, port, target_port=0, type="ClusterIP", namespace="", timeout="")` | `dict` | Expose a resource as a Service |
+| `k8s.deploy(name, image, replicas=1, port=0, namespace="", labels=None, env=None, timeout="")` | `AttrDict` | Create a Deployment (returns `{"deployment": str, "service": str}`) |
+| `k8s.run(name, image, command=None, namespace="", restart="Never", rm=False, timeout="3m")` | `AttrDict` | Run a one-off Pod (like `kubectl run`) |
+| `k8s.expose(kind, name, port, target_port=0, type="ClusterIP", namespace="", timeout="")` | `AttrDict` | Expose a resource as a Service |
 
 ### Scale and rollout
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `k8s.scale(kind, name, replicas, namespace="", timeout="")` | `dict` | Scale a resource to the given replica count |
-| `k8s.autoscale(kind, name, min=1, max=10, cpu_percent=80, namespace="", timeout="")` | `dict` | Create a HorizontalPodAutoscaler |
-| `k8s.rollout(kind, name, action="status", namespace="", timeout="")` | `dict` | Manage rollouts. `action`: `"status"`, `"restart"`, `"pause"`, `"resume"` |
+| `k8s.scale(kind, name, replicas, namespace="", timeout="")` | `AttrDict` | Scale a resource to the given replica count |
+| `k8s.autoscale(kind, name, min=1, max=10, cpu_percent=80, namespace="", timeout="")` | `AttrDict` | Create a HorizontalPodAutoscaler |
+| `k8s.rollout(kind, name, action="status", namespace="", timeout="")` | `AttrDict` | Manage rollouts. `action`: `"status"`, `"restart"`, `"pause"`, `"resume"` |
 
 ### Configuration
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `k8s.set_image(kind, name, container, image, namespace="", timeout="")` | `dict` | Update the container image of a resource |
-| `k8s.set_env(kind, name, env, namespace="", container="", timeout="")` | `dict` | Set environment variables on a resource |
-| `k8s.set_resources(kind, name, requests=None, limits=None, namespace="", container="", timeout="")` | `dict` | Set resource requests and limits |
+| `k8s.set_image(kind, name, container, image, namespace="", timeout="")` | `AttrDict` | Update the container image of a resource |
+| `k8s.set_env(kind, name, env, namespace="", container="", timeout="")` | `AttrDict` | Set environment variables on a resource |
+| `k8s.set_resources(kind, name, requests=None, limits=None, namespace="", container="", timeout="")` | `AttrDict` | Set resource requests and limits |
 
 ## Logs, exec, port-forward, copy
 
@@ -105,9 +107,9 @@ k8s.wait_for("deployment", "web", condition="Available",
 |----------|---------|-------------|
 | `k8s.logs(name, namespace="", container="", tail=0, since="", previous=False, timeout="")` | `string` | Fetch pod logs. `tail` caps line count; `since` is a duration string (e.g., `"10m"`); `previous=True` reads the previous container instance |
 | `k8s.logs_follow(name, handler, namespace="", container="", tail=0, timeout="")` | `None` | Stream logs, calling `handler(line)` per line. Blocks until the pod ends or `timeout` elapses |
-| `k8s.exec(name, command, namespace="", container="", timeout="")` | `dict` | Run a command in a pod. `command` may be a string (executed via `/bin/sh -c`) or a list (argv). Returns `{"stdout", "stderr", "exit_code"}` |
-| `k8s.port_forward(name, port, local_port=0, namespace="")` | `dict` | Forward a local port to a pod port. Blocks until interrupted. `local_port=0` picks a free port |
-| `k8s.cp(pod, src, dst, namespace="", container="", timeout="")` | `None` | Copy files to/from a pod. Use `pod:path` as `src` to download, `pod:path` as `dst` to upload |
+| `k8s.exec(name, command, namespace="", container="", timeout="")` | `AttrDict` | Run a command in a pod. `command` may be a string (executed via `/bin/sh -c`) or a list (argv). Returns `{"stdout", "stderr", "code"}` |
+| `k8s.port_forward(name, port, local_port=0, namespace="")` | `PortForwardHandle` | Forward a local port to a pod port. Blocks until interrupted. `local_port=0` picks a free port |
+| `k8s.cp(pod, src, dst, namespace="", container="", timeout="")` | `AttrDict` | Copy files to/from a pod. Use `pod:path` as `src` to download, `pod:path` as `dst` to upload |
 
 ### Example — tail logs
 
@@ -123,7 +125,7 @@ k8s.logs_follow("web-abc123", handle_line, namespace="default", tail=100)
 
 ```python
 result = k8s.exec("web-abc123", ["cat", "/etc/hostname"], namespace="default")
-print(result["stdout"])
+print(result.stdout)
 ```
 
 ### Example — copy a file out of a pod
@@ -137,21 +139,22 @@ k8s.cp("web-abc123", "web-abc123:/var/log/app.log", "./local-app.log",
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `k8s.describe(kind, name, namespace="", timeout="")` | `string` | Return a human-readable description of a resource, similar to `kubectl describe` |
+| `k8s.describe(kind, name, namespace="", timeout="")` | `AttrDict` | Return detailed description of a resource, with `.resource`, `.conditions`, and `.events` |
 
 ```python
-print(k8s.describe("pod", "web-abc123", namespace="default"))
+info = k8s.describe("pod", "web-abc123", namespace="default")
+print("Pod Phase:", info.resource.status.phase)
 ```
 
 ## Node operations
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `k8s.drain(node, force=False, ignore_daemonsets=False, timeout="")` | `dict` | Drain a node (evict pods). `force` continues past pods not backed by a controller; `ignore_daemonsets` leaves DaemonSet pods in place |
-| `k8s.cordon(node, timeout="")` | `dict` | Mark a node unschedulable |
-| `k8s.uncordon(node, timeout="")` | `dict` | Re-enable scheduling on a node |
-| `k8s.taint(node, key, value="", effect="", timeout="")` | `dict` | Add a taint to a node. `effect`: `"NoSchedule"`, `"PreferNoSchedule"`, or `"NoExecute"` |
-| `k8s.untaint(node, key, timeout="")` | `dict` | Remove a taint from a node by key |
+| `k8s.drain(node, force=False, ignore_daemonsets=False, timeout="")` | `AttrDict` | Drain a node (evict pods). `force` continues past pods not backed by a controller; `ignore_daemonsets` leaves DaemonSet pods in place |
+| `k8s.cordon(node, timeout="")` | `AttrDict` | Mark a node unschedulable |
+| `k8s.uncordon(node, timeout="")` | `AttrDict` | Re-enable scheduling on a node |
+| `k8s.taint(node, key, value="", effect="", timeout="")` | `AttrDict` | Add a taint to a node. `effect`: `"NoSchedule"`, `"PreferNoSchedule"`, or `"NoExecute"` |
+| `k8s.untaint(node, key, timeout="")` | `AttrDict` | Remove a taint from a node by key |
 
 ### Example — roll a node
 
@@ -168,15 +171,15 @@ Requires `metrics-server` running in the cluster.
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `k8s.top_nodes(timeout="")` | `list[dict]` | CPU/memory usage per node |
-| `k8s.top_pods(namespace="", sort_by="", timeout="")` | `list[dict]` | CPU/memory usage per pod. `sort_by`: `"cpu"` or `"memory"` |
+| `k8s.top_nodes(timeout="")` | `list[AttrDict]` | CPU/memory capacity and allocatable per node |
+| `k8s.top_pods(namespace="", sort_by="", timeout="")` | `list[AttrDict]` | Resource requests and status per pod |
 
 ### Example
 
 ```python
 for pod in k8s.top_pods(namespace="default", sort_by="cpu"):
     printf("%s  cpu=%s  mem=%s\n",
-           pod["name"], pod["cpu"], pod["memory"])
+           pod.name, pod.cpu_request, pod.memory_request)
 ```
 
 ## Context helpers
@@ -185,13 +188,13 @@ for pod in k8s.top_pods(namespace="default", sort_by="cpu"):
 |----------|---------|-------------|
 | `k8s.context()` | `string` | Current kubeconfig context name |
 | `k8s.namespace_name()` | `string` | Default namespace for the current context |
-| `k8s.version(timeout="")` | `dict` | Kubernetes server version info |
-| `k8s.api_resources(timeout="")` | `list[dict]` | Available API resources |
+| `k8s.version(timeout="")` | `AttrDict` | Kubernetes server version info (`.major`, `.minor`, `.git_version`, `.platform`) |
+| `k8s.api_resources(timeout="")` | `list[AttrDict]` | Available API resources |
 
 ```python
 print("context:", k8s.context())
 print("default namespace:", k8s.namespace_name())
-print("server:", k8s.version()["gitVersion"])
+print("server version:", k8s.version().git_version)
 ```
 
 ## Controllers
@@ -209,7 +212,7 @@ k8s.control(kind, reconcile=..., on_create=..., on_update=..., on_delete=...,
 | Kwarg | Type | Default | Description |
 |-------|------|---------|-------------|
 | `kind` | string | **required** (positional) | Resource kind to watch |
-| `reconcile` | callable | — | `fn(event, obj) -> dict` — full reconcile handler. Receives the event kind (`"ADDED"`, `"MODIFIED"`, `"DELETED"`) and the live object |
+| `reconcile` | callable | — | `fn(event, obj) -> dict` — full reconcile handler. Receives the event kind (`"ADDED"`, `"MODIFIED"`, `"DELETED"`) and the live `AttrDict` object |
 | `on_create` / `on_update` / `on_delete` | callable | — | Per-event handlers. At least one of `reconcile`/`on_create`/`on_update`/`on_delete` is required |
 | `namespace` | string | cluster-wide | Scope the controller to a namespace |
 | `labels` | string | — | Label selector (e.g., `"app=web"`) |
@@ -231,7 +234,7 @@ Blocks until interrupted (SIGINT/SIGTERM).
 ```python
 def reconcile(event, obj):
     printf("reconcile %s %s: phase=%s\n",
-           event, obj["metadata"]["name"], obj["status"].get("phase", "-"))
+           event, obj.metadata.name, obj.status.get("phase", "-"))
     return {"requeue": False}
 
 k8s.control("myapp", reconcile=reconcile,

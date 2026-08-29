@@ -26,9 +26,9 @@ def main():
         labels = {"app": "alice-web", "team": "platform"},
     )
     
-    # The function returns the names of the created resources
-    print("Created Deployment:", result["deployment"])
-    print("Created Service:", result["service"])
+    # The function returns an AttrDict with the names of the created resources
+    print("Created Deployment:", result.deployment)
+    print("Created Service:", result.service)
 ```
 
 ## Scaling Workloads
@@ -80,10 +80,10 @@ def check_resource_metrics():
     
     print("Active Resource Consumption:")
     for pod in metrics:
-        if "alice-web" in pod["name"]:
+        if "alice-web" in pod.name:
             print(
-                "Pod Name:", pod["name"],
-                "CPU request:", pod["cpu_request"],
-                "Status:", pod["status"],
+                "Pod Name:", pod.name,
+                "CPU request:", pod.cpu_request,
+                "Status:", pod.status,
             )
 ```

@@ -6,29 +6,26 @@ weight: 14
 
 # Querying resources
 
-The `k8s` module represents Kubernetes resources as standard Starlark dictionaries. You can query individual resources, list collections, filter resources server-side, and monitor resource lifecycle events.
+The `k8s` module represents Kubernetes resources as `AttrDict` objects. You can query individual resources, list collections, filter resources server-side, and monitor resource lifecycle events using dot notation or dictionary indexing.
 
 ## Fetching a Single Resource
 
-To fetch a specific resource by name and kind, use the `k8s.get()` function. The returned dictionary matches the resource's JSON representation:
+To fetch a specific resource by name and kind, use the `k8s.get()` function. The returned `AttrDict` supports direct dot-notation traversal:
 
 ```python
 def check_workload():
     # Retrieve deployment details
     dep = k8s.get("deployment", "alice-web", namespace="staging")
     
-    # Read fields directly using dictionary indexing
-    metadata = dep["metadata"]
-    spec = dep["spec"]
-    
-    print("Name:", metadata["name"])
-    print("Desired Replicas:", spec["replicas"])
-    print("Active Image:", spec["template"]["spec"]["containers"][0]["image"])
+    # Read fields directly using dot notation
+    print("Name:", dep.metadata.name)
+    print("Desired Replicas:", dep.spec.replicas)
+    print("Active Image:", dep.spec.template.spec.containers[0].image)
 ```
 
 ## Listing and Filtering Resources
 
-To retrieve a collection of resources, use the `k8s.list()` function. This returns a list of dictionaries that you can iterate or process.
+To retrieve a collection of resources, use the `k8s.list()` function. This returns a list of `AttrDict` objects that you can iterate or process.
 
 ### Server-Side Filtering
 
@@ -46,7 +43,7 @@ def query_filtered_pods():
     
     print("Active Pods:")
     for pod in pods:
-        print("  - Pod:", pod["metadata"]["name"], "IP:", pod["status"].get("podIP"))
+        print("  - Pod:", pod.metadata.name, "IP:", pod.status.get("podIP", "unassigned"))
 ```
 
 ## Waiting for Resource Conditions
@@ -57,14 +54,17 @@ To coordinate multi-step workflows (such as waiting for a database to become rea
 def deploy_database():
     # Block until the database pod is ready
     print("Waiting for database connection...")
-    k8s.wait_for(
+    result = k8s.wait_for(
         kind = "pod",
         name = "alice-db-0",
         namespace = "staging",
         condition = "Ready",
         timeout = "3m",
     )
-    print("Database is ready. Executing migrations.")
+    if result.ready:
+        print("Database is ready. Executing migrations.")
+    else:
+        print("Database wait timed out:", result.message)
 ```
 
 ## Watching API Events
@@ -75,7 +75,7 @@ To stream real-time events from the Kubernetes API, use the `k8s.watch()` functi
 def monitor_deployment_events():
     # Define an event handler
     def log_event(event_type, obj):
-        print("Event Type:", event_type, "Resource:", obj["metadata"]["name"])
+        print("Event Type:", event_type, "Resource:", obj.metadata.name)
         
     # Watch deployments in the staging namespace for 30 seconds
     print("Starting deployment watch stream...")

@@ -53,7 +53,7 @@ To inspect and verify the active connection context before running operations, u
 def print_connection_info():
     print("Active Context:", k8s.context())
     print("Default Namespace:", k8s.namespace_name())
-    print("Kubernetes Version:", k8s.version())
+    print("Kubernetes Version:", k8s.version().git_version)
 ```
 
 ## Permissions
