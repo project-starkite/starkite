@@ -21,6 +21,7 @@ import (
 	"github.com/project-starkite/starkite/libkite/modules/regexp"
 	"github.com/project-starkite/starkite/libkite/modules/retry"
 	"github.com/project-starkite/starkite/libkite/modules/runtime"
+	sandboxmod "github.com/project-starkite/starkite/libkite/modules/sandbox"
 	"github.com/project-starkite/starkite/libkite/modules/sql"
 	"github.com/project-starkite/starkite/libkite/modules/ssh"
 	"github.com/project-starkite/starkite/libkite/modules/strings"
@@ -37,13 +38,14 @@ import (
 // RegisterAll registers all built-in modules with the given registry.
 func RegisterAll(r *libkite.Registry) {
 	// Core modules with global aliases
-	r.Register(osmod.New())   // os.* + global aliases (env, exec, etc.)
-	r.Register(fs.New())      // fs.* + global aliases (read_file, exists, etc.)
-	r.Register(fmtmod.New())  // fmt.* + global aliases (printf, sprintf, errorf)
-	r.Register(runtime.New()) // runtime.* (platform, arch, cpu_count, uname)
-	r.Register(iomod.New())   // io.* (confirm, prompt)
-	r.Register(test.New())    // test.* + global aliases (skip, fail)
-	r.Register(vars.New())    // vars.* + global alias (var)
+	r.Register(osmod.New())      // os.* + global aliases (env, exec, etc.)
+	r.Register(fs.New())         // fs.* + global aliases (read_file, exists, etc.)
+	r.Register(fmtmod.New())     // fmt.* + global aliases (printf, sprintf, errorf)
+	r.Register(runtime.New())    // runtime.* (platform, arch, cpu_count, uname)
+	r.Register(iomod.New())      // io.* (confirm, prompt)
+	r.Register(test.New())       // test.* + global aliases (skip, fail)
+	r.Register(vars.New())       // vars.* + global alias (var)
+	r.Register(sandboxmod.New()) // sandbox.* (config, run_script, list_drivers)
 
 	// Stateless utility modules
 	r.Register(strings.New())

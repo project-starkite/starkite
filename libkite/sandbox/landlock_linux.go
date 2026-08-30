@@ -222,7 +222,13 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	// Network isolation via namespace unsharing if requested
 	if spec.Network == NetworkNone || spec.Network == NetworkLoopback {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
-			Cloneflags: syscall.CLONE_NEWNET,
+			Cloneflags: syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET,
+			UidMappings: []syscall.SysProcIDMap{
+				{ContainerID: 0, HostID: os.Getuid(), Size: 1},
+			},
+			GidMappings: []syscall.SysProcIDMap{
+				{ContainerID: 0, HostID: os.Getgid(), Size: 1},
+			},
 		}
 	}
 
@@ -242,6 +248,21 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	}
 
 	err := cmd.Run()
+	if err != nil && cmd.SysProcAttr != nil {
+		// If kernel restricts unprivileged user/net namespaces (e.g. Ubuntu AppArmor), fallback without SysProcAttr
+		retryCmd := exec.CommandContext(execCtx, spec.Command[0], spec.Command[1:]...)
+		if spec.Cwd != "" {
+			retryCmd.Dir = spec.Cwd
+		}
+		retryCmd.Env = cmd.Env
+		stdoutBuf.Reset()
+		stderrBuf.Reset()
+		retryCmd.Stdout = cmd.Stdout
+		retryCmd.Stderr = cmd.Stderr
+		retryCmd.Stdin = cmd.Stdin
+		err = retryCmd.Run()
+		cmd = retryCmd
+	}
 	duration := time.Since(start)
 
 	result := &ExecResult{

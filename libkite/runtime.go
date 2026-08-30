@@ -300,6 +300,14 @@ func RegisterCleanup(thread *starlark.Thread, fn func()) {
 	}
 }
 
+// Context returns the execution context for this runtime session, or context.Background() if nil.
+func (rt *Runtime) Context() context.Context {
+	if rt != nil && rt.ctx != nil {
+		return rt.ctx
+	}
+	return context.Background()
+}
+
 // Execute runs a script. The ctx parameter cancels a running script: when
 // ctx.Done() fires, the Starlark thread receives Cancel() and execution exits
 // at the next safe point.
