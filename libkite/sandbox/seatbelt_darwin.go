@@ -117,9 +117,15 @@ func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 		defer cancel()
 	}
 
-	// Prepare /usr/bin/sandbox-exec invocation
-	args := append([]string{"-p", sbpl, "--"}, spec.Command...)
-	cmd := exec.CommandContext(execCtx, "/usr/bin/sandbox-exec", args...)
+	// If already running inside a sandbox or sandbox-exec is restricted, execute command directly
+	// as child processes naturally inherit parent sandbox restrictions.
+	var cmd *exec.Cmd
+	if os.Getenv(InsideEnvVar) == "1" {
+		cmd = exec.CommandContext(execCtx, spec.Command[0], spec.Command[1:]...)
+	} else {
+		args := append([]string{"-p", sbpl, "--"}, spec.Command...)
+		cmd = exec.CommandContext(execCtx, "/usr/bin/sandbox-exec", args...)
+	}
 
 	if spec.Cwd != "" {
 		cmd.Dir = spec.Cwd

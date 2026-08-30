@@ -377,11 +377,9 @@ func GetPermissions() (*libkite.PermissionConfig, error) {
 //  2. The STARKITE_SECURITY_SANDBOX env var (the path shebang-launched
 //     scripts use, since shebang lines can't easily carry flags).
 //
-// The flag wins when both are set — same precedence convention as the
-// other env-resolved options (STARKITE_DEBUG, etc.). An unset flag and
-// unset env var means "no sandbox" (zero Profile). When either is set
-// but no sandbox backend is registered (macOS/Windows), returns
-// PlatformError so the caller can surface a clear message.
+// GetSandbox resolves the active sandbox profile from the CLI or environment.
+// Supports compound syntax (<driver>:<profile>, e.g. "podman:ci-builder", "seatbelt:dev")
+// as well as simple profile names ("opaque", "strict") and bare flags ("default").
 func GetSandbox() (sandbox.Profile, error) {
 	value := sandboxMode
 	if value == "" {
@@ -393,18 +391,32 @@ func GetSandbox() (sandbox.Profile, error) {
 	if !sandbox.Available() {
 		return sandbox.Profile{}, sandbox.PlatformError()
 	}
-	return sandbox.LoadProfile(value)
+
+	driverOverride := ""
+	profileName := value
+	if parts := strings.SplitN(value, ":", 2); len(parts) == 2 {
+		driverOverride = parts[0]
+		profileName = parts[1]
+	}
+
+	profile, err := sandbox.LoadProfile(profileName)
+	if err != nil {
+		return sandbox.Profile{}, err
+	}
+	if driverOverride != "" {
+		profile.Driver = driverOverride
+	}
+	return profile, nil
 }
 
 // MaybeHandoffToSandbox checks whether a sandbox is requested (via
 // --sandbox flag or STARKITE_SECURITY_SANDBOX env var) and routes
-// execution through sandbox.Backend if so. Returns (true, err) when
-// the backend handled execution (caller must return immediately,
-// propagating err); (false, nil) when the caller should continue
-// running natively; (false, err) when the sandbox config was invalid.
+// execution through the resolved sandbox driver.
 //
-// Subcommands that re-enter starkite (e.g. via gVisor's argv-rewrite
-// for boot/gofer) check sandbox.InsideEnvVar to avoid recursion.
+// Returns:
+//   - (false, nil) when execution continues natively (either unsandboxed or under in-process native confinement)
+//   - (true, err) when the sandbox driver handled execution in a subprocess/container (caller must return/exit immediately)
+//   - (false, err) when sandbox initialization failed.
 func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
 	if os.Getenv(sandbox.InsideEnvVar) == "1" {
 		return false, nil
@@ -416,5 +428,56 @@ func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
 	if profile.IsZero() {
 		return false, nil
 	}
-	return true, sandbox.Backend.Run(ctx, sandbox.ExecSpec{Profile: profile})
+
+	// Legacy Backend support if registered
+	if sandbox.Backend != nil {
+		return true, sandbox.Backend.Run(ctx, sandbox.ExecSpec{Profile: profile})
+	}
+
+	driver, err := sandbox.Resolve(profile.Driver)
+	if err != nil {
+		return false, err
+	}
+
+	cwd, _ := os.Getwd()
+	spec := &sandbox.ExecutionSpec{
+		Command:     os.Args,
+		Cwd:         cwd,
+		Env:         os.Environ(),
+		Network:     profile.Network,
+		Mounts:      profile.Mounts,
+		MaxMemoryMB: profile.MaxMemoryMB,
+		Timeout:     profile.Timeout,
+		Image:       profile.Image,
+		Stdin:       os.Stdin,
+		Stdout:      os.Stdout,
+		Stderr:      os.Stderr,
+	}
+
+	// Case 1: In-process native driver (e.g. Landlock on Linux, Seatbelt on macOS)
+	// Apply rules to current running process and continue native execution!
+	if inProc, ok := driver.(sandbox.InProcessDriver); ok {
+		if err := inProc.ApplyInProcess(spec); err != nil {
+			return false, fmt.Errorf("failed to apply in-process sandbox (%s): %w", driver.Name(), err)
+		}
+		os.Setenv(sandbox.InsideEnvVar, "1")
+		return false, nil
+	}
+
+	// Case 2: Out-of-process container / external provider (podman, docker, nerdctl, gvisor)
+	// Execute the command wrapped inside the sandbox container.
+	os.Setenv(sandbox.InsideEnvVar, "1")
+	spec.Env = append(spec.Env, fmt.Sprintf("%s=1", sandbox.InsideEnvVar))
+
+	res, execErr := driver.Exec(ctx, spec)
+	if execErr != nil {
+		if res != nil && res.ExitCode != 0 {
+			os.Exit(res.ExitCode)
+		}
+		return true, execErr
+	}
+	if res.ExitCode != 0 {
+		os.Exit(res.ExitCode)
+	}
+	return true, nil
 }

@@ -80,3 +80,10 @@ type Driver interface {
 	// Exec executes the command described by spec inside the sandbox environment.
 	Exec(ctx context.Context, spec *ExecutionSpec) (*ExecResult, error)
 }
+
+// InProcessDriver is an optional interface implemented by native drivers that can
+// apply sandbox restrictions directly to the running process (e.g., Landlock, Seatbelt).
+type InProcessDriver interface {
+	Driver
+	ApplyInProcess(spec *ExecutionSpec) error
+}

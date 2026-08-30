@@ -136,3 +136,53 @@ func TestPermissionAliasFlags(t *testing.T) {
 		}
 	})
 }
+
+func TestGetSandbox(t *testing.T) {
+	t.Run("empty returns zero profile", func(t *testing.T) {
+		sandboxMode = ""
+		t.Setenv("STARKITE_SECURITY_SANDBOX", "")
+		p, err := GetSandbox()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !p.IsZero() {
+			t.Errorf("expected zero profile, got %+v", p)
+		}
+	})
+
+	t.Run("simple profile name", func(t *testing.T) {
+		sandboxMode = "opaque"
+		p, err := GetSandbox()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.IsZero() {
+			t.Fatal("expected non-zero profile")
+		}
+		if p.Network != "none" && p.Network != "loopback" {
+			t.Errorf("expected opaque network, got %s", p.Network)
+		}
+	})
+
+	t.Run("compound syntax with driver override", func(t *testing.T) {
+		sandboxMode = "podman:opaque"
+		p, err := GetSandbox()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.Driver != "podman" {
+			t.Errorf("p.Driver = %s, want podman", p.Driver)
+		}
+	})
+
+	t.Run("compound syntax with seatbelt driver", func(t *testing.T) {
+		sandboxMode = "seatbelt:host"
+		p, err := GetSandbox()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.Driver != "seatbelt" {
+			t.Errorf("p.Driver = %s, want seatbelt", p.Driver)
+		}
+	})
+}

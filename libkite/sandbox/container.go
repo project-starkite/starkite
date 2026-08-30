@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 )
@@ -142,6 +144,23 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 			mode = "rw"
 		}
 		args = append(args, "-v", fmt.Sprintf("%s:%s:%s", src, m.Destination, mode))
+	}
+
+	// Ensure executable binary is accessible inside container if it is an absolute host path
+	if len(spec.Command) > 0 && filepath.IsAbs(spec.Command[0]) {
+		binPath := spec.Command[0]
+		if _, err := os.Stat(binPath); err == nil {
+			isMounted := false
+			for _, m := range spec.Mounts {
+				if m.Source == binPath || (m.Source != "" && strings.HasPrefix(binPath, m.Source)) {
+					isMounted = true
+					break
+				}
+			}
+			if !isMounted {
+				args = append(args, "-v", fmt.Sprintf("%s:%s:ro", binPath, binPath))
+			}
+		}
 	}
 
 	// Custom runtime override (e.g. --runtime=runsc)

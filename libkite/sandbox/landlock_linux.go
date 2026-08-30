@@ -294,6 +294,22 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 }
 
 func addLandlockPathRule(rulesetFd int, path string, access uint64) error {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return err
+	}
+	if !fi.IsDir() {
+		// For regular files/symlinks, strip directory-only Landlock flags to avoid EINVAL
+		dirOnlyFlags := uint64(
+			landlockAccessFsReadDir |
+				landlockAccessFsRemoveDir |
+				landlockAccessFsMakeDir |
+				landlockAccessFsMakeReg |
+				landlockAccessFsMakeSym,
+		)
+		access &^= dirOnlyFlags
+	}
+
 	fd, err := unix.Open(path, unix.O_PATH|unix.O_CLOEXEC, 0)
 	if err != nil {
 		return err
