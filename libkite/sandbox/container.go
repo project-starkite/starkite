@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -19,7 +20,7 @@ const (
 	EngineNerdctl = "nerdctl"
 
 	// DefaultContainerImage is the fallback base image if none is specified in ExecutionSpec.
-	DefaultContainerImage = "docker.io/library/alpine:latest"
+	DefaultContainerImage = "ghcr.io/project-starkite/kite:latest"
 )
 
 // ContainerDriver implements the Driver interface by orchestrating ephemeral
@@ -134,6 +135,12 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 			continue
 		}
 
+		// On non-Linux hosts (macOS/Windows), skip host /etc system files (/etc/ssl, /etc/resolv.conf, etc.)
+		// so the Linux container uses its own native TLS CA certs and network resolver.
+		if runtime.GOOS != "linux" && strings.HasPrefix(m.Destination, "/etc/") {
+			continue
+		}
+
 		src := m.Source
 		if src == "" {
 			src = m.Destination
@@ -146,20 +153,37 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 		args = append(args, "-v", fmt.Sprintf("%s:%s:%s", src, m.Destination, mode))
 	}
 
-	// Ensure executable binary is accessible inside container if it is an absolute host path
-	if len(spec.Command) > 0 && filepath.IsAbs(spec.Command[0]) {
-		binPath := spec.Command[0]
-		if _, err := os.Stat(binPath); err == nil {
-			isMounted := false
-			for _, m := range spec.Mounts {
-				if m.Source == binPath || (m.Source != "" && strings.HasPrefix(binPath, m.Source)) {
-					isMounted = true
-					break
+	// Container Image
+	image := spec.Image
+	if image == "" {
+		image = DefaultContainerImage
+	}
+
+	command := spec.Command
+
+	// If host is Linux and a minimal base image (alpine) is used, bind-mount the host Linux binary
+	if runtime.GOOS == "linux" && (image == "docker.io/library/alpine:latest" || image == "alpine:latest" || image == "alpine") {
+		if len(command) > 0 && filepath.IsAbs(command[0]) {
+			binPath := command[0]
+			if _, err := os.Stat(binPath); err == nil {
+				isMounted := false
+				for _, m := range spec.Mounts {
+					if m.Source == binPath || (m.Source != "" && strings.HasPrefix(binPath, m.Source)) {
+						isMounted = true
+						break
+					}
+				}
+				if !isMounted {
+					args = append(args, "-v", fmt.Sprintf("%s:%s:ro", binPath, binPath))
 				}
 			}
-			if !isMounted {
-				args = append(args, "-v", fmt.Sprintf("%s:%s:ro", binPath, binPath))
-			}
+		}
+	} else if len(command) > 0 {
+		// When using an image containing kite (e.g. ghcr.io/project-starkite/kite:latest)
+		// or running from a non-Linux host (macOS/Windows), use the container's built-in "kite" command.
+		binName := filepath.Base(command[0])
+		if binName == "kite" || binName == "kitecmd" || binName == "kitecloud" || binName == "kiteai" || strings.HasPrefix(binName, "kite") {
+			command = append([]string{"kite"}, command[1:]...)
 		}
 	}
 
@@ -168,15 +192,8 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 		args = append(args, fmt.Sprintf("--runtime=%s", spec.Runtime))
 	}
 
-	// Container Image
-	image := spec.Image
-	if image == "" {
-		image = DefaultContainerImage
-	}
 	args = append(args, image)
-
-	// Command and argv
-	args = append(args, spec.Command...)
+	args = append(args, command...)
 
 	return args
 }

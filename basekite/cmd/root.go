@@ -243,6 +243,74 @@ func RootCmd() *cobra.Command {
 	return rootCmd
 }
 
+// isSubcommandName reports whether arg matches a registered subcommand or alias.
+func isSubcommandName(arg string) bool {
+	for _, c := range rootCmd.Commands() {
+		if c.Name() == arg || c.HasAlias(arg) {
+			return true
+		}
+	}
+	return arg == "help" || arg == "completion"
+}
+
+// isLikelyProfileName reports whether name consists of valid profile identifier characters.
+func isLikelyProfileName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for _, r := range name {
+		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// normalizeSandboxArgs rewrites bare `--sandbox <value>` into `--sandbox=<value>`
+// when <value> is a profile name rather than a flag, a subcommand, or a script target path.
+// This allows both `--sandbox` (bare default profile) and `--sandbox <profile>` (with space)
+// to work seamlessly alongside pflag's NoOptDefVal behavior.
+func normalizeSandboxArgs(args []string) []string {
+	if len(args) <= 1 {
+		return args
+	}
+	out := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--sandbox" && i+1 < len(args) {
+			next := args[i+1]
+			if !strings.HasPrefix(next, "-") && !looksLikeRunTarget(next) && !isSubcommandName(next) && isLikelyProfileName(next) {
+				out = append(out, fmt.Sprintf("--sandbox=%s", next))
+				i++ // skip next arg as it was consumed as profile value
+				continue
+			}
+		}
+		out = append(out, arg)
+	}
+	return out
+}
+
+// needsImplicitRun reports whether args contain a run target without an explicit subcommand.
+func needsImplicitRun(args []string) bool {
+	if len(args) <= 1 {
+		return false
+	}
+	hasRunTarget := false
+	for i := 1; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			continue
+		}
+		if isSubcommandName(arg) {
+			return false
+		}
+		if looksLikeRunTarget(arg) {
+			hasRunTarget = true
+		}
+	}
+	return hasRunTarget
+}
+
 // Execute runs the root command and returns the exit code
 func Execute() int {
 	// Let edition binaries register their commands before execution.
@@ -250,14 +318,12 @@ func Execute() int {
 		RegisterEditionCommands(rootCmd)
 	}
 
-	// Implicit run: if the first arg is a run target (a .star file, an existing
-	// path reference, an installed namespace/name identity, or a .star arg) rather
-	// flag or subcommand, insert "run".
-	if len(os.Args) > 1 {
-		firstArg := os.Args[1]
-		if !strings.HasPrefix(firstArg, "-") && looksLikeRunTarget(firstArg) {
-			os.Args = append([]string{os.Args[0], "run"}, os.Args[1:]...)
-		}
+	os.Args = normalizeSandboxArgs(os.Args)
+
+	// Implicit run: if a run target is specified without an explicit subcommand,
+	// insert "run" so flag placement before or after the target works seamlessly.
+	if needsImplicitRun(os.Args) {
+		os.Args = append([]string{os.Args[0], "run"}, os.Args[1:]...)
 	}
 
 	if err := rootCmd.Execute(); err != nil {

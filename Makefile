@@ -64,6 +64,18 @@ deps: ## Download dependencies
 	cd aikite && go mod tidy
 	cd kite && go mod tidy
 
+IMAGE_NAME?=ghcr.io/project-starkite/kite:latest
+
+kite-linux: ## Build static Linux kite binary (for container image packaging)
+	mkdir -p $(BIN_DIR)
+	cd kite && CGO_ENABLED=0 GOOS=linux go build $(ALL_LDFLAGS) -o ../$(BIN_DIR)/kite-linux .
+
+docker-build: kite-linux ## Build the starkite container image using Docker
+	docker build -t $(IMAGE_NAME) -f Dockerfile .
+
+podman-build: kite-linux ## Build the starkite container image using Podman
+	podman build -t $(IMAGE_NAME) -f Dockerfile .
+
 run-example: kite ## Run hello example
 	./$(BIN_DIR)/kite run examples/core/hello.star
 

@@ -237,3 +237,104 @@ func TestGetSandbox(t *testing.T) {
 		}
 	})
 }
+
+func TestNormalizeSandboxArgs(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want []string
+	}{
+		{
+			name: "space-separated profile name",
+			args: []string{"kite", "./sysinfo.star", "--allow-all", "--sandbox", "opaque", "--sandbox-driver", "podman"},
+			want: []string{"kite", "./sysinfo.star", "--allow-all", "--sandbox=opaque", "--sandbox-driver", "podman"},
+		},
+		{
+			name: "equal-separated profile name unchanged",
+			args: []string{"kite", "--sandbox=opaque", "./sysinfo.star"},
+			want: []string{"kite", "--sandbox=opaque", "./sysinfo.star"},
+		},
+		{
+			name: "bare flag followed by flag unchanged",
+			args: []string{"kite", "--sandbox", "--sandbox-driver", "podman", "./sysinfo.star"},
+			want: []string{"kite", "--sandbox", "--sandbox-driver", "podman", "./sysinfo.star"},
+		},
+		{
+			name: "bare flag followed by script target unchanged",
+			args: []string{"kite", "--sandbox", "./sysinfo.star"},
+			want: []string{"kite", "--sandbox", "./sysinfo.star"},
+		},
+		{
+			name: "bare flag at end of args unchanged",
+			args: []string{"kite", "./sysinfo.star", "--sandbox"},
+			want: []string{"kite", "./sysinfo.star", "--sandbox"},
+		},
+		{
+			name: "space-separated custom profile name",
+			args: []string{"kite", "run", "--sandbox", "ci-builder", "./build.star"},
+			want: []string{"kite", "run", "--sandbox=ci-builder", "./build.star"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := normalizeSandboxArgs(tt.args)
+			if len(got) != len(tt.want) {
+				t.Fatalf("normalizeSandboxArgs() = %v, want %v", got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("got[%d] = %s, want %s", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestNeedsImplicitRun(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want bool
+	}{
+		{
+			name: "script file without subcommand",
+			args: []string{"kite", "./script.star"},
+			want: true,
+		},
+		{
+			name: "flags before script file",
+			args: []string{"kite", "--sandbox", "./script.star"},
+			want: true,
+		},
+		{
+			name: "explicit run subcommand",
+			args: []string{"kite", "run", "./script.star"},
+			want: false,
+		},
+		{
+			name: "explicit test subcommand",
+			args: []string{"kite", "test", "./tests/sandbox/..."},
+			want: false,
+		},
+		{
+			name: "help flag only",
+			args: []string{"kite", "--help"},
+			want: false,
+		},
+		{
+			name: "version subcommand",
+			args: []string{"kite", "version"},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := needsImplicitRun(tt.args)
+			if got != tt.want {
+				t.Errorf("needsImplicitRun(%v) = %v, want %v", tt.args, got, tt.want)
+			}
+		})
+	}
+}
