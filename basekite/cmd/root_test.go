@@ -140,7 +140,9 @@ func TestPermissionAliasFlags(t *testing.T) {
 func TestGetSandbox(t *testing.T) {
 	t.Run("empty returns zero profile", func(t *testing.T) {
 		sandboxMode = ""
+		sandboxDriver = ""
 		t.Setenv("STARKITE_SECURITY_SANDBOX", "")
+		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
 		p, err := GetSandbox()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -152,6 +154,9 @@ func TestGetSandbox(t *testing.T) {
 
 	t.Run("simple profile name", func(t *testing.T) {
 		sandboxMode = "opaque"
+		sandboxDriver = ""
+		t.Setenv("STARKITE_SECURITY_SANDBOX", "")
+		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
 		p, err := GetSandbox()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -164,8 +169,11 @@ func TestGetSandbox(t *testing.T) {
 		}
 	})
 
-	t.Run("compound syntax with driver override", func(t *testing.T) {
-		sandboxMode = "podman:opaque"
+	t.Run("profile with driver override flag", func(t *testing.T) {
+		sandboxMode = "opaque"
+		sandboxDriver = "podman"
+		t.Setenv("STARKITE_SECURITY_SANDBOX", "")
+		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
 		p, err := GetSandbox()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -173,16 +181,59 @@ func TestGetSandbox(t *testing.T) {
 		if p.Driver != "podman" {
 			t.Errorf("p.Driver = %s, want podman", p.Driver)
 		}
+		if p.Network != "none" && p.Network != "loopback" {
+			t.Errorf("expected opaque network, got %s", p.Network)
+		}
 	})
 
-	t.Run("compound syntax with seatbelt driver", func(t *testing.T) {
-		sandboxMode = "seatbelt:host"
+	t.Run("driver flag alone defaults to default profile", func(t *testing.T) {
+		sandboxMode = ""
+		sandboxDriver = "docker"
+		t.Setenv("STARKITE_SECURITY_SANDBOX", "")
+		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
+		p, err := GetSandbox()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.IsZero() {
+			t.Fatal("expected non-zero profile when driver is specified")
+		}
+		if p.Driver != "docker" {
+			t.Errorf("p.Driver = %s, want docker", p.Driver)
+		}
+	})
+
+	t.Run("env vars for profile and driver", func(t *testing.T) {
+		sandboxMode = ""
+		sandboxDriver = ""
+		t.Setenv("STARKITE_SECURITY_SANDBOX", "host")
+		t.Setenv("STARKITE_SANDBOX_DRIVER", "seatbelt")
 		p, err := GetSandbox()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if p.Driver != "seatbelt" {
 			t.Errorf("p.Driver = %s, want seatbelt", p.Driver)
+		}
+		if p.Network != "host" {
+			t.Errorf("p.Network = %s, want host", p.Network)
+		}
+	})
+
+	t.Run("CLI flag overrides env var", func(t *testing.T) {
+		sandboxMode = "opaque"
+		sandboxDriver = "landlock"
+		t.Setenv("STARKITE_SECURITY_SANDBOX", "host")
+		t.Setenv("STARKITE_SANDBOX_DRIVER", "podman")
+		p, err := GetSandbox()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.Driver != "landlock" {
+			t.Errorf("p.Driver = %s, want landlock", p.Driver)
+		}
+		if p.Network != "none" && p.Network != "loopback" {
+			t.Errorf("expected opaque network, got %s", p.Network)
 		}
 	})
 }

@@ -41,7 +41,8 @@ var (
 	// Set via --sandbox on the CLI; STARKITE_SECURITY_SANDBOX env var
 	// is the alternative entry point for shebang-launched scripts (and
 	// works for CLI invocations too). The flag wins when both are set.
-	sandboxMode string
+	sandboxMode   string
+	sandboxDriver string
 
 	// sandboxProfileFlags are boolean aliases for --sandbox=<rung>, one per
 	// built-in rung (e.g. --sandbox-opaque == --sandbox=opaque). At most one
@@ -145,6 +146,10 @@ func init() {
 			"or the opaque rung when none is defined.")
 	rootCmd.PersistentFlags().Lookup("sandbox").NoOptDefVal = "default"
 
+	rootCmd.PersistentFlags().StringVar(&sandboxDriver, "sandbox-driver", "",
+		"Sandbox execution driver (auto|landlock|seatbelt|podman|docker|nerdctl|gvisor). "+
+			"Overrides the driver configured in the sandbox profile.")
+
 	// Boolean aliases for the built-in rungs, e.g. --sandbox-opaque == --sandbox=opaque.
 	for _, f := range sandboxProfileFlags {
 		rung := strings.TrimPrefix(f, "sandbox-")
@@ -223,6 +228,12 @@ func applyEnvDefaults() {
 			if t, err := strconv.Atoi(v); err == nil && t > 0 {
 				timeout = t
 			}
+		}
+	}
+
+	if !flags.Lookup("sandbox-driver").Changed {
+		if v := os.Getenv(sandbox.DriverEnvVar); v != "" {
+			sandboxDriver = v
 		}
 	}
 }
@@ -371,32 +382,31 @@ func GetPermissions() (*libkite.PermissionConfig, error) {
 	return permissions.Resolve(permissionsMode, configPermissions())
 }
 
-// GetSandbox resolves the sandbox profile from two equivalent inputs:
-//
-//  1. The --sandbox CLI flag (typed by the user explicitly invoking kite).
-//  2. The STARKITE_SECURITY_SANDBOX env var (the path shebang-launched
-//     scripts use, since shebang lines can't easily carry flags).
-//
-// GetSandbox resolves the active sandbox profile from the CLI or environment.
-// Supports compound syntax (<driver>:<profile>, e.g. "podman:ci-builder", "seatbelt:dev")
-// as well as simple profile names ("opaque", "strict") and bare flags ("default").
+// GetSandbox resolves the active sandbox profile from the CLI flags or environment.
+// --sandbox (or STARKITE_SECURITY_SANDBOX) selects the profile name.
+// --sandbox-driver (or STARKITE_SANDBOX_DRIVER) overrides the execution driver engine.
 func GetSandbox() (sandbox.Profile, error) {
-	value := sandboxMode
-	if value == "" {
-		value = os.Getenv(sandbox.EngagementEnvVar)
+	profileName := sandboxMode
+	if profileName == "" {
+		profileName = os.Getenv(sandbox.EngagementEnvVar)
 	}
-	if value == "" {
+	driverOverride := sandboxDriver
+	if driverOverride == "" {
+		driverOverride = os.Getenv(sandbox.DriverEnvVar)
+	}
+
+	// If neither a profile nor a driver is specified, execution is unsandboxed.
+	if profileName == "" && driverOverride == "" {
 		return sandbox.Profile{}, nil
 	}
+
 	if !sandbox.Available() {
 		return sandbox.Profile{}, sandbox.PlatformError()
 	}
 
-	driverOverride := ""
-	profileName := value
-	if parts := strings.SplitN(value, ":", 2); len(parts) == 2 {
-		driverOverride = parts[0]
-		profileName = parts[1]
+	// If a driver was specified without an explicit profile, default to the "default" profile.
+	if profileName == "" {
+		profileName = sandbox.DefaultProfileName
 	}
 
 	profile, err := sandbox.LoadProfile(profileName)

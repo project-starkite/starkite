@@ -406,6 +406,9 @@ func runOneTestFileInSandbox(kiteBin, file, sandboxValue string) bool {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = append(os.Environ(), sandbox.EngagementEnvVar+"="+sandboxValue)
+	if sandboxDriver != "" {
+		cmd.Env = append(cmd.Env, sandbox.DriverEnvVar+"="+sandboxDriver)
+	}
 	return cmd.Run() == nil
 }
 

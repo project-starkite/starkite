@@ -13,9 +13,7 @@ package sandbox_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,6 +31,9 @@ const (
 	viaFlag engagement = iota
 	viaEnv
 	viaAliasOpaque
+	viaDriverFlag
+	viaDriverAndProfileFlag
+	viaDriverEnv
 )
 
 func TestSandboxNetAccessRung_flag(t *testing.T) {
@@ -47,8 +48,16 @@ func TestSandboxHostRung_flag(t *testing.T) {
 	runStarTest(t, "sandbox_host_test.star", "host", viaFlag)
 }
 
-func TestSandboxCompound_flag(t *testing.T) {
-	runStarTest(t, "sandbox_opaque_test.star", "default:opaque", viaFlag)
+func TestSandboxDriverAndProfile_flag(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "opaque", viaDriverAndProfileFlag)
+}
+
+func TestSandboxDriverOnly_flag(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "default", viaDriverFlag)
+}
+
+func TestSandboxDriver_env(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "opaque", viaDriverEnv)
 }
 
 func TestSandboxModule_star(t *testing.T) {
@@ -80,9 +89,6 @@ func TestSandboxOpaqueRung_env(t *testing.T) {
 func TestSandboxPerTestFile(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
-	}
-	if reason := unprivilegedUsernsBlocked(); reason != "" {
-		t.Skipf("kernel restricts unprivileged user namespaces: %s", reason)
 	}
 
 	kite := buildKite(t)
@@ -143,12 +149,6 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
-	if reason := unprivilegedUsernsBlocked(); reason != "" {
-		t.Skipf("kernel restricts unprivileged user namespaces: %s\n"+
-			"To run these tests: install kite's AppArmor profile, or\n"+
-			"  sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0",
-			reason)
-	}
 
 	kite := buildKite(t)
 
@@ -193,6 +193,15 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	case viaAliasOpaque:
 		args = append(args, "--sandbox-opaque")
 		label = "--sandbox-opaque"
+	case viaDriverFlag:
+		args = append(args, "--sandbox-driver=auto")
+		label = "--sandbox-driver=auto"
+	case viaDriverAndProfileFlag:
+		args = append(args, "--sandbox="+profile, "--sandbox-driver=auto")
+		label = "--sandbox=" + profile + " --sandbox-driver=auto"
+	case viaDriverEnv:
+		env = append(env, "STARKITE_SECURITY_SANDBOX="+profile, "STARKITE_SANDBOX_DRIVER=auto")
+		label = "STARKITE_SECURITY_SANDBOX=" + profile + " STARKITE_SANDBOX_DRIVER=auto"
 	default:
 		t.Fatalf("unknown engagement %d", eng)
 	}
@@ -237,25 +246,6 @@ func buildKite(t *testing.T) string {
 		t.Fatalf("building kite: %v\n%s", err, buildOut)
 	}
 	return out
-}
-
-// unprivilegedUsernsBlocked returns a non-empty reason string when the
-// kernel state prevents unprivileged user namespaces (the precondition
-// gVisor's rootless mode needs). Empty string means preflight is happy.
-func unprivilegedUsernsBlocked() string {
-	if v, err := os.ReadFile("/proc/sys/kernel/apparmor_restrict_unprivileged_userns"); err == nil {
-		if strings.TrimSpace(string(v)) == "1" {
-			return "apparmor_restrict_unprivileged_userns=1"
-		}
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		// Unreadable but present — odd; let gVisor surface the real error.
-	}
-	if v, err := os.ReadFile("/proc/sys/kernel/unprivileged_userns_clone"); err == nil {
-		if strings.TrimSpace(string(v)) == "0" {
-			return "unprivileged_userns_clone=0"
-		}
-	}
-	return ""
 }
 
 // sandboxUnavailable reports whether kite's output indicates the host could not

@@ -62,6 +62,9 @@ const InsideEnvVar = "STARKITE_INSIDE_SANDBOX"
 //	./untrusted.star    # shebang: same env var, same effect
 const EngagementEnvVar = "STARKITE_SECURITY_SANDBOX"
 
+// DriverEnvVar is the environment variable that overrides the sandbox execution driver engine.
+const DriverEnvVar = "STARKITE_SANDBOX_DRIVER"
+
 // Available reports whether a sandbox driver or backend is registered and usable.
 func Available() bool {
 	if Backend != nil {

@@ -37,19 +37,21 @@ kite run ./script.star --sandbox=net-access
 kite run ./script.star --sandbox=host
 ```
 
-To explicitly specify both the sandbox driver and profile, use compound selector syntax:
+To override the sandbox execution driver, pass `--sandbox-driver`:
 
 ```bash
-kite run ./script.star --sandbox=landlock:opaque
-kite run ./script.star --sandbox=seatbelt:host
-kite run ./script.star --sandbox=podman:net-access
-kite run ./script.star --sandbox=gvisor:opaque
+kite run ./script.star --sandbox=opaque --sandbox-driver=landlock
+kite run ./script.star --sandbox=host --sandbox-driver=seatbelt
+kite run ./script.star --sandbox=net-access --sandbox-driver=podman
+kite run ./script.star --sandbox=opaque --sandbox-driver=gvisor
+kite run ./script.star --sandbox-driver=podman   # Runs default profile in Podman
 ```
 
-For shebang scripts (`#!/usr/bin/env kite`), configure the sandbox via the `STARKITE_SECURITY_SANDBOX` environment variable:
+For shebang scripts (`#!/usr/bin/env kite`), configure the sandbox via environment variables:
 
 ```bash
-STARKITE_SECURITY_SANDBOX=seatbelt:opaque ./script.star
+# Set profile and/or driver via environment variables
+STARKITE_SECURITY_SANDBOX=opaque STARKITE_SANDBOX_DRIVER=seatbelt ./script.star
 ```
 
 ## Built-in sandbox profiles
@@ -64,33 +66,38 @@ Starkite provides three standard sandbox profiles:
 
 ## Custom sandbox profiles
 
-Define custom sandbox profiles and driver defaults in `~/.starkite/config.yaml`:
+Define custom sandbox profiles in `~/.starkite/config.yaml`. The `sandbox:` section is a pure profile mapping, where `default` is the profile selected when `--sandbox` is passed without an argument:
 
 ```yaml
 # ~/.starkite/config.yaml
 sandbox:
-  driver: auto                 # auto, landlock, seatbelt, podman, docker, nerdctl, gvisor
-  default: net-access          # Default profile when --sandbox is passed
-  profiles:
-    dev:
-      base: host               # Inherits host settings
-      mounts:
-        - source: $HOME/.cache
-          destination: $HOME/.cache
-          mode: rw
-    ci-builder:
-      base: net-access
-      mounts:
-        - source: $CWD
-          destination: /workspace
-          mode: rw
+  # The default profile applied when `--sandbox` has no value
+  default:
+    base: net-access
+    driver: podman             # Optional: binds a default driver to this profile
+
+  # Custom named profiles
+  dev:
+    base: host                 # Inherits host settings
+    mounts:
+      - source: $HOME/.cache
+        destination: $HOME/.cache
+        mode: rw
+
+  ci-builder:
+    driver: docker             # Profile-bound driver
+    base: net-access
+    mounts:
+      - source: $CWD
+        destination: /workspace
+        mode: rw
 ```
 
-Execute with the custom profile:
+Execute with custom profiles:
 
 ```bash
 kite run ./build.star --sandbox=ci-builder
-kite run ./build.star --sandbox=podman:ci-builder
+kite run ./build.star --sandbox=ci-builder --sandbox-driver=podman  # CLI driver overrides profile default
 ```
 
 ## Starlark `sandbox` Module API

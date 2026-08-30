@@ -38,7 +38,7 @@ The fastest way to learn what a Starkite script looks like is to read one that a
 
     ---
 
-    OS-level isolation with `--sandbox` (Linux).
+    OS and container isolation with `--sandbox`.
 
     [:octicons-arrow-right-24: Browse](#sandbox)
 
@@ -95,12 +95,13 @@ To understand the agent and MCP patterns these scripts assemble, read the [AI Su
 
 ## Sandbox
 
-When you run code you do not fully trust, the examples above gain a second layer: `--sandbox` confines the script to OS-level isolation on Linux. These three show that layer in action — a network fetch under the default profile, offline compute over the working directory, and the sandbox composed with a permission profile for defense in depth.
+When you run code you do not fully trust, the examples above gain a second layer: `--sandbox` confines the script to OS-level or container isolation. These examples show that layer in action — a network fetch under the default profile, offline compute over the working directory, and the sandbox composed with a permission profile for defense in depth.
 
 | Example | Description |
-|---------|-------------|
+|---|---|
 | [netaccess-http-fetch.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/netaccess-http-fetch.star) | HTTPS fetch under the default profile |
 | [opaque-compute.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/opaque-compute.star) | Offline compute over `$CWD` |
 | [defense-in-depth.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/defense-in-depth.star) | Compose `--sandbox=opaque` with `--permissions=allow-fs` |
+| [sandbox-module-exec.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/sandbox-module-exec.star) | Programmatic sandbox module execution |
 
-The sandbox is Linux-only. For the isolation model and the available profiles, see the [Sandbox guide](../fundamentals/security/sandbox.md).
+For the isolation model, supported drivers, and profile configuration, see the [Sandbox guide](../fundamentals/security/sandbox.md).

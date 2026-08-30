@@ -16,16 +16,16 @@ kite run ./defense-in-depth.star --sandbox=opaque --permissions=deny-all
 kite run ./sandbox-module-exec.star --permissions=allow-all
 ```
 
-Or via compound CLI selector specifying both driver and profile:
+Or override the backend driver via `--sandbox-driver`:
 
 ```bash
-kite run ./opaque-compute.star --sandbox=landlock:opaque
-kite run ./opaque-compute.star --sandbox=seatbelt:opaque
-kite run ./netaccess-http-fetch.star --sandbox=podman:net-access
+kite run ./opaque-compute.star --sandbox=opaque --sandbox-driver=landlock
+kite run ./opaque-compute.star --sandbox=opaque --sandbox-driver=seatbelt
+kite run ./netaccess-http-fetch.star --sandbox=net-access --sandbox-driver=podman
 ```
 
-Or via environment variable:
+Or via environment variables:
 
 ```bash
-STARKITE_SECURITY_SANDBOX=net-access ./netaccess-http-fetch.star
+STARKITE_SECURITY_SANDBOX=net-access STARKITE_SANDBOX_DRIVER=podman ./netaccess-http-fetch.star
 ```

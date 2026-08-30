@@ -42,4 +42,4 @@ When sandboxing is enabled (via the `--sandbox` flag or `STARKITE_SECURITY_SANDB
 * **Filesystem & Process Execution**: Grants read-only access to host system paths (such as `$HOME`, `/usr`, `/bin`, `/lib`, and `/lib64`) while confining all writes strictly to `$CWD` and `/tmp`. This allows scripts to inspect host configuration and execute host CLI utilities without modifying host files.
 * **Network**: Egress networking enabled.
 
-For driver configuration, compound CLI options (`--sandbox=<driver>:<profile>`), and programmatic Starlark module execution, see the [Execution Sandbox Guide](../fundamentals/security/sandbox.md).
+For driver configuration, driver override flags (`--sandbox-driver=<driver>`), and programmatic Starlark module execution, see the [Execution Sandbox Guide](../fundamentals/security/sandbox.md).

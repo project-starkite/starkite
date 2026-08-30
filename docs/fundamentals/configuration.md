@@ -144,15 +144,15 @@ permissions:
     allow: ["fs.read", "os.exec($CWD/**)"]
 
 sandbox:
-  default: net-access      # Bare --sandbox profile fallback
-  builder:
-    network: host
+  default:
+    base: net-access       # Bare --sandbox profile fallback
+  ci:
+    driver: podman         # Binds execution driver to this profile
+    base: net-access
     mounts:
       - source: $CWD
-        destination: $CWD
+        destination: /workspace
         mode: rw
-      - destination: /tmp
-        type: tmpfs
 ```
 
 Reserved keys (such as `project` or `providers`) do not appear in `var_names()` and cannot be read via `var_*`. Modules read their respective configuration directly from these fields at initialization, ensuring runtime settings do not leak into user script logic.

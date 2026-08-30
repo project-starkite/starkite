@@ -67,7 +67,8 @@ kite test ./tests/ --verbose           # Verbose output
 kite test ./tests/ --run string        # Filter by name
 kite test ./tests/ --parallel 4        # Parallel execution
 kite test ./tests/ --permissions=allow-fs
-kite test ./tests/ --sandbox=opaque    # Linux: each test file gets its own sandbox
+kite test ./tests/ --sandbox=opaque    # Each test file gets its own sandbox process
+kite test ./tests/ --sandbox=opaque --sandbox-driver=podman
 ```
 
 ## Sandbox
@@ -83,4 +84,4 @@ sandbox for that file.
 `--parallel N` runs up to N files concurrently, each in its own sandbox.
 
 See the [Sandbox guide](../../fundamentals/security/sandbox.md) for profile details and
-Ubuntu 24.04+ setup.
+driver configuration.

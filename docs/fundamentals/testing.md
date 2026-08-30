@@ -96,12 +96,13 @@ To ensure test reliability, run your test suite under the same permission profil
 
 ## Sandbox isolation
 
-On Linux systems, you can isolate test execution. The `kite test --sandbox` command runs **each test file in its own separate sandbox process**, preventing tests from mutating host files or leaking state to other tests. 
+You can isolate test execution using the pluggable sandbox architecture. The `kite test --sandbox` command runs **each test file in its own separate sandbox process**, preventing tests from mutating host files or leaking state to other tests. 
 
-For maximum security, combine sandbox isolation with explicit API permissions:
+For maximum security, combine sandbox isolation with explicit API permissions and optional backend drivers:
 
 ```bash
 kite test ./tests/ --sandbox=opaque --permissions=allow-fs
+kite test ./tests/ --sandbox=opaque --sandbox-driver=podman
 ```
 
 For more details on sandbox isolation, see the [Sandbox Guide](security/sandbox.md).
