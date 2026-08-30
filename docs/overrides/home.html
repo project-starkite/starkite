@@ -927,7 +927,7 @@ def main():
 $ kite run ./safe_job.star --permissions=safe-job
 
 # Or, place sandbox boundary around system calls
-$ kite run ./safe_job.star --sandbox=opaque --permissions=safe-job
+$ kite run ./safe_job.star --sandbox-opaque --permissions=safe-job
 
                   </code></pre>
                 </div>
@@ -1157,13 +1157,13 @@ mcp.serve(
     </div>
     <div class="feature-section__code">
       <pre><code class="language-bash"># Named profile from ~/.starkite/config.yaml
-$ kite run ./job.star --permissions=ci --sandbox=ci
+$ kite run ./job.star --permissions=ci --sandbox-profile=ci
 
 # Built-in ladder profile — no config file needed
 $ kite run ./job.star --allow-fs
 
 # Deny-all permissions + strict sandbox for untrusted code
-$ kite run ./untrusted.star --permissions=deny-all --sandbox=opaque
+$ kite run ./untrusted.star --permissions=deny-all --sandbox-opaque
 Error: permission denied: os.exec is not allowed</code></pre>
     </div>
   </div>

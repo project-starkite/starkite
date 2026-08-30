@@ -45,22 +45,17 @@ var Backend Runner
 // sandbox?" should consult this variable rather than hard-coding the name.
 const InsideEnvVar = "STARKITE_INSIDE_SANDBOX"
 
-// EngagementEnvVar is the user-facing environment variable that selects
-// the sandbox profile to engage. Setting it to a non-empty value causes
-// the next kite invocation (whether triggered explicitly via `kite run
-// script.star` or implicitly via shebang `./script.star`) to execute the
-// script inside the named sandbox. Unset/empty means "no sandbox".
+// ProfileEnvVar is the environment variable that selects the sandbox profile to engage.
+// Setting it to a non-empty value causes the next kite invocation to execute the script
+// inside the named sandbox profile. Unset/empty means "no sandbox".
 //
-// The value uses the same syntax as LoadProfile: a built-in name
-// ("default", "strict"), a file path, or a named profile under
-// "sandbox:<name>" in ~/.starkite/config.yaml.
-//
-// Examples:
-//
-//	STARKITE_SECURITY_SANDBOX=strict kite analyze.star
-//	export STARKITE_SECURITY_SANDBOX=default
-//	./untrusted.star    # shebang: same env var, same effect
-const EngagementEnvVar = "STARKITE_SECURITY_SANDBOX"
+// The value matches the syntax accepted by --sandbox-profile: a built-in name
+// ("default", "opaque", "net-access", "host"), a file path, or a named profile
+// under "sandbox:<name>" in ~/.starkite/config.yaml.
+const ProfileEnvVar = "STARKITE_SANDBOX_PROFILE"
+
+// EngagementEnvVar is an alias for ProfileEnvVar.
+const EngagementEnvVar = ProfileEnvVar
 
 // DriverEnvVar is the environment variable that overrides the sandbox execution driver engine.
 const DriverEnvVar = "STARKITE_SANDBOX_DRIVER"

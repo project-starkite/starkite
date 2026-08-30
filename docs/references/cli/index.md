@@ -54,9 +54,10 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--timeout seconds` | Script execution timeout | `300` |
 | `--permissions name` | Permission profile name: a built-in (`deny-all`/`allow-fs`/`allow-net`/`allow-local`/`allow-all`/`allow-all-shell`) or a profile defined in `config.yaml`; unset resolves to the config `default` profile or `deny-all` | `""` |
 | `--deny-all`, `--allow-fs`, `--allow-net`, `--allow-local`, `--allow-all`, `--allow-all-shell` | Boolean aliases for `--permissions=<profile>`. Set at most one; not combinable with `--permissions` | `false` |
-| `--sandbox[=profile]` | Sandbox profile name: a built-in rung (`opaque`/`net-access`/`host`) or a `config.yaml` profile. Bare `--sandbox` selects the `default` profile. See [Sandbox guide](../../fundamentals/security/sandbox.md). | `""` |
+| `--sandboxed` | Enable OS-level sandbox isolation using the `default` profile. See [Sandbox guide](../../fundamentals/security/sandbox.md). | `false` |
+| `--sandbox-profile name` | Sandbox profile name: a built-in rung (`opaque`/`net-access`/`host`) or a `config.yaml` profile. | `""` |
 | `--sandbox-driver driver` | Sandbox execution driver (`auto`/`landlock`/`seatbelt`/`podman`/`docker`/`nerdctl`/`gvisor`). Overrides driver in profile. | `""` |
-| `--sandbox-opaque`, `--sandbox-net-access`, `--sandbox-host` | Boolean aliases for `--sandbox=<rung>`. | `false` |
+| `--sandbox-opaque`, `--sandbox-net`, `--sandbox-net-access`, `--sandbox-host` | Boolean shortcuts for `--sandbox-profile=<rung>`. | `false` |
 
 ## Environment Variables
 
@@ -66,5 +67,5 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `STARKITE_OUTPUT` | Default output format |
 | `STARKITE_TIMEOUT` | Default timeout in seconds |
 | `STARKITE_VAR_*` | Variable injection (e.g., `STARKITE_VAR_DB_HOST=localhost` → `var_str("db.host")`) |
-| `STARKITE_SECURITY_SANDBOX` | Sandbox profile for shebang-launched scripts (same syntax as `--sandbox`). |
+| `STARKITE_SANDBOX_PROFILE` | Sandbox profile for shebang-launched scripts (same syntax as `--sandbox-profile`). |
 | `STARKITE_SANDBOX_DRIVER` | Sandbox execution driver override (`auto`, `landlock`, `seatbelt`, `podman`, `docker`, `nerdctl`, `gvisor`). |

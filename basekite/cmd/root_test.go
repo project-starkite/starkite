@@ -137,11 +137,172 @@ func TestPermissionAliasFlags(t *testing.T) {
 	})
 }
 
+// buildSandboxFlagSet mirrors the production registration of sandbox flags
+// on a throwaway flag set so parsing and conflict checks can be exercised.
+func buildSandboxFlagSet(t *testing.T, args []string) *pflag.FlagSet {
+	t.Helper()
+	sandboxed = false
+	sandboxProfile = ""
+	sandboxDriver = ""
+	fs := pflag.NewFlagSet("sandbox_test", pflag.ContinueOnError)
+	fs.BoolVar(&sandboxed, "sandboxed", false, "")
+	fs.StringVar(&sandboxProfile, "sandbox-profile", "", "")
+	fs.StringVar(&sandboxDriver, "sandbox-driver", "", "")
+	for flagName, profile := range sandboxProfileAliases {
+		fs.Var(sandboxAlias{profile}, flagName, "")
+		fs.Lookup(flagName).NoOptDefVal = "true"
+	}
+	if err := fs.Parse(args); err != nil {
+		t.Fatalf("parse %v: %v", args, err)
+	}
+	return fs
+}
+
+func TestSandboxFlagsAndAliases(t *testing.T) {
+	t.Run("sandboxed boolean switch", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandboxed"})
+		if err := checkSandboxFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !sandboxed {
+			t.Error("expected sandboxed=true")
+		}
+		if sandboxProfile != "" {
+			t.Errorf("expected empty profile (default fallback), got %q", sandboxProfile)
+		}
+	})
+
+	t.Run("sandbox-profile space separated", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandbox-profile", "opaque"})
+		if err := checkSandboxFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sandboxProfile != "opaque" {
+			t.Errorf("sandboxProfile = %q, want opaque", sandboxProfile)
+		}
+	})
+
+	t.Run("sandbox-profile equal separated", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandbox-profile=net-access"})
+		if err := checkSandboxFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sandboxProfile != "net-access" {
+			t.Errorf("sandboxProfile = %q, want net-access", sandboxProfile)
+		}
+	})
+
+	t.Run("sandbox-profile custom name", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandbox-profile", "ci-builder"})
+		if err := checkSandboxFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sandboxProfile != "ci-builder" {
+			t.Errorf("sandboxProfile = %q, want ci-builder", sandboxProfile)
+		}
+	})
+
+	t.Run("sandbox-opaque shortcut", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandbox-opaque"})
+		if err := checkSandboxFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sandboxProfile != "opaque" {
+			t.Errorf("sandboxProfile = %q, want opaque", sandboxProfile)
+		}
+		if !sandboxed {
+			t.Error("expected sandboxed=true when shortcut is set")
+		}
+	})
+
+	t.Run("sandbox-net shortcut", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandbox-net"})
+		if err := checkSandboxFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sandboxProfile != "net-access" {
+			t.Errorf("sandboxProfile = %q, want net-access", sandboxProfile)
+		}
+		if !sandboxed {
+			t.Error("expected sandboxed=true when shortcut is set")
+		}
+	})
+
+	t.Run("sandbox-net-access shortcut", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandbox-net-access"})
+		if err := checkSandboxFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sandboxProfile != "net-access" {
+			t.Errorf("sandboxProfile = %q, want net-access", sandboxProfile)
+		}
+		if !sandboxed {
+			t.Error("expected sandboxed=true when shortcut is set")
+		}
+	})
+
+	t.Run("sandbox-host shortcut", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandbox-host"})
+		if err := checkSandboxFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sandboxProfile != "host" {
+			t.Errorf("sandboxProfile = %q, want host", sandboxProfile)
+		}
+		if !sandboxed {
+			t.Error("expected sandboxed=true when shortcut is set")
+		}
+	})
+
+	t.Run("sandbox-driver flag", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandbox-driver", "podman"})
+		if err := checkSandboxFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if sandboxDriver != "podman" {
+			t.Errorf("sandboxDriver = %q, want podman", sandboxDriver)
+		}
+	})
+
+	t.Run("sandboxed switch plus sandbox-profile does not conflict", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandboxed", "--sandbox-profile=opaque"})
+		if err := checkSandboxFlagConflict(fs); err != nil {
+			t.Fatalf("unexpected conflict error: %v", err)
+		}
+		if !sandboxed || sandboxProfile != "opaque" {
+			t.Errorf("sandboxed=%v, sandboxProfile=%s", sandboxed, sandboxProfile)
+		}
+	})
+
+	t.Run("two shortcuts conflict", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandbox-opaque", "--sandbox-net"})
+		err := checkSandboxFlagConflict(fs)
+		if err == nil {
+			t.Fatal("expected conflict error for two sandbox shortcuts")
+		}
+		if !strings.Contains(err.Error(), "--sandbox-opaque") || !strings.Contains(err.Error(), "--sandbox-net") {
+			t.Errorf("error should name both flags; got %q", err.Error())
+		}
+	})
+
+	t.Run("shortcut plus sandbox-profile conflict", func(t *testing.T) {
+		fs := buildSandboxFlagSet(t, []string{"--sandbox-profile=host", "--sandbox-opaque"})
+		err := checkSandboxFlagConflict(fs)
+		if err == nil {
+			t.Fatal("expected conflict error for shortcut + --sandbox-profile")
+		}
+		if !strings.Contains(err.Error(), "--sandbox-profile") || !strings.Contains(err.Error(), "--sandbox-opaque") {
+			t.Errorf("error should name both flags; got %q", err.Error())
+		}
+	})
+}
+
 func TestGetSandbox(t *testing.T) {
 	t.Run("empty returns zero profile", func(t *testing.T) {
-		sandboxMode = ""
+		sandboxed = false
+		sandboxProfile = ""
 		sandboxDriver = ""
-		t.Setenv("STARKITE_SECURITY_SANDBOX", "")
+		t.Setenv("STARKITE_SANDBOX_PROFILE", "")
 		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
 		p, err := GetSandbox()
 		if err != nil {
@@ -152,10 +313,26 @@ func TestGetSandbox(t *testing.T) {
 		}
 	})
 
-	t.Run("simple profile name", func(t *testing.T) {
-		sandboxMode = "opaque"
+	t.Run("sandboxed boolean switch selects default profile", func(t *testing.T) {
+		sandboxed = true
+		sandboxProfile = ""
 		sandboxDriver = ""
-		t.Setenv("STARKITE_SECURITY_SANDBOX", "")
+		t.Setenv("STARKITE_SANDBOX_PROFILE", "")
+		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
+		p, err := GetSandbox()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.IsZero() {
+			t.Fatal("expected non-zero profile when sandboxed=true")
+		}
+	})
+
+	t.Run("simple profile name", func(t *testing.T) {
+		sandboxed = false
+		sandboxProfile = "opaque"
+		sandboxDriver = ""
+		t.Setenv("STARKITE_SANDBOX_PROFILE", "")
 		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
 		p, err := GetSandbox()
 		if err != nil {
@@ -170,9 +347,10 @@ func TestGetSandbox(t *testing.T) {
 	})
 
 	t.Run("profile with driver override flag", func(t *testing.T) {
-		sandboxMode = "opaque"
+		sandboxed = false
+		sandboxProfile = "opaque"
 		sandboxDriver = "podman"
-		t.Setenv("STARKITE_SECURITY_SANDBOX", "")
+		t.Setenv("STARKITE_SANDBOX_PROFILE", "")
 		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
 		p, err := GetSandbox()
 		if err != nil {
@@ -187,9 +365,10 @@ func TestGetSandbox(t *testing.T) {
 	})
 
 	t.Run("driver flag alone defaults to default profile", func(t *testing.T) {
-		sandboxMode = ""
+		sandboxed = false
+		sandboxProfile = ""
 		sandboxDriver = "docker"
-		t.Setenv("STARKITE_SECURITY_SANDBOX", "")
+		t.Setenv("STARKITE_SANDBOX_PROFILE", "")
 		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
 		p, err := GetSandbox()
 		if err != nil {
@@ -204,9 +383,10 @@ func TestGetSandbox(t *testing.T) {
 	})
 
 	t.Run("env vars for profile and driver", func(t *testing.T) {
-		sandboxMode = ""
+		sandboxed = false
+		sandboxProfile = ""
 		sandboxDriver = ""
-		t.Setenv("STARKITE_SECURITY_SANDBOX", "host")
+		t.Setenv("STARKITE_SANDBOX_PROFILE", "host")
 		t.Setenv("STARKITE_SANDBOX_DRIVER", "seatbelt")
 		p, err := GetSandbox()
 		if err != nil {
@@ -221,9 +401,10 @@ func TestGetSandbox(t *testing.T) {
 	})
 
 	t.Run("CLI flag overrides env var", func(t *testing.T) {
-		sandboxMode = "opaque"
+		sandboxed = false
+		sandboxProfile = "opaque"
 		sandboxDriver = "landlock"
-		t.Setenv("STARKITE_SECURITY_SANDBOX", "host")
+		t.Setenv("STARKITE_SANDBOX_PROFILE", "host")
 		t.Setenv("STARKITE_SANDBOX_DRIVER", "podman")
 		p, err := GetSandbox()
 		if err != nil {
@@ -236,59 +417,6 @@ func TestGetSandbox(t *testing.T) {
 			t.Errorf("expected opaque network, got %s", p.Network)
 		}
 	})
-}
-
-func TestNormalizeSandboxArgs(t *testing.T) {
-	tests := []struct {
-		name string
-		args []string
-		want []string
-	}{
-		{
-			name: "space-separated profile name",
-			args: []string{"kite", "./sysinfo.star", "--allow-all", "--sandbox", "opaque", "--sandbox-driver", "podman"},
-			want: []string{"kite", "./sysinfo.star", "--allow-all", "--sandbox=opaque", "--sandbox-driver", "podman"},
-		},
-		{
-			name: "equal-separated profile name unchanged",
-			args: []string{"kite", "--sandbox=opaque", "./sysinfo.star"},
-			want: []string{"kite", "--sandbox=opaque", "./sysinfo.star"},
-		},
-		{
-			name: "bare flag followed by flag unchanged",
-			args: []string{"kite", "--sandbox", "--sandbox-driver", "podman", "./sysinfo.star"},
-			want: []string{"kite", "--sandbox", "--sandbox-driver", "podman", "./sysinfo.star"},
-		},
-		{
-			name: "bare flag followed by script target unchanged",
-			args: []string{"kite", "--sandbox", "./sysinfo.star"},
-			want: []string{"kite", "--sandbox", "./sysinfo.star"},
-		},
-		{
-			name: "bare flag at end of args unchanged",
-			args: []string{"kite", "./sysinfo.star", "--sandbox"},
-			want: []string{"kite", "./sysinfo.star", "--sandbox"},
-		},
-		{
-			name: "space-separated custom profile name",
-			args: []string{"kite", "run", "--sandbox", "ci-builder", "./build.star"},
-			want: []string{"kite", "run", "--sandbox=ci-builder", "./build.star"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := normalizeSandboxArgs(tt.args)
-			if len(got) != len(tt.want) {
-				t.Fatalf("normalizeSandboxArgs() = %v, want %v", got, tt.want)
-			}
-			for i := range got {
-				if got[i] != tt.want[i] {
-					t.Errorf("got[%d] = %s, want %s", i, got[i], tt.want[i])
-				}
-			}
-		})
-	}
 }
 
 func TestNeedsImplicitRun(t *testing.T) {
@@ -304,7 +432,17 @@ func TestNeedsImplicitRun(t *testing.T) {
 		},
 		{
 			name: "flags before script file",
-			args: []string{"kite", "--sandbox", "./script.star"},
+			args: []string{"kite", "--sandboxed", "./script.star"},
+			want: true,
+		},
+		{
+			name: "sandbox profile flag before script file",
+			args: []string{"kite", "--sandbox-profile", "opaque", "./script.star"},
+			want: true,
+		},
+		{
+			name: "sandbox shortcut before script file",
+			args: []string{"kite", "--sandbox-opaque", "./script.star"},
 			want: true,
 		},
 		{

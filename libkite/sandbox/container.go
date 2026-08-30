@@ -135,10 +135,17 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 			continue
 		}
 
-		// On non-Linux hosts (macOS/Windows), skip host /etc system files (/etc/ssl, /etc/resolv.conf, etc.)
-		// so the Linux container uses its own native TLS CA certs and network resolver.
-		if runtime.GOOS != "linux" && strings.HasPrefix(m.Destination, "/etc/") {
-			continue
+		// On non-Linux hosts (macOS/Windows), skip host OS system directories (/etc, /usr, /bin, /lib, /lib64, /sbin)
+		// so the Linux container retains its native ELF runtime, libraries, TLS CA certs, and network resolver.
+		if runtime.GOOS != "linux" {
+			dst := filepath.Clean(m.Destination)
+			if strings.HasPrefix(dst, "/etc") || dst == "/usr" || strings.HasPrefix(dst, "/usr/") ||
+				dst == "/bin" || strings.HasPrefix(dst, "/bin/") ||
+				dst == "/lib" || strings.HasPrefix(dst, "/lib/") ||
+				dst == "/lib64" || strings.HasPrefix(dst, "/lib64/") ||
+				dst == "/sbin" || strings.HasPrefix(dst, "/sbin/") {
+				continue
+			}
 		}
 
 		src := m.Source
@@ -180,10 +187,10 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 		}
 	} else if len(command) > 0 {
 		// When using an image containing kite (e.g. ghcr.io/project-starkite/kite:latest)
-		// or running from a non-Linux host (macOS/Windows), use the container's built-in "kite" command.
+		// or running from a non-Linux host (macOS/Windows), use the container's built-in "/usr/local/bin/kite" command.
 		binName := filepath.Base(command[0])
 		if binName == "kite" || binName == "kitecmd" || binName == "kitecloud" || binName == "kiteai" || strings.HasPrefix(binName, "kite") {
-			command = append([]string{"kite"}, command[1:]...)
+			command = append([]string{"/usr/local/bin/kite"}, command[1:]...)
 		}
 	}
 

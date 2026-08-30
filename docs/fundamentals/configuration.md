@@ -104,7 +104,7 @@ Starkite loads its global configuration from `~/.starkite/config.yaml` and `./co
 |---|---|
 | `config` | Holds runtime settings and user-defined variables |
 | `permissions` | Named permission profiles, selectable via `--permissions=<name>`. See [Permission Guide](security/permission.md#custom-permission-profiles). |
-| `sandbox` | Named sandbox profiles, selectable via `--sandbox=<name>`. See [Sandbox Guide](security/sandbox.md). |
+| `sandbox` | Named sandbox profiles, selectable via `--sandbox-profile=<name>`. See [Sandbox Guide](security/sandbox.md). |
 
 The `config` section contains both runtime parameters and user variables. Four reserved keys are parsed into runtime state and cannot be accessed via `var_*`:
 
@@ -145,7 +145,7 @@ permissions:
 
 sandbox:
   default:
-    base: net-access       # Bare --sandbox profile fallback
+    base: net-access       # Bare --sandboxed profile fallback
   ci:
     driver: podman         # Binds execution driver to this profile
     base: net-access

@@ -27,18 +27,18 @@ For instructions on defining custom execution rules and composing profiles, see 
 
 For environments requiring process isolation (such as executing untrusted scripts or running automations in multi-tenant environments), Starkite provides a pluggable OS-level sandbox architecture supporting native OS kernel primitives (Linux Landlock, macOS Seatbelt), container runtimes (Podman, Docker, nerdctl), and external gVisor.
 
-When sandboxing is enabled (via the `--sandbox` flag or `STARKITE_SECURITY_SANDBOX` environment variable), the script process is confined to explicit filesystem and network boundaries depending on the active sandbox profile:
+When sandboxing is enabled (via `--sandboxed`, `--sandbox-profile=<name>`, shortcut flags `--sandbox-opaque`/`--sandbox-net`/`--sandbox-host`, or `STARKITE_SANDBOX_PROFILE` environment variable), the script process is confined to explicit filesystem and network boundaries depending on the active sandbox profile:
 
-### Opaque Sandbox (`strict` / `opaque` profiles)
+### Opaque Sandbox (`opaque` profile / `--sandbox-opaque`)
 * **Filesystem**: The host filesystem is restricted. The sandboxed process operates within the script's working directory (`$CWD`) mounted as read/write, with a private in-memory filesystem mounted at `/tmp`.
 * **Process Execution**: Running external commands without explicit binary paths or mounts is restricted because host user directories and unapproved system paths are omitted.
 * **Network**: Disabled (loopback only). Outbound network requests are blocked.
 
-### Network Access Sandbox (`net-access` profile)
+### Network Access Sandbox (`net-access` profile / `--sandbox-net`)
 * **Filesystem & Process Execution**: Same isolation as the Opaque profile, with read-only access to host network configuration (`/etc/resolv.conf`, `/etc/hosts`, and system CA certificates) to support outbound TLS operations.
 * **Network**: Egress networking enabled for client connections.
 
-### Host Sandbox (`host` profile)
+### Host Sandbox (`host` profile / `--sandbox-host`)
 * **Filesystem & Process Execution**: Grants read-only access to host system paths (such as `$HOME`, `/usr`, `/bin`, `/lib`, and `/lib64`) while confining all writes strictly to `$CWD` and `/tmp`. This allows scripts to inspect host configuration and execute host CLI utilities without modifying host files.
 * **Network**: Egress networking enabled.
 

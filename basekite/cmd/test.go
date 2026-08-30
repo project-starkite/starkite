@@ -405,7 +405,7 @@ func runOneTestFileInSandbox(kiteBin, file, sandboxValue string) bool {
 	cmd.Dir = filepath.Dir(file)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(), sandbox.EngagementEnvVar+"="+sandboxValue)
+	cmd.Env = append(os.Environ(), sandbox.ProfileEnvVar+"="+sandboxValue)
 	if sandboxDriver != "" {
 		cmd.Env = append(cmd.Env, sandbox.DriverEnvVar+"="+sandboxDriver)
 	}
@@ -447,14 +447,20 @@ func childTestArgs(file string) []string {
 }
 
 // sandboxEngagementValue returns whatever the user supplied to engage the
-// sandbox: the --sandbox flag value, or the env var if no flag. Mirrors
-// GetSandbox()'s precedence so children see the exact value the parent
-// resolved against.
+// sandbox: the --sandbox-profile flag value, the env var if no flag, or "default"
+// if --sandboxed was used. Mirrors GetSandbox()'s precedence so children see the
+// exact value the parent resolved against.
 func sandboxEngagementValue() string {
-	if sandboxMode != "" {
-		return sandboxMode
+	if sandboxProfile != "" {
+		return sandboxProfile
 	}
-	return os.Getenv(sandbox.EngagementEnvVar)
+	if v := os.Getenv(sandbox.ProfileEnvVar); v != "" {
+		return v
+	}
+	if sandboxed || sandboxDriver != "" {
+		return sandbox.DefaultProfileName
+	}
+	return ""
 }
 
 func printTestSummary(results []testResult, elapsed time.Duration) {

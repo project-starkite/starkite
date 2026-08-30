@@ -54,11 +54,11 @@ The reason to reach for `kite` at all is that the host agent may run logic you d
 # Restrict to compute, print, and log only
 kite run ./untrusted.star --permissions=deny-all
 
-# OS-level isolation on Linux
-kite run ./untrusted.star --sandbox
+# OS-level isolation
+kite run ./untrusted.star --sandboxed
 ```
 
-`--permissions=deny-all` leaves the script able to compute, print, and log but cuts off the filesystem, network, processes, and environment; `--sandbox` adds a process-level boundary underneath that. The payoff is that you can expose genuinely powerful automation — Kubernetes, SSH, HTTP, filesystem — while bounding the blast radius of any one invocation, and you pay that cost per call rather than trusting the calling agent wholesale.
+`--permissions=deny-all` leaves the script able to compute, print, and log but cuts off the filesystem, network, processes, and environment; `--sandboxed` adds a process-level boundary underneath that. The payoff is that you can expose genuinely powerful automation — Kubernetes, SSH, HTTP, filesystem — while bounding the blast radius of any one invocation, and you pay that cost per call rather than trusting the calling agent wholesale.
 
 ## Why kite as a tool
 

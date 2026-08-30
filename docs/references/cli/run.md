@@ -59,12 +59,12 @@ kite ./manifest.star | kubectl apply -f -
 kite ./deploy.star --permissions=allow-fs
 
 # OS-level sandbox isolation
-kite ./deploy.star --sandbox                              # default profile (network ok, no $HOME)
-kite ./deploy.star --sandbox=opaque                       # offline, $CWD-only
-kite ./deploy.star --sandbox=opaque --sandbox-driver=podman # run inside Podman container
-kite ./deploy.star --sandbox --permissions=allow-fs       # both layers
+kite ./deploy.star --sandboxed                               # default profile (network ok, no $HOME)
+kite ./deploy.star --sandbox-opaque                          # offline, $CWD-only
+kite ./deploy.star --sandbox-profile=opaque --sandbox-driver=podman # run inside Podman container
+kite ./deploy.star --sandboxed --permissions=allow-fs        # both layers
 ```
 
 For shebang scripts (`./script.star` via `#!/usr/bin/env kite`), set
-`STARKITE_SECURITY_SANDBOX` and `STARKITE_SANDBOX_DRIVER` instead of passing CLI flags. See the
+`STARKITE_SANDBOX_PROFILE` and `STARKITE_SANDBOX_DRIVER` instead of passing CLI flags. See the
 [Sandbox guide](../../fundamentals/security/sandbox.md) for profile details.

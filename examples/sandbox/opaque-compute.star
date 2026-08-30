@@ -8,8 +8,8 @@
 #   2. Completely offline — network connections are blocked at the OS layer.
 #
 # Run:
-#   kite ./opaque-compute.star --sandbox=opaque --permissions=allow-fs
-#   STARKITE_SECURITY_SANDBOX=opaque ./opaque-compute.star --permissions=allow-fs
+#   kite ./opaque-compute.star --sandbox-opaque --permissions=allow-fs
+#   STARKITE_SANDBOX_PROFILE=opaque ./opaque-compute.star --permissions=allow-fs
 
 # (1) Compute over project files.
 def transform_items(values):

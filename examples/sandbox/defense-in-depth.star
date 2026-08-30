@@ -3,15 +3,15 @@
 # deny-all permissions profile.
 #
 # Two independent layers:
-#   --permissions=deny-all  blocks every gated module call (exec, file I/O,
-#                           network) at the API level.
-#   --sandbox=opaque        confines the OS view (no /etc/*, no $HOME, no
-#                           outbound network) at the OS sandbox level.
+#   --permissions=deny-all   blocks every gated module call (exec, file I/O,
+#                            network) at the API level.
+#   --sandbox-opaque         confines the OS view (no /etc/*, no $HOME, no
+#                            outbound network) at the OS sandbox level.
 #
 # A breach in either layer is contained by the other.
 #
 # Run:
-#   kite run ./defense-in-depth.star --sandbox=opaque --permissions=deny-all
+#   kite run ./defense-in-depth.star --sandbox-opaque --permissions=deny-all
 
 # Pure compute is allowed under both layers.
 data = {"items": [1, 2, 3], "label": "demo"}

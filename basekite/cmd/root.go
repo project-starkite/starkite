@@ -37,31 +37,35 @@ var (
 		"deny-all", "allow-fs", "allow-net", "allow-local", "allow-all",
 	}
 
-	// Sandbox flag (Linux: gVisor; other OSes return a friendly error).
-	// Set via --sandbox on the CLI; STARKITE_SECURITY_SANDBOX env var
-	// is the alternative entry point for shebang-launched scripts (and
-	// works for CLI invocations too). The flag wins when both are set.
-	sandboxMode   string
-	sandboxDriver string
+	// Sandbox flags
+	sandboxed      bool
+	sandboxProfile string
+	sandboxDriver  string
 
-	// sandboxProfileFlags are boolean aliases for --sandbox=<rung>, one per
-	// built-in rung (e.g. --sandbox-opaque == --sandbox=opaque). At most one
-	// sandbox selector — including --sandbox — may be set.
+	// sandboxProfileAliases maps shortcut flag names to their target profile names.
+	sandboxProfileAliases = map[string]string{
+		"sandbox-opaque":     "opaque",
+		"sandbox-net":        "net-access",
+		"sandbox-net-access": "net-access",
+		"sandbox-host":       "host",
+	}
+
 	sandboxProfileFlags = []string{
-		"sandbox-opaque", "sandbox-net-access", "sandbox-host",
+		"sandbox-opaque", "sandbox-net", "sandbox-net-access", "sandbox-host",
 	}
 )
 
-// sandboxAlias is a bool-style pflag.Value that sets the shared --sandbox
-// target to a fixed rung name when its flag is present, so --sandbox-opaque
-// is exactly --sandbox=opaque.
+// sandboxAlias is a bool-style pflag.Value that sets the shared --sandbox-profile
+// target to a fixed profile name when its flag is present, so --sandbox-opaque
+// is exactly --sandbox-profile=opaque.
 type sandboxAlias struct{ profile string }
 
-func (sandboxAlias) String() string   { return "" }
-func (sandboxAlias) Type() string     { return "bool" }
-func (sandboxAlias) IsBoolFlag() bool { return true }
+func (sandboxAlias) String() string     { return "" }
+func (sandboxAlias) Type() string       { return "bool" }
+func (a sandboxAlias) IsBoolFlag() bool { return true }
 func (a sandboxAlias) Set(string) error {
-	sandboxMode = a.profile
+	sandboxProfile = a.profile
+	sandboxed = true
 	return nil
 }
 
@@ -88,18 +92,30 @@ commands across local machines, remote servers, containers, and Kubernetes clust
 
 Examples:
   # Execute a script (these are equivalent)
-  kite ./script.star
-  kite run ./script.star
-  ./script.star              # with shebang: #!/usr/bin/env kite
+  kite run ./deploy.star
+  kite ./deploy.star
+  ./deploy.star       # with shebang: #!/usr/bin/env kite
 
-  # Execute inline Starlark code
-  kite exec 'print(exec("hostname"))'
+  # Run with sandboxing enabled
+  kite ./deploy.star --sandboxed
+  kite ./deploy.star --sandbox-opaque
+  kite ./deploy.star --sandbox-profile=ci-builder
 
-  # Interactive REPL
+  # Run with permissions
+  kite ./deploy.star --permissions=allow-net
+  kite ./deploy.star --allow-net
+
+  # Launch interactive REPL
   kite repl
 
-  # Pipe output to other tools
-  kite ./manifest.star | kubectl apply -f -
+  # Format starlark files
+  kite fmt ./scripts/
+
+  # Execute inline Starlark code
+  kite exec 'print("Hello from Starlark!")'
+
+  # Test starlark scripts
+  kite test ./tests/
 `,
 	Version: version.String(),
 
@@ -115,8 +131,9 @@ Examples:
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "text", "Output format: text, json, yaml, table")
-	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "Enable debug logging")
+	// Persistent flags (available to all commands)
+	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "text", "Output format (text, json, yaml)")
+	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "Enable debug mode with detailed logging")
 	rootCmd.PersistentFlags().BoolVar(&dryRun, "dry-run", false, "Preview commands without executing")
 	rootCmd.PersistentFlags().IntVar(&timeout, "timeout", 300, "Script execution timeout in seconds")
 	rootCmd.PersistentFlags().StringArrayVar(&variables, "var", nil, "Set script variable: --var key=value")
@@ -133,28 +150,21 @@ func init() {
 		rootCmd.PersistentFlags().Lookup(p).NoOptDefVal = "true" // usable as a bare flag
 	}
 
-	// Sandbox flag — Linux only; non-Linux returns a clear error.
-	// `--sandbox` (no value) resolves to the built-in "default" profile;
-	// `--sandbox=<name>` resolves a built-in or a profile defined in
-	// config.yaml's sandbox: section. Shebang-launched scripts
-	// can use STARKITE_SECURITY_SANDBOX env var instead — see
-	// docs/guides/sandbox.md.
-	rootCmd.PersistentFlags().StringVar(&sandboxMode, "sandbox", "",
-		"Sandbox profile name for OS-level isolation (Linux): a built-in rung "+
-			"(opaque|net-access|host) or a profile defined in config.yaml's sandbox: "+
-			"section. --sandbox alone selects the config-defined \"default\" profile, "+
-			"or the opaque rung when none is defined.")
-	rootCmd.PersistentFlags().Lookup("sandbox").NoOptDefVal = "default"
+	// Sandbox flags
+	rootCmd.PersistentFlags().BoolVar(&sandboxed, "sandboxed", false,
+		"Enable OS-level sandbox isolation using the default profile")
+
+	rootCmd.PersistentFlags().StringVar(&sandboxProfile, "sandbox-profile", "",
+		"Sandbox profile name: a built-in (opaque|net-access|host) or a profile defined in config.yaml's sandbox: section")
 
 	rootCmd.PersistentFlags().StringVar(&sandboxDriver, "sandbox-driver", "",
 		"Sandbox execution driver (auto|landlock|seatbelt|podman|docker|nerdctl|gvisor). "+
 			"Overrides the driver configured in the sandbox profile.")
 
-	// Boolean aliases for the built-in rungs, e.g. --sandbox-opaque == --sandbox=opaque.
-	for _, f := range sandboxProfileFlags {
-		rung := strings.TrimPrefix(f, "sandbox-")
-		rootCmd.PersistentFlags().Var(sandboxAlias{rung}, f, fmt.Sprintf("Alias for --sandbox=%s", rung))
-		rootCmd.PersistentFlags().Lookup(f).NoOptDefVal = "true" // usable as a bare flag
+	// Boolean shortcut aliases for the built-in rungs
+	for flagName, profile := range sandboxProfileAliases {
+		rootCmd.PersistentFlags().Var(sandboxAlias{profile}, flagName, fmt.Sprintf("Shortcut for --sandbox-profile=%s", profile))
+		rootCmd.PersistentFlags().Lookup(flagName).NoOptDefVal = "true" // usable as a bare flag
 	}
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
@@ -185,13 +195,13 @@ func checkPermissionFlagConflict(flags *pflag.FlagSet) error {
 	return nil
 }
 
-// checkSandboxFlagConflict rejects setting more than one sandbox selector —
-// the rung aliases (--sandbox-opaque, …) and --sandbox all target the same
+// checkSandboxFlagConflict rejects setting more than one sandbox profile selector —
+// the profile aliases (--sandbox-opaque, …) and --sandbox-profile all target the same
 // value, so combining them is contradictory.
 func checkSandboxFlagConflict(flags *pflag.FlagSet) error {
 	var set []string
-	if flags.Lookup("sandbox").Changed {
-		set = append(set, "--sandbox")
+	if flags.Lookup("sandbox-profile").Changed {
+		set = append(set, "--sandbox-profile")
 	}
 	for _, f := range sandboxProfileFlags {
 		if flags.Lookup(f).Changed {
@@ -199,7 +209,7 @@ func checkSandboxFlagConflict(flags *pflag.FlagSet) error {
 		}
 	}
 	if len(set) > 1 {
-		return fmt.Errorf("only one sandbox flag may be set; got %s", strings.Join(set, " and "))
+		return fmt.Errorf("only one sandbox profile flag may be set; got %s", strings.Join(set, " and "))
 	}
 	return nil
 }
@@ -231,6 +241,12 @@ func applyEnvDefaults() {
 		}
 	}
 
+	if !flags.Lookup("sandbox-profile").Changed {
+		if v := os.Getenv(sandbox.ProfileEnvVar); v != "" {
+			sandboxProfile = v
+		}
+	}
+
 	if !flags.Lookup("sandbox-driver").Changed {
 		if v := os.Getenv(sandbox.DriverEnvVar); v != "" {
 			sandboxDriver = v
@@ -251,43 +267,6 @@ func isSubcommandName(arg string) bool {
 		}
 	}
 	return arg == "help" || arg == "completion"
-}
-
-// isLikelyProfileName reports whether name consists of valid profile identifier characters.
-func isLikelyProfileName(name string) bool {
-	if name == "" {
-		return false
-	}
-	for _, r := range name {
-		if !((r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' || r == '_') {
-			return false
-		}
-	}
-	return true
-}
-
-// normalizeSandboxArgs rewrites bare `--sandbox <value>` into `--sandbox=<value>`
-// when <value> is a profile name rather than a flag, a subcommand, or a script target path.
-// This allows both `--sandbox` (bare default profile) and `--sandbox <profile>` (with space)
-// to work seamlessly alongside pflag's NoOptDefVal behavior.
-func normalizeSandboxArgs(args []string) []string {
-	if len(args) <= 1 {
-		return args
-	}
-	out := make([]string, 0, len(args))
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--sandbox" && i+1 < len(args) {
-			next := args[i+1]
-			if !strings.HasPrefix(next, "-") && !looksLikeRunTarget(next) && !isSubcommandName(next) && isLikelyProfileName(next) {
-				out = append(out, fmt.Sprintf("--sandbox=%s", next))
-				i++ // skip next arg as it was consumed as profile value
-				continue
-			}
-		}
-		out = append(out, arg)
-	}
-	return out
 }
 
 // needsImplicitRun reports whether args contain a run target without an explicit subcommand.
@@ -317,8 +296,6 @@ func Execute() int {
 	if RegisterEditionCommands != nil {
 		RegisterEditionCommands(rootCmd)
 	}
-
-	os.Args = normalizeSandboxArgs(os.Args)
 
 	// Implicit run: if a run target is specified without an explicit subcommand,
 	// insert "run" so flag placement before or after the target works seamlessly.
@@ -449,20 +426,20 @@ func GetPermissions() (*libkite.PermissionConfig, error) {
 }
 
 // GetSandbox resolves the active sandbox profile from the CLI flags or environment.
-// --sandbox (or STARKITE_SECURITY_SANDBOX) selects the profile name.
-// --sandbox-driver (or STARKITE_SANDBOX_DRIVER) overrides the execution driver engine.
+// --sandboxed (bool), --sandbox-profile (or STARKITE_SANDBOX_PROFILE), and --sandbox-driver
+// (or STARKITE_SANDBOX_DRIVER) configure sandbox execution.
 func GetSandbox() (sandbox.Profile, error) {
-	profileName := sandboxMode
+	profileName := sandboxProfile
 	if profileName == "" {
-		profileName = os.Getenv(sandbox.EngagementEnvVar)
+		profileName = os.Getenv(sandbox.ProfileEnvVar)
 	}
 	driverOverride := sandboxDriver
 	if driverOverride == "" {
 		driverOverride = os.Getenv(sandbox.DriverEnvVar)
 	}
 
-	// If neither a profile nor a driver is specified, execution is unsandboxed.
-	if profileName == "" && driverOverride == "" {
+	// If neither --sandboxed, a profile, nor a driver is specified, execution is unsandboxed.
+	if !sandboxed && profileName == "" && driverOverride == "" {
 		return sandbox.Profile{}, nil
 	}
 
@@ -470,7 +447,7 @@ func GetSandbox() (sandbox.Profile, error) {
 		return sandbox.Profile{}, sandbox.PlatformError()
 	}
 
-	// If a driver was specified without an explicit profile, default to the "default" profile.
+	// If sandboxed is true or driver is set, but no profile was named, default to "default".
 	if profileName == "" {
 		profileName = sandbox.DefaultProfileName
 	}

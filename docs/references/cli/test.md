@@ -67,18 +67,18 @@ kite test ./tests/ --verbose           # Verbose output
 kite test ./tests/ --run string        # Filter by name
 kite test ./tests/ --parallel 4        # Parallel execution
 kite test ./tests/ --permissions=allow-fs
-kite test ./tests/ --sandbox=opaque    # Each test file gets its own sandbox process
-kite test ./tests/ --sandbox=opaque --sandbox-driver=podman
+kite test ./tests/ --sandbox-opaque        # Each test file gets its own sandbox process
+kite test ./tests/ --sandbox-profile ci-builder --sandbox-driver podman
 ```
 
 ## Sandbox
 
-When `--sandbox` (or `STARKITE_SECURITY_SANDBOX`) is engaged and the path
+When `--sandboxed` / `--sandbox-profile` (or `STARKITE_SANDBOX_PROFILE`) is engaged and the path
 resolves to a directory of multiple test files, each file runs in its own
 sandbox process. Filesystem mutations in `/tmp`, in-sandbox listening
 ports, and other sandbox-internal state do not leak between files.
 
-Single-file invocations (`kite test ./single_test.star --sandbox`) use one
+Single-file invocations (`kite test ./single_test.star --sandboxed`) use one
 sandbox for that file.
 
 `--parallel N` runs up to N files concurrently, each in its own sandbox.
