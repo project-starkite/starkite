@@ -62,15 +62,19 @@ const InsideEnvVar = "STARKITE_INSIDE_SANDBOX"
 //	./untrusted.star    # shebang: same env var, same effect
 const EngagementEnvVar = "STARKITE_SECURITY_SANDBOX"
 
-// Available reports whether a backend is registered and usable.
+// Available reports whether a sandbox driver or backend is registered and usable.
 func Available() bool {
-	return Backend != nil
+	if Backend != nil {
+		return true
+	}
+	_, err := AutoDetect()
+	return err == nil
 }
 
-// PlatformError is the standard error returned when --sandbox is requested
-// on a platform without a registered backend.
+// PlatformError is the standard error returned when a sandbox is requested
+// on a platform without a usable registered driver.
 func PlatformError() error {
-	return fmt.Errorf("sandbox not available on %s, use container isolation", runtime.GOOS)
+	return fmt.Errorf("no usable sandbox driver available on %s", runtime.GOOS)
 }
 
 // NetworkMode is the sandbox network configuration as understood by the

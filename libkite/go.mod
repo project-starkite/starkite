@@ -3,6 +3,7 @@ module github.com/project-starkite/starkite/libkite
 go 1.26
 
 require (
+	github.com/ebitengine/purego v0.10.2
 	github.com/vladimirvivien/startype v0.7.1
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
 	golang.org/x/crypto v0.49.0
@@ -14,7 +15,6 @@ require (
 
 require (
 	github.com/dustin/go-humanize v1.0.1 // indirect
-	github.com/ebitengine/purego v0.10.2 // indirect
 	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/kr/pretty v0.3.1 // indirect

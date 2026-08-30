@@ -1,9 +1,13 @@
 go 1.26
 
 use ./libkite
+
 use ./basekite
+
 use ./cloudkite
+
 use ./aikite
+
 use ./kite
-use ./sandbox/gvisor
+
 use ./tests/sandbox

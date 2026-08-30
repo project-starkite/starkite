@@ -23,11 +23,5 @@ func init() {
 }
 
 func main() {
-	// Sandbox subprocess dispatch: when kite is re-executed by gVisor as
-	// "boot" / "gofer" / "umount" / "__runtime__", route to the sandbox
-	// handler before cobra parses anything. On non-Linux this is a no-op.
-	if dispatchSandboxSubprocess() {
-		return
-	}
 	os.Exit(corecmd.Execute())
 }
