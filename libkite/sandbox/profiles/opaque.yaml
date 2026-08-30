@@ -3,10 +3,8 @@
 # Goal: sealed compute over the working tree. No egress, no host visibility.
 #
 # Network mode: loopback
-#   gVisor's user-space netstack is active but not bridged to the host.
-#   In-sandbox loopback works (a script can run http.server() and connect
-#   to it from the same script), but no packet can leave the sandbox and
-#   no host resolver is reachable.
+#   Outbound network is disabled. In-sandbox loopback works, but no packet
+#   can leave the sandbox and no host resolver is reachable.
 #
 # Filesystem:
 #   - $CWD bound rw at the same host path — the script's only persistent
@@ -14,9 +12,6 @@
 #   - /tmp tmpfs for scratch, lost on exit.
 #   - Nothing else exists: no /etc/*, no TLS roots, no $HOME, no host
 #     binaries.
-#
-# Plumbing the runner adds independently of this file: /proc, /dev, and
-# the kite binary bind-mounted at /.kite.
 
 network: loopback
 

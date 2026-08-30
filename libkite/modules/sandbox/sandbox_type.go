@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/vladimirvivien/startype"
@@ -94,8 +95,9 @@ func (s *Sandbox) boxExec(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, fmt.Errorf("exec: expected string for cmd, got %s", p.Cmd.Type())
 	}
 
-	commandList := []string{cmdStr}
+	var commandList []string
 	if p.Args != nil && p.Args != starlark.None {
+		commandList = []string{cmdStr}
 		switch v := p.Args.(type) {
 		case *starlark.List:
 			for i := 0; i < v.Len(); i++ {
@@ -115,6 +117,11 @@ func (s *Sandbox) boxExec(thread *starlark.Thread, fn *starlark.Builtin, args st
 			}
 		default:
 			return nil, fmt.Errorf("exec: args must be list or tuple, got %s", p.Args.Type())
+		}
+	} else {
+		commandList = strings.Fields(cmdStr)
+		if len(commandList) == 0 {
+			commandList = []string{cmdStr}
 		}
 	}
 

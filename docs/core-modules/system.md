@@ -12,7 +12,7 @@ To explore specific topics, select one of the following sections:
 
 *   **[Launching processes](sys-launch.md)**: Execute local commands, manage timeouts, environments, and handle execution results.
 *   **[Process context](sys-context.md)**: Inspect host names, user profiles, working directories, and process IDs.
-*   **[Security](sys-security.md)**: Understand the security model, permission profiles, and gVisor sandbox integration for executing system operations.
+*   **[Security](sys-security.md)**: Understand the security model, permission profiles, and pluggable sandbox isolation for executing system operations.
 
 ---
 

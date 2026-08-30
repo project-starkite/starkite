@@ -7,9 +7,6 @@
 # Network mode: host
 #   The contained process shares the host's network namespace, so HTTPS,
 #   SSH, DNS — anything that works outside the sandbox — works inside it.
-#   Trade-off: network syscalls bypass gVisor's netstack, so this rung
-#   defends the filesystem and process-table surfaces but not the network
-#   stack.
 #
 # Filesystem: opaque + ro /etc/ssl/certs, /etc/resolv.conf, /etc/hosts,
 # /etc/nsswitch.conf. A support file absent on the host (minimal images)

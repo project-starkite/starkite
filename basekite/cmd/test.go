@@ -402,6 +402,7 @@ func runOneTestFileInSandbox(kiteBin, file, sandboxValue string) bool {
 	fmt.Printf("\n--- %s ---\n", file)
 	args := childTestArgs(file)
 	cmd := exec.Command(kiteBin, args...)
+	cmd.Dir = filepath.Dir(file)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = append(os.Environ(), sandbox.EngagementEnvVar+"="+sandboxValue)

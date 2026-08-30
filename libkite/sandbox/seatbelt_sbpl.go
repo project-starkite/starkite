@@ -54,6 +54,15 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 
 			if m.Type == MountTmpfs || m.Mode == MountRW {
 				b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", target))
+				if target == "/tmp" {
+					b.WriteString("(allow file-write* (subpath \"/private/tmp\"))\n")
+				}
+				if target == "/var" {
+					b.WriteString("(allow file-write* (subpath \"/private/var\"))\n")
+				}
+				if target == "/etc" {
+					b.WriteString("(allow file-write* (subpath \"/private/etc\"))\n")
+				}
 			}
 		}
 		b.WriteString("\n")
@@ -62,7 +71,18 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	// Working directory writable if specified
 	if spec.Cwd != "" {
 		b.WriteString(";; Working Directory Access\n")
-		b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n\n", spec.Cwd))
+		b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", spec.Cwd))
+		if strings.HasPrefix(spec.Cwd, "/var/") {
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", "/private"+spec.Cwd))
+		} else if strings.HasPrefix(spec.Cwd, "/private/var/") {
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", strings.TrimPrefix(spec.Cwd, "/private")))
+		}
+		if strings.HasPrefix(spec.Cwd, "/tmp/") {
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", "/private"+spec.Cwd))
+		} else if strings.HasPrefix(spec.Cwd, "/private/tmp/") {
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", strings.TrimPrefix(spec.Cwd, "/private")))
+		}
+		b.WriteString("\n")
 	}
 
 	// Network access rules

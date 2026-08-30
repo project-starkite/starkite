@@ -48,8 +48,7 @@ Starkite provides concurrent remote host management by pairing the `ssh` module 
 
 Because infrastructure operations run with elevated privileges, Starkite enforces a zero-trust execution model to prevent unauthorized resource access or credential exposure.
 
-* **Explicit Permission Gates**: All network and cluster operations are disabled by default. You must explicitly grant access profiles (such as network or local cluster access) at runtime to allow scripts to interact with external systems.
-* **Kernel-Level Sandboxing**: On supported environments, Starkite executes scripts within an isolated user-space kernel sandbox (utilizing gVisor). This prevents container breakouts, restricts host system access, and secures credentials.
+* **OS-Level Sandboxing**: On supported environments, Starkite executes scripts within an isolated OS sandbox runtime (using native Linux Landlock, macOS Seatbelt, or container runtimes). This isolates host system access, prevents unintended writes, and secures credentials.
 
 ---
 

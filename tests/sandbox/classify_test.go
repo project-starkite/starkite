@@ -1,5 +1,3 @@
-//go:build linux
-
 package sandbox_test
 
 import "testing"

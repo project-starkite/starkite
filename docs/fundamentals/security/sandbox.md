@@ -1,208 +1,150 @@
 ---
 title: "Sandbox"
-description: "OS-level script runtime isolation via gVisor"
+description: "Pluggable OS and container runtime isolation"
 weight: 30
 ---
 
 # Execution Sandbox
 
-Starkite features an OS-level sandbox system that isolates script execution using a [gVisor](https://gvisor.dev) container. Confined scripts have no direct access to the host filesystem, the user's home directory, or host credentials.
+Starkite provides a pluggable OS-level sandbox architecture that isolates script execution across native operating system primitives and container runtimes. Confined scripts are restricted from accessing host credentials, unauthorized directories, and unapproved network surfaces.
 
-> [!IMPORTANT]
-> The sandbox system is **Linux-only**. It relies on Linux-specific namespaces and kernel intercepting. On macOS or Windows, running a script with the sandbox enabled returns an error; use [Script Permissions](permission.md) for protection on these platforms.
+## Supported Sandbox Drivers
+
+| Driver | Platform | Mechanism | Overhead |
+|---|---|---|---|
+| `landlock` | Linux | Pure-Go unprivileged Landlock kernel syscalls (`landlock_create_ruleset`) | In-process (0 subprocess overhead) |
+| `seatbelt` | macOS | Pure-Go dynamic dynamic binding (`sandbox_init` / SBPL profiles) | In-process (0 subprocess overhead) |
+| `podman` | Linux, macOS | Ephemeral rootless OCI container with auto-bind mounts | Low subprocess overhead |
+| `docker` | Linux, macOS | Ephemeral Docker container execution | Low subprocess overhead |
+| `nerdctl` | Linux, macOS | Ephemeral containerd runtime execution | Low subprocess overhead |
+| `gvisor` | Linux | External `runsc` application kernel (Sentry) | Container / MicroVM overhead |
+
+When invoked without an explicit driver name, Starkite auto-detects the host driver: `landlock` on Linux, `seatbelt` on macOS, or a configured container runtime if native drivers are unavailable.
 
 ## Quick start
 
-To execute a script within the default sandbox container, use the `--sandbox` flag:
+To execute a script within the default sandbox profile:
 
 ```bash
-kite ./script.star --sandbox
+kite run ./script.star --sandbox
 ```
 
-To target a specific profile, pass its name to the `--sandbox` flag, or use its shorthand flag alias (such as `--sandbox-opaque`):
+To target a specific profile, pass its name:
 
 ```bash
-kite ./script.star --sandbox=net-access
-kite ./script.star --sandbox-opaque      # Equivalent to --sandbox=opaque
+kite run ./script.star --sandbox=opaque
+kite run ./script.star --sandbox=net-access
+kite run ./script.star --sandbox=host
 ```
 
-For shebang scripts (`#!/usr/bin/env kite`), enable the sandbox using the `STARKITE_SECURITY_SANDBOX` environment variable:
+To explicitly specify both the sandbox driver and profile, use compound selector syntax:
 
 ```bash
-STARKITE_SECURITY_SANDBOX=opaque ./script.star
+kite run ./script.star --sandbox=landlock:opaque
+kite run ./script.star --sandbox=seatbelt:host
+kite run ./script.star --sandbox=podman:net-access
+kite run ./script.star --sandbox=gvisor:opaque
+```
+
+For shebang scripts (`#!/usr/bin/env kite`), configure the sandbox via the `STARKITE_SECURITY_SANDBOX` environment variable:
+
+```bash
+STARKITE_SECURITY_SANDBOX=seatbelt:opaque ./script.star
 ```
 
 ## Built-in sandbox profiles
 
-Starkite provides three built-in sandbox profiles:
+Starkite provides three standard sandbox profiles:
 
-| Profile | Network | Filesystem Mounts | Purpose |
+| Profile | Network | Filesystem Access | Purpose |
 |---|---|---|---|
-| `opaque` | Loopback only | `$CWD` read/write, `/tmp` tmpfs | Completely offline execution; writes restricted to the working directory. |
-| `net-access` | Full network | `opaque` + read-only `/etc/{ssl/certs,resolv.conf,hosts,nsswitch.conf}` | Egress networking allowed (such as HTTP clients or Git operations). |
-| `host` | Full network | `net-access` + read-only `$HOME`, `/usr`, `/bin`, `/lib`, `/lib64` | Allows scripts to read home directory files and execute host binary utilities. |
-
-Example using the `host` profile combined with local execution permissions:
-
-```bash
-kite ./deploy.star --sandbox=host --allow-local
-```
+| `opaque` | None / Loopback | `$CWD` read/write, `/tmp` tmpfs | Completely offline execution; writes restricted to the working directory. |
+| `net-access` | Full network | `opaque` + read-only CA certificates and `/etc/resolv.conf` | Outbound network allowed (e.g. HTTP clients or Git operations). |
+| `host` | Full network | `net-access` + read-only `$HOME`, `/usr`, `/bin`, `/lib` | Allows reading host files and running system binaries while preventing modifications. |
 
 ## Custom sandbox profiles
 
-Define custom sandbox profiles in `~/.starkite/config.yaml` under the `sandbox` section.
-
-### Schema fields
-
-| Field | Required | Description |
-|---|---|---|
-| `base` | No | Base profile to inherit from (`opaque`, `net-access`, `host`) |
-| `network` | Yes (no if `base` set) | Network access mode (`host` or `loopback`) |
-| `mounts[].source` | For `bind` types | Source path on the host filesystem (supports `$CWD` and `$HOME`) |
-| `mounts[].destination` | Yes | Target mount path inside the sandbox |
-| `mounts[].type` | No | Mount type (`bind` or `tmpfs`). Defaults to `bind`. |
-| `mounts[].mode` | No | Mount permissions (`ro` or `rw`). Binds default to `ro`; tmpfs defaults to `rw`. |
-
-*Path expansions are limited to `$CWD` and `$HOME`. Shell-style expansions (such as `~`) are not supported.*
-
-### Example configuration
+Define custom sandbox profiles and driver defaults in `~/.starkite/config.yaml`:
 
 ```yaml
 # ~/.starkite/config.yaml
 sandbox:
-  default: net-access          # Shortcut for { base: net-access }
-  dev:
-    base: host                 # Inherits host settings
-    mounts:
-      - source: $HOME/.cache
-        destination: $HOME/.cache
-        mode: rw
-  k8s-deploy:
-    base: net-access           # Inherits egress network and TLS settings
-    mounts:
-      - source: $HOME/.kube/config
-        destination: /etc/kubeconfig
-        mode: ro
+  driver: auto                 # auto, landlock, seatbelt, podman, docker, nerdctl, gvisor
+  default: net-access          # Default profile when --sandbox is passed
+  profiles:
+    dev:
+      base: host               # Inherits host settings
+      mounts:
+        - source: $HOME/.cache
+          destination: $HOME/.cache
+          mode: rw
+    ci-builder:
+      base: net-access
+      mounts:
+        - source: $CWD
+          destination: /workspace
+          mode: rw
 ```
 
-At runtime, execute with the custom profile:
+Execute with the custom profile:
 
 ```bash
-kite ./deploy.star --sandbox=dev
-STARKITE_SECURITY_SANDBOX=k8s-deploy ./deploy.star
+kite run ./build.star --sandbox=ci-builder
+kite run ./build.star --sandbox=podman:ci-builder
 ```
 
-### Implicit default profile
+## Starlark `sandbox` Module API
 
-A profile named `default` in the `sandbox` config is automatically applied when the `--sandbox` flag is passed without specifying a profile name.
+In addition to CLI-level process isolation, Starkite provides a built-in `sandbox` Starlark module for programmatic sandbox creation and child script execution.
+
+### Creating and Executing in a Sandbox
+
+```python
+# Query host driver
+driver = sandbox.default_driver()
+
+# Create a configured sandbox instance
+box = sandbox.config(
+    driver="auto",
+    network="host",
+    mounts=[
+        {"source": ".", "destination": "/workspace", "mode": "rw"},
+    ],
+    timeout="30s",
+)
+
+# Run commands within the sandbox
+result = box.exec("echo hello-from-sandbox")
+if result.ok:
+    print(result.stdout)
+else:
+    print("Execution failed:", result.stderr)
+```
+
+### Running Sandboxed Child Scripts
+
+```python
+# Run an external Starlark script under sandbox boundaries
+result = sandbox.run_script(
+    path="./untrusted_subtask.star",
+    driver="landlock",
+    profile="opaque",
+    timeout="10s",
+)
+```
+
+### Non-Escalation Security Invariant
+
+When running inside an active parent sandbox (e.g. via `kite run --sandbox=opaque`), child sandboxes spawned via the Starlark `sandbox` module cannot elevate privileges beyond the parent. The runtime enforces an intersection rule:
+
+$$\text{Effective Permissions} = \text{Parent Permissions} \cap \text{Requested Permissions}$$
+
+If an outer sandbox has `network: none`, child sandboxes cannot request `network: host`.
+
+## Combining Sandboxing with Permissions
+
+Sandbox isolation operates at the OS/kernel boundary, while Starkite permissions operate at the language/API boundary. Composing both provides defense in depth:
 
 ```bash
-kite ./deploy.star --sandbox   # Applies the custom default profile (net-access)
+kite run ./untrusted.star --sandbox=opaque --permissions=deny-all
 ```
-
-## Combining sandboxing with permissions
-
-You can combine sandbox isolation with Starkite script permissions to enforce high-security runtime policies:
-
-```bash
-kite ./untrusted.star --sandbox=opaque --permissions=allow-fs
-```
-
-See [Permission Guide](permission.md) for details.
-
-## Sandbox Architecture
-
-Starkite does not require an external container daemon (such as Docker or containerd) or a separate installation of `runsc`. Instead, the gVisor sandbox components are compiled directly into the single `kite` binary.
-
-```
-+-----------------------------------------------------------------+
-|                         Host System                             |
-|  +------------------+                                           |
-|  |   kite run --sb  |  (Parent process, acts as coordinator)    |
-|  +--------+---------+                                           |
-|           | spawns (self-exec via /proc/self/exe)               |
-|           v                                                     |
-|  +-----------------------------------------------------------+  |
-|  |                  gVisor Sandbox Boundary                  |  |
-|  |                                                           |  |
-|  |   +-------------------+       +-----------------------+   |  |
-|  |   |  runsc-sandbox    | <---> |      runsc-gofer      |   |  |
-|  |   |  (Sentry Kernel)  |       |  (File System Proxy)  |   |  |
-|  |   +---------+---------+       +-----------+-----------+   |  |
-|  |             | guest-exec                  | mounts        |  |
-|  |             v                             v               |  |
-|  |   +-------------------+               +-------+           |  |
-|  |   |     /.kite        | <============ |  $CWD | (rw bind) |  |
-|  |   | (Contained Process|               +-------+           |  |
-|  |   |   runs script)    |                                   |  |
-|  |   +-------------------+                                   |  |
-|  +-----------------------------------------------------------+  |
-+-----------------------------------------------------------------+
-```
-
-### Self-Execution Flow
-
-When you run a script with sandboxing enabled, the runtime coordinates the following sequence:
-
-1. **Self-Execution**: The parent `kite` process prepares a temporary OCI bundle directory containing a standard OCI `config.json` and an empty `rootfs`. It then self-executes the `kite` binary multiple times, cosmetically renaming `os.Args[0]` to `runsc-sandbox` and `runsc-gofer` to satisfy gVisor's internal command-line interface:
-   * **Sentry (`runsc-sandbox`)**: A user-space kernel written in Go that intercepts all system calls made by the guest process, virtualizing them without exposing the host kernel.
-   * **Gofer (`runsc-gofer`)**: A secure file system proxy that mediates all file system access from the sandbox to the host.
-2. **Namespace Isolation**: The sandbox isolates the guest process across five namespaces:
-   * **PID**: The script process cannot see or signal host processes.
-   * **Mount**: The guest process has its own mount table, completely detached from the host `/`.
-   * **IPC**: System V IPC and POSIX message queues are isolated.
-   * **UTS**: Hostname and domain name are isolated.
-   * **User**: The host's unprivileged UID and GID are mapped to container ID `0` (root inside the container), enabling secure, rootless sandbox boot.
-3. **Network Namespace Bypass**: To run rootless without requiring network setup privileges, the OCI spec omits the `NetworkNamespace` configuration. Instead, the runner configures gVisor's internal network stack:
-   * **Loopback Mode (`strict`/`opaque` profiles)**: Configures `config.NetworkNone`. The guest process sees only a loopback interface (`127.0.0.1`). No packets can leave the sandbox or reach the host.
-   * **Host Network Mode (`net-access`/`host` profiles)**: Configures `config.NetworkHost`. The guest process shares the host's network namespace, allowing outbound connections (e.g., HTTP clients, SSH) while retaining filesystem and process isolation.
-4. **Contained Execution**: The guest process is launched via the path `/.kite` (which is a read-only bind mount of the host `kite` binary) inside the sandbox. The argument list is prefixed with a private `__runtime__` marker. When the sandboxed `kite` process boots, it detects the marker, strips it, sets `STARKITE_INSIDE_SANDBOX=1` in its environment to prevent recursive sandboxing, and safely executes the Starlark script.
-
-## Linux configuration (Ubuntu 24.04+)
-
-On Ubuntu 24.04 and above, AppArmor restricts unprivileged user namespace creation by default. Running rootless gVisor may trigger the following error:
-`sandbox: kernel restricts unprivileged user namespaces`
-
-Choose one of the following setups to resolve this:
-
-### Option A: Disable the restriction globally
-
-For development or test environments:
-
-```bash
-sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-```
-
-To persist this change across system reboots:
-
-```bash
-echo 'kernel.apparmor_restrict_unprivileged_userns=0' | sudo tee /etc/sysctl.d/60-userns.conf
-```
-
-### Option B: Configure an AppArmor profile for Starkite
-
-Create an AppArmor rule file at `/etc/apparmor.d/kite` to allow namespace creation for the Starkite binary:
-
-```
-abi <abi/4.0>,
-include <tunables/global>
-
-profile kite /usr/local/bin/kite flags=(unconfined) {
-  userns,
-  include if exists <local/kite>
-}
-```
-
-*Ensure the binary path in the rule matches your actual Starkite installation path.*
-
-Reload the AppArmor configuration:
-
-```bash
-sudo apparmor_parser -r /etc/apparmor.d/kite
-```
-
-## Limitations
-
-* **OS Support**: Only Linux is supported. gVisor is not compatible with macOS or Windows kernels.
-* **FS Egress**: Scripts requiring access to files outside `$CWD` must either run outside the sandbox, or mount explicit host directories in a custom profile.
-* **Privileged Ports**: Rootless gVisor containers cannot bind to privileged ports (under 1024).

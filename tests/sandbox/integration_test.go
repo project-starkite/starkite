@@ -1,19 +1,14 @@
-//go:build linux
-
 // Package sandbox_test drives the .star sandbox integration tests by
 // invoking `kite test <file>` against tests/sandbox/*_test.star from a
 // clean temp directory (so credential-isolation tests aren't fooled by
 // $HOME being the $CWD bind).
 //
-// Two engagement paths are exercised:
+// Engagement paths exercised:
 //   - --sandbox CLI flag (the explicit kite-invocation path)
 //   - STARKITE_SECURITY_SANDBOX env var (the shebang-style path)
+//   - Compound selector syntax (--sandbox=<driver>:<profile>)
 //
-// Skipped on non-Linux (build tag).
-// Skipped unless STARKITE_SANDBOX_INTEGRATION=1 — these tests build
-// kite, spawn it under gVisor, and depend on the kernel allowing
-// unprivileged user namespaces. CI opts in explicitly; local `go test
-// ./...` doesn't trigger them.
+// Skipped unless STARKITE_SANDBOX_INTEGRATION=1.
 package sandbox_test
 
 import (
@@ -32,8 +27,6 @@ import (
 const perTestTimeout = 60 * time.Second
 
 // engagement picks how the test driver tells kite to engage the sandbox.
-// Both paths are documented user-facing: the flag for explicit CLI use,
-// the env var for shebang-launched scripts.
 type engagement int
 
 const (
@@ -52,6 +45,14 @@ func TestSandboxOpaqueRung_flag(t *testing.T) {
 
 func TestSandboxHostRung_flag(t *testing.T) {
 	runStarTest(t, "sandbox_host_test.star", "host", viaFlag)
+}
+
+func TestSandboxCompound_flag(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "default:opaque", viaFlag)
+}
+
+func TestSandboxModule_star(t *testing.T) {
+	runStarTest(t, "sandbox_module_test.star", "host", viaFlag)
 }
 
 // Bare --sandbox with no config default resolves to the opaque rung; the
@@ -103,14 +104,14 @@ func TestSandboxPerTestFile(t *testing.T) {
 	defer cancel()
 
 	// allow-all keeps the permission layer out of the way so what the test
-	// observes is the gVisor sandbox's isolation, not a permission denial.
+	// observes is the sandbox's isolation, not a permission denial.
 	cmd := exec.CommandContext(ctx, kite, "test", workDir, "--sandbox=opaque", "--permissions=allow-all")
 	cmd.Dir = workDir
 	out, err := cmd.CombinedOutput()
 	t.Logf("kite test --sandbox=opaque (multi-file) output:\n%s", out)
 	if err != nil {
 		if sandboxUnavailable(string(out)) {
-			t.Skipf("host cannot start a gVisor sandbox; skipping. "+
+			t.Skipf("host cannot start a sandbox; skipping. "+
 				"This is a host-capability limitation, not a test failure. Output:\n%s", out)
 		}
 		t.Fatalf("kite test multi failed: %v", err)
@@ -178,7 +179,7 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	defer cancel()
 
 	// allow-all keeps the permission layer out of the way so what the test
-	// observes is the gVisor sandbox's isolation, not a permission denial.
+	// observes is the sandbox's isolation, not a permission denial.
 	args := []string{"test", dstPath, "--permissions=allow-all"}
 	env := os.Environ()
 	var label string
@@ -204,7 +205,7 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	t.Logf("kite test (%s) output:\n%s", label, out)
 	if err != nil {
 		if sandboxUnavailable(string(out)) {
-			t.Skipf("host cannot start a gVisor sandbox (%s); skipping. "+
+			t.Skipf("host cannot start a sandbox (%s); skipping. "+
 				"This is a host-capability limitation, not a test failure. Output:\n%s", label, out)
 		}
 		t.Fatalf("kite test (%s) failed: %v", label, err)

@@ -1152,7 +1152,7 @@ mcp.serve(
 <section class="feature-section">
   <div class="feature-section__split">
     <div class="feature-section__text">
-      <p>Two layers of defense apply to every script. Permission profiles gate module calls at the API layer under a deny-by-default policy (<code>os.exec</code> denied, <code>fs.read</code> allowed). gVisor sandboxing isolates the script at the syscall layer with no host filesystem access and no outbound network. Named profiles are defined in <code>~/.starkite/config.yaml</code> and apply to any invocation via a single command-line flag.</p>
+      <p>Two layers of defense apply to every script. Permission profiles gate module calls at the API layer under a deny-by-default policy (<code>os.exec</code> denied, <code>fs.read</code> allowed). Pluggable OS-level sandboxing isolates the script across native kernel primitives (Landlock/Seatbelt) and container runtimes. Named profiles are defined in <code>~/.starkite/config.yaml</code> and apply to any invocation via a single command-line flag.</p>
       <a href="fundamentals/security/permission/" class="feature-section__cta">Read the security model</a>
     </div>
     <div class="feature-section__code">

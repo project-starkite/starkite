@@ -179,14 +179,13 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		}
 	}
 
-	// Enforce no new privileges
-	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
+	// Enforce no new privileges across all OS threads in the Go runtime
+	if _, _, err := syscall.AllThreadsSyscall6(unix.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0, 0); err != 0 {
 		return fmt.Errorf("sandbox: prctl(PR_SET_NO_NEW_PRIVS) failed: %w", err)
 	}
 
-	// Restrict self
-	_, _, err = unix.Syscall(sysLandlockRestrictSelf, rulesetFd, 0, 0)
-	if err != 0 {
+	// Restrict all OS threads in the Go runtime
+	if _, _, err := syscall.AllThreadsSyscall(sysLandlockRestrictSelf, rulesetFd, 0, 0); err != 0 {
 		return fmt.Errorf("sandbox: landlock_restrict_self failed: %w", err)
 	}
 
