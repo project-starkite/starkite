@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  # 1. Primary Linux Job: Linting, Unit Tests, All Starlark Tests, Landlock & Docker Containment
+  linux-build-and-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -21,63 +22,99 @@ jobs:
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
-            sandbox/gvisor/go.sum
+            tests/sandbox/go.sum
 
-      - name: Build libkite
-        run: go build -v ./...
-        working-directory: libkite
+      - name: Verify code formatting (gofmt)
+        run: |
+          DIFFS=$(gofmt -l .)
+          if [ -n "$DIFFS" ]; then
+            echo "Formatting differences found in the following files:"
+            echo "$DIFFS"
+            exit 1
+          fi
 
-      - name: Build basekite
-        run: go build -v ./...
-        working-directory: basekite
+      - name: Run go vet
+        run: |
+          for dir in libkite basekite cloudkite aikite kite tests/sandbox; do
+            echo "=== Vetting $dir ==="
+            (cd "$dir" && go vet ./...)
+          done
 
-      - name: Build cloudkite
-        run: go build -v ./...
-        working-directory: cloudkite
+      - name: Run golangci-lint
+        uses: golangci/golangci-lint-action@v6
+        with:
+          version: latest
+          args: --timeout=5m
 
-      - name: Build aikite
-        run: go build -v ./...
-        working-directory: aikite
+      - name: Build all workspace modules and kite binary
+        run: |
+          mkdir -p bin
+          for dir in libkite basekite cloudkite aikite tests/sandbox; do
+            echo "=== Building $dir ==="
+            (cd "$dir" && go build -v ./...)
+          done
+          (cd kite && go build -v -o ../bin/kite .)
 
-      - name: Build kite
-        run: go build -v ./...
-        working-directory: kite
+      - name: Run Go unit tests with race detection
+        run: |
+          for dir in libkite basekite cloudkite aikite kite; do
+            echo "=== Testing $dir ==="
+            (cd "$dir" && go test -race ./...)
+          done
 
-      - name: Build sandbox/gvisor
-        run: go build -v ./...
-        working-directory: sandbox/gvisor
+      - name: Run all Starkite Starlark tests
+        run: |
+          echo "=== Running all tests/*_test.star files ==="
+          for f in tests/*_test.star; do
+            echo "--- Testing $f ---"
+            ./bin/kite test "$f" --permissions=allow-all-shell || exit 1
+          done
 
-      - name: Test libkite
-        run: go test -race ./...
-        working-directory: libkite
+      - name: Run Linux native Landlock sandbox tests
+        env:
+          STARKITE_SANDBOX_INTEGRATION: "1"
+          STARKITE_SANDBOX_DRIVER: "landlock"
+        run: go test -v -timeout 5m ./...
+        working-directory: tests/sandbox
 
-      - name: Test basekite
-        run: go test -race ./...
-        working-directory: basekite
+      - name: Build local container image for testing
+        run: make docker-build
 
-      - name: Test cloudkite
-        run: go test -race ./...
-        working-directory: cloudkite
-
-      - name: Test aikite
-        run: go test -race ./...
-        working-directory: aikite
-
-      - name: Test kite
-        run: go test -race ./...
-        working-directory: kite
-
-      - name: Test sandbox/gvisor
-        run: go test -race ./...
-        working-directory: sandbox/gvisor
+      - name: Run Linux Docker container sandbox tests
+        env:
+          STARKITE_SANDBOX_INTEGRATION: "1"
+          STARKITE_SANDBOX_DRIVER: "docker"
+        run: go test -v -timeout 5m ./...
+        working-directory: tests/sandbox
 
       - name: Validate install.sh (Syntax & Dry-Run)
         run: |
           sh -n scripts/install.sh
           INSTALL_DRY_RUN=1 ./scripts/install.sh
 
+  # 2. macOS Native Containment: Seatbelt sandbox-exec verification
+  macos-sandbox-integration:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Run macOS Seatbelt sandbox integration tests
+        env:
+          STARKITE_SANDBOX_INTEGRATION: "1"
+          STARKITE_SANDBOX_DRIVER: "seatbelt"
+        run: go test -v -timeout 5m ./...
+        working-directory: tests/sandbox
+
+  # 3. Windows Native Validation: Pure PowerShell, Go Tests, All Starlark Tests & Installer Dry-Run
   windows-validation:
     runs-on: windows-latest
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - uses: actions/checkout@v4
 
@@ -92,8 +129,29 @@ jobs:
             kite/go.sum
 
       - name: Build kite.exe on Windows
-        run: go build -v .
-        working-directory: kite
+        run: |
+          New-Item -ItemType Directory -Force -Path bin | Out-Null
+          Set-Location kite
+          go build -v -o ..\bin\kite.exe .
+          Set-Location ..
+
+      - name: Run Go unit tests on Windows
+        run: |
+          @("libkite", "basekite", "cloudkite", "aikite", "kite") | ForEach-Object {
+            Write-Host "=== Testing $_ on Windows ==="
+            Push-Location $_
+            go test ./...
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            Pop-Location
+          }
+
+      - name: Run all Starkite Starlark tests on Windows
+        run: |
+          Get-ChildItem -Path tests\*_test.star | ForEach-Object {
+            Write-Host "--- Testing $($_.Name) on Windows ---"
+            .\bin\kite.exe test $_.FullName --permissions=allow-all-shell
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
 
       - name: Validate install.ps1 (Syntax & Dry-Run)
         run: |
@@ -105,44 +163,3 @@ jobs:
           # 2. Native Dry-Run
           $env:INSTALL_DRY_RUN = '1'
           .\scripts\install.ps1
-
-  sandbox-integration:
-    # Drives the .star sandbox tests under tests/sandbox/ end-to-end:
-    # builds kite, configures the kernel for unprivileged user namespaces,
-    # invokes `kite test --sandbox` against the test file from a
-    # non-$HOME working directory.
-    needs: build-and-test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-go@v5
-        with:
-          go-version: stable
-
-      - name: Disable AppArmor unprivileged-userns restriction
-        # ubuntu-latest (24.04+) ships with this restriction enabled by
-        # default, which blocks gVisor's rootless mode. We turn it off
-        # for the duration of this job. Production users would install
-        # an AppArmor profile granting `userns,` to the kite binary.
-        run: |
-          echo "before: $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns 2>/dev/null || echo absent)"
-          sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          echo "after:  $(cat /proc/sys/kernel/apparmor_restrict_unprivileged_userns)"
-
-      - name: Run sandbox integration tests
-        env:
-          STARKITE_SANDBOX_INTEGRATION: "1"
-          # Capture gVisor sentry/gofer/boot logs so a sandbox that fails to
-          # start is diagnosable from the uploaded artifact below.
-          STARKITE_SANDBOX_DEBUG: "/tmp/starkite-sandbox-debug"
-        run: go test -v -timeout 5m ./...
-        working-directory: tests/sandbox
-
-      - name: Upload gVisor debug logs on failure
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sandbox-debug-logs
-          path: /tmp/starkite-sandbox-debug/
-          if-no-files-found: ignore
