@@ -632,6 +632,5 @@ func getNestedString(obj map[string]any, key string) string {
 }
 
 func getNestedField(obj map[string]any, key string) any {
-	v, _ := obj[key]
-	return v
+	return obj[key]
 }

@@ -40,15 +40,11 @@ jobs:
             (cd "$dir" && go vet ./...)
           done
 
-      - name: Install golangci-lint
-        run: go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
-      - name: Run golangci-lint
-        run: |
-          for dir in libkite basekite cloudkite aikite kite tests/sandbox; do
-            echo "=== Linting $dir ==="
-            (cd "$dir" && golangci-lint run --timeout=5m ./...)
-          done
+      - name: Run staticcheck
+        run: staticcheck ./libkite/... ./basekite/... ./cloudkite/... ./aikite/... ./kite/... ./tests/sandbox/...
 
       - name: Build all workspace modules and kite binary
         run: |

@@ -62,8 +62,8 @@ func (c *Config) apiKeyFor(provider string) string {
 	return os.Getenv(envVarForProvider(provider))
 }
 
-// baseURLFor returns the configured base URL for a provider, or "".
-func (c *Config) baseURLFor(provider string) string {
+// BaseURLFor returns the configured base URL for a provider, or "".
+func (c *Config) BaseURLFor(provider string) string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	return c.BaseURLs[provider]

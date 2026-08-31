@@ -25,13 +25,17 @@ type Tool struct {
 
 var _ starlark.HasAttrs = (*Tool)(nil)
 
-// Exported accessors so other ai/* modules (e.g. mcp) can adapt a Tool to
-// their provider's tool representation without taking a dependency on
-// genai's internals.
-func (t *Tool) Name() string           { return t.name }
-func (t *Tool) Description() string    { return t.description }
+// Name returns the tool's name.
+func (t *Tool) Name() string { return t.name }
+
+// Description returns the tool's description.
+func (t *Tool) Description() string { return t.description }
+
+// Params returns the tool parameter schema.
 func (t *Tool) Params() map[string]any { return t.params }
-func (t *Tool) Fn() starlark.Callable  { return t.fn }
+
+// Fn returns the tool's callable function.
+func (t *Tool) Fn() starlark.Callable { return t.fn }
 
 func (t *Tool) String() string        { return fmt.Sprintf("<ai.Tool name=%q>", t.name) }
 func (t *Tool) Type() string          { return "ai.Tool" }

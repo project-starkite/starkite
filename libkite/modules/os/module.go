@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -23,6 +24,16 @@ import (
 )
 
 const ModuleName libkite.ModuleName = "os"
+
+func defaultShell() string {
+	if runtime.GOOS == "windows" {
+		if comspec := os.Getenv("COMSPEC"); comspec != "" {
+			return comspec
+		}
+		return "cmd.exe"
+	}
+	return "/bin/sh"
+}
 
 // Module implements OS operations.
 type Module struct {
@@ -41,7 +52,7 @@ type Module struct {
 
 func New() *Module {
 	return &Module{
-		shell:   "/bin/sh",
+		shell:   defaultShell(),
 		env:     make(map[string]string),
 		timeout: 60 * time.Second,
 	}
@@ -501,7 +512,19 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 
 	var cmd *exec.Cmd
 	if useShell {
-		cmd = exec.Command(shell, "-c", cmdStr)
+		if runtime.GOOS == "windows" {
+			base := strings.ToLower(filepath.Base(shell))
+			switch {
+			case base == "cmd.exe" || base == "cmd":
+				cmd = exec.Command(shell, "/c", cmdStr)
+			case base == "powershell.exe" || base == "powershell" || base == "pwsh.exe" || base == "pwsh":
+				cmd = exec.Command(shell, "-Command", cmdStr)
+			default:
+				cmd = exec.Command(shell, "-c", cmdStr)
+			}
+		} else {
+			cmd = exec.Command(shell, "-c", cmdStr)
+		}
 	} else {
 		cmd = exec.Command(cmdStr, execArgs...)
 	}

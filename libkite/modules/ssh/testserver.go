@@ -12,7 +12,6 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"sync"
 
@@ -446,7 +445,6 @@ func GenerateClientKey(dir string) (privateKeyPath string, pubKey gossh.PublicKe
 type StarlarkTestServer struct {
 	server   *TestServer
 	thread   *starlark.Thread
-	keyPaths []string // track generated keys for this server
 	tempDirs []string // track temp dirs
 }
 
@@ -689,11 +687,4 @@ func clientKeyForTest(t interface {
 		panic(fmt.Sprintf("clientKey: %v", err))
 	}
 	return path, pub
-}
-
-// portFromAddr extracts the port number from a "host:port" address.
-func portFromAddr(addr string) int {
-	_, portStr, _ := net.SplitHostPort(addr)
-	port, _ := strconv.Atoi(portStr)
-	return port
 }
