@@ -67,7 +67,7 @@ jobs:
           echo "=== Running all tests/*_test.star files ==="
           for f in tests/*_test.star; do
             echo "--- Testing $f ---"
-            ./bin/kite test "$f" --permissions=allow-all-shell || exit 1
+            ./bin/kite test "$f" --permissions=allow-all || exit 1
           done
 
       - name: Run Linux native Landlock sandbox tests
@@ -149,7 +149,7 @@ jobs:
         run: |
           Get-ChildItem -Path tests\*_test.star | ForEach-Object {
             Write-Host "--- Testing $($_.Name) on Windows ---"
-            .\bin\kite.exe test $_.FullName --permissions=allow-all-shell
+            .\bin\kite.exe test $_.FullName --permissions=allow-all
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 

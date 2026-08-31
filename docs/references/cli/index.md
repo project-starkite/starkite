@@ -52,8 +52,8 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--debug` | Enable debug logging | `false` |
 | `--dry-run` | Preview commands without executing | `false` |
 | `--timeout seconds` | Script execution timeout | `300` |
-| `--permissions name` | Permission profile name: a built-in (`deny-all`/`allow-fs`/`allow-net`/`allow-local`/`allow-all`/`allow-all-shell`) or a profile defined in `config.yaml`; unset resolves to the config `default` profile or `deny-all` | `""` |
-| `--deny-all`, `--allow-fs`, `--allow-net`, `--allow-local`, `--allow-all`, `--allow-all-shell` | Boolean aliases for `--permissions=<profile>`. Set at most one; not combinable with `--permissions` | `false` |
+| `--permissions name` | Permission profile name: a built-in (`deny-all`/`allow-fs`/`allow-net`/`allow-local`/`allow-all`) or a profile defined in `config.yaml`; unset resolves to the config `default` profile or `deny-all` | `""` |
+| `--deny-all`, `--allow-fs`, `--allow-net`, `--allow-local`, `--allow-all` | Boolean aliases for `--permissions=<profile>`. Set at most one; not combinable with `--permissions` | `false` |
 | `--sandboxed` | Enable OS-level sandbox isolation using the `default` profile. See [Sandbox guide](../../fundamentals/security/sandbox.md). | `false` |
 | `--sandbox-profile name` | Sandbox profile name: a built-in rung (`opaque`/`net-access`/`host`) or a `config.yaml` profile. | `""` |
 | `--sandbox-driver driver` | Sandbox execution driver (`auto`/`landlock`/`seatbelt`/`podman`/`docker`/`nerdctl`/`gvisor`). Overrides driver in profile. | `""` |
