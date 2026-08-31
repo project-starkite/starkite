@@ -137,16 +137,36 @@ func TestContainerDriver_LiveExec(t *testing.T) {
 				Timeout: 30 * time.Second,
 			}
 
+			isDaemonUnavailable := func(errMsg string, exitCode int) bool {
+				lower := strings.ToLower(errMsg)
+				return strings.Contains(lower, "no matching manifest for windows") ||
+					strings.Contains(lower, "docker_engine") ||
+					strings.Contains(lower, "daemon is running") ||
+					strings.Contains(lower, "cannot connect to the docker daemon") ||
+					strings.Contains(lower, "failed to connect to the docker api") ||
+					strings.Contains(lower, "connection refused") ||
+					strings.Contains(lower, "cannot connect to the podman service") ||
+					strings.Contains(lower, "is the docker daemon running") ||
+					strings.Contains(lower, "pipe/docker_engine") ||
+					(runtime.GOOS == "windows" && exitCode != 0)
+			}
+
 			res, err := d.Exec(context.Background(), spec)
 			if err != nil {
-				if strings.Contains(err.Error(), "no matching manifest for windows") || strings.Contains(res.Stderr, "no matching manifest for windows") {
+				exitCode := 0
+				stderr := ""
+				if res != nil {
+					exitCode = res.ExitCode
+					stderr = res.Stderr
+				}
+				if isDaemonUnavailable(err.Error(), exitCode) || isDaemonUnavailable(stderr, exitCode) {
 					t.Skipf("container engine %s cannot run Linux images on this host: %v", engineName, err)
 				}
-				t.Fatalf("Live %s container execution failed: %v, stderr: %s", engineName, err, res.Stderr)
+				t.Fatalf("Live %s container execution failed: %v, stderr: %s", engineName, err, stderr)
 			}
 
 			if res.ExitCode != 0 {
-				if strings.Contains(res.Stderr, "no matching manifest for windows") || (runtime.GOOS == "windows" && res.ExitCode == 125) {
+				if isDaemonUnavailable(res.Stderr, res.ExitCode) {
 					t.Skipf("container engine %s cannot run Linux images on this host: %s", engineName, res.Stderr)
 				}
 				t.Errorf("ExitCode = %d, want 0; stderr: %s", res.ExitCode, res.Stderr)

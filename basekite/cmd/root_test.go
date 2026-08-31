@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/spf13/pflag"
+
+	"github.com/project-starkite/starkite/libkite/sandbox"
 )
 
 // resetDefaults resets flag variables and Changed state to defaults.
@@ -314,6 +316,9 @@ func TestGetSandbox(t *testing.T) {
 	})
 
 	t.Run("sandboxed boolean switch selects default profile", func(t *testing.T) {
+		if !sandbox.Available() {
+			t.Skip("sandbox is not available on this platform")
+		}
 		sandboxed = true
 		sandboxProfile = ""
 		sandboxDriver = ""
@@ -329,6 +334,9 @@ func TestGetSandbox(t *testing.T) {
 	})
 
 	t.Run("simple profile name", func(t *testing.T) {
+		if !sandbox.Available() {
+			t.Skip("sandbox is not available on this platform")
+		}
 		sandboxed = false
 		sandboxProfile = "opaque"
 		sandboxDriver = ""
@@ -347,6 +355,9 @@ func TestGetSandbox(t *testing.T) {
 	})
 
 	t.Run("profile with driver override flag", func(t *testing.T) {
+		if !sandbox.Available() {
+			t.Skip("sandbox is not available on this platform")
+		}
 		sandboxed = false
 		sandboxProfile = "opaque"
 		sandboxDriver = "podman"
@@ -365,6 +376,9 @@ func TestGetSandbox(t *testing.T) {
 	})
 
 	t.Run("driver flag alone defaults to default profile", func(t *testing.T) {
+		if !sandbox.Available() {
+			t.Skip("sandbox is not available on this platform")
+		}
 		sandboxed = false
 		sandboxProfile = ""
 		sandboxDriver = "docker"
@@ -383,6 +397,9 @@ func TestGetSandbox(t *testing.T) {
 	})
 
 	t.Run("env vars for profile and driver", func(t *testing.T) {
+		if !sandbox.Available() {
+			t.Skip("sandbox is not available on this platform")
+		}
 		sandboxed = false
 		sandboxProfile = ""
 		sandboxDriver = ""
@@ -401,6 +418,9 @@ func TestGetSandbox(t *testing.T) {
 	})
 
 	t.Run("CLI flag overrides env var", func(t *testing.T) {
+		if !sandbox.Available() {
+			t.Skip("sandbox is not available on this platform")
+		}
 		sandboxed = false
 		sandboxProfile = "opaque"
 		sandboxDriver = "landlock"
