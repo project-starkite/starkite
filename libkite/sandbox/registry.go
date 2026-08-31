@@ -114,7 +114,7 @@ func (r *Registry) AutoDetect() (Driver, error) {
 
 	switch runtime.GOOS {
 	case "linux":
-		// Prefer Landlock on Linux
+		// Prefer Landlock on Linux (native in-process kernel LSM)
 		if d, ok := r.drivers[DriverLandlock]; ok && d.Available() {
 			return d, nil
 		}
@@ -123,6 +123,9 @@ func (r *Registry) AutoDetect() (Driver, error) {
 			return d, nil
 		}
 		if d, ok := r.drivers[DriverPodman]; ok && d.Available() {
+			return d, nil
+		}
+		if d, ok := r.drivers[DriverDocker]; ok && d.Available() {
 			return d, nil
 		}
 	case "darwin":

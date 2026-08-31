@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"runtime"
 	"syscall"
 	"time"
 	"unsafe"
@@ -179,13 +180,17 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		}
 	}
 
-	// Enforce no new privileges across all OS threads in the Go runtime
-	if _, _, err := syscall.AllThreadsSyscall6(unix.SYS_PRCTL, unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0, 0); err != 0 {
+	// Lock current goroutine to the current OS thread so all execution stays
+	// confined to the Landlock-restricted thread and its child processes.
+	runtime.LockOSThread()
+
+	// Enforce no new privileges
+	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		return fmt.Errorf("sandbox: prctl(PR_SET_NO_NEW_PRIVS) failed: %w", err)
 	}
 
-	// Restrict all OS threads in the Go runtime
-	if _, _, err := syscall.AllThreadsSyscall(sysLandlockRestrictSelf, rulesetFd, 0, 0); err != 0 {
+	// Restrict calling thread and future child processes
+	if _, _, err := unix.Syscall(sysLandlockRestrictSelf, rulesetFd, 0, 0); err != 0 {
 		return fmt.Errorf("sandbox: landlock_restrict_self failed: %w", err)
 	}
 

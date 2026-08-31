@@ -287,15 +287,20 @@ func buildKite(t *testing.T) string {
 }
 
 // sandboxUnavailable reports whether kite's output indicates the host could not
-// start a gVisor sandbox — a host-capability limitation (e.g. restricted
-// cgroups/seccomp/user-namespaces on a CI runner) that the static preflight
-// cannot predict, surfacing only when runsc's sentry fails to boot. Distinct
-// from a genuine in-sandbox test failure, so the caller skips rather than fails.
+// start a sandbox — a host-capability limitation (e.g. restricted
+// cgroups/seccomp/user-namespaces on a CI runner, or unsupported in-process
+// Landlock/Seatbelt prctl syscalls) that the static preflight cannot predict.
+// Distinct from a genuine in-sandbox test failure, so the caller skips rather than fails.
 func sandboxUnavailable(output string) bool {
 	markers := []string{
 		"cannot create sandbox",
 		"cannot read client sync file",
 		"waiting for sandbox to start",
+		"failed to apply in-process sandbox",
+		"prctl(PR_SET_NO_NEW_PRIVS) failed",
+		"landlock_create_ruleset failed",
+		"landlock_restrict_self failed",
+		"landlock driver not supported",
 	}
 	for _, m := range markers {
 		if strings.Contains(output, m) {

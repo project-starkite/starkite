@@ -585,7 +585,8 @@ func (s *StarlarkTestServer) handleExecMethod(thread *starlark.Thread, fn *starl
 	}
 
 	s.server.HandleExec(func(cmd string) (string, string, int) {
-		result, err := starlark.Call(thread, callable, starlark.Tuple{starlark.String(cmd)}, nil)
+		childThread := &starlark.Thread{Name: fmt.Sprintf("%s-exec-handler", thread.Name)}
+		result, err := starlark.Call(childThread, callable, starlark.Tuple{starlark.String(cmd)}, nil)
 		if err != nil {
 			return "", fmt.Sprintf("handler error: %v", err), 1
 		}

@@ -16,6 +16,11 @@ func TestSandboxUnavailable(t *testing.T) {
 			want: true,
 		},
 		{
+			name:   "landlock in-process prctl unsupported on CI runner",
+			output: "Found 1 test file(s)\nError: failed to apply in-process sandbox (landlock): sandbox: prctl(PR_SET_NO_NEW_PRIVS) failed: operation not supported\n",
+			want:   true,
+		},
+		{
 			name:   "genuine in-sandbox test failure is not a host limitation",
 			output: "Tests: 9 passed, 2 failed, 11 total\nError: tests failed\n",
 			want:   false,
