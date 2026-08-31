@@ -49,18 +49,18 @@ def test_bytes_md5():
 # ============================================================================
 
 def test_file_sha256():
-    path = "/tmp/crsh_hash_test.txt"
-    write_text(path, "hello")
-    result = hash.file(path).sha256()
+    p = (fs.path(temp_dir()) / "crsh_hash_test.txt").string
+    write_text(p, "hello")
+    result = hash.file(p).sha256()
     assert(result == "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824", "file hash should match")
-    fs.path(path).remove()
+    fs.path(p).remove()
 
 def test_file_md5():
-    path = "/tmp/crsh_hash_test_md5.txt"
-    write_text(path, "hello")
-    result = hash.file(path).md5()
+    p = (fs.path(temp_dir()) / "crsh_hash_test_md5.txt").string
+    write_text(p, "hello")
+    result = hash.file(p).md5()
     assert(result == "5d41402abc4b2a76b9719d911017c592", "file MD5 should match")
-    fs.path(path).remove()
+    fs.path(p).remove()
 
 # ============================================================================
 # type/repr tests
@@ -71,15 +71,15 @@ def test_source_type():
     assert(type(hash.bytes("hello")) == "hash.source", "bytes should produce hash.source")
 
 def test_file_type():
-    assert(type(hash.file("/tmp/test")) == "hash.file", "file should produce hash.file")
+    assert(type(hash.file("test.txt")) == "hash.file", "file should produce hash.file")
 
 def test_source_data_property():
     src = hash.text("hello")
     assert(src.data == b"hello", "data property should return bytes")
 
 def test_file_path_property():
-    f = hash.file("/tmp/test")
-    assert(f.path == "/tmp/test", "path property should return path string")
+    f = hash.file("test.txt")
+    assert(f.path == "test.txt", "path property should return path string")
 
 # ============================================================================
 # consistency tests

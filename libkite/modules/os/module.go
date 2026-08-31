@@ -61,8 +61,9 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"setenv": starlark.NewBuiltin("os.setenv", m.setenv),
 
 			// Working directory
-			"cwd":   starlark.NewBuiltin("os.cwd", m.cwd),
-			"chdir": starlark.NewBuiltin("os.chdir", m.chdir),
+			"cwd":      starlark.NewBuiltin("os.cwd", m.cwd),
+			"chdir":    starlark.NewBuiltin("os.chdir", m.chdir),
+			"temp_dir": starlark.NewBuiltin("os.temp_dir", m.tempDir),
 
 			// System
 			"hostname": starlark.NewBuiltin("os.hostname", m.hostname),
@@ -92,6 +93,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"setenv":   starlark.NewBuiltin("setenv", m.setenv),
 			"cwd":      starlark.NewBuiltin("cwd", m.cwd),
 			"chdir":    starlark.NewBuiltin("chdir", m.chdir),
+			"temp_dir": starlark.NewBuiltin("temp_dir", m.tempDir),
 			"hostname": starlark.NewBuiltin("hostname", m.hostname),
 			"pid":      starlark.NewBuiltin("pid", m.pid),
 			"ppid":     starlark.NewBuiltin("ppid", m.ppid),
@@ -198,6 +200,14 @@ func (m *Module) chdir(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		return nil, err
 	}
 	return starlark.None, nil
+}
+
+// tempDir returns the operating system's default directory for temporary files.
+func (m *Module) tempDir(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(args) > 0 || len(kwargs) > 0 {
+		return nil, fmt.Errorf("temp_dir takes no arguments")
+	}
+	return starlark.String(os.TempDir()), nil
 }
 
 // hostname returns the system hostname.

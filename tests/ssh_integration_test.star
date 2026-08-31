@@ -90,7 +90,7 @@ def test_upload():
     srv.start()
 
     # Create a local temp file
-    path = "/tmp/crsh_ssh_upload_test.txt"
+    path = (fs.path(temp_dir()) / "crsh_ssh_upload_test.txt").string
     write_text(path, "upload content")
 
     client = ssh.config(
@@ -115,7 +115,7 @@ def test_download():
     srv.add_file("/remote/data.txt", "download content", "0644")
     srv.start()
 
-    local_path = "/tmp/crsh_ssh_download_test.txt"
+    local_path = (fs.path(temp_dir()) / "crsh_ssh_download_test.txt").string
     client = ssh.config(
         hosts=["127.0.0.1"], user="u", password="p",
         port=srv.port(), host_key_check=False, max_retries=0,

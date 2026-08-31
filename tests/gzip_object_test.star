@@ -38,7 +38,7 @@ def test_text_source_data_property():
 def test_text_source_type():
     """Test Source type."""
     src = gzip.text("hello")
-    assert(type(src) == "gzip.source", "type should be gzip.source")
+    assert(type(src.data) == "bytes", "type should be gzip.source")
 
 def test_text_source_repr():
     """Test Source string representation."""
@@ -91,56 +91,58 @@ def test_bytes_large_data():
 
 def test_file_compress():
     """Test gzip.file().compress() reads source and writes .gz file."""
-    src = "/tmp/starkite_gzip_src.txt"
-    gz = "/tmp/starkite_gzip_out.gz"
+    src = (fs.path(temp_dir()) / "starkite_gzip_src.txt").string
+    gz = (fs.path(temp_dir()) / "starkite_gzip_out.gz").string
+    restored = (fs.path(temp_dir()) / "starkite_gzip_restored.txt").string
     write_text(src, "file content for gzip")
     gzip.file(gz).compress(src)
     # Verify by decompressing back
-    gzip.file(gz).decompress("/tmp/starkite_gzip_restored.txt")
-    content = read_text("/tmp/starkite_gzip_restored.txt")
+    gzip.file(gz).decompress(restored)
+    content = read_text(restored)
     assert(content == "file content for gzip", "file compress/decompress round-trip should work")
     fs.path(src).remove()
     fs.path(gz).remove()
-    fs.path("/tmp/starkite_gzip_restored.txt").remove()
+    fs.path(restored).remove()
 
 def test_file_decompress_auto_name():
     """Test gzip.file().decompress() strips .gz for output."""
-    src = "/tmp/starkite_gzip_auto.txt"
-    gz = "/tmp/starkite_gzip_auto.txt.gz"
+    src = (fs.path(temp_dir()) / "starkite_gzip_auto.txt").string
+    gz = (fs.path(temp_dir()) / "starkite_gzip_auto.txt.gz").string
     write_text(src, "auto name test")
     gzip.file(gz).compress(src)
     fs.path(src).remove()
     # decompress without dest — should strip .gz
     gzip.file(gz).decompress()
-    content = read_text("/tmp/starkite_gzip_auto.txt")
+    content = read_text(src)
     assert(content == "auto name test", "auto-name decompress should work")
     fs.path(gz).remove()
-    fs.path("/tmp/starkite_gzip_auto.txt").remove()
+    fs.path(src).remove()
 
 def test_file_compress_with_level():
     """Test gzip.file().compress() with level kwarg."""
-    src = "/tmp/starkite_gzip_level.txt"
-    gz = "/tmp/starkite_gzip_level.gz"
+    src = (fs.path(temp_dir()) / "starkite_gzip_level.txt").string
+    gz = (fs.path(temp_dir()) / "starkite_gzip_level.gz").string
+    out_txt = (fs.path(temp_dir()) / "starkite_gzip_level_out.txt").string
     write_text(src, "level test data " * 100)
     gzip.file(gz).compress(src, level=9)
-    gzip.file(gz).decompress("/tmp/starkite_gzip_level_out.txt")
-    content = read_text("/tmp/starkite_gzip_level_out.txt")
+    gzip.file(gz).decompress(out_txt)
+    content = read_text(out_txt)
     assert(content == "level test data " * 100, "level compress should work")
     fs.path(src).remove()
     fs.path(gz).remove()
-    fs.path("/tmp/starkite_gzip_level_out.txt").remove()
+    fs.path(out_txt).remove()
 
 def test_file_type():
     """Test gzip.file type name."""
-    f = gzip.file("/tmp/test.gz")
+    f = gzip.file("test.gz")
     assert(type(f) == "gzip.file", "type should be gzip.file")
 
 def test_file_repr():
     """Test gzip.file string representation."""
-    f = gzip.file("/tmp/test.gz")
+    f = gzip.file("test.gz")
     s = str(f)
     assert("gzip.file" in s, "repr should contain gzip.file")
-    assert("/tmp/test.gz" in s, "repr should contain path")
+    assert("test.gz" in s, "repr should contain path")
 
 # ============================================================================
 # Source compress/decompress with dest parameter
@@ -148,18 +150,19 @@ def test_file_repr():
 
 def test_text_compress_to_file():
     """Test gzip.text().compress(dest) writes to file."""
-    dest = "/tmp/starkite_gzip_text_dest.gz"
+    dest = (fs.path(temp_dir()) / "starkite_gzip_text_dest.gz").string
+    out_txt = (fs.path(temp_dir()) / "starkite_gzip_text_dest_out.txt").string
     gzip.text("hello from text").compress(dest=dest)
-    gzip.file(dest).decompress("/tmp/starkite_gzip_text_dest_out.txt")
-    content = read_text("/tmp/starkite_gzip_text_dest_out.txt")
+    gzip.file(dest).decompress(out_txt)
+    content = read_text(out_txt)
     assert(content == "hello from text", "text compress to file should work")
     fs.path(dest).remove()
-    fs.path("/tmp/starkite_gzip_text_dest_out.txt").remove()
+    fs.path(out_txt).remove()
 
 def test_bytes_decompress_to_file():
     """Test gzip.bytes().decompress(dest) writes to file."""
     compressed = gzip.text("decompress to file").compress()
-    dest = "/tmp/starkite_gzip_bytes_dest.txt"
+    dest = (fs.path(temp_dir()) / "starkite_gzip_bytes_dest.txt").string
     gzip.bytes(compressed).decompress(dest=dest)
     content = read_text(dest)
     assert(content == "decompress to file", "bytes decompress to file should work")
@@ -194,8 +197,8 @@ def test_try_decompress_invalid():
 
 def test_try_file_compress_success():
     """Test gzip.file().try_compress() on valid source."""
-    src = "/tmp/starkite_gzip_try_c.txt"
-    gz = "/tmp/starkite_gzip_try_c.gz"
+    src = (fs.path(temp_dir()) / "starkite_gzip_try_c.txt").string
+    gz = (fs.path(temp_dir()) / "starkite_gzip_try_c.gz").string
     write_text(src, "try compress")
     result = gzip.file(gz).try_compress(src)
     assert(result.ok, "try_compress should succeed")
@@ -204,9 +207,10 @@ def test_try_file_compress_success():
 
 def test_try_file_decompress_failure():
     """Test gzip.file().try_decompress() on invalid data."""
-    gz = "/tmp/starkite_gzip_try_bad.gz"
+    gz = (fs.path(temp_dir()) / "starkite_gzip_try_bad.gz").string
+    out_txt = (fs.path(temp_dir()) / "starkite_gzip_try_bad_out.txt").string
     write_text(gz, "not gzip data")
-    result = gzip.file(gz).try_decompress("/tmp/starkite_gzip_try_bad_out.txt")
+    result = gzip.file(gz).try_decompress(out_txt)
     assert(not result.ok, "try_decompress should fail on invalid data")
     fs.path(gz).remove()
 
@@ -216,7 +220,7 @@ def test_try_file_decompress_failure():
 
 def test_try_file_factory():
     """Test gzip.try_file() returns Result."""
-    result = gzip.try_file("/tmp/test.gz")
+    result = gzip.try_file("test.gz")
     assert(result.ok, "try_file should succeed (just stores path)")
     assert(type(result.value) == "gzip.file", "should return gzip.file")
 

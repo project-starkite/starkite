@@ -39,6 +39,14 @@ def test_chdir():
     chdir(original)
     assert(cwd() == original, "should return to original directory")
 
+def test_temp_dir():
+    """Test temp_dir returns non-empty temporary directory path."""
+    t = temp_dir()
+    assert(type(t) == "string", "temp_dir should return a string")
+    assert(len(t) > 0, "temp_dir should not be empty")
+    assert(os.temp_dir() == t, "os.temp_dir() should equal temp_dir()")
+    assert(fs.path(t).is_dir(), "temp_dir should be an existing directory")
+
 def test_hostname():
     """Test hostname returns system hostname."""
     result = hostname()

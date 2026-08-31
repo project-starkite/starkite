@@ -15,6 +15,7 @@ The `os` module provides access to environment variables, process information, a
 | `os.setenv(name, value)` | `None` | Set environment variable |
 | `os.cwd()` | `string` | Get current working directory |
 | `os.chdir(path)` | `None` | Change current working directory |
+| `os.temp_dir()` | `string` | Get default temporary directory path (`/tmp` on POSIX, `%TEMP%` on Windows) |
 | `os.hostname()` | `string` | Get system hostname |
 | `os.pid()` | `int` | Get current process ID |
 | `os.ppid()` | `int` | Get parent process ID |
@@ -29,9 +30,23 @@ The `os` module provides access to environment variables, process information, a
 
 ## Global Aliases
 
-The following execution functions are available as top-level globals, equivalent to their `os.` counterparts:
+The following functions are available as top-level globals, equivalent to their `os.` counterparts:
+* `env(name, default=None)`
+* `setenv(name, value)`
+* `cwd()`
+* `chdir(path)`
+* `temp_dir()`
+* `hostname()`
+* `pid()`
+* `ppid()`
+* `exit(code=0)`
 * `exec(cmd, args=[])`
 * `try_exec(cmd, args=[])`
+* `which(name)`
+* `username()`
+* `userid()`
+* `groupid()`
+* `home()`
 
 ```python
 # These are identical

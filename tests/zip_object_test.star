@@ -6,19 +6,20 @@
 
 def test_write_and_read_single():
     """Test writing a single file and reading it back."""
-    src = "/tmp/starkite_zip_src.txt"
-    arc = "/tmp/starkite_zip_test1.zip"
+    src = (fs.path(temp_dir()) / "starkite_zip_src.txt").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_test1.zip").string
     write_text(src, "hello zip")
     zip.file(arc).write(src)
-    content = zip.file(arc).read("starkite_zip_src.txt")
+    entry_name = fs.path(src).name
+    content = zip.file(arc).read(entry_name)
     assert(str(content) == "hello zip", "should read back written content")
     fs.path(src).remove()
     fs.path(arc).remove()
 
 def test_write_with_name_override():
     """Test writing with custom entry name."""
-    src = "/tmp/starkite_zip_src2.txt"
-    arc = "/tmp/starkite_zip_test2.zip"
+    src = (fs.path(temp_dir()) / "starkite_zip_src2.txt").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_test2.zip").string
     write_text(src, "custom name content")
     zip.file(arc).write(src, name="custom.txt")
     content = zip.file(arc).read("custom.txt")
@@ -32,9 +33,9 @@ def test_write_with_name_override():
 
 def test_namelist():
     """Test namelist returns all entry names."""
-    src1 = "/tmp/starkite_zip_nl1.txt"
-    src2 = "/tmp/starkite_zip_nl2.txt"
-    arc = "/tmp/starkite_zip_nl.zip"
+    src1 = (fs.path(temp_dir()) / "starkite_zip_nl1.txt").string
+    src2 = (fs.path(temp_dir()) / "starkite_zip_nl2.txt").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_nl.zip").string
     write_text(src1, "one")
     write_text(src2, "two")
     zip.file(arc).write_all(files=[src1, src2])
@@ -46,9 +47,9 @@ def test_namelist():
 
 def test_namelist_with_match():
     """Test namelist with match filter."""
-    src1 = "/tmp/starkite_zip_nm1.txt"
-    src2 = "/tmp/starkite_zip_nm2.go"
-    arc = "/tmp/starkite_zip_nm.zip"
+    src1 = (fs.path(temp_dir()) / "starkite_zip_nm1.txt").string
+    src2 = (fs.path(temp_dir()) / "starkite_zip_nm2.go").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_nm.zip").string
     write_text(src1, "one")
     write_text(src2, "two")
     zip.file(arc).write_all(files=[src1, src2])
@@ -64,9 +65,9 @@ def test_namelist_with_match():
 
 def test_read_all():
     """Test read_all returns all entries."""
-    src1 = "/tmp/starkite_zip_ra1.txt"
-    src2 = "/tmp/starkite_zip_ra2.txt"
-    arc = "/tmp/starkite_zip_ra.zip"
+    src1 = (fs.path(temp_dir()) / "starkite_zip_ra1.txt").string
+    src2 = (fs.path(temp_dir()) / "starkite_zip_ra2.txt").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_ra.zip").string
     write_text(src1, "alpha")
     write_text(src2, "beta")
     zip.file(arc).write_all(files=[src1, src2])
@@ -78,9 +79,9 @@ def test_read_all():
 
 def test_read_all_with_match():
     """Test read_all with match filter."""
-    src1 = "/tmp/starkite_zip_ram1.txt"
-    src2 = "/tmp/starkite_zip_ram2.go"
-    arc = "/tmp/starkite_zip_ram.zip"
+    src1 = (fs.path(temp_dir()) / "starkite_zip_ram1.txt").string
+    src2 = (fs.path(temp_dir()) / "starkite_zip_ram2.go").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_ram.zip").string
     write_text(src1, "one")
     write_text(src2, "two")
     zip.file(arc).write_all(files=[src1, src2])
@@ -92,16 +93,16 @@ def test_read_all_with_match():
 
 def test_read_all_with_files():
     """Test read_all with files filter."""
-    src1 = "/tmp/starkite_zip_raf1.txt"
-    src2 = "/tmp/starkite_zip_raf2.txt"
-    src3 = "/tmp/starkite_zip_raf3.txt"
-    arc = "/tmp/starkite_zip_raf.zip"
+    src1 = (fs.path(temp_dir()) / "starkite_zip_raf1.txt").string
+    src2 = (fs.path(temp_dir()) / "starkite_zip_raf2.txt").string
+    src3 = (fs.path(temp_dir()) / "starkite_zip_raf3.txt").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_raf.zip").string
     write_text(src1, "one")
     write_text(src2, "two")
     write_text(src3, "three")
     zip.file(arc).write_all(files=[src1, src2, src3])
-    # Read only two specific entries (entry names are full paths from write_all)
-    filtered = zip.file(arc).read_all(files=[src1, src3])
+    names = zip.file(arc).namelist()
+    filtered = zip.file(arc).read_all(files=[names[0], names[2]])
     assert(len(filtered) == 2, "should have 2 selected entries")
     fs.path(src1).remove()
     fs.path(src2).remove()
@@ -114,9 +115,9 @@ def test_read_all_with_files():
 
 def test_write_all_with_files():
     """Test write_all with files list."""
-    src1 = "/tmp/starkite_zip_waf1.txt"
-    src2 = "/tmp/starkite_zip_waf2.txt"
-    arc = "/tmp/starkite_zip_waf.zip"
+    src1 = (fs.path(temp_dir()) / "starkite_zip_waf1.txt").string
+    src2 = (fs.path(temp_dir()) / "starkite_zip_waf2.txt").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_waf.zip").string
     write_text(src1, "file1")
     write_text(src2, "file2")
     zip.file(arc).write_all(files=[src1, src2])
@@ -128,20 +129,22 @@ def test_write_all_with_files():
 
 def test_write_all_with_base_dir():
     """Test write_all with base_dir strips prefix."""
-    src = "/tmp/starkite_zip_bd/sub/file.txt"
-    arc = "/tmp/starkite_zip_bd.zip"
+    base_d = (fs.path(temp_dir()) / "starkite_zip_bd").string
+    sub_d = (fs.path(base_d) / "sub").string
+    src = (fs.path(sub_d) / "file.txt").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_bd.zip").string
     # Create directory structure
-    fs.path("/tmp/starkite_zip_bd/sub").mkdir(parents=True)
+    fs.path(sub_d).mkdir(parents=True)
     write_text(src, "nested content")
-    zip.file(arc).write_all(files=[src], base_dir="/tmp/starkite_zip_bd")
+    zip.file(arc).write_all(files=[src], base_dir=base_d)
     names = zip.file(arc).namelist()
     assert(len(names) == 1, "should have 1 entry")
     entry_name = names[0].replace("\\", "/")
     assert(entry_name == "sub/file.txt", "entry should be relative to base_dir, got: " + names[0])
     fs.path(arc).remove()
     fs.path(src).remove()
-    fs.path("/tmp/starkite_zip_bd/sub").remove()
-    fs.path("/tmp/starkite_zip_bd").remove()
+    fs.path(sub_d).remove()
+    fs.path(base_d).remove()
 
 # ============================================================================
 # try_ variants
@@ -149,11 +152,12 @@ def test_write_all_with_base_dir():
 
 def test_try_read_success():
     """Test try_read on valid archive."""
-    src = "/tmp/starkite_zip_tr.txt"
-    arc = "/tmp/starkite_zip_tr.zip"
+    src = (fs.path(temp_dir()) / "starkite_zip_tr.txt").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_tr.zip").string
     write_text(src, "try data")
     zip.file(arc).write(src)
-    result = zip.file(arc).try_read("starkite_zip_tr.txt")
+    entry_name = fs.path(src).name
+    result = zip.file(arc).try_read(entry_name)
     assert(result.ok, "try_read should succeed")
     assert(str(result.value) == "try data", "should have correct content")
     fs.path(src).remove()
@@ -161,8 +165,8 @@ def test_try_read_success():
 
 def test_try_read_missing_entry():
     """Test try_read on missing entry."""
-    src = "/tmp/starkite_zip_trm.txt"
-    arc = "/tmp/starkite_zip_trm.zip"
+    src = (fs.path(temp_dir()) / "starkite_zip_trm.txt").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_trm.zip").string
     write_text(src, "data")
     zip.file(arc).write(src)
     result = zip.file(arc).try_read("nonexistent.txt")
@@ -178,8 +182,8 @@ def test_try_namelist_missing_archive():
 
 def test_try_write_all_success():
     """Test try_write_all succeeds."""
-    src = "/tmp/starkite_zip_twa.txt"
-    arc = "/tmp/starkite_zip_twa.zip"
+    src = (fs.path(temp_dir()) / "starkite_zip_twa.txt").string
+    arc = (fs.path(temp_dir()) / "starkite_zip_twa.zip").string
     write_text(src, "try write all")
     result = zip.file(arc).try_write_all(files=[src])
     assert(result.ok, "try_write_all should succeed")
@@ -188,7 +192,7 @@ def test_try_write_all_success():
 
 def test_try_file_success():
     """Test zip.try_file() returns Result."""
-    result = zip.try_file("/tmp/test.zip")
+    result = zip.try_file("test.zip")
     assert(result.ok, "try_file should succeed (just stores path)")
     assert(type(result.value) == "zip.archive", "should return archive")
 
@@ -198,19 +202,19 @@ def test_try_file_success():
 
 def test_archive_type():
     """Test archive type name."""
-    a = zip.file("/tmp/test.zip")
+    a = zip.file("test.zip")
     assert(type(a) == "zip.archive", "type should be zip.archive")
 
 def test_archive_repr():
     """Test archive string representation."""
-    a = zip.file("/tmp/test.zip")
+    a = zip.file("test.zip")
     s = str(a)
     assert("zip.file" in s, "repr should contain zip.file")
-    assert("/tmp/test.zip" in s, "repr should contain path")
+    assert("test.zip" in s, "repr should contain path")
 
 def test_archive_truth():
     """Test archive truthiness."""
-    a = zip.file("/tmp/test.zip")
+    a = zip.file("test.zip")
     if a:
         pass
     else:
@@ -227,5 +231,5 @@ def test_read_missing_archive():
 
 def test_write_all_match_and_files_exclusive():
     """Test write_all rejects both match and files."""
-    result = zip.file("/tmp/test.zip").try_write_all(match="*.txt", files=["a.txt"])
+    result = zip.file("test.zip").try_write_all(match="*.txt", files=["a.txt"])
     assert(not result.ok, "should reject match+files together")

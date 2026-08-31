@@ -315,7 +315,7 @@ def test_response_streaming_to_file():
     resp = http.url("http://localhost:%d/pipe" % port).get()
     
     # Create a temp file path
-    tmp = path("/tmp/http_pipe_test.txt")
+    tmp = fs.path(temp_dir()) / "http_pipe_test.txt"
     if tmp.exists():
         tmp.remove()
         

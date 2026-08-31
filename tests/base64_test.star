@@ -144,5 +144,6 @@ def test_try_bytes():
 
 def test_try_file():
     """base64.try_file() wraps file factory."""
-    result = base64.try_file("/tmp/test.txt")
+    p = (fs.path(temp_dir()) / "test.txt").string
+    result = base64.try_file(p)
     assert(result.ok, "try_file should succeed (creates file object)")
