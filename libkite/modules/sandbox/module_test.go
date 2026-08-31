@@ -50,6 +50,9 @@ func TestSandboxModule_LoadAndMetadata(t *testing.T) {
 }
 
 func TestSandboxModule_ListAndDefaultDrivers(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("sandbox execution drivers only available on linux")
+	}
 	m := New()
 	dict, _ := m.Load(&libkite.ModuleConfig{})
 	modVal := dict[string(ModuleName)].(starlark.HasAttrs)
@@ -84,6 +87,9 @@ func TestSandboxModule_ListAndDefaultDrivers(t *testing.T) {
 }
 
 func TestSandboxModule_ConfigAndBoxExec(t *testing.T) {
+	if runtime.GOOS != "linux" {
+		t.Skip("sandbox execution drivers only available on linux")
+	}
 	m := New()
 	dict, _ := m.Load(&libkite.ModuleConfig{})
 	modVal := dict[string(ModuleName)].(starlark.HasAttrs)

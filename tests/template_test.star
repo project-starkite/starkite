@@ -128,9 +128,11 @@ def test_text_reusable():
 # Object API: template.file()
 # ============================================================================
 
+temp_dir = env("TEMP", env("TMP", "/tmp"))
+
 def test_file_render():
     """Test template.file() reads and renders a template from disk."""
-    path = "/tmp/starkite_tmpl_test.txt"
+    path = (fs.path(temp_dir) / "starkite_tmpl_test.txt").string
     write_text(path, "Hello, {{.Name}}!")
     t = template.file(path)
     result = t.render({"Name": "World"})
@@ -142,7 +144,7 @@ def test_file_missing():
     """Test template.file() fails on missing file."""
     result = template.try_file("/nonexistent/tmpl.txt")
     assert(not result.ok, "should fail on missing file")
-    assert("no such file" in result.error, "error should mention missing file")
+    assert("no such file" in result.error or "cannot find" in result.error, "error should mention missing file")
 
 # ============================================================================
 # Object API: template.bytes()
@@ -180,7 +182,7 @@ def test_text_custom_delims_no_conflict():
 
 def test_file_custom_delims():
     """Test template.file() with custom delimiters."""
-    path = "/tmp/starkite_tmpl_delims.txt"
+    path = (fs.path(temp_dir) / "starkite_tmpl_delims.txt").string
     write_text(path, "Hello, <% .Name %>!")
     t = template.file(path, delims=("<%", "%>"))
     result = t.render({"Name": "World"})
@@ -250,7 +252,7 @@ def test_try_render_error():
 
 def test_try_file_success():
     """Test template.try_file() on existing file."""
-    path = "/tmp/starkite_tmpl_try.txt"
+    path = (fs.path(temp_dir) / "starkite_tmpl_try.txt").string
     write_text(path, "{{.X}}")
     result = template.try_file(path)
     assert(result.ok, "try_file should succeed")

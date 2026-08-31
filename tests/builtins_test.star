@@ -217,12 +217,14 @@ def test_uuid_format():
 
 def test_local_exec():
     """Test local command execution."""
-    output = shell("echo hello")
+    cmd = "cmd.exe /c echo hello" if runtime.platform() == "windows" else "echo hello"
+    output = exec(cmd)
     assert(output.strip() == "hello", "should output 'hello'")
 
 def test_local_exec_error():
     """Test local command execution with error."""
-    result = try_shell("exit 1")
+    cmd = "cmd.exe /c exit 1" if runtime.platform() == "windows" else "false"
+    result = try_exec(cmd)
     assert(not result.ok, "ExecResult.ok should be False")
     assert(result.code != 0, "exit code should be non-zero")
 

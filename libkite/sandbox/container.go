@@ -261,8 +261,7 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 	}
 
 	if err != nil {
-		var exitErr *exec.ExitError
-		if errors.As(err, &exitErr) {
+		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			result.ExitCode = exitErr.ExitCode()
 			// Check for standard OOM exit codes (137 = 128 + SIGKILL)
 			if result.ExitCode == 137 && strings.Contains(strings.ToLower(result.Stderr), "oom") {

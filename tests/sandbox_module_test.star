@@ -2,6 +2,8 @@
 
 def test_list_and_default_drivers():
     """Verify list_drivers and default_driver work as expected"""
+    if runtime.platform() == "windows":
+        skip("sandbox not supported on windows")
     drivers = sandbox.list_drivers()
     assert(len(drivers) > 0, "expected at least one registered driver")
     
@@ -11,6 +13,8 @@ def test_list_and_default_drivers():
 
 def test_sandbox_config():
     """Verify sandbox.config creates a valid Sandbox object with attributes"""
+    if runtime.platform() == "windows":
+        skip("sandbox not supported on windows")
     box = sandbox.config(
         driver="default",
         memory="256MB",
@@ -23,6 +27,8 @@ def test_sandbox_config():
 
 def test_box_exec():
     """Verify box.exec runs a basic command and captures output"""
+    if runtime.platform() == "windows":
+        skip("sandbox not supported on windows")
     box = sandbox.config(driver="default", network="none")
     res = box.exec("echo", ["hello-starlark-sandbox"])
     assert(res.ok == True, "execution should be ok")

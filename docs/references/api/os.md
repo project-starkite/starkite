@@ -19,10 +19,8 @@ The `os` module provides access to environment variables, process information, a
 | `os.pid()` | `int` | Get current process ID |
 | `os.ppid()` | `int` | Get parent process ID |
 | `os.exit(code=0)` | `None` | Exit the process with the given code |
-| `os.exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `string` | Execute a binary directly and shell-free (returns stdout) |
-| `os.try_exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `ExecResult` | Execute a binary directly and shell-free, capturing results |
-| `os.shell(cmd, env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `string` | Execute a command string in a shell (returns stdout) |
-| `os.try_shell(cmd, env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `ExecResult` | Execute a command string in a shell, capturing results |
+| `os.exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `string` | Execute a binary directly (returns stdout) |
+| `os.try_exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `ExecResult` | Execute a binary directly, capturing results |
 | `os.which(name)` | `string`/`None` | Find executable on PATH |
 | `os.username()` | `string` | Get current username |
 | `os.userid()` | `string` | Get current user ID |
@@ -34,8 +32,6 @@ The `os` module provides access to environment variables, process information, a
 The following execution functions are available as top-level globals, equivalent to their `os.` counterparts:
 * `exec(cmd, args=[])`
 * `try_exec(cmd, args=[])`
-* `shell(cmd)`
-* `try_shell(cmd)`
 
 ```python
 # These are identical
@@ -45,7 +41,7 @@ result = os.exec("uname", ["-a"])
 
 ## ExecResult
 
-The `ExecResult` object returned by `os.try_exec()`, `os.try_shell()`, `try_exec()`, and `try_shell()` has these attributes:
+The `ExecResult` object returned by `os.try_exec()` and `try_exec()` has these attributes:
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
@@ -90,8 +86,8 @@ if result.ok:
 else:
     print("Failed:", result.error)
 
-# Shell execution (pipes and redirects)
-result = try_shell("df -h / | tail -1")
+# Shell features (pipes and redirects via explicit shell invocation)
+result = try_exec("sh", ["-c", "df -h / | tail -1"])
 if result.ok:
     print(result.stdout)
 

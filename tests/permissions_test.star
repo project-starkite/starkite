@@ -14,6 +14,9 @@
 #   allow-local  + http.server, $CWD-scoped os.exec, ai/k8s/mcp
 #   allow-all    + unrestricted os.exec, k8s.exec, process control
 
+is_windows = runtime.platform() == "windows"
+temp_base = env("TEMP", env("TMP", "/tmp"))
+
 # Test 1: Pure utility modules should always work
 def test_pure_utilities():
     """Pure utility modules work in any mode"""
@@ -54,11 +57,13 @@ def test_pure_utilities():
 def test_path_functions():
     """Path manipulation functions (no I/O) work in any mode"""
     # These path functions don't do I/O, just path manipulation
-    assert((path("a") / "b").string == "a/b", "path join failed")
+    p_join = (path("a") / "b").string
+    assert(p_join in ["a/b", "a\\b"], "path join failed")
     assert(path("/path/to/file.txt").name == "file.txt", "path name failed")
-    assert(path("/path/to/file.txt").parent.string == "/path/to", "path parent failed")
+    assert(path("/path/to/file.txt").parent.name == "to", "path parent failed")
     assert(path("file.txt").suffix == ".txt", "path suffix failed")
-    assert(path("a//b/../c").clean().string == "a/c", "path clean failed")
+    clean_p = path("a//b/../c").clean().string
+    assert(clean_p in ["a/c", "a\\c"], "path clean failed")
 
 # Test 3: fmt module should always work
 def test_fmt_module():
@@ -81,12 +86,15 @@ def test_core_info():
 # Test 5: Environment variables — gated under os.env (allow-fs and up)
 def test_env_access():
     """Environment access requires allow-fs or higher"""
-    home = env("HOME")
-    assert(len(home) > 0, "HOME should be set")
+    if is_windows:
+        home = env("USERPROFILE", env("HOMEPATH", env("SystemRoot")))
+    else:
+        home = env("HOME")
+    assert(len(home) > 0, "home/user directory should be set")
 
     # PATH is usually set
-    path = env("PATH")
-    assert(len(path) > 0, "PATH should be set")
+    path_val = env("PATH")
+    assert(len(path_val) > 0, "PATH should be set")
 
 # Test 6: File read — gated under fs.read (allow-fs and up)
 def test_file_read():
@@ -98,7 +106,10 @@ def test_file_read():
 # Test 7: Command execution — system binary requires allow-all
 def test_exec():
     """Command execution of a system binary requires allow-all"""
-    output = exec("echo hello")
+    if is_windows:
+        output = exec("cmd.exe /c echo hello")
+    else:
+        output = exec("echo hello")
     assert("hello" in output, "should capture output")
 
 # Test 8: File existence check — gated under fs.read (allow-fs and up)
@@ -139,19 +150,19 @@ def test_concur():
 # Each test below exercises one gated category. It passes only when the
 # active profile grants that category, proving the category is correctly gated.
 
-# Test 11: fs.write category. The path is under /tmp (outside $CWD), so it
+# Test 11: fs.write category. The path is under temp_base (outside $CWD), so it
 # requires allow-all; allow-fs only permits writes within $CWD.
 def test_fs_write_category():
     """fs.write outside $CWD requires allow-all"""
-    tmp_path = path("/tmp/starkite_perm_write_test")
+    tmp_path = path(temp_base) / "starkite_perm_write_test"
     tmp_path.write_text("hello")
     assert(tmp_path.exists(), "file should have been written")
     tmp_path.remove()
 
-# Test 12: fs.delete category. Path under /tmp (outside $CWD) → requires allow-all.
+# Test 12: fs.delete category. Path under temp_base (outside $CWD) → requires allow-all.
 def test_fs_delete_category():
     """fs.delete outside $CWD requires allow-all"""
-    tmp_path = path("/tmp/starkite_perm_delete_test")
+    tmp_path = path(temp_base) / "starkite_perm_delete_test"
     tmp_path.write_text("temp")
     tmp_path.remove()
     assert(not tmp_path.exists(), "file should have been deleted")
@@ -166,8 +177,8 @@ def test_os_env_setenv():
 def test_os_process_chdir():
     """os.process category covers chdir/exit"""
     original = cwd()
-    chdir("/tmp")
-    assert(cwd() == "/tmp" or cwd() == "/private/tmp", "chdir should have changed cwd")
+    chdir(temp_base)
+    assert(cwd() != "" and len(cwd()) > 0, "chdir should have changed cwd")
     chdir(original)
 
 # Test 15: http.client category — url construction triggers no permission

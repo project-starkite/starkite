@@ -6,27 +6,21 @@ weight: 20
 
 # Launching processes
 
-Starkite separates direct, shell-free binary execution from shell-wrapped execution. This approach enforces strong security boundaries while maintaining flexibility for developers.
+Starkite provides direct, structured process execution via the `os` module. All command execution is governed uniformly under standard process execution permissions.
 
-The `os` module provides four functions to execute commands:
+The `os` module provides two primary execution functions:
 
 *   **`os.exec(cmd, args=[])`**
-    Executes a binary directly and shell-free. If the command returns a non-zero exit code, it halts execution and raises a Starlark-level error.
+    Executes a binary directly. If the command returns a non-zero exit code, it halts execution and raises a Starlark-level error.
 
 *   **`os.try_exec(cmd, args=[])`**
-    Executes a binary directly and shell-free, returning an `ExecResult` for programmatic error handling.
-
-*   **`os.shell(cmd)`**
-    Runs a command string inside a shell wrapper (default: `/bin/sh -c`), allowing pipes, redirections, and environment expansion. It halts execution and raises a Starlark-level error on non-zero exit codes.
-
-*   **`os.try_shell(cmd)`**
-    Runs a command string inside a shell wrapper, returning an `ExecResult` for programmatic error handling.
+    Executes a binary directly, returning an `ExecResult` for programmatic error handling.
 
 ---
 
 ## Direct Process Execution (`os.exec` & `os.try_exec`)
 
-By default, `os.exec()` and `os.try_exec()` execute target binaries directly and shell-free. This direct execution prevents common shell injection vulnerabilities.
+By default, `os.exec()` and `os.try_exec()` execute target binaries directly. This direct execution prevents shell injection vulnerabilities and keeps execution permissions uniform.
 
 To pass arguments to the binary, specify them as a list/tuple of strings in the second argument:
 
@@ -46,6 +40,17 @@ def check_os_single_string():
     print("System OS:", os_info.strip())
 ```
 
+### Running Shell Commands Explicitly
+
+When shell features like pipes (`|`), redirections (`>`, `<`), or variable expansions are required, execute the system shell explicitly using `os.exec`:
+
+```python
+def check_disk_space():
+    # Explicit shell execution via os.exec
+    disk_info = os.exec("sh", ["-c", "df -h / | tail -1"])
+    print("Disk Info:", disk_info.strip())
+```
+
 ### Permissions
 
 Direct process execution requires the **`allow-all`** permission profile (or a custom profile explicitly granting `os.exec` permissions):
@@ -56,36 +61,16 @@ kite run ./script.star --permissions allow-all
 
 ---
 
-## Shell-Wrapped Execution (`os.shell` & `os.try_shell`)
+## Programmatic Error Handling (`os.try_exec`)
 
-For tasks requiring shell features such as pipes (`|`), redirections (`>`, `<`), environment variable expansion (e.g., `$VAR`), command substitution, or filename globbing, use `os.shell()` or `os.try_shell()`. These run the command string inside a shell wrapper (default: `/bin/sh -c` on Unix/Linux systems):
-
-```python
-def check_disk_space():
-    # Shell wrapper allows pipes and redirections
-    disk_info = os.shell("df -h / | tail -1")
-    print("Disk Info:", disk_info.strip())
-```
-
-### Permissions
-
-Because shell execution allows powerful shell features (like pipes and redirection) that present higher security risks, it is blocked under the default `allow-all` profile. Shell-wrapped execution requires the **`allow-all-shell`** permission profile:
-
-```bash
-kite run ./script.star --permissions allow-all-shell
-```
-
----
-
-## Programmatic Error Handling (`os.try_exec` & `os.try_shell`)
-
-Use `os.try_exec()` or `os.try_shell()` when you need to handle exit status codes programmatically. They never raise a Starlark error on command failure; instead, they return an `ExecResult` object.
+Use `os.try_exec()` when you need to handle exit status codes programmatically. It never raises a Starlark error on command failure; instead, it returns an `ExecResult` object.
 
 ```python
 def check_disk_space_safe():
     # Safe to handle failure programmatically
-    disk = os.try_shell(
-        "df -h / | tail -1",
+    disk = os.try_exec(
+        "sh",
+        ["-c", "df -h / | tail -1"],
         timeout = "5s",
         cwd = "/tmp",
         env = {"LANG": "C"},
@@ -106,7 +91,6 @@ All process execution functions accept the following optional keyword arguments:
 
 | Option | Type | Default | Purpose |
 |--------|------|---------|---------|
-| `shell` | `string` | `"/bin/sh"` | Shell binary used to execute the command string (applicable to `os.shell` and `os.try_shell` only). |
 | `cwd` | `string` | `""` | Working directory in which to run the sub-process. |
 | `env` | `dict` | `None` | Environment variable overrides (mapping string to string) for the command execution context. |
 | `timeout` | `string` | `"60s"` | Time limit for execution (e.g., `"10s"`, `"5m"`). The process is killed if the timeout is exceeded. |
@@ -119,7 +103,7 @@ All process execution functions accept the following optional keyword arguments:
 
 ## Handling Results
 
-`os.try_exec()` and `os.try_shell()` return an `ExecResult` struct containing the following attributes:
+`os.try_exec()` returns an `ExecResult` struct containing the following attributes:
 
 *   **`.ok`** (`bool`): `True` if the command exited with code `0` and no internal errors occurred.
 *   **`.code`** (`int`): The integer process exit code returned by the command.

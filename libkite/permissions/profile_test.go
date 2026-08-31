@@ -132,7 +132,7 @@ func TestResolve_Base(t *testing.T) {
 			Deny:  []string{"fs.delete"},
 		},
 		"except": {
-			Base: ProfileAllowAllShell,
+			Base: ProfileAllowAll,
 			Deny: []string{"os.exec"},
 		},
 	}

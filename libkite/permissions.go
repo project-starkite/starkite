@@ -426,17 +426,8 @@ func GetPermissions(thread *starlark.Thread) *PermissionChecker {
 	return checker
 }
 
-// AllowAllPermissions returns a config that grants every gated operation except shell execution.
+// AllowAllPermissions returns a config that grants every gated operation.
 func AllowAllPermissions() *PermissionConfig {
-	return &PermissionConfig{
-		Allow:   []string{"*.*"},
-		Deny:    []string{"os.shell"},
-		Default: DefaultAllow,
-	}
-}
-
-// AllowAllShellPermissions returns a config that grants every gated operation, including shell.
-func AllowAllShellPermissions() *PermissionConfig {
 	return &PermissionConfig{
 		Allow:   []string{"*.*"},
 		Default: DefaultAllow,
@@ -516,7 +507,6 @@ func suggestProfile(module, category, function, resource string) string {
 		{"allow-net", AllowNetPermissions()},
 		{"allow-local", AllowLocalPermissions()},
 		{"allow-all", AllowAllPermissions()},
-		{"allow-all-shell", AllowAllShellPermissions()},
 	}
 	for _, p := range ladder {
 		c, err := NewPermissionChecker(p.cfg)
@@ -524,7 +514,7 @@ func suggestProfile(module, category, function, resource string) string {
 			return p.name
 		}
 	}
-	return "allow-all-shell"
+	return "allow-all"
 }
 
 // AllowPermissions creates a permissive config with specific denials.

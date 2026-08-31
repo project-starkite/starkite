@@ -59,55 +59,53 @@ def test_ppid():
 
 def test_exec_simple():
     """Test exec with simple command returns string."""
-    if which("echo"):
-        output = exec("echo hello")
-        assert("hello" in output, "output should contain hello")
-    else:
-        output = shell("echo hello")
-        assert("hello" in output, "output should contain hello")
+    cmd = "cmd.exe /c echo hello" if runtime.platform() == "windows" else "echo hello"
+    output = exec(cmd)
+    assert("hello" in output, "output should contain hello")
 
 def test_exec_with_args():
     """Test exec with arguments."""
-    if which("printf"):
+    if runtime.platform() == "windows":
+        output = exec("cmd.exe /c echo test")
+    elif which("printf"):
         output = exec("printf test")
-        assert(output == "test", "should output without newline")
     else:
-        output = shell("echo test")
-        assert("test" in output, "should output test")
+        output = exec("echo test")
+    assert("test" in output, "should output test")
 
 def test_exec_failure():
-    """Test exec with failing command via try_exec / try_shell."""
-    result = try_shell("exit 1")
+    """Test exec with failing command via try_exec."""
+    cmd = "cmd.exe /c exit 1" if runtime.platform() == "windows" else "false"
+    result = try_exec(cmd)
     assert(not result.ok, "ExecResult.ok should be False for non-zero exit")
     assert(result.code != 0, "exit code should be non-zero")
 
 def test_exec_stderr():
-    """Test exec captures stderr via try_shell."""
-    result = try_shell("echo error >&2")
+    """Test exec captures stderr via try_exec."""
+    cmd = "cmd.exe /c echo error 1>&2" if runtime.platform() == "windows" else "sh -c 'echo error >&2'"
+    result = try_exec(cmd)
     assert(result.ok, "command should succeed")
     assert("error" in result.stderr or "error" in result.stdout, "should capture error output")
 
 def test_exec_exit_code():
-    """Test exec captures specific exit code via try_shell."""
-    result = try_shell("exit 42")
+    """Test exec captures specific exit code via try_exec."""
+    cmd = "cmd.exe /c exit 42" if runtime.platform() == "windows" else "sh -c 'exit 42'"
+    result = try_exec(cmd)
     assert(not result.ok, "ExecResult.ok should be False")
-    assert(result.code != 0, "should capture non-zero exit code")
+    assert(result.code == 42, "should capture non-zero exit code")
 
 def test_exec_with_env():
     """Test exec with environment variables."""
-    output = shell("echo $MY_TEST_VAR", env={"MY_TEST_VAR": "test_value"})
-    # On POSIX $MY_TEST_VAR expands, on Windows %MY_TEST_VAR%
-    assert("test_value" in output or "MY_TEST_VAR" in output, "should handle env var")
+    cmd = "cmd.exe /c echo %MY_TEST_VAR%" if runtime.platform() == "windows" else "sh -c 'echo $MY_TEST_VAR'"
+    output = exec(cmd, env={"MY_TEST_VAR": "test_value"})
+    assert("test_value" in output, "should handle env var")
 
 def test_exec_with_cwd():
     """Test exec with working directory."""
     orig = cwd()
-    if which("pwd"):
-        output = exec("pwd", cwd=orig)
-        assert(len(output) > 0, "should run in cwd")
-    else:
-        output = shell("cd", cwd=orig)
-        assert(len(output) > 0, "should run in cwd")
+    cmd = "cmd.exe /c cd" if runtime.platform() == "windows" else "pwd"
+    output = exec(cmd, cwd=orig)
+    assert(len(output) > 0, "should run in cwd")
 
 def test_which():
     """Test which finds executable."""

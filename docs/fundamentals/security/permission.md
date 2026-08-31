@@ -20,7 +20,7 @@ kite ./script.star            # Runs under the deny-all profile
 
 ## Built-in permission profiles
 
-Starkite includes six built-in profiles, selectable via the `--permissions` flag or its boolean aliases:
+Starkite includes five built-in profiles forming a capability ladder, selectable via the `--permissions` flag or its boolean aliases:
 
 | Profile | Flag Alias | Key Grants |
 |---|---|---|
@@ -28,8 +28,7 @@ Starkite includes six built-in profiles, selectable via the `--permissions` flag
 | `allow-fs` | `--allow-fs` | File reads, file writes within `$CWD`, environment variables, SQLite |
 | `allow-net` | `--allow-net` | HTTP clients, SSH connections, remote SQL databases |
 | `allow-local` | `--allow-local` | Local command execution (within `$CWD`), HTTP servers, Kubernetes, MCP, AI |
-| `allow-all` | `--allow-all` | Unrestricted direct execution (exec anywhere, system process controls), but blocks shell-wrapped commands (`os.shell` and `os.try_shell` are blocked) |
-| `allow-all-shell` | `--allow-all-shell` | Unrestricted execution including shell-wrapped commands (`os.shell` and `os.try_shell` are allowed) |
+| `allow-all` | `--allow-all` | Unrestricted execution anywhere on the host, system process controls, full capabilities |
 
 Example:
 
@@ -161,7 +160,7 @@ The permission engine only checks modules that access host resources. Pure-compu
 
 ## Identity Switching (POSIX)
 
-Starkite supports executing command-line processes under specified user or group credentials in POSIX environments by passing `userid` and `groupid` to the process execution functions (`os.exec()`, `os.try_exec()`, `os.shell()`, `os.try_shell()`).
+Starkite supports executing command-line processes under specified user or group credentials in POSIX environments by passing `userid` and `groupid` to process execution functions (`os.exec()`, `os.try_exec()`).
 
 ### Credential Configuration
 
@@ -176,20 +175,19 @@ On Windows platforms, credential switching is unsupported; attempting to pass `u
 
 ### Security Authorization
 
-Because switching process credentials is a highly sensitive operation, the Starkite interpreter validates identity-switching requests against a dedicated permission rule. The script must be granted the `switch_identity` capability for the target binary:
+Because switching process credentials is a sensitive operation, the Starkite interpreter validates identity-switching requests against a dedicated permission rule. The script must be granted the `switch_identity` capability for the target binary:
 
 ```go
 libkite.Check(thread, "os", permCategory, "switch_identity", execTarget)
 ```
 
-By default, the **`allow-all`** profile authorizes identity switching for direct execution (`os.exec`/`os.try_exec`), and the **`allow-all-shell`** profile authorizes it for both direct and shell execution (`os.shell`/`os.try_shell`). In custom profiles, you must explicitly grant this capability:
+By default, the **`allow-all`** profile authorizes identity switching for execution (`os.exec`/`os.try_exec`). In custom profiles, you can explicitly grant this capability:
 
 ```yaml
 permissions:
   restricted-deploy:
     allow:
-      - os.exec(switch_identity:/usr/bin/git) # Allow direct switching for git
-      - os.shell(switch_identity:/usr/bin/git) # Allow shell switching for git
+      - os.exec(switch_identity:/usr/bin/git) # Allow identity switching for git
 ```
 
 ## Loaded modules
