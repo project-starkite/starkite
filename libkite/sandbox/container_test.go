@@ -2,6 +2,7 @@ package sandbox
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -138,10 +139,16 @@ func TestContainerDriver_LiveExec(t *testing.T) {
 
 			res, err := d.Exec(context.Background(), spec)
 			if err != nil {
+				if strings.Contains(err.Error(), "no matching manifest for windows") || strings.Contains(res.Stderr, "no matching manifest for windows") {
+					t.Skipf("container engine %s cannot run Linux images on this host: %v", engineName, err)
+				}
 				t.Fatalf("Live %s container execution failed: %v, stderr: %s", engineName, err, res.Stderr)
 			}
 
 			if res.ExitCode != 0 {
+				if strings.Contains(res.Stderr, "no matching manifest for windows") || (runtime.GOOS == "windows" && res.ExitCode == 125) {
+					t.Skipf("container engine %s cannot run Linux images on this host: %s", engineName, res.Stderr)
+				}
 				t.Errorf("ExitCode = %d, want 0; stderr: %s", res.ExitCode, res.Stderr)
 			}
 

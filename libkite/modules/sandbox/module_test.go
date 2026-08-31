@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"runtime"
 	"strings"
 	"testing"
 
@@ -136,6 +137,9 @@ func TestSandboxModule_ConfigAndBoxExec(t *testing.T) {
 	}
 
 	if !res.isOK() {
+		if res.exitCode == 125 && (strings.Contains(res.errMsg, "no matching manifest for windows") || runtime.GOOS == "windows") {
+			t.Skipf("sandbox execution skipped: host container driver cannot run Linux images on Windows: %s", res.errMsg)
+		}
 		t.Errorf("box.exec() failed: exit_code=%d, error=%s", res.exitCode, res.errMsg)
 	}
 
