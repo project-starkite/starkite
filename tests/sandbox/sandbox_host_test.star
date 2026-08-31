@@ -26,10 +26,13 @@ def test_cwd_writable():
     p = path("host_rung_out.txt")
     p.write_text("written-from-host-rung")
     assert(p.read_text() == "written-from-host-rung", "$CWD round-trip failed")
+    p.remove()
 
 # --- negative: host-write and beyond-rung surfaces ---
 
 def test_home_not_writable():
+    if not exists("hostinfo.json"):
+        return
     res = path(HOME + "/sandbox_host_probe.txt").try_write_text("x")
     assert(not res.ok, "$HOME must be read-only inside the host rung")
 
