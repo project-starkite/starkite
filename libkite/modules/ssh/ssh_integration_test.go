@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"go.starlark.net/starlark"
+
+	"github.com/project-starkite/starkite/libkite/fleet"
 )
 
 func testClient(t *testing.T, ts *TestServer, opts ...func(*SSHClient)) *SSHClient {
@@ -357,4 +359,68 @@ func mustAttrInt(t *testing.T, val starlark.Value, name string) int {
 		t.Fatalf("Attr(%q) is not an int: %v", name, v)
 	}
 	return i
+}
+
+func TestSSHConfigWithFleet(t *testing.T) {
+	mod := New()
+	fl := fleet.New([]fleet.Resource{
+		{ID: "node-1", Name: "node-1", Address: "10.0.1.10", Kind: "host"},
+		{ID: "node-2", Name: "node-2", Address: "10.0.1.11", Kind: "host"},
+	})
+
+	thread := &starlark.Thread{Name: "test-ssh-fleet"}
+	val, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
+		{starlark.String("fleet"), fl},
+		{starlark.String("user"), starlark.String("deploy")},
+	})
+	if err != nil {
+		t.Fatalf("ssh.config with fleet failed: %v", err)
+	}
+
+	client := val.(*SSHClient)
+	if len(client.hosts) != 2 || client.hosts[0] != "10.0.1.10" || client.hosts[1] != "10.0.1.11" {
+		t.Fatalf("unexpected client hosts: %v", client.hosts)
+	}
+	if client.fleet == nil || client.fleet.Resources()[0].Name != "node-1" {
+		t.Fatalf("unexpected client fleet: %v", client.fleet)
+	}
+
+	// Test fleet attribute on client
+	fleetAttr, err := client.Attr("fleet")
+	if err != nil || fleetAttr == starlark.None {
+		t.Fatalf("expected fleet attribute on client, got %v (err: %v)", fleetAttr, err)
+	}
+}
+
+func TestSSHConfigWithHostsShortcut(t *testing.T) {
+	mod := New()
+	thread := &starlark.Thread{Name: "test-ssh-hosts"}
+
+	// 1. hosts as list
+	val1, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.NewList([]starlark.Value{starlark.String("192.168.1.5")})},
+		{starlark.String("user"), starlark.String("root")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c1 := val1.(*SSHClient)
+	if len(c1.hosts) != 1 || c1.hosts[0] != "192.168.1.5" {
+		t.Fatalf("unexpected hosts list result: %v", c1.hosts)
+	}
+	if c1.fleet == nil || len(c1.fleet.Resources()) != 1 {
+		t.Fatalf("expected synthesized fleet from hosts list, got %v", c1.fleet)
+	}
+
+	// 2. hosts as single string shortcut
+	val2, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("192.168.1.6")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c2 := val2.(*SSHClient)
+	if len(c2.hosts) != 1 || c2.hosts[0] != "192.168.1.6" {
+		t.Fatalf("unexpected single host result: %v", c2.hosts)
+	}
 }

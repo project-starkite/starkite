@@ -12,6 +12,7 @@ import (
 	"go.starlark.net/starlark"
 
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/project-starkite/starkite/libkite/fleet"
 )
 
 const ModuleName libkite.ModuleName = "ssh"
@@ -71,17 +72,18 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		keepAliveMax:      3,
 	}
 
-	// Extract hosts list and env dict manually (startype can't handle these)
-	var hostList *starlark.List
+	// Extract fleet, hosts shortcut, and env dict manually
+	var rawFleet starlark.Value
+	var rawHosts starlark.Value
 	var defaultEnv *starlark.Dict
 	filteredKwargs := make([]starlark.Tuple, 0, len(kwargs))
 	for _, kv := range kwargs {
 		key := string(kv[0].(starlark.String))
 		switch key {
+		case "fleet":
+			rawFleet = kv[1]
 		case "hosts":
-			if l, ok := kv[1].(*starlark.List); ok {
-				hostList = l
-			}
+			rawHosts = kv[1]
 		case "env":
 			if d, ok := kv[1].(*starlark.Dict); ok {
 				defaultEnv = d
@@ -115,13 +117,63 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		return nil, err
 	}
 
-	// Apply hosts list
-	if hostList != nil {
-		for i := 0; i < hostList.Len(); i++ {
-			if h, ok := starlark.AsString(hostList.Index(i)); ok {
-				client.hosts = append(client.hosts, h)
+	// Apply fleet if provided
+	if rawFleet != nil && rawFleet != starlark.None {
+		if fl, ok := rawFleet.(*fleet.Fleet); ok {
+			client.fleet = fl
+			for _, r := range fl.Resources() {
+				if r.Address != "" {
+					client.hosts = append(client.hosts, r.Address)
+				}
+			}
+		} else {
+			fl, err := fleet.FromSource(thread, rawFleet)
+			if err != nil {
+				return nil, fmt.Errorf("ssh.config: invalid fleet argument: %w", err)
+			}
+			client.fleet = fl
+			for _, r := range fl.Resources() {
+				if r.Address != "" {
+					client.hosts = append(client.hosts, r.Address)
+				}
 			}
 		}
+	}
+
+	// Apply hosts shortcut if provided
+	if rawHosts != nil && rawHosts != starlark.None {
+		switch h := rawHosts.(type) {
+		case *starlark.List:
+			for i := 0; i < h.Len(); i++ {
+				if s, ok := starlark.AsString(h.Index(i)); ok {
+					client.hosts = append(client.hosts, s)
+				}
+			}
+		case starlark.Tuple:
+			for _, elem := range h {
+				if s, ok := starlark.AsString(elem); ok {
+					client.hosts = append(client.hosts, s)
+				}
+			}
+		case starlark.String:
+			client.hosts = append(client.hosts, string(h))
+		}
+	}
+
+	// Synthesize fleet from hosts if only hosts shortcut was provided
+	if client.fleet == nil && len(client.hosts) > 0 {
+		var resources []fleet.Resource
+		for _, h := range client.hosts {
+			resources = append(resources, fleet.Resource{
+				ID:      h,
+				Name:    h,
+				Kind:    "host",
+				Address: h,
+				Labels:  make(map[string]string),
+				Data:    make(map[string]any),
+			})
+		}
+		client.fleet = fleet.New(resources)
 	}
 
 	// Apply simple parameters
@@ -200,6 +252,7 @@ type SSHClient struct {
 	thread            *starlark.Thread
 	dryRun            bool
 	debug             bool
+	fleet             *fleet.Fleet
 	hosts             []string
 	user              string
 	keyFile           string
@@ -252,11 +305,16 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 			elems[i] = starlark.String(h)
 		}
 		return starlark.NewList(elems), nil
+	case "fleet":
+		if c.fleet != nil {
+			return c.fleet, nil
+		}
+		return starlark.None, nil
 	default:
 		return nil, nil
 	}
 }
 
 func (c *SSHClient) AttrNames() []string {
-	return []string{"download", "exec", "hosts", "try_download", "try_exec", "try_upload", "upload"}
+	return []string{"download", "exec", "fleet", "hosts", "try_download", "try_exec", "try_upload", "upload"}
 }
