@@ -5,12 +5,82 @@ import (
 	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/crypto/ssh/knownhosts"
+	"golang.org/x/term"
 )
+
+// expandPath expands leading ~ or ~/ or ~\ to the user's home directory.
+func expandPath(path string) (string, error) {
+	if path == "" {
+		return "", nil
+	}
+	if strings.HasPrefix(path, "~") {
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("cannot resolve home directory for path %q: %w", path, err)
+		}
+		if path == "~" {
+			return home, nil
+		}
+		if strings.HasPrefix(path, "~/") || strings.HasPrefix(path, `~\`) {
+			return filepath.Join(home, path[2:]), nil
+		}
+	}
+	return path, nil
+}
+
+// parsePrivateKeyWithPrompt parses a private key from raw bytes.
+// If the key is passphrase-protected and no passphrase was supplied:
+// - if useAgent=true, returns (nil, "", nil) delegating authentication to ssh-agent.
+// - if askPassphrase=true and stdin is a TTY, prompts the operator in the terminal.
+// - if askPassphrase=true and stdin is NOT a TTY, returns an error.
+// - if askPassphrase=false, returns an actionable error.
+func parsePrivateKeyWithPrompt(keyPath string, keyBytes []byte, passphrase string, askPassphrase bool, useAgent bool) (ssh.Signer, string, error) {
+	if passphrase != "" {
+		signer, err := ssh.ParsePrivateKeyWithPassphrase(keyBytes, []byte(passphrase))
+		if err != nil {
+			return nil, passphrase, fmt.Errorf("failed to parse private key %q with passphrase: %w", keyPath, err)
+		}
+		return signer, passphrase, nil
+	}
+
+	signer, err := ssh.ParsePrivateKey(keyBytes)
+	if err == nil {
+		return signer, "", nil
+	}
+
+	if _, isMissing := err.(*ssh.PassphraseMissingError); isMissing {
+		if useAgent {
+			return nil, "", nil
+		}
+		if askPassphrase {
+			stdinFd := int(os.Stdin.Fd())
+			if term.IsTerminal(stdinFd) {
+				fmt.Fprintf(os.Stderr, "Enter passphrase for key %q: ", keyPath)
+				passBytes, readErr := term.ReadPassword(stdinFd)
+				fmt.Fprintln(os.Stderr)
+				if readErr != nil {
+					return nil, "", fmt.Errorf("failed to read key passphrase: %w", readErr)
+				}
+				enteredPass := string(passBytes)
+				signer, err = ssh.ParsePrivateKeyWithPassphrase(keyBytes, passBytes)
+				if err != nil {
+					return nil, "", fmt.Errorf("failed to decrypt private key %q: %w", keyPath, err)
+				}
+				return signer, enteredPass, nil
+			}
+			return nil, "", fmt.Errorf("private key %q: ask_passphrase=True specified but standard input is not a terminal", keyPath)
+		}
+		return nil, "", fmt.Errorf("private key %q is passphrase protected (supply key_passphrase, set ask_passphrase=True, or use use_agent=True)", keyPath)
+	}
+
+	return nil, "", fmt.Errorf("failed to parse private key %q: %w", keyPath, err)
+}
 
 // buildSSHConfig creates an *ssh.ClientConfig from the SSHClient's settings.
 func (c *SSHClient) buildSSHConfig() (*ssh.ClientConfig, error) {
@@ -29,30 +99,6 @@ func (c *SSHClient) buildSSHConfig() (*ssh.ClientConfig, error) {
 	// Authentication methods
 	var authMethods []ssh.AuthMethod
 
-	// Key-based auth
-	if c.keyFile != "" {
-		key, err := os.ReadFile(c.keyFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read private key: %w", err)
-		}
-
-		var signer ssh.Signer
-		if c.keyPassphrase != "" {
-			signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(c.keyPassphrase))
-		} else {
-			signer, err = ssh.ParsePrivateKey(key)
-		}
-		if err != nil {
-			return nil, fmt.Errorf("failed to parse private key: %w", err)
-		}
-		authMethods = append(authMethods, ssh.PublicKeys(signer))
-	}
-
-	// Password auth
-	if c.password != "" {
-		authMethods = append(authMethods, ssh.Password(c.password))
-	}
-
 	// SSH agent auth
 	if c.useAgent {
 		socket := os.Getenv("SSH_AUTH_SOCK")
@@ -65,6 +111,34 @@ func (c *SSHClient) buildSSHConfig() (*ssh.ClientConfig, error) {
 		}
 		agentClient := agent.NewClient(conn)
 		authMethods = append(authMethods, ssh.PublicKeysCallback(agentClient.Signers))
+	}
+
+	// Key-based auth
+	if c.keyFile != "" {
+		keyPath, err := expandPath(c.keyFile)
+		if err != nil {
+			return nil, err
+		}
+		key, err := os.ReadFile(keyPath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read private key: %w", err)
+		}
+
+		signer, usedPass, err := parsePrivateKeyWithPrompt(keyPath, key, c.keyPassphrase, c.askPassphrase, c.useAgent)
+		if err != nil {
+			return nil, err
+		}
+		if c.keyPassphrase == "" && usedPass != "" {
+			c.keyPassphrase = usedPass
+		}
+		if signer != nil {
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+		}
+	}
+
+	// Password auth
+	if c.password != "" {
+		authMethods = append(authMethods, ssh.Password(c.password))
 	}
 
 	if len(authMethods) == 0 {
@@ -88,6 +162,12 @@ func (c *SSHClient) hostKeyCallback() (ssh.HostKeyCallback, error) {
 			return nil, fmt.Errorf("cannot determine home directory: %w", err)
 		}
 		khFile = filepath.Join(home, ".ssh", "known_hosts")
+	} else {
+		var err error
+		khFile, err = expandPath(khFile)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	callback, err := knownhosts.New(khFile)
@@ -145,20 +225,28 @@ func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
 
 	var authMethods []ssh.AuthMethod
 	if keyFile != "" {
-		key, err := os.ReadFile(keyFile)
+		keyPath, err := expandPath(keyFile)
+		if err != nil {
+			return nil, err
+		}
+		key, err := os.ReadFile(keyPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read jump private key: %w", err)
 		}
-		var signer ssh.Signer
-		if c.keyPassphrase != "" {
-			signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(c.keyPassphrase))
-		} else {
-			signer, err = ssh.ParsePrivateKey(key)
+		jumpPass := c.jumpKeyPassphrase
+		if jumpPass == "" {
+			jumpPass = c.keyPassphrase
 		}
+		signer, usedPass, err := parsePrivateKeyWithPrompt(keyPath, key, jumpPass, c.askPassphrase, c.useAgent)
 		if err != nil {
-			return nil, fmt.Errorf("failed to parse jump private key: %w", err)
+			return nil, fmt.Errorf("jump host key: %w", err)
 		}
-		authMethods = append(authMethods, ssh.PublicKeys(signer))
+		if c.jumpKeyPassphrase == "" && usedPass != "" {
+			c.jumpKeyPassphrase = usedPass
+		}
+		if signer != nil {
+			authMethods = append(authMethods, ssh.PublicKeys(signer))
+		}
 	}
 	if password != "" {
 		authMethods = append(authMethods, ssh.Password(password))

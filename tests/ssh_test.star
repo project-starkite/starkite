@@ -473,3 +473,33 @@ def test_ssh_config_use_agent():
         dry_run = True,
     )
     assert(client.use_agent == True, "client.use_agent should be True")
+
+def test_ssh_config_key_passphrase():
+    """Test key_passphrase parameter in ssh.config."""
+    kp = ssh.keygen(type="ed25519", passphrase="test-passphrase", path=(fs.path(temp_dir()) / "id_enc_test").string, overwrite=True)
+    
+    client = ssh.config(
+        hosts = ["srv1"],
+        user = "pi",
+        key = kp.path,
+        key_passphrase = "test-passphrase",
+        dry_run = True,
+    )
+    res = client.exec("uptime")
+    assert(len(res) == 1, "should return 1 result")
+    assert(res[0].ok == True, "dry-run exec should succeed")
+
+    # Clean up
+    fs.path(kp.path).remove()
+    fs.path(kp.pub_path).remove()
+
+def test_ssh_config_ask_passphrase():
+    """Test ask_passphrase parameter and client attribute."""
+    client = ssh.config(
+        hosts = ["srv1"],
+        user = "pi",
+        ask_passphrase = True,
+        dry_run = True,
+    )
+    assert(client.ask_passphrase == True, "client.ask_passphrase should be True")
+    assert("ask_passphrase" in dir(client), "ask_passphrase should be in dir(client)")

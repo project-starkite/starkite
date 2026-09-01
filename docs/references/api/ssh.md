@@ -138,6 +138,7 @@ client = ssh.config(
 | `user` | `string` | current user | SSH username |
 | `key` | `string` | `""` | Path to private key file |
 | `key_passphrase` | `string` | `""` | Passphrase for private key |
+| `ask_passphrase` | `bool` | `false` | Prompt interactively in terminal if key is encrypted and passphrase unset |
 | `password` | `string` | `""` | SSH password (prefer keys) |
 | `use_agent` | `bool` | `false` | Authenticate using `ssh-agent` ($SSH_AUTH_SOCK) |
 | `sudo` | `bool` | `false` | Default sudo execution policy for all commands |
@@ -149,6 +150,7 @@ client = ssh.config(
 | `jump_host` | `string` | `""` | Bastion jump host address |
 | `jump_user` | `string` | `user` | Bastion jump host username (falls back to `user`) |
 | `jump_key` | `string` | `key` | Bastion jump host private key (falls back to `key`) |
+| `jump_key_passphrase` | `string` | `key_passphrase` | Passphrase for jump host private key |
 | `jump_password` | `string` | `password` | Bastion jump host password (falls back to `password`) |
 | `jump_port` | `int` | `port` | Bastion jump host SSH port (falls back to `port` or `22`) |
 | `host_key_check` | `bool` | `true` | Verify host key against known hosts |

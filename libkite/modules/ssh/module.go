@@ -197,6 +197,7 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		JumpHost          string `name:"jump_host"`
 		JumpUser          string `name:"jump_user"`
 		JumpKey           string `name:"jump_key"`
+		JumpKeyPassphrase string `name:"jump_key_passphrase"`
 		JumpPassword      string `name:"jump_password"`
 		JumpPort          int    `name:"jump_port"`
 		KnownHostsFile    string `name:"known_hosts_file"`
@@ -208,6 +209,7 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		Cwd               string `name:"cwd"`
 		DryRun            bool   `name:"dry_run"`
 		UseAgent          bool   `name:"use_agent"`
+		AskPassphrase     bool   `name:"ask_passphrase"`
 	}
 	if err := startype.Args(args, filteredKwargs).Go(&p); err != nil {
 		return nil, err
@@ -323,6 +325,9 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 	if p.JumpKey != "" {
 		client.jumpKeyFile = p.JumpKey
 	}
+	if p.JumpKeyPassphrase != "" {
+		client.jumpKeyPassphrase = p.JumpKeyPassphrase
+	}
 	if p.JumpPassword != "" {
 		client.jumpPassword = p.JumpPassword
 	}
@@ -334,6 +339,7 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 	client.hostKeyCheck = p.HostKeyCheck
 	client.useAgent = p.UseAgent
+	client.askPassphrase = p.AskPassphrase
 	if p.KeepAliveInterval != "" {
 		d, err := time.ParseDuration(p.KeepAliveInterval)
 		if err != nil {
@@ -382,11 +388,13 @@ type SSHClient struct {
 	jumpHost          string
 	jumpUser          string
 	jumpKeyFile       string
+	jumpKeyPassphrase string
 	jumpPassword      string
 	jumpPort          int
 	knownHostsFile    string
 	hostKeyCheck      bool
 	useAgent          bool
+	askPassphrase     bool
 	keepAliveInterval time.Duration
 	keepAliveMax      int
 	defaultSudo       bool
@@ -450,11 +458,13 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		return starlark.MakeInt(c.jumpPort), nil
 	case "use_agent":
 		return starlark.Bool(c.useAgent), nil
+	case "ask_passphrase":
+		return starlark.Bool(c.askPassphrase), nil
 	default:
 		return nil, nil
 	}
 }
 
 func (c *SSHClient) AttrNames() []string {
-	return []string{"copy_id", "download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump_host", "jump_port", "jump_user", "try_copy_id", "try_download", "try_exec", "try_upload", "upload", "use_agent"}
+	return []string{"ask_passphrase", "copy_id", "download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump_host", "jump_port", "jump_user", "try_copy_id", "try_download", "try_exec", "try_upload", "upload", "use_agent"}
 }

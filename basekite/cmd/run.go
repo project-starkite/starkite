@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/spf13/cobra"
+	"go.starlark.net/syntax"
 )
 
 var runCmd = &cobra.Command{
@@ -28,25 +30,39 @@ Variables can be injected from multiple sources with the following priority
   1. CLI flags:      --var key=value
   2. Variable files: --var-file=values.yaml (can specify multiple)
   3. Default config: ~/.starkite/config.yaml (always loaded if present)
-  4. Environment:    STARKITE_VAR_key=value
-  5. Script default: var("key", "default")
+
+Parameters can be passed to functions with:
+  --param name=value
+  --param-file=params.yaml
+
+Dry run mode:
+  --dry-run: Simulate execution without making changes
+
+Permissions (default: interactive prompt for dangerous operations):
+  --allow-all:       Allow all permissions
+  --allow-fs:        Allow filesystem access (read/write)
+  --allow-fs-read:   Allow filesystem read access only
+  --allow-fs-write:  Allow filesystem write access only
+  --allow-net:       Allow network access (HTTP, SSH, etc.)
+  --allow-exec:      Allow command execution
+  --deny-all:        Deny all operations requiring permission
+  --trust:           Trust script and prompt only for explicitly denied ops
 
 Examples:
   # Run a script
-  kite ./deploy.star
   kite run ./deploy.star
 
-  # Run with variables
-  kite ./deploy.star --var image_tag=v1.0.0 --var replicas=3
+  # Run with variable overrides
+  kite run ./deploy.star --var env=prod --var replicas=5
 
-  # Run with variable file (merges with ~/.starkite/config.yaml)
-  kite ./deploy.star --var-file=prod.yaml
+  # Run with variable file
+  kite run ./deploy.star --var-file=prod.yaml
 
-  # Run with multiple variable files (later files override earlier)
-  kite ./deploy.star --var-file=base.yaml --var-file=prod.yaml
+  # Dry run
+  kite run ./deploy.star --dry-run
 
-  # Combine sources (CLI overrides all)
-  kite ./deploy.star --var-file=base.yaml --var image_tag=v2.0.0
+  # Allow network and filesystem
+  kite run ./deploy.star --allow-net --allow-fs
 
   # Pipe output to kubectl
   kite ./manifest.star | kubectl apply -f -
@@ -75,6 +91,12 @@ func runScript(cmd *cobra.Command, args []string) error {
 	// dependency resolves.
 	if isModule {
 		if err := resolveModuleDeps(filepath.Dir(scriptPath)); err != nil {
+			if _, ok := errors.AsType[syntax.Error](err); ok {
+				return &libkite.ScriptError{
+					Message:  fmt.Sprintf("syntax error: %v", err),
+					ExitCode: libkite.ExitScriptError,
+				}
+			}
 			return &libkite.ScriptError{
 				Message:  fmt.Sprintf("failed to resolve dependencies: %v", err),
 				ExitCode: libkite.ExitFileError,
@@ -82,6 +104,12 @@ func runScript(cmd *cobra.Command, args []string) error {
 		}
 	} else {
 		if err := resolveLooseDeps(scriptPath); err != nil {
+			if _, ok := errors.AsType[syntax.Error](err); ok {
+				return &libkite.ScriptError{
+					Message:  fmt.Sprintf("syntax error: %v", err),
+					ExitCode: libkite.ExitScriptError,
+				}
+			}
 			return &libkite.ScriptError{
 				Message:  fmt.Sprintf("failed to resolve dependencies: %v", err),
 				ExitCode: libkite.ExitFileError,

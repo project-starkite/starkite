@@ -2,9 +2,11 @@ package ssh
 
 import (
 	"bytes"
+	"fmt"
 	"net"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -1010,5 +1012,140 @@ func TestSSHUseAgentWithoutSocket(t *testing.T) {
 	_, err := c.buildSSHConfig()
 	if err == nil {
 		t.Error("expected error when use_agent=True and SSH_AUTH_SOCK is empty")
+	}
+}
+
+func TestSSHEncryptedKeyWithPassphrase(t *testing.T) {
+	// Generate an encrypted key
+	kp, err := GenerateKeyPairWithOptions(KeyGenOptions{
+		Type:       "ed25519",
+		Passphrase: "my-secret-pass",
+		Comment:    "encrypted-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpFile := filepath.Join(t.TempDir(), "id_ed25519_enc")
+	if err := os.WriteFile(tmpFile, []byte(kp.PrivateKey), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Build SSHClient with correct passphrase
+	c := &SSHClient{
+		hosts:         []string{"127.0.0.1"},
+		port:          22,
+		user:          "pi",
+		keyFile:       tmpFile,
+		keyPassphrase: "my-secret-pass",
+	}
+	cfg, err := c.buildSSHConfig()
+	if err != nil {
+		t.Fatalf("unexpected error parsing encrypted key with passphrase: %v", err)
+	}
+	if len(cfg.Auth) != 1 {
+		t.Fatalf("expected 1 auth method, got %d", len(cfg.Auth))
+	}
+
+	// 2. Build SSHClient without passphrase and askPassphrase=false (default: should return clear error)
+	cNoPass := &SSHClient{
+		hosts:   []string{"127.0.0.1"},
+		port:    22,
+		user:    "pi",
+		keyFile: tmpFile,
+	}
+	_, err = cNoPass.buildSSHConfig()
+	if err == nil {
+		t.Error("expected error parsing encrypted key without passphrase")
+	} else if !strings.Contains(err.Error(), "passphrase protected") {
+		t.Errorf("error = %q, want 'passphrase protected'", err.Error())
+	}
+
+	// 3. Build SSHClient with askPassphrase=true in non-terminal (should report non-terminal error)
+	cAskPass := &SSHClient{
+		hosts:         []string{"127.0.0.1"},
+		port:          22,
+		user:          "pi",
+		keyFile:       tmpFile,
+		askPassphrase: true,
+	}
+	_, err = cAskPass.buildSSHConfig()
+	if err == nil {
+		t.Error("expected error when ask_passphrase=True in non-terminal")
+	} else if !strings.Contains(err.Error(), "standard input is not a terminal") {
+		t.Errorf("error = %q, want 'standard input is not a terminal'", err.Error())
+	}
+}
+
+func TestSSHAskPassphraseAttribute(t *testing.T) {
+	mod := New()
+	thread := &starlark.Thread{Name: "test-ask-passphrase-attr"}
+
+	val, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("10.0.0.5")},
+		{starlark.String("ask_passphrase"), starlark.True},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := val.(*SSHClient)
+	if !client.askPassphrase {
+		t.Errorf("askPassphrase = %v, want true", client.askPassphrase)
+	}
+
+	attrVal, _ := client.Attr("ask_passphrase")
+	if attrVal != starlark.True {
+		t.Errorf("ask_passphrase attr = %v, want True", attrVal)
+	}
+}
+
+func TestSSHEncryptedKeyWithUseAgent(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("unix socket test skipped on windows")
+	}
+	// Create dummy unix socket with short path for Darwin limit
+	sockFile := fmt.Sprintf("ag_%d.sock", time.Now().UnixNano())
+	sockPath := filepath.Join(os.TempDir(), sockFile)
+	l, err := net.Listen("unix", sockPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		l.Close()
+		os.Remove(sockPath)
+	}()
+	t.Setenv("SSH_AUTH_SOCK", sockPath)
+
+	kp, err := GenerateKeyPairWithOptions(KeyGenOptions{
+		Type:       "ed25519",
+		Passphrase: "my-secret-pass",
+		Comment:    "encrypted-test",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	tmpFile := filepath.Join(t.TempDir(), "id_ed25519_enc")
+	if err := os.WriteFile(tmpFile, []byte(kp.PrivateKey), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Client specifies use_agent=True, encrypted key on disk, ask_passphrase=False
+	c := &SSHClient{
+		hosts:         []string{"127.0.0.1"},
+		port:          22,
+		user:          "pi",
+		keyFile:       tmpFile,
+		useAgent:      true,
+		askPassphrase: false,
+	}
+
+	cfg, err := c.buildSSHConfig()
+	if err != nil {
+		t.Fatalf("expected buildSSHConfig to succeed delegating to agent, got error: %v", err)
+	}
+	if len(cfg.Auth) != 1 {
+		t.Fatalf("expected 1 auth method (agent callback), got %d", len(cfg.Auth))
 	}
 }
