@@ -11,7 +11,9 @@ CLOUD_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkit
 AI_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/basekite/version.Edition=ai"
 ALL_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/basekite/version.Edition=all"
 
-.PHONY: kite all build-base build-cloud build-ai clean test test-libkite test-base test-cloud test-ai test-all install deps lint fmt run-example repl help
+MODULES=libkite basekite cloudkite aikite kite tests/sandbox
+
+.PHONY: kite all build-base build-cloud build-ai clean test test-libkite test-base test-cloud test-ai test-all install deps lint fmt fix vet test-race preflight run-example repl help
 
 kite: $(BIN_DIR) ## Build the default all-in-one binary (kite)
 	cd kite && go build $(ALL_LDFLAGS) -o ../$(BIN_DIR)/$(BINARY_NAME) .
@@ -32,6 +34,41 @@ build-ai: $(BIN_DIR) ## Build the lean ai edition binary (kiteai)
 
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)/ dist/
+
+fix: ## Run go fix AST modernization across all workspace modules
+	@for dir in $(MODULES); do \
+		echo "=== Fixing $$dir ==="; \
+		(cd $$dir && go fix ./...); \
+	done
+
+fmt: ## Run go fmt and verify formatting across all files
+	@for dir in $(MODULES); do \
+		(cd $$dir && go fmt ./...); \
+	done
+	@DIFFS=$$(gofmt -l .); \
+	if [ -n "$$DIFFS" ]; then \
+		echo "Formatting differences found in the following files:"; \
+		echo "$$DIFFS"; \
+		exit 1; \
+	fi
+
+vet: ## Run go vet across all workspace modules
+	@for dir in $(MODULES); do \
+		echo "=== Vetting $$dir ==="; \
+		(cd $$dir && go vet ./...); \
+	done
+
+test-race: ## Run all Go unit tests with race detection
+	@for dir in $(MODULES); do \
+		echo "=== Testing $$dir (race) ==="; \
+		(cd $$dir && go test -race ./...); \
+	done
+
+lint: ## Run staticcheck across all workspace packages
+	staticcheck ./libkite/... ./basekite/... ./cloudkite/... ./aikite/... ./kite/... ./tests/sandbox/...
+
+preflight: fix fmt vet test-race lint ## Run complete Go code hygiene and pre-flight verification suite
+	@echo "=== Pre-flight verification passed cleanly ==="
 
 test: test-libkite test-base test-cloud test-ai test-all test-install-script ## Run all tests
 
@@ -86,3 +123,4 @@ help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'
 
 .DEFAULT_GOAL := kite
+
