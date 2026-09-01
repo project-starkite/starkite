@@ -103,6 +103,8 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		Timeout           string `name:"timeout"`
 		MaxRetries        int    `name:"max_retries"`
 		ExecPolicy        string `name:"exec_policy"`
+		ExecMaxWorkers    int    `name:"exec_max_workers"`
+		MaxWorkers        int    `name:"max_workers"`
 		JumpHost          string `name:"jump_host"`
 		KnownHostsFile    string `name:"known_hosts_file"`
 		HostKeyCheck      bool   `name:"host_key_check"`
@@ -205,6 +207,11 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 	if p.ExecPolicy != "" {
 		client.execPolicy = p.ExecPolicy
 	}
+	if p.ExecMaxWorkers > 0 {
+		client.execMaxWorkers = p.ExecMaxWorkers
+	} else if p.MaxWorkers > 0 {
+		client.execMaxWorkers = p.MaxWorkers
+	}
 	if p.JumpHost != "" {
 		client.jumpHost = p.JumpHost
 	}
@@ -262,6 +269,7 @@ type SSHClient struct {
 	timeout           time.Duration
 	maxRetries        int
 	execPolicy        string // "concurrent" or "linear"
+	execMaxWorkers    int
 	jumpHost          string
 	knownHostsFile    string
 	hostKeyCheck      bool
@@ -310,11 +318,15 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 			return c.fleet, nil
 		}
 		return starlark.None, nil
+	case "exec_max_workers":
+		return starlark.MakeInt(c.execMaxWorkers), nil
+	case "exec_policy":
+		return starlark.String(c.execPolicy), nil
 	default:
 		return nil, nil
 	}
 }
 
 func (c *SSHClient) AttrNames() []string {
-	return []string{"download", "exec", "fleet", "hosts", "try_download", "try_exec", "try_upload", "upload"}
+	return []string{"download", "exec", "exec_max_workers", "exec_policy", "fleet", "hosts", "try_download", "try_exec", "try_upload", "upload"}
 }

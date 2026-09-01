@@ -33,6 +33,7 @@ def test_config_all_params():
         timeout="60s",
         max_retries=5,
         exec_policy="linear",
+        exec_max_workers=16,
         jump_host="bastion.example.com",
         known_hosts_file="/tmp/known_hosts",
         host_key_check=False,
@@ -44,6 +45,14 @@ def test_config_all_params():
         dry_run=True,
     )
     assert(type(client) == "ssh.client", "config with all params should work")
+    assert(client.exec_max_workers == 16, "exec_max_workers should be 16")
+    assert(client.exec_policy == "linear", "exec_policy should be linear")
+
+def test_config_exec_max_workers():
+    c = ssh.config(hosts=["h1", "h2"], user="root", exec_max_workers=32, dry_run=True)
+    assert(c.exec_max_workers == 32, "exec_max_workers should be 32")
+    results = c.exec("uptime", exec_max_workers=8)
+    assert(len(results) == 2, "should execute across 2 hosts")
 
 # ============================================================================
 # Exec dry-run tests

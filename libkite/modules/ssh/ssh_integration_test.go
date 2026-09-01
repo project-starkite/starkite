@@ -424,3 +424,28 @@ func TestSSHConfigWithHostsShortcut(t *testing.T) {
 		t.Fatalf("unexpected single host result: %v", c2.hosts)
 	}
 }
+
+func TestSSHConfigExecMaxWorkers(t *testing.T) {
+	mod := New()
+	thread := &starlark.Thread{Name: "test-ssh-workers"}
+
+	val, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.NewList([]starlark.Value{starlark.String("10.0.0.1"), starlark.String("10.0.0.2")})},
+		{starlark.String("exec_max_workers"), starlark.MakeInt(16)},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	client := val.(*SSHClient)
+	if client.execMaxWorkers != 16 {
+		t.Fatalf("expected execMaxWorkers=16, got %d", client.execMaxWorkers)
+	}
+
+	attrVal, err := client.Attr("exec_max_workers")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i, ok := attrVal.(starlark.Int); !ok || i.String() != "16" {
+		t.Fatalf("expected exec_max_workers attribute to be 16, got %v", attrVal)
+	}
+}

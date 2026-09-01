@@ -58,13 +58,22 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 	}
 
 	var p struct {
-		Cmd    string `name:"cmd" position:"0" required:"true"`
-		Sudo   bool   `name:"sudo"`
-		AsUser string `name:"as_user"`
-		Cwd    string `name:"cwd"`
+		Cmd            string `name:"cmd" position:"0" required:"true"`
+		Sudo           bool   `name:"sudo"`
+		AsUser         string `name:"as_user"`
+		Cwd            string `name:"cwd"`
+		ExecMaxWorkers int    `name:"exec_max_workers"`
+		MaxWorkers     int    `name:"max_workers"`
 	}
 	if err := startype.Args(filteredArgs, filteredKwargs).Go(&p); err != nil {
 		return nil, err
+	}
+
+	maxWorkers := c.execMaxWorkers
+	if p.ExecMaxWorkers > 0 {
+		maxWorkers = p.ExecMaxWorkers
+	} else if p.MaxWorkers > 0 {
+		maxWorkers = p.MaxWorkers
 	}
 
 	cmdToRun := p.Cmd
@@ -136,7 +145,7 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 
 	// Execute on all hosts
 	if c.execPolicy == "concurrent" {
-		return c.execConcurrent(finalCmd)
+		return c.execConcurrent(finalCmd, maxWorkers)
 	}
 	return c.execLinear(finalCmd)
 }
@@ -156,15 +165,31 @@ func (c *SSHClient) dryRunExecResults(cmd string) starlark.Value {
 	return starlark.NewList(results)
 }
 
-func (c *SSHClient) execConcurrent(cmd string) (starlark.Value, error) {
+func (c *SSHClient) execConcurrent(cmd string, maxWorkers ...int) (starlark.Value, error) {
+	workers := c.execMaxWorkers
+	if len(maxWorkers) > 0 && maxWorkers[0] > 0 {
+		workers = maxWorkers[0]
+	}
+
 	results := make([]starlark.Value, len(c.hosts))
 	errors := make([]error, len(c.hosts))
 	var wg sync.WaitGroup
 
+	var sem chan struct{}
+	if workers > 0 {
+		sem = make(chan struct{}, workers)
+	}
+
 	for i, host := range c.hosts {
 		wg.Add(1)
+		if sem != nil {
+			sem <- struct{}{}
+		}
 		go func(idx int, h string) {
 			defer wg.Done()
+			if sem != nil {
+				defer func() { <-sem }()
+			}
 			result, err := c.execOnHost(h, cmd)
 			if err != nil {
 				errors[idx] = err

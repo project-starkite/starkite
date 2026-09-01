@@ -102,10 +102,21 @@ func (c *SSHClient) transferConcurrent(op, src, dst, mode string) (starlark.Valu
 	errors := make([]error, len(c.hosts))
 	var wg sync.WaitGroup
 
+	var sem chan struct{}
+	if c.execMaxWorkers > 0 {
+		sem = make(chan struct{}, c.execMaxWorkers)
+	}
+
 	for i, host := range c.hosts {
 		wg.Add(1)
+		if sem != nil {
+			sem <- struct{}{}
+		}
 		go func(idx int, h string) {
 			defer wg.Done()
+			if sem != nil {
+				defer func() { <-sem }()
+			}
 			result, err := c.transferOnHost(op, h, src, dst, mode)
 			if err != nil {
 				errors[idx] = err
