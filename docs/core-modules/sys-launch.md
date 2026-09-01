@@ -20,29 +20,52 @@ The `os` module provides two primary execution functions:
 
 ## Direct Process Execution (`os.exec` & `os.try_exec`)
 
-By default, `os.exec()` and `os.try_exec()` execute target binaries directly. This direct execution prevents shell injection vulnerabilities and keeps execution permissions uniform.
+`os.exec()` and `os.try_exec()` execute target binaries directly via standard system calls. Direct process execution avoids shell spawning overhead and prevents shell injection vulnerabilities.
 
-To pass arguments to the binary, specify them as a list/tuple of strings in the second argument:
+Starkite supports two invocation styles:
+
+### 1. Single Command String (Lexical Tokenization)
+
+When passing a single command string, Starkite uses an internal lexical tokenizer to parse the command and its arguments without invoking an external shell:
+
+```python
+def check_status():
+    # Double quotes preserve arguments with internal spaces
+    os.exec('git commit -m "initial commit"')
+
+    # Single quotes preserve literal payloads (e.g. JSON or Regex)
+    os.exec("grep -E '^[0-9]+' output.txt")
+
+    # Backslash escapes outside quotes
+    os.exec("cat file\\ with\\ spaces.txt")
+
+    # Quoted executable paths
+    os.exec('"/opt/custom tools/bin/app" --verbose')
+```
+
+#### Lexical Quoting Rules
+
+| Syntax | Behavior | Example | Parsed Result |
+|---|---|---|---|
+| Single quotes (`'...'`) | Preserves literal text inside quotes. No escape interpretation. | `'{"k":"v"}'` | `{"k":"v"}` |
+| Double quotes (`"..."`) | Preserves spaces; interprets backslash escapes (`\"`, `\\`). | `"hello \"world\""` | `hello "world"` |
+| Escaped space (`\ `) | Preserves space as part of the current token. | `file\ name.txt` | `file name.txt` |
+| Quoted binary | Quoted executable path containing spaces. | `"/opt/my app/bin"` | `/opt/my app/bin` |
+
+### 2. Structured Arguments List
+
+To pass pre-constructed argument slices without string formatting, pass the binary name as the first argument and a list/tuple of strings as the second:
 
 ```python
 def check_os():
-    # Executes 'uname' directly with argument '-a'
+    # Passes arguments directly as argv elements
     os_info = os.exec("uname", ["-a"])
     print("System OS:", os_info.strip())
 ```
 
-Alternatively, if only a single string is passed, Starkite automatically splits the string by whitespace to resolve the binary and its arguments:
+### Running Shell Features (Pipes, Redirection, Chaining)
 
-```python
-def check_os_single_string():
-    # Automatically splits by whitespace: runs 'uname' with '-a'
-    os_info = os.exec("uname -a")
-    print("System OS:", os_info.strip())
-```
-
-### Running Shell Commands Explicitly
-
-When shell features like pipes (`|`), redirections (`>`, `<`), or variable expansions are required, execute the system shell explicitly using `os.exec`:
+Because direct process execution does not use a shell, shell features like pipes (`|`), redirections (`>`, `<`), and chaining (`&&`, `;`) must be invoked explicitly through the system shell:
 
 ```python
 def check_disk_space():

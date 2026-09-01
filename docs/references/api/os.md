@@ -90,12 +90,15 @@ print("Home:", os.home())
 ### Command execution
 
 ```python
-# Direct execution using a single space-separated string
-output = exec("git status")
+# Single command string with quotes and spaces
+output = exec('git commit -m "initial commit"')
 print(output)
 
+# Single command string preserving single-quoted literal payloads
+output = exec("grep -E '^[0-9]+' data.txt")
+
 # Direct execution with arguments list
-result = try_exec("git", ["status"])
+result = try_exec("git", ["commit", "-m", "initial commit"])
 if result.ok:
     print(result.stdout)
 else:

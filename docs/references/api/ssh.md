@@ -43,15 +43,20 @@ client = ssh.config(
 
 ### exec
 
-Execute a command on all configured hosts.
+Execute a command on all configured hosts. Supports both single-string commands and structured argument lists.
 
 ```python
-results = client.exec(cmd, sudo=False, as_user="", cwd="", env={})
+# Single string command
+results = client.exec("k3s kubectl apply -f deploy.yaml", sudo=True)
+
+# Structured argument list (safe argument passing)
+results = client.exec("git", ["commit", "-m", "release v0.1.0"], cwd="/opt/app")
 ```
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `cmd` | `string` | required | Command to execute |
+| `cmd` | `string` | required | Command or binary name to execute |
+| `args` | `list[string]` | `[]` | Positional argument list |
 | `sudo` | `bool` | `False` | Run with sudo |
 | `as_user` | `string` | `""` | Run as a specific user (with sudo) |
 | `cwd` | `string` | `""` | Working directory for the command |
