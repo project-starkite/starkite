@@ -20,6 +20,7 @@ import (
 	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
+	kiteexec "github.com/project-starkite/starkite/libkite/exec"
 )
 
 const ModuleName libkite.ModuleName = "os"
@@ -304,12 +305,16 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 			return nil, fmt.Errorf("exec: second argument must be a list or tuple of strings, got %s", seq.Type())
 		}
 	} else {
-		// Fallback: split cmdStr by whitespace for backward compatibility.
-		fields := strings.Fields(cmdStr)
-		if len(fields) > 0 {
-			cmdStr = fields[0]
-			execArgs = fields[1:]
+		// Single command string: parse using pure-Go lexical tokenizer
+		cmd, parsedArgs, err := kiteexec.Parse(cmdStr)
+		if err != nil {
+			return nil, fmt.Errorf("os.exec: failed to parse command: %w", err)
 		}
+		if cmd == "" {
+			return nil, fmt.Errorf("os.exec: command cannot be empty")
+		}
+		cmdStr = cmd
+		execArgs = parsedArgs
 	}
 
 	var envDict starlark.Value = starlark.None

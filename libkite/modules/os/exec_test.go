@@ -41,6 +41,42 @@ def test():
 			wantErr:     "blocked by deny rule: os.exec",
 		},
 		{
+			name: "exec single string with double quotes",
+			script: `
+def test():
+    return os.exec('echo "hello world"')
+`,
+			permissions: libkite.AllowAllPermissions(),
+			wantResult:  "hello world",
+		},
+		{
+			name: "exec single string with single quotes",
+			script: `
+def test():
+    return os.exec("echo '{\"k\": \"v\"}'")
+`,
+			permissions: libkite.AllowAllPermissions(),
+			wantResult:  `{"k": "v"}`,
+		},
+		{
+			name: "exec single string with escaped spaces",
+			script: `
+def test():
+    return os.exec("echo hello\\ world")
+`,
+			permissions: libkite.AllowAllPermissions(),
+			wantResult:  "hello world",
+		},
+		{
+			name: "exec with explicit argument list",
+			script: `
+def test():
+    return os.exec("echo", ["hello", "world"])
+`,
+			permissions: libkite.AllowAllPermissions(),
+			wantResult:  "hello world",
+		},
+		{
 			name: "try_exec allowed under allow-all",
 			script: `
 def test():

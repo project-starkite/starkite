@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/project-starkite/starkite/libkite"
+	kiteexec "github.com/project-starkite/starkite/libkite/exec"
 )
 
 // exec executes a command on remote hosts.
@@ -31,14 +32,44 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		}
 	}
 
+	var positionalArgs []string
+	filteredArgs := args
+	if len(args) > 1 {
+		switch seq := args[1].(type) {
+		case *starlark.List:
+			for i := 0; i < seq.Len(); i++ {
+				if s, ok := starlark.AsString(seq.Index(i)); ok {
+					positionalArgs = append(positionalArgs, s)
+				} else {
+					return nil, fmt.Errorf("ssh.exec: argument at index %d must be a string, got %s", i, seq.Index(i).Type())
+				}
+			}
+			filteredArgs = starlark.Tuple{args[0]}
+		case starlark.Tuple:
+			for i, val := range seq {
+				if s, ok := starlark.AsString(val); ok {
+					positionalArgs = append(positionalArgs, s)
+				} else {
+					return nil, fmt.Errorf("ssh.exec: argument at index %d must be a string, got %s", i, val.Type())
+				}
+			}
+			filteredArgs = starlark.Tuple{args[0]}
+		}
+	}
+
 	var p struct {
 		Cmd    string `name:"cmd" position:"0" required:"true"`
 		Sudo   bool   `name:"sudo"`
 		AsUser string `name:"as_user"`
 		Cwd    string `name:"cwd"`
 	}
-	if err := startype.Args(args, filteredKwargs).Go(&p); err != nil {
+	if err := startype.Args(filteredArgs, filteredKwargs).Go(&p); err != nil {
 		return nil, err
+	}
+
+	cmdToRun := p.Cmd
+	if len(positionalArgs) > 0 {
+		cmdToRun = kiteexec.Join(p.Cmd, positionalArgs)
 	}
 
 	// Permission check for SSH exec - check each host
@@ -76,9 +107,9 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 	}
 
 	// Build final command
-	finalCmd := p.Cmd
+	finalCmd := cmdToRun
 	if cwd != "" {
-		finalCmd = fmt.Sprintf("cd %s && %s", cwd, p.Cmd)
+		finalCmd = fmt.Sprintf("cd %s && %s", cwd, cmdToRun)
 	}
 	if len(env) > 0 {
 		var envParts []string
