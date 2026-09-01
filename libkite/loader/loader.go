@@ -8,6 +8,7 @@ import (
 	"github.com/project-starkite/starkite/libkite/modules/base64"
 	"github.com/project-starkite/starkite/libkite/modules/concur"
 	"github.com/project-starkite/starkite/libkite/modules/csv"
+	fleetmod "github.com/project-starkite/starkite/libkite/modules/fleet"
 	fmtmod "github.com/project-starkite/starkite/libkite/modules/fmt"
 	"github.com/project-starkite/starkite/libkite/modules/fs"
 	"github.com/project-starkite/starkite/libkite/modules/gzip"
@@ -69,6 +70,7 @@ func RegisterAll(r *libkite.Registry) {
 	r.Register(sql.New())
 	r.Register(ssh.New())
 	r.Register(http.New())
+	r.Register(fleetmod.New())
 	r.Register(inventory.New())
 }
 
