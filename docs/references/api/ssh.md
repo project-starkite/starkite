@@ -32,6 +32,49 @@ if not res.ok:
     print("Execution failed:", res.error)
 ```
 
+## Key Generation (`ssh.keygen`)
+
+Generate in-memory or on-disk cryptographic SSH keypairs:
+
+```python
+# In-memory Ed25519 keypair
+keys = ssh.keygen(type="ed25519", comment="cluster-admin")
+print(keys.public_key)   # "ssh-ed25519 AAA... cluster-admin\n"
+print(keys.fingerprint)  # "SHA256:..."
+
+# On-disk keypair with 0600 permissions
+keys = ssh.keygen(
+    type       = "rsa",
+    bits       = 4096,
+    path       = "~/.ssh/id_cluster_rsa",
+    passphrase = "optional_passphrase",
+    overwrite  = True,
+)
+```
+
+### Keygen Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `type` | `string` | `"ed25519"` | Algorithm (`"ed25519"`, `"rsa"`, `"ecdsa"`) |
+| `bits` | `int` | `0` | RSA bits (`2048`, `3072`, `4096`) or ECDSA bits (`256`, `384`, `521`) |
+| `comment` | `string` | `""` | Comment appended to public key line |
+| `passphrase` | `string` | `""` | Optional passphrase to encrypt private key |
+| `path` | `string` | `""` | Optional file path to write private key (`0600`) and `.pub` (`0644`) |
+| `overwrite` | `bool` | `False` | Overwrite existing files when `path` is set |
+
+### `SSHKeyPair` Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `public_key` | `string` | OpenSSH authorized public key line |
+| `private_key` | `string` | PEM-encoded OpenSSH private key |
+| `fingerprint` | `string` | SHA256 key fingerprint |
+| `type` | `string` | Algorithm name (`"ed25519"`, `"rsa"`, `"ecdsa"`) |
+| `comment` | `string` | Comment string |
+| `path` | `string` | Saved private key path (or `""`) |
+| `pub_path` | `string` | Saved public key path (or `""`) |
+
 ## Configuration
 
 Create an SSH client with `ssh.config()`:

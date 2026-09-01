@@ -9,6 +9,8 @@ import (
 	"crypto/rsa"
 	"encoding/pem"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
@@ -21,11 +23,33 @@ type KeyPair struct {
 	PrivateKey  string
 	Fingerprint string
 	Comment     string
+	Path        string
+	PubPath     string
 }
 
-// GenerateKeyPair generates an SSH keypair for the specified type and options.
+// KeyGenOptions configures keypair generation.
+type KeyGenOptions struct {
+	Type       string
+	Bits       int
+	Comment    string
+	Passphrase string
+	Path       string
+	Overwrite  bool
+}
+
+// GenerateKeyPair generates an SSH keypair for the specified type, bits, and comment in memory.
 func GenerateKeyPair(keyType string, bits int, comment string) (*KeyPair, error) {
-	keyType = strings.ToLower(strings.TrimSpace(keyType))
+	return GenerateKeyPairWithOptions(KeyGenOptions{
+		Type:    keyType,
+		Bits:    bits,
+		Comment: comment,
+	})
+}
+
+// GenerateKeyPairWithOptions generates an SSH keypair with full configuration options, including
+// optional passphrase encryption and atomic disk persistence with strict POSIX file modes.
+func GenerateKeyPairWithOptions(opts KeyGenOptions) (*KeyPair, error) {
+	keyType := strings.ToLower(strings.TrimSpace(opts.Type))
 	if keyType == "" {
 		keyType = "ed25519"
 	}
@@ -43,6 +67,7 @@ func GenerateKeyPair(keyType string, bits int, comment string) (*KeyPair, error)
 		pub = edPub
 
 	case "rsa":
+		bits := opts.Bits
 		if bits == 0 {
 			bits = 4096
 		}
@@ -58,7 +83,7 @@ func GenerateKeyPair(keyType string, bits int, comment string) (*KeyPair, error)
 
 	case "ecdsa":
 		var curve elliptic.Curve
-		switch bits {
+		switch opts.Bits {
 		case 0, 256:
 			curve = elliptic.P256()
 		case 384:
@@ -66,7 +91,7 @@ func GenerateKeyPair(keyType string, bits int, comment string) (*KeyPair, error)
 		case 521:
 			curve = elliptic.P521()
 		default:
-			return nil, fmt.Errorf("invalid ECDSA key size %d (must be 256, 384, or 521)", bits)
+			return nil, fmt.Errorf("invalid ECDSA key size %d (must be 256, 384, or 521)", opts.Bits)
 		}
 		ecdsaPriv, err := ecdsa.GenerateKey(curve, rand.Reader)
 		if err != nil {
@@ -87,8 +112,8 @@ func GenerateKeyPair(keyType string, bits int, comment string) (*KeyPair, error)
 
 	pubBytes := ssh.MarshalAuthorizedKey(sshPub)
 	pubStr := strings.TrimSpace(string(pubBytes))
-	if comment != "" {
-		pubStr = fmt.Sprintf("%s %s", pubStr, comment)
+	if opts.Comment != "" {
+		pubStr = fmt.Sprintf("%s %s", pubStr, opts.Comment)
 	}
 	pubStr += "\n"
 
@@ -96,17 +121,75 @@ func GenerateKeyPair(keyType string, bits int, comment string) (*KeyPair, error)
 	fingerprint := ssh.FingerprintSHA256(sshPub)
 
 	// 3. Serialize OpenSSH Private Key (PEM format)
-	pemBlock, err := ssh.MarshalPrivateKey(priv, comment)
+	var pemBlock *pem.Block
+	if opts.Passphrase != "" {
+		pemBlock, err = ssh.MarshalPrivateKeyWithPassphrase(priv, opts.Comment, []byte(opts.Passphrase))
+	} else {
+		pemBlock, err = ssh.MarshalPrivateKey(priv, opts.Comment)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal private key: %w", err)
 	}
 	privPem := string(pem.EncodeToMemory(pemBlock))
 
-	return &KeyPair{
+	kp := &KeyPair{
 		Type:        keyType,
 		PublicKey:   pubStr,
 		PrivateKey:  privPem,
 		Fingerprint: fingerprint,
-		Comment:     comment,
-	}, nil
+		Comment:     opts.Comment,
+	}
+
+	// 4. Handle optional disk persistence
+	if opts.Path != "" {
+		targetPath := opts.Path
+		if strings.HasPrefix(targetPath, "~") {
+			home, err := os.UserHomeDir()
+			if err != nil {
+				return nil, fmt.Errorf("cannot resolve home directory for path %q: %w", targetPath, err)
+			}
+			if targetPath == "~" {
+				targetPath = home
+			} else if strings.HasPrefix(targetPath, "~/") {
+				targetPath = filepath.Join(home, targetPath[2:])
+			}
+		}
+
+		absPrivPath, err := filepath.Abs(targetPath)
+		if err != nil {
+			return nil, fmt.Errorf("invalid path %q: %w", targetPath, err)
+		}
+		absPubPath := absPrivPath + ".pub"
+
+		// Overwrite guard
+		if !opts.Overwrite {
+			if _, err := os.Stat(absPrivPath); err == nil {
+				return nil, fmt.Errorf("private key file %q already exists (use overwrite=True)", absPrivPath)
+			}
+			if _, err := os.Stat(absPubPath); err == nil {
+				return nil, fmt.Errorf("public key file %q already exists (use overwrite=True)", absPubPath)
+			}
+		}
+
+		// Ensure directory exists with mode 0700
+		dir := filepath.Dir(absPrivPath)
+		if err := os.MkdirAll(dir, 0700); err != nil {
+			return nil, fmt.Errorf("failed to create directory %q: %w", dir, err)
+		}
+
+		// Write private key with mode 0600
+		if err := os.WriteFile(absPrivPath, []byte(kp.PrivateKey), 0600); err != nil {
+			return nil, fmt.Errorf("failed to write private key to %q: %w", absPrivPath, err)
+		}
+
+		// Write public key with mode 0644
+		if err := os.WriteFile(absPubPath, []byte(kp.PublicKey), 0644); err != nil {
+			return nil, fmt.Errorf("failed to write public key to %q: %w", absPubPath, err)
+		}
+
+		kp.Path = absPrivPath
+		kp.PubPath = absPubPath
+	}
+
+	return kp, nil
 }

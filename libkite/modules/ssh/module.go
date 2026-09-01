@@ -10,6 +10,7 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/fleet"
@@ -38,6 +39,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 		members := starlark.StringDict{
 			"config": starlark.NewBuiltin("ssh.config", m.sshConfig),
 			"exec":   starlark.NewBuiltin("ssh.exec", m.sshExec),
+			"keygen": starlark.NewBuiltin("ssh.keygen", m.sshKeygen),
 		}
 		if config != nil && config.TestMode {
 			members["test_server"] = starlark.NewBuiltin("ssh.test_server", m.testserverFactory)
@@ -51,6 +53,47 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 func (m *Module) Aliases() starlark.StringDict { return nil }
 
 func (m *Module) FactoryMethod() string { return "config" }
+
+func newSSHKeyPair(kp *KeyPair) starlark.Value {
+	return starlarkstruct.FromStringDict(starlark.String("SSHKeyPair"), starlark.StringDict{
+		"public_key":  starlark.String(kp.PublicKey),
+		"private_key": starlark.String(kp.PrivateKey),
+		"fingerprint": starlark.String(kp.Fingerprint),
+		"type":        starlark.String(kp.Type),
+		"comment":     starlark.String(kp.Comment),
+		"path":        starlark.String(kp.Path),
+		"pub_path":    starlark.String(kp.PubPath),
+	})
+}
+
+// sshKeygen generates an in-memory or on-disk SSH keypair.
+func (m *Module) sshKeygen(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var p struct {
+		Type       string `name:"type" position:"0"`
+		Bits       int    `name:"bits"`
+		Comment    string `name:"comment"`
+		Passphrase string `name:"passphrase"`
+		Path       string `name:"path"`
+		Overwrite  bool   `name:"overwrite"`
+	}
+	if err := startype.Args(args, kwargs).Go(&p); err != nil {
+		return nil, err
+	}
+
+	kp, err := GenerateKeyPairWithOptions(KeyGenOptions{
+		Type:       p.Type,
+		Bits:       p.Bits,
+		Comment:    p.Comment,
+		Passphrase: p.Passphrase,
+		Path:       p.Path,
+		Overwrite:  p.Overwrite,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("ssh.keygen: %w", err)
+	}
+
+	return newSSHKeyPair(kp), nil
+}
 
 // sshExec executes a command or pipeline across a fleet or host list in a single one-shot call.
 // Signatures:

@@ -385,3 +385,50 @@ def test_ssh_exec_with_jump_host():
     assert(len(results) == 1, "should return 1 result")
     assert(results[0].host == "picluster-0", "target host should be picluster-0")
     assert("uname -m" in results[0].stdout, "stdout should contain uname -m")
+
+def test_ssh_keygen_ed25519():
+    """Test in-memory Ed25519 key generation."""
+    kp = ssh.keygen(type="ed25519", comment="test-ed25519-key")
+    assert(kp.type == "ed25519", "type should be ed25519")
+    assert(kp.comment == "test-ed25519-key", "comment should match")
+    assert(kp.public_key.startswith("ssh-ed25519 "), "public_key should have ssh-ed25519 prefix")
+    assert("test-ed25519-key" in kp.public_key, "public key should contain comment")
+    assert(kp.fingerprint.startswith("SHA256:"), "fingerprint should start with SHA256:")
+    assert("BEGIN OPENSSH PRIVATE KEY" in kp.private_key, "private key should have OpenSSH header")
+
+def test_ssh_keygen_rsa():
+    """Test in-memory RSA key generation."""
+    kp = ssh.keygen(type="rsa", bits=2048, comment="admin@test")
+    assert(kp.type == "rsa", "type should be rsa")
+    assert(kp.public_key.startswith("ssh-rsa "), "public_key should have ssh-rsa prefix")
+    assert("admin@test" in kp.public_key, "public key should contain comment")
+
+def test_ssh_keygen_ecdsa():
+    """Test in-memory ECDSA key generation."""
+    kp = ssh.keygen(type="ecdsa", bits=256, comment="ecdsa-test")
+    assert(kp.type == "ecdsa", "type should be ecdsa")
+    assert(kp.public_key.startswith("ecdsa-sha2-nistp256 "), "public_key should have ecdsa-sha2-nistp256 prefix")
+
+def test_ssh_keygen_disk_persistence():
+    """Test key generation with disk persistence."""
+    key_file = "/tmp/starkite_test_keygen_ed25519"
+    kp = ssh.keygen(type="ed25519", path=key_file, overwrite=True)
+    assert(kp.path == key_file, "path should match")
+    assert(kp.pub_path == key_file + ".pub", "pub_path should match")
+    assert(fs.path(key_file).exists() == True, "private key file should exist on disk")
+    assert(fs.path(key_file + ".pub").exists() == True, "public key file should exist on disk")
+    # Clean up
+    fs.path(key_file).remove()
+    fs.path(key_file + ".pub").remove()
+
+def test_ssh_try_keygen():
+    """Test ssh.try_keygen error handling."""
+    # Invalid key type
+    res = ssh.try_keygen(type="invalid_type")
+    assert(res.ok == False, "try_keygen should fail for invalid key type")
+    assert(res.error != None and len(res.error) > 0, "error message should be populated")
+
+    # Success case
+    ok_res = ssh.try_keygen(type="ed25519")
+    assert(ok_res.ok == True, "try_keygen should succeed for ed25519")
+    assert(ok_res.value.type == "ed25519", "value should be SSHKeyPair")
