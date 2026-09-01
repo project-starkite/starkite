@@ -65,11 +65,12 @@ var allMethods = map[string]clientMethod{
 	"exec":         (*K8sClient).execCmd,
 	"port_forward": (*K8sClient).portForward,
 
-	// Tier 1: Cluster info
+	// Tier 1: Cluster info & Fleets
 	"context":        (*K8sClient).contextName,
 	"namespace_name": (*K8sClient).namespaceName,
 	"version":        (*K8sClient).version,
 	"api_resources":  (*K8sClient).apiResources,
+	"fleet":          (*K8sClient).fleet,
 
 	// Tier 2: High-level
 	"deploy":        (*K8sClient).deployHighLevel,
