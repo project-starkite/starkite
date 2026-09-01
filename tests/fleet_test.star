@@ -54,7 +54,7 @@ def test_fleet_new_json_keyword():
     assert(f.first()["role"] == "cache", "expected role cache")
 
 def test_fleet_file_yaml():
-    tmp_path = "/tmp/starkite_test_fleet.yaml"
+    tmp_path = (fs.path(temp_dir()) / "starkite_test_fleet.yaml").string
     yaml_content = """
 - name: node-alpha
   address: 10.0.0.1
@@ -81,9 +81,10 @@ def test_fleet_file_yaml():
     # Also test via fleet.new(file=...)
     f_kw = fleet.new(file=tmp_path)
     assert(f_kw.count == 3, "expected 3 nodes from fleet.new(file=...)")
+    fs.path(tmp_path).remove()
 
 def test_fleet_hosts_file_posix():
-    tmp_hosts = "/tmp/starkite_test_hosts"
+    tmp_hosts = (fs.path(temp_dir()) / "starkite_test_hosts").string
     hosts_content = """
 # /etc/hosts format
 127.0.0.1 localhost localhost.localdomain
@@ -113,6 +114,7 @@ def test_fleet_hosts_file_posix():
     # 4. Via fleet.new(hosts_file=...)
     f_new_kw = fleet.new(hosts_file=tmp_hosts)
     assert(f_new_kw.count == 3, "expected 3 nodes via fleet.new(hosts_file=...)")
+    fs.path(tmp_hosts).remove()
 
 # ============================================================================
 # Querying & Subsetting

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -830,5 +831,145 @@ func TestSSHConfigJumpHostSettings(t *testing.T) {
 	jumpUserAttr, _ := client.Attr("jump_user")
 	if s, ok := jumpUserAttr.(starlark.String); !ok || string(s) != "vladimir" {
 		t.Errorf("jump_user attr = %v, want vladimir", jumpUserAttr)
+	}
+}
+
+func TestSSHCopyIdBasic(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("pi", "secret")
+	var executedCmd string
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		executedCmd = cmd
+		return "", "", 0
+	})
+
+	c := testClient(t, ts, func(c *SSHClient) {
+		c.user = "pi"
+		c.password = "secret"
+	})
+
+	kp, err := GenerateKeyPair("ed25519", 0, "test-copy-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	thread := &starlark.Thread{Name: "test-copy-id"}
+	val, err := c.copyId(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("key"), starlark.String(kp.PublicKey)},
+	})
+	if err != nil {
+		t.Fatalf("copyId failed: %v", err)
+	}
+
+	list := val.(*starlark.List)
+	if list.Len() != 1 {
+		t.Fatalf("expected 1 result, got %d", list.Len())
+	}
+	res := list.Index(0).(starlark.HasAttrs)
+	okVal, _ := res.Attr("ok")
+	if okVal != starlark.True {
+		t.Errorf("expected ok=True")
+	}
+
+	if !strings.Contains(executedCmd, "authorized_keys") {
+		t.Errorf("expected command to reference authorized_keys, got: %q", executedCmd)
+	}
+}
+
+func TestSSHCopyIdFromFile(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("pi", "secret")
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		return "", "", 0
+	})
+
+	c := testClient(t, ts, func(c *SSHClient) {
+		c.user = "pi"
+		c.password = "secret"
+	})
+
+	tmpDir := t.TempDir()
+	pubFile := filepath.Join(tmpDir, "id_test.pub")
+	kp, _ := GenerateKeyPair("ed25519", 0, "from-file")
+	if err := os.WriteFile(pubFile, []byte(kp.PublicKey), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	thread := &starlark.Thread{Name: "test-copy-id-file"}
+	val, err := c.copyId(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("key"), starlark.String(pubFile)},
+	})
+	if err != nil {
+		t.Fatalf("copyId with file path failed: %v", err)
+	}
+
+	list := val.(*starlark.List)
+	if list.Len() != 1 {
+		t.Fatalf("expected 1 result, got %d", list.Len())
+	}
+	res := list.Index(0).(starlark.HasAttrs)
+	okVal, _ := res.Attr("ok")
+	if okVal != starlark.True {
+		t.Errorf("expected ok=True")
+	}
+}
+
+func TestSSHCopyIdInvalidKey(t *testing.T) {
+	c := &SSHClient{hosts: []string{"127.0.0.1"}}
+	thread := &starlark.Thread{Name: "test-copy-id-invalid"}
+
+	_, err := c.copyId(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("key"), starlark.String("invalid-key-data")},
+	})
+	if err == nil {
+		t.Error("expected error for invalid key")
+	}
+}
+
+func TestSSHCopyIdOneShotModule(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("pi", "secret")
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		return "", "", 0
+	})
+
+	host, portStr, _ := net.SplitHostPort(ts.Addr())
+	port, _ := strconv.Atoi(portStr)
+
+	kp, _ := GenerateKeyPair("ed25519", 0, "oneshot")
+
+	mod := New()
+	dict, err := mod.Load(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	copyIdFn := dict["ssh"].(starlark.HasAttrs)
+	fn, err := copyIdFn.Attr("copy_id")
+	if err != nil || fn == nil {
+		t.Fatalf("failed to get ssh.copy_id builtin: %v", err)
+	}
+
+	thread := &starlark.Thread{Name: "test-ssh-copy-id-oneshot"}
+	res, err := starlark.Call(thread, fn, nil, []starlark.Tuple{
+		{starlark.String("key"), starlark.String(kp.PublicKey)},
+		{starlark.String("hosts"), starlark.String(host)},
+		{starlark.String("port"), starlark.MakeInt(port)},
+		{starlark.String("user"), starlark.String("pi")},
+		{starlark.String("password"), starlark.String("secret")},
+		{starlark.String("host_key_check"), starlark.False},
+	})
+	if err != nil {
+		t.Fatalf("ssh.copy_id error: %v", err)
+	}
+
+	list := res.(*starlark.List)
+	if list.Len() != 1 {
+		t.Fatalf("expected 1 result, got %d", list.Len())
+	}
+	item := list.Index(0).(starlark.HasAttrs)
+	okVal, _ := item.Attr("ok")
+	if okVal != starlark.True {
+		t.Errorf("expected ok=True")
 	}
 }

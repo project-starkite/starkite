@@ -37,9 +37,10 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 	m.once.Do(func() {
 		m.config = config
 		members := starlark.StringDict{
-			"config": starlark.NewBuiltin("ssh.config", m.sshConfig),
-			"exec":   starlark.NewBuiltin("ssh.exec", m.sshExec),
-			"keygen": starlark.NewBuiltin("ssh.keygen", m.sshKeygen),
+			"config":  starlark.NewBuiltin("ssh.config", m.sshConfig),
+			"copy_id": starlark.NewBuiltin("ssh.copy_id", m.sshCopyId),
+			"exec":    starlark.NewBuiltin("ssh.exec", m.sshExec),
+			"keygen":  starlark.NewBuiltin("ssh.keygen", m.sshKeygen),
 		}
 		if config != nil && config.TestMode {
 			members["test_server"] = starlark.NewBuiltin("ssh.test_server", m.testserverFactory)
@@ -408,6 +409,8 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 	// try_ prefix dispatch
 	if baseName, ok := strings.CutPrefix(name, "try_"); ok {
 		switch baseName {
+		case "copy_id":
+			return libkite.TryWrap("ssh.client."+name, starlark.NewBuiltin("ssh.client.copy_id", c.copyId)), nil
 		case "exec":
 			return libkite.TryWrap("ssh.client."+name, starlark.NewBuiltin("ssh.client.exec", c.exec)), nil
 		case "upload":
@@ -418,6 +421,8 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		return nil, nil
 	}
 	switch name {
+	case "copy_id":
+		return starlark.NewBuiltin("ssh.client.copy_id", c.copyId), nil
 	case "exec":
 		return starlark.NewBuiltin("ssh.client.exec", c.exec), nil
 	case "upload":
@@ -453,5 +458,5 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 }
 
 func (c *SSHClient) AttrNames() []string {
-	return []string{"download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump_host", "jump_port", "jump_user", "try_download", "try_exec", "try_upload", "upload"}
+	return []string{"copy_id", "download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump_host", "jump_port", "jump_user", "try_copy_id", "try_download", "try_exec", "try_upload", "upload"}
 }

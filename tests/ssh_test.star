@@ -411,7 +411,7 @@ def test_ssh_keygen_ecdsa():
 
 def test_ssh_keygen_disk_persistence():
     """Test key generation with disk persistence."""
-    key_file = "/tmp/starkite_test_keygen_ed25519"
+    key_file = (fs.path(temp_dir()) / "starkite_test_keygen_ed25519").string
     kp = ssh.keygen(type="ed25519", path=key_file, overwrite=True)
     assert(kp.path == key_file, "path should match")
     assert(kp.pub_path == key_file + ".pub", "pub_path should match")
@@ -432,3 +432,34 @@ def test_ssh_try_keygen():
     ok_res = ssh.try_keygen(type="ed25519")
     assert(ok_res.ok == True, "try_keygen should succeed for ed25519")
     assert(ok_res.value.type == "ed25519", "value should be SSHKeyPair")
+
+def test_client_copy_id_dry_run():
+    """Test client.copy_id in dry-run mode."""
+    kp = ssh.keygen(type="ed25519", comment="dry-run-copy")
+    client = ssh.config(hosts=["web1", "web2"], user="pi", dry_run=True)
+    results = client.copy_id(key=kp.public_key)
+    assert(len(results) == 2, "should return 2 results")
+    assert(results[0].ok == True, "result 0 ok")
+    assert(results[1].ok == True, "result 1 ok")
+    assert("[DRY RUN] Would install public key" in results[0].stdout, "stdout should contain dry run msg")
+
+def test_ssh_copy_id_oneshot_dry_run():
+    """Test one-shot ssh.copy_id across a fleet in dry-run mode."""
+    kp = ssh.keygen(type="ed25519", comment="oneshot-copy")
+    results = ssh.copy_id(
+        key = kp.public_key,
+        hosts = ["srv1", "srv2", "srv3"],
+        user = "pi",
+        jump_host = "bastion.lan",
+        jump_user = "admin",
+        dry_run = True,
+    )
+    assert(len(results) == 3, "should return 3 results")
+    assert(results[0].host == "srv1", "host should match")
+    assert(results[0].ok == True, "ok should be True")
+
+def test_ssh_try_copy_id_invalid():
+    """Test ssh.try_copy_id with invalid key data."""
+    res = ssh.try_copy_id(key="invalid-key-data", hosts=["srv1"], user="pi", dry_run=True)
+    assert(res.ok == False, "try_copy_id should fail for invalid key")
+    assert(res.error != None and len(res.error) > 0, "error message should be present")

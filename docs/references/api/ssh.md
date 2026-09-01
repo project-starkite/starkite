@@ -75,6 +75,36 @@ keys = ssh.keygen(
 | `path` | `string` | Saved private key path (or `""`) |
 | `pub_path` | `string` | Saved public key path (or `""`) |
 
+## Public Key Distribution (`ssh.copy_id`)
+
+Distribute public keys to remote target hosts or fleets idempotently:
+
+```python
+# Distribute key to a fleet with one-shot ssh.copy_id
+keys = ssh.keygen(type="ed25519", comment="deploy-key")
+ssh.copy_id(
+    key          = keys.public_key,
+    fleet        = pi_cluster,
+    user         = "pi",
+    ask_password = True,  # Prompt once in terminal for fleet auth
+)
+
+# Distribute key via an existing SSH client instance
+client = ssh.config(hosts=["192.168.1.50"], user="admin", password="password123")
+results = client.copy_id(key=keys.public_key, sudo=True, as_user="pi")
+```
+
+### Copy ID Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `key` | `string` | `""` | Public key string or file path (auto-discovers `ssh-agent` or `~/.ssh/id_ed25519.pub` if omitted) |
+| `as_user` | `string` | `""` | Target user to install key for |
+| `sudo` | `bool` | `False` | Run installer with sudo |
+| `ask_password` | `bool` | `False` | Prompt operator for password in terminal (`isatty`) |
+
+Returns a `list[SSHResult]`, one per host.
+
 ## Configuration
 
 Create an SSH client with `ssh.config()`:
@@ -191,6 +221,23 @@ results = client.download(src, dst)
 | `dst` | `string` | required | Local destination path |
 
 Returns a `list[SSHTransferResult]`, one per host. When downloading from multiple hosts, the local filename is suffixed with the hostname to avoid collisions.
+
+### copy_id
+
+Distribute a public key to all hosts in the client fleet.
+
+```python
+results = client.copy_id(key=pub_key, sudo=True, as_user="pi")
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `key` | `string` | `""` | Public key string or file path |
+| `as_user` | `string` | `""` | Target user to install key for |
+| `sudo` | `bool` | `False` | Run installer with sudo |
+| `ask_password` | `bool` | `False` | Prompt operator for password in terminal |
+
+Returns a `list[SSHResult]`, one per host.
 
 ## SSHResult
 
