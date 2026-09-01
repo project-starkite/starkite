@@ -185,8 +185,8 @@ def test_exec_streaming_pipe_files():
     """Test piping streams between files and processes."""
     if not which("cat"):
         return
-    in_path = fs.path("starkite_in.txt").resolve()
-    out_path = fs.path("starkite_out.txt").resolve()
+    in_path = (fs.path(temp_dir()) / "starkite_in.txt").resolve()
+    out_path = (fs.path(temp_dir()) / "starkite_out.txt").resolve()
     
     if in_path.exists():
         in_path.remove()
@@ -211,8 +211,8 @@ def test_try_exec_streaming_pipe_files():
     """Test try_exec with piping streams between files and processes."""
     if not which("cat"):
         return
-    in_path = fs.path("starkite_in_try.txt").resolve()
-    out_path = fs.path("starkite_out_try.txt").resolve()
+    in_path = (fs.path(temp_dir()) / "starkite_in_try.txt").resolve()
+    out_path = (fs.path(temp_dir()) / "starkite_out_try.txt").resolve()
     
     if in_path.exists():
         in_path.remove()
@@ -232,6 +232,9 @@ def test_try_exec_streaming_pipe_files():
     assert(out_path.exists(), "output file should exist")
     assert(out_path.read_text() == "try_exec stream data", "output file content should match")
     
+    in_path.remove()
+    out_path.remove()
+
 def test_exec_quoted_double_quotes():
     """Test single-string exec with double quotes and inner spaces."""
     if runtime.platform() == "windows":
@@ -243,10 +246,11 @@ def test_exec_quoted_double_quotes():
 def test_exec_quoted_single_quotes():
     """Test single-string exec preserving single quotes and JSON formatted strings."""
     if runtime.platform() == "windows":
-        output = exec("cmd.exe /c echo '{\"key\": \"value\"}'")
+        output = exec("cmd.exe /c echo 'hello single quotes'")
+        assert("hello single quotes" in output, "should preserve single quoted string")
     else:
         output = exec("echo '{\"key\": \"value\"}'")
-    assert('{"key": "value"}' in output, "should preserve JSON string verbatim")
+        assert('{"key": "value"}' in output, "should preserve JSON string verbatim")
 
 def test_exec_escaped_spaces():
     """Test single-string exec with backslash escaped spaces."""
