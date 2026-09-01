@@ -224,3 +224,22 @@ def test_exec_dry_run_quoted_string():
     assert(len(results) == 1, "should return 1 result")
     r = results[0]
     assert("deploy.yaml" in r.stdout, "should handle quoted command string in dry-run stdout")
+
+def test_ssh_exec_oneshot():
+    """Test module-level one-shot ssh.exec."""
+    results = ssh.exec("uptime", hosts=["host1", "host2"], user="deploy", dry_run=True)
+    assert(len(results) == 2, "should execute across 2 hosts")
+    assert(results[0].host == "host1", "first host should be host1")
+    assert("uptime" in results[0].stdout, "should execute uptime")
+
+def test_ssh_exec_oneshot_dual_args():
+    """Test module-level one-shot ssh.exec with structured args."""
+    results = ssh.exec("git", ["status", "-s"], hosts=["host1"], user="deploy", dry_run=True)
+    assert(len(results) == 1, "should return 1 result")
+    assert("git status -s" in results[0].stdout, "should format dual args")
+
+def test_ssh_try_exec_oneshot():
+    """Test module-level try_exec."""
+    res = ssh.try_exec("hostname", hosts=["host1"], user="deploy", dry_run=True)
+    assert(res.ok == True, "try_exec dry_run should be ok")
+    assert(len(res.value) == 1, "should return 1 result")

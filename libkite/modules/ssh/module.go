@@ -37,6 +37,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 		m.config = config
 		members := starlark.StringDict{
 			"config": starlark.NewBuiltin("ssh.config", m.sshConfig),
+			"exec":   starlark.NewBuiltin("ssh.exec", m.sshExec),
 		}
 		if config != nil && config.TestMode {
 			members["test_server"] = starlark.NewBuiltin("ssh.test_server", m.testserverFactory)
@@ -50,6 +51,49 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 func (m *Module) Aliases() starlark.StringDict { return nil }
 
 func (m *Module) FactoryMethod() string { return "config" }
+
+// sshExec executes a command or pipeline across a fleet or host list in a single one-shot call.
+// Signatures:
+//   - ssh.exec("uptime", fleet=web_fleet, user="deploy")
+//   - ssh.exec("git", ["pull", "origin", "main"], hosts=["192.168.1.10"], user="root")
+//   - ssh.exec(cmd="uptime", hosts="192.168.1.10", user="root")
+func (m *Module) sshExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var execArgs starlark.Tuple
+	var execKwargs []starlark.Tuple
+	var configKwargs []starlark.Tuple
+
+	if len(args) > 0 {
+		execArgs = args
+	}
+
+	for _, kv := range kwargs {
+		key := string(kv[0].(starlark.String))
+		switch key {
+		case "cmd":
+			if len(execArgs) == 0 {
+				execArgs = starlark.Tuple{kv[1]}
+			} else {
+				execKwargs = append(execKwargs, kv)
+			}
+		case "commands", "sudo", "as_user", "cwd", "env", "exec_on_error":
+			execKwargs = append(execKwargs, kv)
+		default:
+			// config parameters (fleet, hosts, user, key, port, timeout, exec_policy, exec_max_workers, etc.)
+			configKwargs = append(configKwargs, kv)
+		}
+	}
+
+	clientVal, err := m.sshConfig(thread, fn, nil, configKwargs)
+	if err != nil {
+		return nil, err
+	}
+	client, ok := clientVal.(*SSHClient)
+	if !ok {
+		return nil, fmt.Errorf("ssh.exec: failed to create SSH client")
+	}
+
+	return client.exec(thread, fn, execArgs, execKwargs)
+}
 
 // sshConfig creates a configured SSH client.
 // Usage: ssh.config(hosts=["host1", "host2"], user="root", key="/path/to/key", ...)

@@ -449,3 +449,47 @@ func TestSSHConfigExecMaxWorkers(t *testing.T) {
 		t.Fatalf("expected exec_max_workers attribute to be 16, got %v", attrVal)
 	}
 }
+
+func TestSSHExecOneShot(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("testuser", "secret")
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		return "oneshot-ok\n", "", 0
+	})
+
+	host, portStr, _ := net.SplitHostPort(ts.Addr())
+	port, _ := strconv.Atoi(portStr)
+
+	mod := New()
+	dict, err := mod.Load(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	execBuiltin := dict["ssh"].(starlark.HasAttrs)
+	execFn, err := execBuiltin.Attr("exec")
+	if err != nil || execFn == nil {
+		t.Fatalf("failed to get ssh.exec builtin: %v", err)
+	}
+
+	thread := &starlark.Thread{Name: "test-ssh-exec-oneshot"}
+	res, err := starlark.Call(thread, execFn, starlark.Tuple{starlark.String("whoami")}, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String(host)},
+		{starlark.String("port"), starlark.MakeInt(port)},
+		{starlark.String("user"), starlark.String("testuser")},
+		{starlark.String("password"), starlark.String("secret")},
+		{starlark.String("host_key_check"), starlark.False},
+	})
+	if err != nil {
+		t.Fatalf("ssh.exec error: %v", err)
+	}
+
+	list, ok := res.(*starlark.List)
+	if !ok || list.Len() != 1 {
+		t.Fatalf("expected 1 result from ssh.exec, got %v", res)
+	}
+	stdout := mustAttr(t, list.Index(0), "stdout")
+	if stdout != "oneshot-ok\n" {
+		t.Errorf("stdout = %q, want %q", stdout, "oneshot-ok\n")
+	}
+}
