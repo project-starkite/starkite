@@ -357,3 +357,31 @@ def test_ssh_exec_single_host_string():
     assert(len(results) == 1, "should return 1 host")
     assert(results[0].host == "192.168.1.50", "host should match")
     assert("hostname" in results[0].stdout, "stdout should contain hostname")
+
+def test_ssh_config_jump_host_params():
+    """Test jump_host, jump_user, jump_port configuration and attributes."""
+    client = ssh.config(
+        hosts = ["picluster-0", "picluster-1"],
+        user = "pi",
+        jump_host = "rbp4-1",
+        jump_user = "vladimir",
+        jump_port = 2222,
+        dry_run = True,
+    )
+    assert(client.jump_host == "rbp4-1", "jump_host should be rbp4-1")
+    assert(client.jump_user == "vladimir", "jump_user should be vladimir")
+    assert(client.jump_port == 2222, "jump_port should be 2222")
+
+def test_ssh_exec_with_jump_host():
+    """Test one-shot ssh.exec through a jump host."""
+    results = ssh.exec(
+        "uname -m",
+        hosts = ["picluster-0"],
+        user = "pi",
+        jump_host = "rbp4-1",
+        jump_user = "vladimir",
+        dry_run = True,
+    )
+    assert(len(results) == 1, "should return 1 result")
+    assert(results[0].host == "picluster-0", "target host should be picluster-0")
+    assert("uname -m" in results[0].stdout, "stdout should contain uname -m")

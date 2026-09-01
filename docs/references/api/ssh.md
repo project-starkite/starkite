@@ -71,6 +71,11 @@ client = ssh.config(
 | `exec_policy` | `string` | `"concurrent"` | Execution strategy (`"concurrent"` or `"linear"`) |
 | `exec_max_workers` | `int` | `0` | Max concurrent worker goroutines (`0` = unconstrained) |
 | `exec_on_error` | `string` | `"stop"` | Multi-command error policy (`"stop"` or `"continue"`) |
+| `jump_host` | `string` | `""` | Bastion jump host address |
+| `jump_user` | `string` | `user` | Bastion jump host username (falls back to `user`) |
+| `jump_key` | `string` | `key` | Bastion jump host private key (falls back to `key`) |
+| `jump_password` | `string` | `password` | Bastion jump host password (falls back to `password`) |
+| `jump_port` | `int` | `port` | Bastion jump host SSH port (falls back to `port` or `22`) |
 | `host_key_check` | `bool` | `true` | Verify host key against known hosts |
 | `max_retries` | `int` | `0` | Max reconnection retries |
 | `keep_alive_interval` | `string` | `"30s"` | Keep-alive interval |

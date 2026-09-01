@@ -151,6 +151,10 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		MaxWorkers        int    `name:"max_workers"`
 		ExecOnError       string `name:"exec_on_error"`
 		JumpHost          string `name:"jump_host"`
+		JumpUser          string `name:"jump_user"`
+		JumpKey           string `name:"jump_key"`
+		JumpPassword      string `name:"jump_password"`
+		JumpPort          int    `name:"jump_port"`
 		KnownHostsFile    string `name:"known_hosts_file"`
 		HostKeyCheck      bool   `name:"host_key_check"`
 		KeepAliveInterval string `name:"keep_alive_interval"`
@@ -268,6 +272,18 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 	if p.JumpHost != "" {
 		client.jumpHost = p.JumpHost
 	}
+	if p.JumpUser != "" {
+		client.jumpUser = p.JumpUser
+	}
+	if p.JumpKey != "" {
+		client.jumpKeyFile = p.JumpKey
+	}
+	if p.JumpPassword != "" {
+		client.jumpPassword = p.JumpPassword
+	}
+	if p.JumpPort > 0 {
+		client.jumpPort = p.JumpPort
+	}
 	if p.KnownHostsFile != "" {
 		client.knownHostsFile = p.KnownHostsFile
 	}
@@ -325,6 +341,10 @@ type SSHClient struct {
 	execMaxWorkers    int
 	execOnError       string // "stop" or "continue"
 	jumpHost          string
+	jumpUser          string
+	jumpKeyFile       string
+	jumpPassword      string
+	jumpPort          int
 	knownHostsFile    string
 	hostKeyCheck      bool
 	keepAliveInterval time.Duration
@@ -378,11 +398,17 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		return starlark.String(c.execOnError), nil
 	case "exec_policy":
 		return starlark.String(c.execPolicy), nil
+	case "jump_host":
+		return starlark.String(c.jumpHost), nil
+	case "jump_user":
+		return starlark.String(c.jumpUser), nil
+	case "jump_port":
+		return starlark.MakeInt(c.jumpPort), nil
 	default:
 		return nil, nil
 	}
 }
 
 func (c *SSHClient) AttrNames() []string {
-	return []string{"download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "try_download", "try_exec", "try_upload", "upload"}
+	return []string{"download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump_host", "jump_port", "jump_user", "try_download", "try_exec", "try_upload", "upload"}
 }

@@ -112,15 +112,88 @@ func (c *SSHClient) dialHost(host string) (*ssh.Client, error) {
 	return client, nil
 }
 
-// dialViaJump connects to a target host through a jump/bastion host.
-func (c *SSHClient) dialViaJump(targetAddr string, config *ssh.ClientConfig) (*ssh.Client, error) {
-	// Dial the jump host
-	jumpAddr := c.jumpHost
-	if _, _, err := net.SplitHostPort(jumpAddr); err != nil {
-		jumpAddr = fmt.Sprintf("%s:%d", jumpAddr, c.port)
+// buildJumpSSHConfig creates an *ssh.ClientConfig for connecting to the jump/bastion host.
+func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
+	user := c.jumpUser
+	if user == "" {
+		user = c.user
+	}
+	keyFile := c.jumpKeyFile
+	if keyFile == "" {
+		keyFile = c.keyFile
+	}
+	password := c.jumpPassword
+	if password == "" {
+		password = c.password
 	}
 
-	jumpClient, err := ssh.Dial("tcp", jumpAddr, config)
+	config := &ssh.ClientConfig{
+		User:    user,
+		Timeout: c.timeout,
+	}
+
+	hostKeyCallback, err := c.hostKeyCallback()
+	if err != nil {
+		return nil, fmt.Errorf("jump host key setup: %w", err)
+	}
+	config.HostKeyCallback = hostKeyCallback
+
+	var authMethods []ssh.AuthMethod
+	if keyFile != "" {
+		key, err := os.ReadFile(keyFile)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read jump private key: %w", err)
+		}
+		var signer ssh.Signer
+		if c.keyPassphrase != "" {
+			signer, err = ssh.ParsePrivateKeyWithPassphrase(key, []byte(c.keyPassphrase))
+		} else {
+			signer, err = ssh.ParsePrivateKey(key)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse jump private key: %w", err)
+		}
+		authMethods = append(authMethods, ssh.PublicKeys(signer))
+	}
+	if password != "" {
+		authMethods = append(authMethods, ssh.Password(password))
+	}
+	if socket := os.Getenv("SSH_AUTH_SOCK"); socket != "" {
+		conn, err := net.Dial("unix", socket)
+		if err == nil {
+			agentClient := agent.NewClient(conn)
+			authMethods = append(authMethods, ssh.PublicKeysCallback(agentClient.Signers))
+		}
+	}
+	if len(authMethods) == 0 {
+		return nil, fmt.Errorf("no authentication method configured for jump host")
+	}
+
+	config.Auth = authMethods
+	return config, nil
+}
+
+// dialViaJump connects to a target host through a jump/bastion host.
+func (c *SSHClient) dialViaJump(targetAddr string, targetConfig *ssh.ClientConfig) (*ssh.Client, error) {
+	jumpConfig, err := c.buildJumpSSHConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	jumpPort := c.jumpPort
+	if jumpPort <= 0 {
+		jumpPort = c.port
+	}
+	if jumpPort <= 0 {
+		jumpPort = 22
+	}
+
+	jumpAddr := c.jumpHost
+	if _, _, err := net.SplitHostPort(jumpAddr); err != nil {
+		jumpAddr = fmt.Sprintf("%s:%d", jumpAddr, jumpPort)
+	}
+
+	jumpClient, err := ssh.Dial("tcp", jumpAddr, jumpConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to jump host %s: %w", jumpAddr, err)
 	}
@@ -133,7 +206,7 @@ func (c *SSHClient) dialViaJump(targetAddr string, config *ssh.ClientConfig) (*s
 	}
 
 	// Create an SSH connection over the tunnel
-	conn, chans, reqs, err := ssh.NewClientConn(tunnel, targetAddr, config)
+	conn, chans, reqs, err := ssh.NewClientConn(tunnel, targetAddr, targetConfig)
 	if err != nil {
 		tunnel.Close()
 		jumpClient.Close()

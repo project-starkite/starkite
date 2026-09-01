@@ -796,3 +796,39 @@ func TestSSHExecValidationErrors(t *testing.T) {
 		t.Errorf("expected error for non-string item in commands")
 	}
 }
+
+func TestSSHConfigJumpHostSettings(t *testing.T) {
+	mod := New()
+	thread := &starlark.Thread{Name: "test-jump-config"}
+
+	val, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("10.0.0.5")},
+		{starlark.String("user"), starlark.String("pi")},
+		{starlark.String("jump_host"), starlark.String("bastion.lan")},
+		{starlark.String("jump_user"), starlark.String("vladimir")},
+		{starlark.String("jump_port"), starlark.MakeInt(2222)},
+		{starlark.String("jump_key"), starlark.String("/tmp/bastion_key")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := val.(*SSHClient)
+	if client.jumpHost != "bastion.lan" {
+		t.Errorf("jumpHost = %q, want %q", client.jumpHost, "bastion.lan")
+	}
+	if client.jumpUser != "vladimir" {
+		t.Errorf("jumpUser = %q, want %q", client.jumpUser, "vladimir")
+	}
+	if client.jumpPort != 2222 {
+		t.Errorf("jumpPort = %d, want 2222", client.jumpPort)
+	}
+	if client.jumpKeyFile != "/tmp/bastion_key" {
+		t.Errorf("jumpKeyFile = %q, want /tmp/bastion_key", client.jumpKeyFile)
+	}
+
+	jumpUserAttr, _ := client.Attr("jump_user")
+	if s, ok := jumpUserAttr.(starlark.String); !ok || string(s) != "vladimir" {
+		t.Errorf("jump_user attr = %v, want vladimir", jumpUserAttr)
+	}
+}
