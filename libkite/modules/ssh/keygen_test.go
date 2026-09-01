@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -250,22 +251,26 @@ func TestGenerateKeyPairDiskPersistence(t *testing.T) {
 		t.Errorf("kp.PubPath = %q, want %q", kp.PubPath, pubPath)
 	}
 
-	// 2. Check private key file permissions (0600)
+	// 2. Check private key file permissions (0600 on POSIX)
 	privInfo, err := os.Stat(keyPath)
 	if err != nil {
 		t.Fatalf("private key file does not exist: %v", err)
 	}
-	if perm := privInfo.Mode().Perm(); perm != 0600 {
-		t.Errorf("private key permissions = %o, want 0600", perm)
+	if runtime.GOOS != "windows" {
+		if perm := privInfo.Mode().Perm(); perm != 0600 {
+			t.Errorf("private key permissions = %o, want 0600", perm)
+		}
 	}
 
-	// 3. Check public key file permissions (0644)
+	// 3. Check public key file permissions (0644 on POSIX)
 	pubInfo, err := os.Stat(pubPath)
 	if err != nil {
 		t.Fatalf("public key file does not exist: %v", err)
 	}
-	if perm := pubInfo.Mode().Perm(); perm != 0644 {
-		t.Errorf("public key permissions = %o, want 0644", perm)
+	if runtime.GOOS != "windows" {
+		if perm := pubInfo.Mode().Perm(); perm != 0644 {
+			t.Errorf("public key permissions = %o, want 0644", perm)
+		}
 	}
 
 	// 4. Check file contents match KeyPair fields

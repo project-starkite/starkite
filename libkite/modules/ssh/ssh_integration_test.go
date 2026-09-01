@@ -973,3 +973,42 @@ func TestSSHCopyIdOneShotModule(t *testing.T) {
 		t.Errorf("expected ok=True")
 	}
 }
+
+func TestSSHConfigUseAgent(t *testing.T) {
+	mod := New()
+	thread := &starlark.Thread{Name: "test-use-agent-config"}
+
+	val, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("10.0.0.5")},
+		{starlark.String("user"), starlark.String("pi")},
+		{starlark.String("use_agent"), starlark.True},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	client := val.(*SSHClient)
+	if !client.useAgent {
+		t.Errorf("useAgent = %v, want true", client.useAgent)
+	}
+
+	useAgentAttr, _ := client.Attr("use_agent")
+	if useAgentAttr != starlark.True {
+		t.Errorf("use_agent attr = %v, want True", useAgentAttr)
+	}
+}
+
+func TestSSHUseAgentWithoutSocket(t *testing.T) {
+	t.Setenv("SSH_AUTH_SOCK", "")
+	c := &SSHClient{
+		hosts:    []string{"127.0.0.1"},
+		port:     22,
+		user:     "pi",
+		useAgent: true,
+	}
+
+	_, err := c.buildSSHConfig()
+	if err == nil {
+		t.Error("expected error when use_agent=True and SSH_AUTH_SOCK is empty")
+	}
+}

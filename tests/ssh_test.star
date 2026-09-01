@@ -463,3 +463,13 @@ def test_ssh_try_copy_id_invalid():
     res = ssh.try_copy_id(key="invalid-key-data", hosts=["srv1"], user="pi", dry_run=True)
     assert(res.ok == False, "try_copy_id should fail for invalid key")
     assert(res.error != None and len(res.error) > 0, "error message should be present")
+
+def test_ssh_config_use_agent():
+    """Test use_agent parameter and client attribute."""
+    client = ssh.config(
+        hosts = ["srv1"],
+        user = "pi",
+        use_agent = True,
+        dry_run = True,
+    )
+    assert(client.use_agent == True, "client.use_agent should be True")

@@ -16,8 +16,8 @@ import (
 )
 
 // resolvePublicKey resolves and validates the public key string from an argument,
-// ssh-agent, or default local files.
-func resolvePublicKey(keyArg string) (string, error) {
+// ssh-agent (when useAgent=True), or default local files.
+func resolvePublicKey(keyArg string, useAgent bool) (string, error) {
 	if keyArg != "" {
 		targetPath := keyArg
 		if strings.HasPrefix(targetPath, "~") {
@@ -56,21 +56,30 @@ func resolvePublicKey(keyArg string) (string, error) {
 		return pubStr, nil
 	}
 
-	// If keyArg is empty, query ssh-agent
-	if socket := os.Getenv("SSH_AUTH_SOCK"); socket != "" {
-		conn, err := net.Dial("unix", socket)
-		if err == nil {
-			defer conn.Close()
-			agentClient := agent.NewClient(conn)
-			keys, err := agentClient.List()
-			if err == nil && len(keys) > 0 {
-				pubStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(keys[0])))
-				if keys[0].Comment != "" {
-					pubStr = fmt.Sprintf("%s %s", pubStr, keys[0].Comment)
-				}
-				return pubStr, nil
-			}
+	// If keyArg is empty and useAgent is True, query ssh-agent
+	if useAgent {
+		socket := os.Getenv("SSH_AUTH_SOCK")
+		if socket == "" {
+			return "", fmt.Errorf("ssh.copy_id: use_agent=True but SSH_AUTH_SOCK is not set")
 		}
+		conn, err := net.Dial("unix", socket)
+		if err != nil {
+			return "", fmt.Errorf("ssh.copy_id: failed to connect to SSH_AUTH_SOCK %q: %w", socket, err)
+		}
+		defer conn.Close()
+		agentClient := agent.NewClient(conn)
+		keys, err := agentClient.List()
+		if err != nil {
+			return "", fmt.Errorf("ssh.copy_id: failed to list ssh-agent keys: %w", err)
+		}
+		if len(keys) == 0 {
+			return "", fmt.Errorf("ssh.copy_id: use_agent=True but no identities found in ssh-agent")
+		}
+		pubStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(keys[0])))
+		if keys[0].Comment != "" {
+			pubStr = fmt.Sprintf("%s %s", pubStr, keys[0].Comment)
+		}
+		return pubStr, nil
 	}
 
 	// Fallback to standard local public key files
@@ -94,7 +103,7 @@ func resolvePublicKey(keyArg string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("ssh.copy_id: no public key provided and no default key found in ~/.ssh/ or ssh-agent")
+	return "", fmt.Errorf("ssh.copy_id: no public key provided and no default key found in ~/.ssh/ (use use_agent=True to load from ssh-agent)")
 }
 
 // promptPasswordIfNeeded prompts the operator in the terminal if password is required.
@@ -103,7 +112,7 @@ func promptPasswordIfNeeded(c *SSHClient, askPassword bool) (string, error) {
 		return c.password, nil
 	}
 
-	if (c.keyFile != "" || os.Getenv("SSH_AUTH_SOCK") != "") && !askPassword {
+	if (c.keyFile != "" || (c.useAgent && os.Getenv("SSH_AUTH_SOCK") != "")) && !askPassword {
 		return "", nil
 	}
 
@@ -126,7 +135,7 @@ func promptPasswordIfNeeded(c *SSHClient, askPassword bool) (string, error) {
 		return "", fmt.Errorf("ssh.copy_id: ask_password=True specified but standard input is not a terminal")
 	}
 
-	if c.password == "" && c.keyFile == "" && os.Getenv("SSH_AUTH_SOCK") == "" {
+	if c.password == "" && c.keyFile == "" && !c.useAgent {
 		return "", fmt.Errorf("ssh.copy_id: no password or key configured, and standard input is not a terminal")
 	}
 
@@ -171,15 +180,26 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 		AsUser      string `name:"as_user"`
 		Sudo        bool   `name:"sudo"`
 		AskPassword bool   `name:"ask_password"`
+		UseAgent    bool   `name:"use_agent"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
 
+	useAgent := p.UseAgent || c.useAgent
+
 	// 1. Resolve Public Key
-	pubKey, err := resolvePublicKey(p.Key)
+	pubKey, err := resolvePublicKey(p.Key, useAgent)
 	if err != nil {
 		return nil, err
+	}
+
+	if c.dryRun {
+		results := make([]starlark.Value, len(c.hosts))
+		for i, host := range c.hosts {
+			results[i] = newSSHResult(host, "copy_id", fmt.Sprintf("[DRY RUN] Would install public key on %s: %s", host, pubKey), "", 0, true, true)
+		}
+		return starlark.NewList(results), nil
 	}
 
 	// 2. Handle interactive password prompt if necessary
@@ -196,14 +216,6 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 		asUser = c.defaultAsUser
 	}
 	sudo := p.Sudo || c.defaultSudo
-
-	if c.dryRun {
-		results := make([]starlark.Value, len(c.hosts))
-		for i, host := range c.hosts {
-			results[i] = newSSHResult(host, "copy_id", fmt.Sprintf("[DRY RUN] Would install public key on %s: %s", host, pubKey), "", 0, true, true)
-		}
-		return starlark.NewList(results), nil
-	}
 
 	if len(c.hosts) == 0 {
 		return starlark.NewList(nil), nil
@@ -241,7 +253,7 @@ func (m *Module) sshCopyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 			} else {
 				copyIdKwargs = append(copyIdKwargs, kv)
 			}
-		case "as_user", "sudo", "ask_password":
+		case "as_user", "sudo", "ask_password", "use_agent":
 			copyIdKwargs = append(copyIdKwargs, kv)
 		default:
 			configKwargs = append(configKwargs, kv)

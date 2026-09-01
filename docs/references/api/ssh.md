@@ -98,7 +98,8 @@ results = client.copy_id(key=keys.public_key, sudo=True, as_user="pi")
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `key` | `string` | `""` | Public key string or file path (auto-discovers `ssh-agent` or `~/.ssh/id_ed25519.pub` if omitted) |
+| `key` | `string` | `""` | Public key string or file path (reads local `~/.ssh/` or `ssh-agent` if omitted) |
+| `use_agent` | `bool` | `False` | Explicit signal to use `ssh-agent` |
 | `as_user` | `string` | `""` | Target user to install key for |
 | `sudo` | `bool` | `False` | Run installer with sudo |
 | `ask_password` | `bool` | `False` | Prompt operator for password in terminal (`isatty`) |
@@ -138,6 +139,7 @@ client = ssh.config(
 | `key` | `string` | `""` | Path to private key file |
 | `key_passphrase` | `string` | `""` | Passphrase for private key |
 | `password` | `string` | `""` | SSH password (prefer keys) |
+| `use_agent` | `bool` | `false` | Authenticate using `ssh-agent` ($SSH_AUTH_SOCK) |
 | `sudo` | `bool` | `false` | Default sudo execution policy for all commands |
 | `port` | `int` | `22` | SSH port |
 | `timeout` | `string` | `"30s"` | Connection timeout |

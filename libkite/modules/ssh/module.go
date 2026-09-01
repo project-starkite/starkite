@@ -207,6 +207,7 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		AsUser            string `name:"as_user"`
 		Cwd               string `name:"cwd"`
 		DryRun            bool   `name:"dry_run"`
+		UseAgent          bool   `name:"use_agent"`
 	}
 	if err := startype.Args(args, filteredKwargs).Go(&p); err != nil {
 		return nil, err
@@ -332,6 +333,7 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		client.knownHostsFile = p.KnownHostsFile
 	}
 	client.hostKeyCheck = p.HostKeyCheck
+	client.useAgent = p.UseAgent
 	if p.KeepAliveInterval != "" {
 		d, err := time.ParseDuration(p.KeepAliveInterval)
 		if err != nil {
@@ -343,9 +345,8 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		client.keepAliveMax = p.KeepAliveMax
 	}
 	client.defaultSudo = p.Sudo
-	if p.AsUser != "" {
-		client.defaultAsUser = p.AsUser
-	}
+	client.defaultAsUser = p.AsUser
+	client.defaultCwd = p.Cwd
 	if defaultEnv != nil {
 		client.defaultEnv = make(map[string]string)
 		for _, item := range defaultEnv.Items() {
@@ -356,13 +357,7 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 			}
 		}
 	}
-	if p.Cwd != "" {
-		client.defaultCwd = p.Cwd
-	}
-	// dry_run from kwarg overrides module-level config
-	if p.DryRun {
-		client.dryRun = true
-	}
+	client.dryRun = p.DryRun
 
 	return client, nil
 }
@@ -391,6 +386,7 @@ type SSHClient struct {
 	jumpPort          int
 	knownHostsFile    string
 	hostKeyCheck      bool
+	useAgent          bool
 	keepAliveInterval time.Duration
 	keepAliveMax      int
 	defaultSudo       bool
@@ -452,11 +448,13 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		return starlark.String(c.jumpUser), nil
 	case "jump_port":
 		return starlark.MakeInt(c.jumpPort), nil
+	case "use_agent":
+		return starlark.Bool(c.useAgent), nil
 	default:
 		return nil, nil
 	}
 }
 
 func (c *SSHClient) AttrNames() []string {
-	return []string{"copy_id", "download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump_host", "jump_port", "jump_user", "try_copy_id", "try_download", "try_exec", "try_upload", "upload"}
+	return []string{"copy_id", "download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump_host", "jump_port", "jump_user", "try_copy_id", "try_download", "try_exec", "try_upload", "upload", "use_agent"}
 }

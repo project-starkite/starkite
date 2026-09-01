@@ -54,12 +54,17 @@ func (c *SSHClient) buildSSHConfig() (*ssh.ClientConfig, error) {
 	}
 
 	// SSH agent auth
-	if socket := os.Getenv("SSH_AUTH_SOCK"); socket != "" {
-		conn, err := net.Dial("unix", socket)
-		if err == nil {
-			agentClient := agent.NewClient(conn)
-			authMethods = append(authMethods, ssh.PublicKeysCallback(agentClient.Signers))
+	if c.useAgent {
+		socket := os.Getenv("SSH_AUTH_SOCK")
+		if socket == "" {
+			return nil, fmt.Errorf("ssh: use_agent=True but SSH_AUTH_SOCK is not set")
 		}
+		conn, err := net.Dial("unix", socket)
+		if err != nil {
+			return nil, fmt.Errorf("ssh: failed to connect to SSH_AUTH_SOCK %q: %w", socket, err)
+		}
+		agentClient := agent.NewClient(conn)
+		authMethods = append(authMethods, ssh.PublicKeysCallback(agentClient.Signers))
 	}
 
 	if len(authMethods) == 0 {
