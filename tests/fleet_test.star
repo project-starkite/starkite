@@ -14,6 +14,13 @@ def test_fleet_new_list_of_dicts():
     assert(f.count == 3, "expected 3 items in fleet")
     assert(len(f.items) == 3, "expected 3 items in f.items")
 
+def test_fleet_new_keyword_list():
+    f = fleet.new(list=[
+        {"name": "srv-1", "address": "192.168.1.1"},
+        {"name": "srv-2", "address": "192.168.1.2"},
+    ])
+    assert(f.count == 2, "expected 2 items")
+
 def test_fleet_new_list_of_strings():
     f = fleet.new([
         "192.168.1.101",
@@ -27,21 +34,21 @@ def test_fleet_new_list_of_strings():
     assert(addrs[2] == "192.168.1.103", "third address should match")
     assert(f.names()[0] == "192.168.1.101", "name should default to address")
 
-def test_fleet_from_source_callable():
+def test_fleet_new_callable():
     def discover():
         return [
             {"name": "api-1", "address": "172.16.0.1", "tier": "backend"},
             {"name": "api-2", "address": "172.16.0.2", "tier": "backend"},
         ]
     
-    f = fleet.from_source(discover)
+    f = fleet.new(function=discover)
     assert(f.count == 2, "expected 2 items from callable")
     assert(f.first()["name"] == "api-1", "expected first name api-1")
     assert(f.first()["tier"] == "backend", "expected tier label backend")
 
-def test_fleet_of_json_string():
+def test_fleet_new_json_keyword():
     json_payload = '[{"name": "cache-1", "address": "10.10.1.1", "role": "cache"}]'
-    f = fleet.of(json_payload)
+    f = fleet.new(json=json_payload)
     assert(f.count == 1, "expected 1 item from json string")
     assert(f.first()["name"] == "cache-1", "expected cache-1")
     assert(f.first()["role"] == "cache", "expected role cache")
@@ -70,6 +77,42 @@ def test_fleet_file_yaml():
     prod_workers = f.filter(role="worker", env="production")
     assert(prod_workers.count == 1, "expected 1 prod worker")
     assert(prod_workers.first()["name"] == "node-beta", "expected node-beta")
+
+    # Also test via fleet.new(file=...)
+    f_kw = fleet.new(file=tmp_path)
+    assert(f_kw.count == 3, "expected 3 nodes from fleet.new(file=...)")
+
+def test_fleet_hosts_file_posix():
+    tmp_hosts = "/tmp/starkite_test_hosts"
+    hosts_content = """
+# /etc/hosts format
+127.0.0.1 localhost localhost.localdomain
+::1       localhost6
+
+192.168.10.100 picluster-0 picluster-0.local master
+192.168.10.101 picluster-1 picluster-1.local worker-1
+192.168.10.102 picluster-2 picluster-2.local worker-2
+"""
+    write_text(tmp_hosts, hosts_content)
+
+    # 1. By default, loopback entries are excluded
+    f = fleet.hosts_file(tmp_hosts)
+    assert(f.count == 3, "expected 3 cluster nodes, got " + str(f.count))
+    assert(f.names() == ["picluster-0", "picluster-1", "picluster-2"], "expected hostnames")
+    assert(f.addresses() == ["192.168.10.100", "192.168.10.101", "192.168.10.102"], "expected addresses")
+    assert(f.first()["master"] == "true", "expected master alias indexed in labels")
+
+    # 2. Including loopback
+    f_all = fleet.hosts_file(tmp_hosts, loopback=True)
+    assert(f_all.count == 5, "expected 5 total hosts including loopback")
+
+    # 3. Via fleet.host_file alias
+    f_alias = fleet.host_file(tmp_hosts)
+    assert(f_alias.count == 3, "expected 3 nodes via host_file")
+
+    # 4. Via fleet.new(hosts_file=...)
+    f_new_kw = fleet.new(hosts_file=tmp_hosts)
+    assert(f_new_kw.count == 3, "expected 3 nodes via fleet.new(hosts_file=...)")
 
 # ============================================================================
 # Querying & Subsetting

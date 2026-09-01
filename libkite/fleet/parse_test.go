@@ -111,6 +111,44 @@ func TestFromFile(t *testing.T) {
 	if len(fj.resources) != 1 || fj.resources[0].Name != "j1" {
 		t.Errorf("unexpected json file result: %+v", fj.resources)
 	}
+
+	// 3. Hosts File (POSIX /etc/hosts format)
+	hostsPath := filepath.Join(tmpDir, "hosts")
+	hostsContent := `# Localhost
+127.0.0.1 localhost localhost.localdomain
+::1 localhost6
+
+# Cluster nodes
+192.168.10.100 picluster-0 picluster-0.local master
+192.168.10.101 picluster-1 picluster-1.local worker-1
+`
+	if err := os.WriteFile(hostsPath, []byte(hostsContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// Exclude loopback by default
+	fh, err := FromHostsFile(hostsPath, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fh.resources) != 2 {
+		t.Fatalf("expected 2 cluster nodes, got %d", len(fh.resources))
+	}
+	if fh.resources[0].Name != "picluster-0" || fh.resources[0].Address != "192.168.10.100" {
+		t.Errorf("unexpected host 0: %+v", fh.resources[0])
+	}
+	if fh.resources[0].Labels["master"] != "true" {
+		t.Errorf("expected master alias label: %+v", fh.resources[0].Labels)
+	}
+
+	// Include loopback
+	fhAll, err := FromHostsFile(hostsPath, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(fhAll.resources) != 4 {
+		t.Fatalf("expected 4 total hosts with loopback, got %d", len(fhAll.resources))
+	}
 }
 
 func FuzzFleetParse(f *testing.F) {

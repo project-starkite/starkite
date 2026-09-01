@@ -1,8 +1,11 @@
 package fleet
 
 import (
+	"bufio"
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"strings"
 
@@ -33,6 +36,104 @@ func FromFile(path string) (*Fleet, error) {
 	return FromYAML(data)
 }
 
+// FromHostsFile loads a Fleet from a standard POSIX hosts file (e.g. /etc/hosts).
+// If path is empty, it defaults to "/etc/hosts".
+func FromHostsFile(path string, includeLoopback bool) (*Fleet, error) {
+	if path == "" {
+		path = "/etc/hosts"
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("fleet.hosts_file: failed to read %q: %w", path, err)
+	}
+	return FromHosts(data, includeLoopback)
+}
+
+// FromHosts parses compute resources from standard POSIX hosts file content.
+func FromHosts(data []byte, includeLoopback bool) (*Fleet, error) {
+	var resources []Resource
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		// Strip comments
+		if idx := strings.Index(line, "#"); idx != -1 {
+			line = strings.TrimSpace(line[:idx])
+		}
+		if line == "" {
+			continue
+		}
+
+		fields := strings.Fields(line)
+		if len(fields) < 2 {
+			continue
+		}
+
+		ipStr := fields[0]
+		canonicalName := fields[1]
+		aliases := fields[2:]
+
+		// Validate IP
+		parsedIP := net.ParseIP(ipStr)
+		if parsedIP == nil {
+			continue
+		}
+
+		// Filter loopback addresses if includeLoopback is false
+		if !includeLoopback {
+			if parsedIP.IsLoopback() ||
+				ipStr == "127.0.0.1" || ipStr == "::1" ||
+				ipStr == "fe00::0" || ipStr == "ff00::0" ||
+				ipStr == "ff02::1" || ipStr == "ff02::2" || ipStr == "ff02::3" ||
+				canonicalName == "localhost" || canonicalName == "localhost6" ||
+				canonicalName == "broadcasthost" {
+				continue
+			}
+		}
+
+		ipVersion := "v4"
+		if parsedIP.To4() == nil {
+			ipVersion = "v6"
+		}
+
+		labels := map[string]string{
+			"hostname":   canonicalName,
+			"ip_version": ipVersion,
+		}
+		for _, alias := range aliases {
+			labels[alias] = "true"
+		}
+
+		aliasList := make([]any, len(aliases))
+		for i, a := range aliases {
+			aliasList[i] = a
+		}
+
+		dataMap := map[string]any{
+			"address":    ipStr,
+			"name":       canonicalName,
+			"hostname":   canonicalName,
+			"ip_version": ipVersion,
+			"aliases":    aliasList,
+		}
+
+		resources = append(resources, Resource{
+			ID:      canonicalName,
+			Name:    canonicalName,
+			Kind:    "host",
+			Address: ipStr,
+			Labels:  labels,
+			Data:    dataMap,
+		})
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, fmt.Errorf("fleet.hosts_file: parse error: %w", err)
+	}
+
+	return New(resources), nil
+}
+
 // FromSource parses a Fleet from a Starlark runtime value (list, callable, string JSON, or dict).
 func FromSource(thread *starlark.Thread, source starlark.Value) (*Fleet, error) {
 	if source == nil || source == starlark.None {
@@ -52,7 +153,7 @@ func FromSource(thread *starlark.Thread, source starlark.Value) (*Fleet, error) 
 	case starlark.Callable:
 		res, err := starlark.Call(thread, v, nil, nil)
 		if err != nil {
-			return nil, fmt.Errorf("fleet.from: discovery function failed: %w", err)
+			return nil, fmt.Errorf("fleet.new: discovery function failed: %w", err)
 		}
 		return FromSource(thread, res)
 
@@ -97,7 +198,7 @@ func FromSource(thread *starlark.Thread, source starlark.Value) (*Fleet, error) 
 		return New(items), nil
 
 	default:
-		return nil, fmt.Errorf("fleet.from: unsupported source type %s (expected list, callable, dict, or JSON string)", source.Type())
+		return nil, fmt.Errorf("fleet.new: unsupported source type %s (expected list, callable, dict, or JSON string)", source.Type())
 	}
 }
 
@@ -105,7 +206,7 @@ func FromSource(thread *starlark.Thread, source starlark.Value) (*Fleet, error) 
 func FromJSON(data []byte) (*Fleet, error) {
 	var raw any
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("fleet.from: invalid JSON payload: %w", err)
+		return nil, fmt.Errorf("fleet.new: invalid JSON payload: %w", err)
 	}
 	return parseRawData(raw)
 }
@@ -114,7 +215,7 @@ func FromJSON(data []byte) (*Fleet, error) {
 func FromYAML(data []byte) (*Fleet, error) {
 	var raw any
 	if err := yaml.Unmarshal(data, &raw); err != nil {
-		return nil, fmt.Errorf("fleet.file: invalid YAML payload: %w", err)
+		return nil, fmt.Errorf("fleet.new: invalid YAML payload: %w", err)
 	}
 	return parseRawData(raw)
 }

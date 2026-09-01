@@ -25,13 +25,27 @@ func TestFleetModule(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	posixHostsFile := filepath.Join(tmpDir, "hosts")
+	posixContent := `
+127.0.0.1 localhost
+192.168.10.100 pi-0 pi-0.local master
+192.168.10.101 pi-1 pi-1.local worker
+`
+	if err := os.WriteFile(posixHostsFile, []byte(posixContent), 0644); err != nil {
+		t.Fatal(err)
+	}
+
 	script := `
 def test():
-    # 1. Test fleet.file()
+    # 1. Test fleet.file() and fleet.new(file=...)
     f1 = fleet.file("` + filepath.ToSlash(hostsFile) + `")
     if f1.count != 2:
         return "failed f1 count"
     
+    f1_kw = fleet.new(file="` + filepath.ToSlash(hostsFile) + `")
+    if f1_kw.count != 2:
+        return "failed f1_kw count"
+
     web_nodes = f1.filter(role="web")
     if web_nodes.count != 1:
         return "failed web filter"
@@ -46,18 +60,30 @@ def test():
     if f2.count != 2:
         return "failed f2 count"
 
-    # 3. Test fleet.from_source() with callable
+    # 3. Test fleet.new(function=...)
     def discover():
         return [{"name": "dyn-1", "address": "172.16.0.1"}]
     
-    f3 = fleet.from_source(discover)
+    f3 = fleet.new(function=discover)
     if f3.count != 1 or f3.first()["name"] != "dyn-1":
         return "failed f3 discovery"
 
-    # 4. Test fleet.new() with JSON string
-    f4 = fleet.new('[{"name": "json-1", "address": "10.1.1.1"}]')
+    # 4. Test fleet.new(json=...)
+    f4 = fleet.new(json='[{"name": "json-1", "address": "10.1.1.1"}]')
     if f4.count != 1 or f4.first()["name"] != "json-1":
         return "failed f4 json"
+
+    # 5. Test fleet.hosts_file()
+    f5 = fleet.hosts_file("` + filepath.ToSlash(posixHostsFile) + `")
+    if f5.count != 2:
+        return "failed f5 count: " + str(f5.count)
+    if f5.first()["name"] != "pi-0" or f5.first()["address"] != "192.168.10.100":
+        return "failed f5 pi-0"
+
+    # 6. Test fleet.new(hosts_file=...)
+    f6 = fleet.new(hosts_file="` + filepath.ToSlash(posixHostsFile) + `", loopback=True)
+    if f6.count != 3:
+        return "failed f6 count with loopback: " + str(f6.count)
 
     return "ok"
 `

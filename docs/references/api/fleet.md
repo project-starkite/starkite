@@ -14,10 +14,26 @@ The `fleet` module represents collections of compute resources (servers, nodes, 
 
 | Function | Returns | Description |
 |---|---|---|
-| `fleet.file(path)` | `Fleet` | Load a fleet from a static YAML or JSON file. |
-| `fleet.new(source)` | `Fleet` | Construct a fleet from an in-memory list, callable function, or JSON string. |
-| `fleet.from_source(source)` | `Fleet` | Alias for `fleet.new(source)`. |
-| `fleet.of(source)` | `Fleet` | Alias for `fleet.new(source)`. |
+| `fleet.new(**kwargs \| source)` | `Fleet` | Canonical factory constructor. Constructs a fleet from a file, hosts file, list, function, or JSON string. |
+| `fleet.file(path)` | `Fleet` | Load a fleet from a static YAML or JSON file. Alias for `fleet.new(file=path)`. |
+| `fleet.hosts_file(path="/etc/hosts", loopback=False)` | `Fleet` | Ingest compute resources from a standard POSIX hosts file. |
+| `fleet.host_file(path="/etc/hosts", loopback=False)` | `Fleet` | Alias for `fleet.hosts_file()`. |
+
+---
+
+## `fleet.new` Keyword Parameters
+
+`fleet.new()` accepts either a single positional source argument or explicit keyword arguments:
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `source` | `list` \| `callable` \| `string` \| `dict` | `None` | Generic compute source. |
+| `file` | `string` | `""` | Path to static YAML or JSON file to ingest. |
+| `hosts_file` | `string` \| `bool` | `""` | Path to POSIX hosts file (or `True` for `"/etc/hosts"`). |
+| `loopback` | `bool` | `False` | When parsing hosts files, whether to include `127.0.0.1` and `::1`. |
+| `list` | `list[dict]` \| `list[string]` | `None` | Explicit list of resource dictionaries or address strings. |
+| `function` | `callable` | `None` | Explicit discovery function or lambda returning resources. |
+| `json` | `string` | `""` | Explicit raw JSON string payload. |
 
 ---
 
@@ -51,7 +67,17 @@ for host in servers.items:
     print(host["name"], host["address"], host["labels"])
 ```
 
-### 2. Construct from In-Memory Lists
+### 2. Construct from POSIX Hosts File
+
+```python
+# Ingest cluster nodes from /etc/hosts (loopback excluded)
+cluster = fleet.hosts_file()
+
+# Custom hosts file with loopback included
+all_hosts = fleet.hosts_file("infrastructure/lan_hosts", loopback=True)
+```
+
+### 3. Construct from In-Memory Lists
 
 ```python
 # From structured dictionary list
@@ -67,17 +93,17 @@ raw_fleet = fleet.new([
 ])
 ```
 
-### 3. Construct from Discovery Functions
+### 4. Construct from Discovery Functions
 
 ```python
 def query_cmdb():
     resp = http.url("http://cmdb.corp.local/api/v1/servers").get()
     return resp.json()["data"]
 
-cloud_fleet = fleet.from_source(query_cmdb)
+cloud_fleet = fleet.new(function=query_cmdb)
 ```
 
-### 4. Query and Filter Fleets
+### 5. Query and Filter Fleets
 
 ```python
 servers = fleet.file("hosts.yaml")
@@ -90,7 +116,7 @@ print("Production web servers:", prod_web.count)
 large_nodes = servers.filter(lambda s: s.get("cpu", 0) >= 8)
 ```
 
-### 5. Group by Attribute
+### 6. Group by Attribute
 
 ```python
 servers = fleet.file("hosts.yaml")
@@ -100,15 +126,15 @@ for role, sub_fleet in by_role.items():
     print(role, ":", sub_fleet.count, "nodes")
 ```
 
-### 6. Target with SSH Executor
+### 7. Target with SSH Executor
 
 ```python
-servers = fleet.file("hosts.yaml")
-web_nodes = servers.filter(role="web")
+cluster = fleet.hosts_file()
+workers = cluster.filter(lambda h: h["name"].startswith("picluster-"))
 
 # Pass fleet directly to SSH client
 client = ssh.config(
-    fleet       = web_nodes,
+    fleet       = workers,
     user        = "deploy",
     key         = "~/.ssh/id_ed25519",
     exec_policy = "concurrent",

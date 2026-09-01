@@ -12,7 +12,7 @@ The `fleet` module represents collections of compute resources (nodes, virtual m
 
 ## Architecture Overview
 
-1. **Topology & Discovery (`fleet`)**: Ingests resources from static files, in-memory lists, discovery functions, or Kubernetes clusters. Provides filtering and grouping.
+1. **Topology & Discovery (`fleet`)**: Ingests resources from static files, in-memory lists, discovery functions, POSIX hosts files, or Kubernetes clusters. Provides filtering and grouping.
 2. **Execution Transports (`ssh`, `k8s`)**: Active executors consume `Fleet` instances directly (e.g., `ssh.config(fleet=web_fleet)`).
 
 ```
@@ -29,9 +29,9 @@ The `fleet` module represents collections of compute resources (nodes, virtual m
         │                               │
         ▼ (Constructed By)              ▼ (Consumed By)
  ┌──────────────────────────────┐ ┌──────────────────────────────┐
- │ • fleet.file("hosts.yaml")   │ │ • ssh.config(fleet=f)        │
- │ • fleet.new([...])           │ │ • k8s.exec(fleet=f, ...)     │
- │ • fleet.from_source(fn)      │ │ • Custom automation loops    │
+ │ • fleet.new(...)             │ │ • ssh.config(fleet=f)        │
+ │ • fleet.file("hosts.yaml")   │ │ • k8s.exec(fleet=f, ...)     │
+ │ • fleet.hosts_file("/etc/..")│ │ • Custom automation loops    │
  │ • k8s.client.fleet(...)      │ └──────────────────────────────┘
  └──────────────────────────────┘
 ```
@@ -40,7 +40,45 @@ The `fleet` module represents collections of compute resources (nodes, virtual m
 
 ## 1. Fleet Constructors
 
-### From Static File (`fleet.file`)
+### Unified Factory (`fleet.new`)
+
+`fleet.new()` is the canonical factory for constructing a Fleet:
+
+```python
+# 1. From an in-memory list of dictionaries
+cluster = fleet.new([
+    {"name": "picluster-0", "address": "192.168.10.100", "role": "control-plane"},
+    {"name": "picluster-1", "address": "192.168.10.101", "role": "worker"},
+    {"name": "picluster-2", "address": "192.168.10.102", "role": "worker"},
+])
+
+# 2. From plain host IP / hostname strings
+edge_nodes = fleet.new([
+    "10.0.1.10",
+    "10.0.1.11",
+    "10.0.1.12",
+])
+
+# 3. From a discovery function / lambda
+def discover_from_cmdb():
+    resp = http.url("http://cmdb.corp.local/api/v1/hosts").get()
+    return resp.json()["data"]
+
+cloud_fleet = fleet.new(function=discover_from_cmdb)
+
+# 4. From a static YAML or JSON file
+file_fleet = fleet.new(file="infrastructure/hosts.yaml")
+
+# 5. From a POSIX hosts file
+hosts_fleet = fleet.new(hosts_file="/etc/hosts")
+
+# 6. Empty fleet
+empty_fleet = fleet.new()
+```
+
+---
+
+### Static Configuration Files (`fleet.file`)
 
 Load server metadata from a YAML or JSON file:
 
@@ -68,39 +106,32 @@ servers = fleet.file("hosts.yaml")
 print("Total servers:", servers.count)
 ```
 
-### From In-Memory List (`fleet.new`)
+---
 
-Construct a fleet directly from lists of dictionaries or plain address strings:
+### POSIX Hosts Files (`fleet.hosts_file`)
 
-```python
-# List of dictionaries
-cluster = fleet.new([
-    {"name": "picluster-0", "address": "192.168.10.100", "role": "control-plane"},
-    {"name": "picluster-1", "address": "192.168.10.101", "role": "worker"},
-    {"name": "picluster-2", "address": "192.168.10.102", "role": "worker"},
-])
+Directly ingest and discover compute resources from standard POSIX `/etc/hosts` files. Useful for private LANs, edge devices, and bastion-proxied clusters:
 
-# Plain list of host strings
-edge_nodes = fleet.new([
-    "10.0.1.10",
-    "10.0.1.11",
-    "10.0.1.12",
-])
+```text
+# /etc/hosts
+127.0.0.1      localhost
+192.168.10.100 picluster-0 picluster-0.local master
+192.168.10.101 picluster-1 picluster-1.local worker-1
+192.168.10.102 picluster-2 picluster-2.local worker-2
 ```
 
-### From Dynamic Discovery Function (`fleet.from_source`)
-
-Construct a fleet dynamically by executing a discovery function:
-
 ```python
-def discover_from_cmdb():
-    resp = http.url("http://cmdb.corp.local/api/v1/hosts").get()
-    return resp.json()["data"]
+# Discovers cluster nodes from /etc/hosts (loopback excluded by default)
+cluster = fleet.hosts_file()
 
-cloud_fleet = fleet.from_source(discover_from_cmdb)
+# Filter out specific nodes
+workers = cluster.filter(lambda h: h["name"] != "picluster-0")
+print("Workers count:", workers.count)
 ```
 
-### From Kubernetes Cluster (`k8s.client.fleet`)
+---
+
+### Kubernetes Clusters (`k8s.client.fleet`)
 
 Construct a fleet of Pods or Nodes directly from a Kubernetes cluster:
 
@@ -168,15 +199,11 @@ Pass a `Fleet` instance directly to `ssh.config(fleet=...)`:
 ```python
 # deploy.star
 
-# 1. Ingest fleet topology
-cluster = fleet.new([
-    {"name": "pi-0", "address": "192.168.10.100", "role": "control-plane"},
-    {"name": "pi-1", "address": "192.168.10.101", "role": "worker"},
-    {"name": "pi-2", "address": "192.168.10.102", "role": "worker"},
-])
+# 1. Discover cluster nodes from local /etc/hosts
+cluster = fleet.hosts_file()
 
 # 2. Subset workers
-workers = cluster.filter(role="worker")
+workers = cluster.filter(lambda h: h["name"].startswith("picluster-") and h["name"] != "picluster-0")
 
 # 3. Configure concurrent SSH client targeting the worker sub-fleet
 client = ssh.config(
