@@ -493,3 +493,306 @@ func TestSSHExecOneShot(t *testing.T) {
 		t.Errorf("stdout = %q, want %q", stdout, "oneshot-ok\n")
 	}
 }
+
+func TestSSHExecBatchStopOnError(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("testuser", "secret")
+	var executed []string
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		executed = append(executed, cmd)
+		if cmd == "cmd2" {
+			return "", "err2", 1
+		}
+		return "out:" + cmd, "", 0
+	})
+
+	c := testClient(t, ts, func(c *SSHClient) {
+		c.password = "secret"
+	})
+
+	thread := &starlark.Thread{Name: "test-batch"}
+	val, err := c.exec(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("commands"), starlark.NewList([]starlark.Value{starlark.String("cmd1"), starlark.String("cmd2"), starlark.String("cmd3")})},
+		{starlark.String("exec_on_error"), starlark.String("stop")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list := val.(*starlark.List)
+	if list.Len() != 1 {
+		t.Fatalf("expected 1 host result, got %d", list.Len())
+	}
+	batchRes := list.Index(0).(starlark.HasAttrs)
+	okVal, _ := batchRes.Attr("ok")
+	if okVal != starlark.False {
+		t.Errorf("batch result ok should be false")
+	}
+	stoppedEarly, _ := batchRes.Attr("stopped_early")
+	if stoppedEarly != starlark.True {
+		t.Errorf("batch result stopped_early should be true")
+	}
+	stepsVal, _ := batchRes.Attr("steps")
+	steps := stepsVal.(*starlark.List)
+	if steps.Len() != 2 {
+		t.Fatalf("expected 2 steps executed before stopping, got %d", steps.Len())
+	}
+	if len(executed) != 2 || executed[0] != "cmd1" || executed[1] != "cmd2" {
+		t.Fatalf("unexpected executed commands: %v", executed)
+	}
+}
+
+func TestSSHExecBatchContinueOnError(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("testuser", "secret")
+	var executed []string
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		executed = append(executed, cmd)
+		if cmd == "cmd2" {
+			return "", "err2", 1
+		}
+		return "out:" + cmd, "", 0
+	})
+
+	c := testClient(t, ts, func(c *SSHClient) {
+		c.password = "secret"
+	})
+
+	thread := &starlark.Thread{Name: "test-batch-continue"}
+	val, err := c.exec(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("commands"), starlark.NewList([]starlark.Value{starlark.String("cmd1"), starlark.String("cmd2"), starlark.String("cmd3")})},
+		{starlark.String("exec_on_error"), starlark.String("continue")},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	list := val.(*starlark.List)
+	batchRes := list.Index(0).(starlark.HasAttrs)
+	okVal, _ := batchRes.Attr("ok")
+	if okVal != starlark.False {
+		t.Errorf("batch result ok should be false")
+	}
+	stoppedEarly, _ := batchRes.Attr("stopped_early")
+	if stoppedEarly != starlark.False {
+		t.Errorf("batch result stopped_early should be false")
+	}
+	stepsVal, _ := batchRes.Attr("steps")
+	steps := stepsVal.(*starlark.List)
+	if steps.Len() != 3 {
+		t.Fatalf("expected 3 steps executed, got %d", steps.Len())
+	}
+	if len(executed) != 3 {
+		t.Fatalf("unexpected executed commands count: %v", executed)
+	}
+}
+
+func TestSSHExecOneShotWithCommands(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("testuser", "secret")
+	var executed []string
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		executed = append(executed, cmd)
+		return "res:" + cmd, "", 0
+	})
+
+	host, portStr, _ := net.SplitHostPort(ts.Addr())
+	port, _ := strconv.Atoi(portStr)
+
+	mod := New()
+	dict, err := mod.Load(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	execBuiltin := dict["ssh"].(starlark.HasAttrs)
+	execFn, err := execBuiltin.Attr("exec")
+	if err != nil || execFn == nil {
+		t.Fatalf("failed to get ssh.exec builtin: %v", err)
+	}
+
+	thread := &starlark.Thread{Name: "test-ssh-exec-commands"}
+	res, err := starlark.Call(thread, execFn, nil, []starlark.Tuple{
+		{starlark.String("commands"), starlark.NewList([]starlark.Value{starlark.String("echo a"), starlark.String("echo b")})},
+		{starlark.String("hosts"), starlark.String(host)},
+		{starlark.String("port"), starlark.MakeInt(port)},
+		{starlark.String("user"), starlark.String("testuser")},
+		{starlark.String("password"), starlark.String("secret")},
+		{starlark.String("host_key_check"), starlark.False},
+		{starlark.String("exec_on_error"), starlark.String("stop")},
+	})
+	if err != nil {
+		t.Fatalf("ssh.exec error: %v", err)
+	}
+
+	list, ok := res.(*starlark.List)
+	if !ok || list.Len() != 1 {
+		t.Fatalf("expected 1 host batch result, got %v", res)
+	}
+	batch := list.Index(0).(starlark.HasAttrs)
+	okVal, _ := batch.Attr("ok")
+	if okVal != starlark.True {
+		t.Errorf("batch ok should be true")
+	}
+	stepsVal, _ := batch.Attr("steps")
+	steps := stepsVal.(*starlark.List)
+	if steps.Len() != 2 {
+		t.Fatalf("expected 2 step results, got %d", steps.Len())
+	}
+	if len(executed) != 2 {
+		t.Fatalf("expected 2 commands executed, got %d", len(executed))
+	}
+}
+
+func TestSSHExecOneShotWithFleet(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("testuser", "secret")
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		return "fleet-exec-ok\n", "", 0
+	})
+
+	host, portStr, _ := net.SplitHostPort(ts.Addr())
+	port, _ := strconv.Atoi(portStr)
+
+	testFleet := fleet.New([]fleet.Resource{
+		{ID: "node1", Name: "node1", Kind: "host", Address: host},
+	})
+
+	mod := New()
+	dict, err := mod.Load(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	execBuiltin := dict["ssh"].(starlark.HasAttrs)
+	execFn, _ := execBuiltin.Attr("exec")
+
+	thread := &starlark.Thread{Name: "test-ssh-fleet-exec"}
+	res, err := starlark.Call(thread, execFn, starlark.Tuple{starlark.String("uptime")}, []starlark.Tuple{
+		{starlark.String("fleet"), testFleet},
+		{starlark.String("port"), starlark.MakeInt(port)},
+		{starlark.String("user"), starlark.String("testuser")},
+		{starlark.String("password"), starlark.String("secret")},
+		{starlark.String("host_key_check"), starlark.False},
+	})
+	if err != nil {
+		t.Fatalf("ssh.exec error: %v", err)
+	}
+
+	list := res.(*starlark.List)
+	if list.Len() != 1 {
+		t.Fatalf("expected 1 result, got %d", list.Len())
+	}
+	stdout := mustAttr(t, list.Index(0), "stdout")
+	if stdout != "fleet-exec-ok\n" {
+		t.Errorf("stdout = %q, want %q", stdout, "fleet-exec-ok\n")
+	}
+}
+
+func TestSSHExecOneShotDualArgs(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("testuser", "secret")
+	var executedCmd string
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		executedCmd = cmd
+		return "dual-ok\n", "", 0
+	})
+
+	host, portStr, _ := net.SplitHostPort(ts.Addr())
+	port, _ := strconv.Atoi(portStr)
+
+	mod := New()
+	dict, err := mod.Load(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	execBuiltin := dict["ssh"].(starlark.HasAttrs)
+	execFn, _ := execBuiltin.Attr("exec")
+
+	thread := &starlark.Thread{Name: "test-ssh-dual-args"}
+	res, err := starlark.Call(thread, execFn, starlark.Tuple{
+		starlark.String("git"),
+		starlark.NewList([]starlark.Value{starlark.String("commit"), starlark.String("-m"), starlark.String("hello world")}),
+	}, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String(host)},
+		{starlark.String("port"), starlark.MakeInt(port)},
+		{starlark.String("user"), starlark.String("testuser")},
+		{starlark.String("password"), starlark.String("secret")},
+		{starlark.String("host_key_check"), starlark.False},
+	})
+	if err != nil {
+		t.Fatalf("ssh.exec error: %v", err)
+	}
+
+	list := res.(*starlark.List)
+	if list.Len() != 1 {
+		t.Fatalf("expected 1 result, got %d", list.Len())
+	}
+	if executedCmd != `git commit -m "hello world"` {
+		t.Errorf("executed command = %q, want %q", executedCmd, `git commit -m "hello world"`)
+	}
+}
+
+func TestSSHTryExecFailure(t *testing.T) {
+	mod := New()
+	dict, err := mod.Load(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	sshMod := dict["ssh"].(starlark.HasAttrs)
+	tryExecFn, err := sshMod.Attr("try_exec")
+	if err != nil || tryExecFn == nil {
+		t.Fatalf("failed to get ssh.try_exec builtin: %v", err)
+	}
+
+	thread := &starlark.Thread{Name: "test-try-exec-fail"}
+	// Target an unreachable address with 0 retries and 50ms timeout for instant fail
+	res, err := starlark.Call(thread, tryExecFn, starlark.Tuple{starlark.String("whoami")}, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(65534)},
+		{starlark.String("user"), starlark.String("nonexistent")},
+		{starlark.String("timeout"), starlark.String("50ms")},
+		{starlark.String("max_retries"), starlark.MakeInt(0)},
+		{starlark.String("host_key_check"), starlark.False},
+	})
+	if err != nil {
+		t.Fatalf("try_exec should not raise Go error: %v", err)
+	}
+
+	result, ok := res.(starlark.HasAttrs)
+	if !ok {
+		t.Fatalf("expected Result implementing HasAttrs from try_exec, got %v", res)
+	}
+	okAttr, _ := result.Attr("ok")
+	if okAttr != starlark.False {
+		t.Errorf("try_exec ok should be False on connection failure")
+	}
+	errAttr, _ := result.Attr("error")
+	if errAttr == nil || errAttr == starlark.None || errAttr.(starlark.String) == "" {
+		t.Errorf("try_exec error should contain error message")
+	}
+}
+
+func TestSSHExecValidationErrors(t *testing.T) {
+	c := &SSHClient{hosts: []string{"127.0.0.1"}}
+	thread := &starlark.Thread{Name: "test-validation"}
+
+	// 1. Invalid exec_on_error
+	_, err := c.exec(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("commands"), starlark.NewList([]starlark.Value{starlark.String("cmd1")})},
+		{starlark.String("exec_on_error"), starlark.String("invalid_policy")},
+	})
+	if err == nil {
+		t.Errorf("expected error for invalid exec_on_error")
+	}
+
+	// 2. Non-string item in commands list
+	_, err = c.exec(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("commands"), starlark.NewList([]starlark.Value{starlark.MakeInt(123)})},
+	})
+	if err == nil {
+		t.Errorf("expected error for non-string item in commands")
+	}
+}

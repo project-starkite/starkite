@@ -7,6 +7,31 @@ keywords: [ssh, remote, command, execution, connect, scp, transfer, file, tunnel
 
 The `ssh` module provides remote command execution and file transfer over SSH connections.
 
+## One-Shot Execution
+
+For quick commands or health checks, call `ssh.exec()` or `ssh.try_exec()` directly without initializing a client:
+
+```python
+# One-shot command across a Fleet
+results = ssh.exec("uptime", fleet=web_fleet, user="deploy")
+
+# One-shot multi-command pipeline
+results = ssh.exec(
+    commands = [
+        "git pull origin main",
+        "systemctl restart webapp",
+    ],
+    hosts         = ["192.168.1.10", "192.168.1.11"],
+    user          = "deploy",
+    exec_on_error = "stop",
+)
+
+# Safe execution with try_exec
+res = ssh.try_exec("hostname", hosts=["10.0.0.1"], user="admin")
+if not res.ok:
+    print("Execution failed:", res.error)
+```
+
 ## Configuration
 
 Create an SSH client with `ssh.config()`:
@@ -19,7 +44,7 @@ client = ssh.config(
     key="~/.ssh/id_ed25519",
     port=22,
     timeout="30s",
-    keep_alive_interval="30s",
+    exec_max_workers=16,
 )
 
 # Option B: Target hosts shortcut (list of strings or single string)
@@ -44,6 +69,8 @@ client = ssh.config(
 | `port` | `int` | `22` | SSH port |
 | `timeout` | `string` | `"30s"` | Connection timeout |
 | `exec_policy` | `string` | `"concurrent"` | Execution strategy (`"concurrent"` or `"linear"`) |
+| `exec_max_workers` | `int` | `0` | Max concurrent worker goroutines (`0` = unconstrained) |
+| `exec_on_error` | `string` | `"stop"` | Multi-command error policy (`"stop"` or `"continue"`) |
 | `host_key_check` | `bool` | `true` | Verify host key against known hosts |
 | `max_retries` | `int` | `0` | Max reconnection retries |
 | `keep_alive_interval` | `string` | `"30s"` | Keep-alive interval |
@@ -52,7 +79,7 @@ client = ssh.config(
 
 ### exec
 
-Execute a command on all configured hosts. Supports both single-string commands and structured argument lists.
+Execute a single command or a multi-command pipeline on all configured hosts.
 
 ```python
 # Single string command
@@ -60,18 +87,31 @@ results = client.exec("k3s kubectl apply -f deploy.yaml", sudo=True)
 
 # Structured argument list (safe argument passing)
 results = client.exec("git", ["commit", "-m", "release v0.1.0"], cwd="/opt/app")
+
+# Multi-command pipeline
+batch_results = client.exec(
+    commands = [
+        "git pull origin main",
+        "npm install --production",
+        "systemctl restart webapp",
+    ],
+    exec_on_error = "stop",
+)
 ```
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `cmd` | `string` | required | Command or binary name to execute |
+| `cmd` | `string` | required (if no `commands`) | Command or binary name to execute |
 | `args` | `list[string]` | `[]` | Positional argument list |
+| `commands` | `list[string]` | `[]` | Multi-command sequence to execute per host |
+| `exec_max_workers` | `int` | client default | Override maximum concurrent active workers |
+| `exec_on_error` | `string` | client default | Error handling policy (`"stop"` or `"continue"`) |
 | `sudo` | `bool` | `False` | Run with sudo |
 | `as_user` | `string` | `""` | Run as a specific user (with sudo) |
 | `cwd` | `string` | `""` | Working directory for the command |
 | `env` | `dict` | `{}` | Environment variables |
 
-Returns a `list[SSHResult]`, one per host.
+Returns `list[SSHResult]` when executing a single command, or `list[SSHBatchResult]` when `commands` is provided.
 
 ### upload
 
@@ -106,15 +146,28 @@ Returns a `list[SSHTransferResult]`, one per host. When downloading from multipl
 
 ## SSHResult
 
-Returned by `client.exec()`, one per host.
+Returned by `client.exec()` (or items within `SSHBatchResult.steps`), one per host.
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
 | `host` | `string` | Hostname this result is from |
+| `cmd` | `string` | The command string executed |
 | `stdout` | `string` | Standard output |
 | `stderr` | `string` | Standard error |
 | `code` | `int` | Exit code |
 | `ok` | `bool` | `True` if exit code is 0 |
+| `dry_run` | `bool` | `True` if running in dry-run mode |
+
+## SSHBatchResult
+
+Returned by `client.exec(commands=[...])` or `ssh.exec(commands=[...])`, one per host.
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `host` | `string` | Hostname this batch result is from |
+| `ok` | `bool` | `True` if all executed commands succeeded (code 0) |
+| `stopped_early` | `bool` | `True` if execution stopped before reaching the end due to an error |
+| `steps` | `list[SSHResult]` | List of individual step results in execution order |
 | `dry_run` | `bool` | `True` if running in dry-run mode |
 
 ## SSHTransferResult
@@ -157,6 +210,21 @@ results = client.exec(
     cwd="/opt/myapp",
     env={"VERSION": "2.0.0"},
 )
+
+# Run a multi-command sequence with fail-fast stopping
+batch_results = client.exec(
+    commands=[
+        "git fetch origin main",
+        "git checkout -q main",
+        "systemctl restart myapp",
+    ],
+    exec_on_error="stop",
+)
+for b in batch_results:
+    if not b.ok:
+        print("Host %s failed (stopped early: %s)" % (b.host, b.stopped_early))
+    for step in b.steps:
+        print("  [%s] code=%d: %s" % (step.cmd, step.code, step.stdout.strip()))
 ```
 
 ### File transfer

@@ -243,3 +243,117 @@ def test_ssh_try_exec_oneshot():
     res = ssh.try_exec("hostname", hosts=["host1"], user="deploy", dry_run=True)
     assert(res.ok == True, "try_exec dry_run should be ok")
     assert(len(res.value) == 1, "should return 1 result")
+
+def test_exec_commands_pipeline_dry_run():
+    """Test client.exec with commands list."""
+    client = ssh.config(hosts=["web1", "web2"], user="deploy", dry_run=True)
+    results = client.exec(
+        commands = [
+            "git pull origin main",
+            "npm install",
+            "systemctl restart webapp",
+        ],
+        exec_on_error = "stop",
+    )
+    assert(len(results) == 2, "should return results for 2 hosts")
+    r = results[0]
+    assert(r.host == "web1", "first host should be web1")
+    assert(r.ok == True, "batch should be ok in dry-run")
+    assert(r.stopped_early == False, "should not be stopped early")
+    assert(len(r.steps) == 3, "should contain 3 step results")
+    assert(r.steps[0].cmd == "git pull origin main", "step 0 cmd should match")
+    assert("npm install" in r.steps[1].stdout, "step 1 stdout should contain npm install")
+
+def test_ssh_exec_commands_oneshot():
+    """Test module-level ssh.exec with commands list."""
+    results = ssh.exec(
+        commands = ["echo 1", "echo 2"],
+        hosts = ["host1"],
+        user = "deploy",
+        exec_on_error = "continue",
+        dry_run = True,
+    )
+    assert(len(results) == 1, "should return result for 1 host")
+    batch = results[0]
+    assert(batch.ok == True, "batch should be ok")
+    assert(len(batch.steps) == 2, "should have 2 steps")
+    assert(batch.steps[0].cmd == "echo 1", "first step cmd should match")
+
+def test_client_exec_positional_commands_list():
+    """Test client.exec passing commands as positional list."""
+    client = ssh.config(hosts=["h1"], user="deploy", dry_run=True)
+    results = client.exec(["ls -la", "df -h"])
+    assert(len(results) == 1, "should return 1 host result")
+    assert(len(results[0].steps) == 2, "should have 2 step results")
+    assert(results[0].steps[0].cmd == "ls -la", "step 0 cmd match")
+    assert(results[0].steps[1].cmd == "df -h", "step 1 cmd match")
+
+def test_client_exec_positional_commands_tuple():
+    """Test client.exec passing commands as positional tuple."""
+    client = ssh.config(hosts=["h1"], user="deploy", dry_run=True)
+    results = client.exec(("uptime", "whoami"))
+    assert(len(results) == 1, "should return 1 host result")
+    assert(len(results[0].steps) == 2, "should have 2 step results")
+
+def test_client_exec_commands_with_options():
+    """Test client.exec commands with sudo, cwd, and env options."""
+    client = ssh.config(hosts=["h1"], user="deploy", dry_run=True)
+    results = client.exec(
+        commands = ["make build", "make install"],
+        cwd = "/opt/myapp",
+        sudo = True,
+        as_user = "app",
+        env = {"GOOS": "linux"},
+    )
+    assert(len(results) == 1, "should return 1 host result")
+    assert(results[0].ok == True, "should be ok")
+    assert(results[0].stopped_early == False, "should not be stopped early")
+    assert("cd /opt/myapp" in results[0].steps[0].stdout, "stdout should contain cd")
+    assert("sudo -u app" in results[0].steps[0].stdout, "stdout should contain sudo -u app")
+    assert('GOOS="linux"' in results[0].steps[0].stdout, "stdout should contain env var")
+
+def test_client_try_exec_commands():
+    """Test client.try_exec with multi-command pipeline."""
+    client = ssh.config(hosts=["h1"], user="deploy", dry_run=True)
+    res = client.try_exec(commands=["echo 1", "echo 2"])
+    assert(res.ok == True, "try_exec on dry_run should be ok")
+    batch = res.value[0]
+    assert(batch.ok == True, "batch ok should be true")
+    assert(len(batch.steps) == 2, "should have 2 steps")
+
+def test_ssh_try_exec_commands_oneshot():
+    """Test ssh.try_exec with multi-command pipeline at module level."""
+    res = ssh.try_exec(
+        commands = ["date", "cal"],
+        hosts = ["srv1", "srv2"],
+        user = "deploy",
+        dry_run = True,
+    )
+    assert(res.ok == True, "try_exec on dry_run should be ok")
+    assert(len(res.value) == 2, "should return 2 hosts")
+    assert(len(res.value[0].steps) == 2, "each host should have 2 steps")
+
+def test_ssh_exec_commands_with_fleet():
+    """Test ssh.exec with commands targeting a Fleet instance."""
+    compute_fleet = fleet.new([
+        {"id": "node-1", "name": "node-1", "address": "10.0.1.10"},
+        {"id": "node-2", "name": "node-2", "address": "10.0.1.11"},
+    ])
+    results = ssh.exec(
+        commands = ["cat /etc/os-release", "uname -r"],
+        fleet = compute_fleet,
+        user = "deploy",
+        exec_max_workers = 4,
+        dry_run = True,
+    )
+    assert(len(results) == 2, "should return 2 hosts")
+    assert(results[0].host == "10.0.1.10", "host 1 should match")
+    assert(results[1].host == "10.0.1.11", "host 2 should match")
+    assert(len(results[0].steps) == 2, "should contain 2 steps")
+
+def test_ssh_exec_single_host_string():
+    """Test ssh.exec with single host string shortcut."""
+    results = ssh.exec("hostname", hosts="192.168.1.50", user="root", dry_run=True)
+    assert(len(results) == 1, "should return 1 host")
+    assert(results[0].host == "192.168.1.50", "host should match")
+    assert("hostname" in results[0].stdout, "stdout should contain hostname")
