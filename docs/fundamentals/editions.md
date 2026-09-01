@@ -25,9 +25,9 @@ To optimize binary footprints, each edition is defined as a distinct Go module w
 
 ## Base modules
 
-All editions include the following 27 base modules:
+All editions include the following 28 base modules:
 
-`os`, `fs`, `fmt`, `io`, `vars`, `strings`, `regexp`, `json`, `yaml`, `csv`, `sql`, `time`, `base64`, `hash`, `uuid`, `template`, `gzip`, `zip`, `log`, `concur`, `retry`, `table`, `runtime`, `ssh`, `http`, `inventory`, `test`
+`os`, `fs`, `fmt`, `io`, `vars`, `strings`, `regexp`, `json`, `yaml`, `csv`, `sql`, `time`, `base64`, `hash`, `uuid`, `template`, `gzip`, `zip`, `log`, `concur`, `retry`, `table`, `runtime`, `ssh`, `http`, `fleet`, `inventory`, `test`
 
 For module details, see the [API Reference](../references/api/index.md).
 

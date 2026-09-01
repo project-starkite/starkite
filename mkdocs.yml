@@ -160,6 +160,7 @@ nav:
               - retry: references/api/retry.md
               - runtime: references/api/runtime.md
               - vars: references/api/vars.md
+              - fleet: references/api/fleet.md
               - inventory: references/api/inventory.md
               - test: references/api/test.md
           - Platform & AI:

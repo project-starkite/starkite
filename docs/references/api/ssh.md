@@ -12,13 +12,21 @@ The `ssh` module provides remote command execution and file transfer over SSH co
 Create an SSH client with `ssh.config()`:
 
 ```python
+# Option A: Target a Fleet directly
 client = ssh.config(
-    hosts=["web-1", "web-2", "web-3"],
+    fleet=web_fleet,
     user="deploy",
     key="~/.ssh/id_ed25519",
     port=22,
     timeout="30s",
     keep_alive_interval="30s",
+)
+
+# Option B: Target hosts shortcut (list of strings or single string)
+client = ssh.config(
+    hosts=["web-1", "web-2", "web-3"],
+    user="deploy",
+    key="~/.ssh/id_ed25519",
 )
 ```
 
@@ -26,7 +34,8 @@ client = ssh.config(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `hosts` | `list[string]` | required | Target hostnames or IPs |
+| `fleet` | `Fleet` \| `source` | `None` | Compute resource `Fleet` instance to target |
+| `hosts` | `list[string]` \| `string` | `[]` | Shortcut for target hostnames or IPs |
 | `user` | `string` | current user | SSH username |
 | `key` | `string` | `""` | Path to private key file |
 | `key_passphrase` | `string` | `""` | Passphrase for private key |

@@ -24,7 +24,7 @@ The modules available by default depend on the Starkite edition:
 
 | Edition | Binary | Included Modules |
 |---|---|---|
-| Base | `kitecmd` | `os`, `fs`, `http`, `ssh`, `sql`, `json`, `yaml`, `csv`, `gzip`, `zip`, `base64`, `hash`, `strings`, `regexp`, `template`, `time`, `uuid`, `fmt`, `log`, `table`, `concur`, `retry`, `io`, `vars`, `runtime`, `inventory`, `test` |
+| Base | `kitecmd` | `os`, `fs`, `http`, `ssh`, `sql`, `json`, `yaml`, `csv`, `gzip`, `zip`, `base64`, `hash`, `strings`, `regexp`, `template`, `time`, `uuid`, `fmt`, `log`, `table`, `concur`, `retry`, `io`, `vars`, `runtime`, `fleet`, `inventory`, `test` |
 | Cloud | `kitecloud` | Base modules + `k8s` |
 | AI | `kiteai` | Base modules + `ai`, `mcp` |
 | All-in-one | `kite` | All modules (Base + Cloud + AI) |

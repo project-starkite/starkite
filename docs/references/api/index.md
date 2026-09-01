@@ -64,6 +64,12 @@ System primitives, control flow, and built-in utilities every script needs.
 
     Testing assertions and helpers.
 
+-   :material-server-network:{ .lg .middle } [`fleet`](fleet.md)
+
+    ---
+
+    Compute resource fleet management, topology querying, and executor targeting.
+
 -   :material-format-list-bulleted:{ .lg .middle } [`inventory`](inventory.md)
 
     ---

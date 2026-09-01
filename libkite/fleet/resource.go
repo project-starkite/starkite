@@ -23,33 +23,32 @@ type Resource struct {
 func (r Resource) ToStarlarkDict() *starlark.Dict {
 	d := starlark.NewDict(6 + len(r.Labels) + len(r.Data))
 
-	d.SetKey(starlark.String("id"), starlark.String(r.ID))
-	d.SetKey(starlark.String("name"), starlark.String(r.Name))
-	d.SetKey(starlark.String("kind"), starlark.String(r.Kind))
-	d.SetKey(starlark.String("address"), starlark.String(r.Address))
-
-	// Labels sub-dict
-	labelDict := starlark.NewDict(len(r.Labels))
-	for k, v := range r.Labels {
-		labelDict.SetKey(starlark.String(k), starlark.String(v))
-		// Top-level accessibility for labels
-		d.SetKey(starlark.String(k), starlark.String(v))
-	}
-	d.SetKey(starlark.String("labels"), labelDict)
-
-	// Data sub-dict
+	// Data sub-dict and top-level typed values
 	dataDict := starlark.NewDict(len(r.Data))
 	for k, v := range r.Data {
 		var starVal starlark.Value
 		if err := startype.Go(v).Starlark(&starVal); err == nil {
 			dataDict.SetKey(starlark.String(k), starVal)
-			// Also allow top-level access if not colliding with core fields
-			if _, found, _ := d.Get(starlark.String(k)); !found {
-				d.SetKey(starlark.String(k), starVal)
-			}
+			d.SetKey(starlark.String(k), starVal)
 		}
 	}
 	d.SetKey(starlark.String("data"), dataDict)
+
+	// Labels sub-dict
+	labelDict := starlark.NewDict(len(r.Labels))
+	for k, v := range r.Labels {
+		labelDict.SetKey(starlark.String(k), starlark.String(v))
+		if _, found, _ := d.Get(starlark.String(k)); !found {
+			d.SetKey(starlark.String(k), starlark.String(v))
+		}
+	}
+	d.SetKey(starlark.String("labels"), labelDict)
+
+	// Core top-level fields
+	d.SetKey(starlark.String("id"), starlark.String(r.ID))
+	d.SetKey(starlark.String("name"), starlark.String(r.Name))
+	d.SetKey(starlark.String("kind"), starlark.String(r.Kind))
+	d.SetKey(starlark.String("address"), starlark.String(r.Address))
 
 	return d
 }
