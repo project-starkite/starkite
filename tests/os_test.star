@@ -232,6 +232,36 @@ def test_try_exec_streaming_pipe_files():
     assert(out_path.exists(), "output file should exist")
     assert(out_path.read_text() == "try_exec stream data", "output file content should match")
     
-    in_path.remove()
-    out_path.remove()
+def test_exec_quoted_double_quotes():
+    """Test single-string exec with double quotes and inner spaces."""
+    if runtime.platform() == "windows":
+        output = exec('cmd.exe /c echo "hello world with spaces"')
+    else:
+        output = exec('echo "hello world with spaces"')
+    assert("hello world with spaces" in output, "should preserve spaced argument inside double quotes")
+
+def test_exec_quoted_single_quotes():
+    """Test single-string exec preserving single quotes and JSON formatted strings."""
+    if runtime.platform() == "windows":
+        output = exec("cmd.exe /c echo '{\"key\": \"value\"}'")
+    else:
+        output = exec("echo '{\"key\": \"value\"}'")
+    assert('{"key": "value"}' in output, "should preserve JSON string verbatim")
+
+def test_exec_escaped_spaces():
+    """Test single-string exec with backslash escaped spaces."""
+    if runtime.platform() == "windows":
+        res = try_exec("cmd.exe /c echo hello\\ world")
+    else:
+        res = try_exec("echo hello\\ world")
+    assert(res.ok, "should execute command with escaped spaces")
+    assert("hello world" in res.stdout, "should parse escaped space as literal space")
+
+def test_exec_structured_argument_list():
+    """Test exec with explicit command and argument list."""
+    if runtime.platform() == "windows":
+        output = exec("cmd.exe", ["/c", "echo", "arg1", "arg2"])
+    else:
+        output = exec("echo", ["arg1", "arg2"])
+    assert("arg1" in output and "arg2" in output, "should pass structured arguments to process")
 

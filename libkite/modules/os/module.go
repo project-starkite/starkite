@@ -628,7 +628,7 @@ func (m *Module) tryExecCmd(thread *starlark.Thread, fn *starlark.Builtin, args 
 
 	res, err := m.runCmd(thread, args, kwargs)
 	if err != nil {
-		return nil, err // arg parsing / permission errors are real errors
+		return nil, err
 	}
 	if res.err != nil {
 		return &ExecResult{exitCode: -1, errMsg: res.err.Error()}, nil

@@ -199,3 +199,19 @@ def test_string_repr():
 def test_type():
     client = ssh.config(hosts=["h1"], user="root", dry_run=True)
     assert(type(client) == "ssh.client", "type should be ssh.client")
+
+def test_exec_dry_run_dual_invocation_args():
+    """Test SSH exec with dual invocation structured argument list."""
+    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    results = client.exec("git", ["commit", "-m", "release v0.1.0"])
+    assert(len(results) == 1, "should return 1 result")
+    r = results[0]
+    assert("release v0.1.0" in r.stdout, "should format dual invocation command in dry-run stdout")
+
+def test_exec_dry_run_quoted_string():
+    """Test SSH exec with quoted command string."""
+    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    results = client.exec('k3s kubectl apply -f "deploy.yaml"')
+    assert(len(results) == 1, "should return 1 result")
+    r = results[0]
+    assert("deploy.yaml" in r.stdout, "should handle quoted command string in dry-run stdout")
