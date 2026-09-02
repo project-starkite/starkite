@@ -471,6 +471,10 @@ func (s *StarlarkTestServer) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin("ssh.test_server.port", s.portMethod), nil
 	case "addr":
 		return starlark.NewBuiltin("ssh.test_server.addr", s.addrMethod), nil
+	case "host_key":
+		return starlark.NewBuiltin("ssh.test_server.host_key", s.hostKeyMethod), nil
+	case "fingerprint":
+		return starlark.NewBuiltin("ssh.test_server.fingerprint", s.fingerprintMethod), nil
 	case "add_file":
 		return starlark.NewBuiltin("ssh.test_server.add_file", s.addFileMethod), nil
 	case "uploaded":
@@ -482,7 +486,7 @@ func (s *StarlarkTestServer) Attr(name string) (starlark.Value, error) {
 }
 
 func (s *StarlarkTestServer) AttrNames() []string {
-	return []string{"add_file", "addr", "handle_exec", "port", "shutdown", "start", "uploaded"}
+	return []string{"add_file", "addr", "fingerprint", "handle_exec", "host_key", "port", "shutdown", "start", "uploaded"}
 }
 
 func (s *StarlarkTestServer) startMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -507,6 +511,22 @@ func (s *StarlarkTestServer) portMethod(thread *starlark.Thread, fn *starlark.Bu
 
 func (s *StarlarkTestServer) addrMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	return starlark.String(s.server.Addr()), nil
+}
+
+func (s *StarlarkTestServer) hostKeyMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if s.server == nil || s.server.hostSigner == nil {
+		return starlark.None, nil
+	}
+	pk := s.server.hostSigner.PublicKey()
+	return starlark.String(strings.TrimSpace(string(gossh.MarshalAuthorizedKey(pk)))), nil
+}
+
+func (s *StarlarkTestServer) fingerprintMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if s.server == nil || s.server.hostSigner == nil {
+		return starlark.None, nil
+	}
+	pk := s.server.hostSigner.PublicKey()
+	return starlark.String(gossh.FingerprintSHA256(pk)), nil
 }
 
 func (s *StarlarkTestServer) addFileMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

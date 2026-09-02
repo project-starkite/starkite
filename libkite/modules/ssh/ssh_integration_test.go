@@ -13,6 +13,8 @@ import (
 	"time"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
+	gossh "golang.org/x/crypto/ssh"
 
 	"github.com/project-starkite/starkite/libkite/fleet"
 )
@@ -1233,5 +1235,251 @@ func TestSSHOneShotRejectsFleetAndJump(t *testing.T) {
 	})
 	if err == nil || !strings.Contains(err.Error(), "bastion/jump host routing is not supported") {
 		t.Errorf("expected error rejecting jump on ssh.copy_id, got %v", err)
+	}
+}
+
+func TestSSHKeyscanBasic(t *testing.T) {
+	ts, err := NewTestServer()
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
+	if err := ts.Start(); err != nil {
+		t.Fatalf("failed to start test server: %v", err)
+	}
+	defer ts.Close()
+
+	mod := New()
+	thread := &starlark.Thread{Name: "test-keyscan"}
+
+	res, err := mod.sshKeyscan(thread, starlark.NewBuiltin("ssh.keyscan", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.NewList([]starlark.Value{starlark.String("127.0.0.1")})},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("timeout"), starlark.String("2s")},
+	})
+	if err != nil {
+		t.Fatalf("ssh.keyscan failed: %v", err)
+	}
+
+	list, ok := res.(*starlark.List)
+	if !ok {
+		t.Fatalf("expected starlark.List, got %T", res)
+	}
+	if list.Len() != 1 {
+		t.Fatalf("expected 1 host key, got %d", list.Len())
+	}
+
+	hk, ok := list.Index(0).(*starlarkstruct.Struct)
+	if !ok {
+		t.Fatalf("expected starlarkstruct.Struct, got %T", list.Index(0))
+	}
+
+	hostVal, _ := hk.Attr("host")
+	if s, ok := starlark.AsString(hostVal); !ok || s != "127.0.0.1" {
+		t.Errorf("host = %v, want '127.0.0.1'", hostVal)
+	}
+
+	portVal, _ := hk.Attr("port")
+	if p, ok := portVal.(starlark.Int); !ok {
+		t.Errorf("port is not int: %v", portVal)
+	} else if pi, _ := p.Int64(); int(pi) != ts.Port() {
+		t.Errorf("port = %d, want %d", pi, ts.Port())
+	}
+
+	typeVal, _ := hk.Attr("type")
+	if s, ok := starlark.AsString(typeVal); !ok || s != "ssh-ed25519" {
+		t.Errorf("type = %v, want 'ssh-ed25519'", typeVal)
+	}
+
+	pubVal, _ := hk.Attr("public_key")
+	expectedPub := strings.TrimSpace(string(gossh.MarshalAuthorizedKey(ts.hostSigner.PublicKey())))
+	if s, ok := starlark.AsString(pubVal); !ok || s != expectedPub {
+		t.Errorf("public_key = %v, want %s", pubVal, expectedPub)
+	}
+
+	fpVal, _ := hk.Attr("fingerprint")
+	expectedFp := gossh.FingerprintSHA256(ts.hostSigner.PublicKey())
+	if s, ok := starlark.AsString(fpVal); !ok || s != expectedFp {
+		t.Errorf("fingerprint = %v, want %s", fpVal, expectedFp)
+	}
+
+	lineVal, _ := hk.Attr("line")
+	if s, ok := starlark.AsString(lineVal); !ok || !strings.Contains(s, "ssh-ed25519") {
+		t.Errorf("line = %v, want string containing ssh-ed25519", lineVal)
+	}
+
+	hashedVal, _ := hk.Attr("hashed_line")
+	if s, ok := starlark.AsString(hashedVal); !ok || !strings.HasPrefix(s, "|1|") {
+		t.Errorf("hashed_line = %v, want prefix '|1|'", hashedVal)
+	}
+}
+
+func TestSSHKeyscanWithSaveAndDeduplication(t *testing.T) {
+	ts, err := NewTestServer()
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
+	if err := ts.Start(); err != nil {
+		t.Fatalf("failed to start test server: %v", err)
+	}
+	defer ts.Close()
+
+	tempFile := filepath.Join(t.TempDir(), "known_hosts")
+
+	mod := New()
+	thread := &starlark.Thread{Name: "test-keyscan-save"}
+
+	// 1. Initial scan with save=True
+	_, err = mod.sshKeyscan(thread, starlark.NewBuiltin("ssh.keyscan", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("save"), starlark.Bool(true)},
+		{starlark.String("path"), starlark.String(tempFile)},
+	})
+	if err != nil {
+		t.Fatalf("first keyscan failed: %v", err)
+	}
+
+	data1, err := os.ReadFile(tempFile)
+	if err != nil {
+		t.Fatalf("failed to read created known_hosts: %v", err)
+	}
+	lines1 := strings.Split(strings.TrimSpace(string(data1)), "\n")
+	if len(lines1) != 1 {
+		t.Fatalf("expected 1 line in known_hosts, got %d", len(lines1))
+	}
+
+	// 2. Second scan with save=True (idempotency check)
+	_, err = mod.sshKeyscan(thread, starlark.NewBuiltin("ssh.keyscan", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("save"), starlark.Bool(true)},
+		{starlark.String("path"), starlark.String(tempFile)},
+	})
+	if err != nil {
+		t.Fatalf("second keyscan failed: %v", err)
+	}
+
+	data2, err := os.ReadFile(tempFile)
+	if err != nil {
+		t.Fatalf("failed to read known_hosts: %v", err)
+	}
+	lines2 := strings.Split(strings.TrimSpace(string(data2)), "\n")
+	if len(lines2) != 1 {
+		t.Errorf("expected deduplication to maintain 1 line, got %d", len(lines2))
+	}
+}
+
+func TestSSHKeyscanConflictDetection(t *testing.T) {
+	ts, err := NewTestServer()
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
+	if err := ts.Start(); err != nil {
+		t.Fatalf("failed to start test server: %v", err)
+	}
+	defer ts.Close()
+
+	tempFile := filepath.Join(t.TempDir(), "known_hosts")
+	// Pre-populate with a conflicting bogus key
+	bogusLine := fmt.Sprintf("[%s]:%d ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBogusBogusBogusBogusBogusBogusBogusBogus\n", "127.0.0.1", ts.Port())
+	if err := os.WriteFile(tempFile, []byte(bogusLine), 0644); err != nil {
+		t.Fatalf("failed to write bogus known_hosts: %v", err)
+	}
+
+	mod := New()
+	thread := &starlark.Thread{Name: "test-keyscan-conflict"}
+
+	_, err = mod.sshKeyscan(thread, starlark.NewBuiltin("ssh.keyscan", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("save"), starlark.Bool(true)},
+		{starlark.String("path"), starlark.String(tempFile)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "host key conflict") {
+		t.Errorf("expected host key conflict error, got %v", err)
+	}
+}
+
+func TestSSHKeyscanClientMethod(t *testing.T) {
+	ts, err := NewTestServer()
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
+	if err := ts.Start(); err != nil {
+		t.Fatalf("failed to start test server: %v", err)
+	}
+	defer ts.Close()
+
+	mod := New()
+	thread := &starlark.Thread{Name: "test-client-keyscan"}
+
+	authDict := starlark.NewDict(1)
+	authDict.SetKey(starlark.String("user"), starlark.String("testuser"))
+
+	val, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.NewList([]starlark.Value{starlark.String("127.0.0.1")})},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("auth"), authDict},
+	})
+	if err != nil {
+		t.Fatalf("ssh.config failed: %v", err)
+	}
+
+	client := val.(*SSHClient)
+	res, err := client.keyscan(thread, starlark.NewBuiltin("ssh.client.keyscan", nil), nil, nil)
+	if err != nil {
+		t.Fatalf("client.keyscan failed: %v", err)
+	}
+
+	list, ok := res.(*starlark.List)
+	if !ok || list.Len() != 1 {
+		t.Fatalf("expected 1 host key from client.keyscan, got %v", res)
+	}
+}
+
+func TestSSHKeyscanSpecificAlgorithmAndErrors(t *testing.T) {
+	ts, err := NewTestServer()
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
+	if err := ts.Start(); err != nil {
+		t.Fatalf("failed to start test server: %v", err)
+	}
+	defer ts.Close()
+
+	mod := New()
+	thread := &starlark.Thread{Name: "test-keyscan-algos"}
+
+	// 1. Valid specific algorithm
+	res, err := mod.sshKeyscan(thread, starlark.NewBuiltin("ssh.keyscan", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("type"), starlark.String("ed25519")},
+	})
+	if err != nil {
+		t.Fatalf("keyscan with type=ed25519 failed: %v", err)
+	}
+	if res.(*starlark.List).Len() != 1 {
+		t.Fatalf("expected 1 key")
+	}
+
+	// 2. Unsupported algorithm
+	_, err = mod.sshKeyscan(thread, starlark.NewBuiltin("ssh.keyscan", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("type"), starlark.String("dsa")},
+	})
+	if err == nil || !strings.Contains(err.Error(), "unsupported key algorithm") {
+		t.Errorf("expected unsupported key algorithm error, got %v", err)
+	}
+
+	// 3. Unreachable port
+	_, err = mod.sshKeyscan(thread, starlark.NewBuiltin("ssh.keyscan", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(1)}, // Closed port
+		{starlark.String("timeout"), starlark.String("200ms")},
+	})
+	if err == nil {
+		t.Errorf("expected connection error for closed port")
 	}
 }

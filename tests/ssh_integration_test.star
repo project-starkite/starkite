@@ -160,3 +160,83 @@ def test_auth_failure():
 
     # Restore
     os.setenv("SSH_AUTH_SOCK", saved)
+
+def test_keyscan_basic():
+    """Test discovering server public host key with ssh.keyscan."""
+    srv = ssh.test_server(user="u", password="p")
+    srv.start()
+
+    keys = ssh.keyscan(hosts=["127.0.0.1"], port=srv.port(), timeout="2s")
+    assert(len(keys) == 1, "expected 1 scanned key")
+    k = keys[0]
+    assert(k.host == "127.0.0.1", "host should match")
+    assert(k.port == srv.port(), "port should match")
+    assert(k.type == "ssh-ed25519", "type should be ssh-ed25519")
+    assert(k.public_key == srv.host_key(), "public_key should match server key")
+    assert(k.fingerprint == srv.fingerprint(), "fingerprint should match server fingerprint")
+    assert("ssh-ed25519" in k.line, "line should contain algorithm")
+    assert(k.hashed_line.startswith("|1|"), "hashed_line should start with |1|")
+
+    srv.shutdown()
+
+def test_keyscan_save_and_strict_host_key_check():
+    """Test scanning host key, saving to known_hosts, and executing with strict host_key_check=True."""
+    srv = ssh.test_server(user="u", password="p")
+    srv.handle_exec(lambda cmd: ("success\n", "", 0))
+    srv.start()
+
+    kh_path = (fs.path(temp_dir()) / "test_keyscan_known_hosts").string
+
+    # 1. Scan and save host key to file
+    ssh.keyscan(
+        hosts = ["127.0.0.1"],
+        port  = srv.port(),
+        save  = True,
+        path  = kh_path,
+    )
+    assert(fs.path(kh_path).exists(), "known_hosts file should be created")
+
+    # 2. Connect with strict host_key_check=True against that known_hosts file
+    client = ssh.config(
+        hosts            = ["127.0.0.1"],
+        port             = srv.port(),
+        auth             = {"user": "u", "password": "p"},
+        known_hosts_file = kh_path,
+        host_key_check   = True,
+    )
+    results = client.exec("test")
+    assert(len(results) == 1, "should have 1 result")
+    assert(results[0].ok == True, "exec with verified host key should succeed")
+    assert(results[0].stdout == "success\n", "output should match")
+
+    # Clean up
+    fs.path(kh_path).remove()
+    srv.shutdown()
+
+def test_client_keyscan_method():
+    """Test client.keyscan inheriting hosts and port."""
+    srv = ssh.test_server(user="u", password="p")
+    srv.start()
+
+    client = ssh.config(
+        hosts = ["127.0.0.1"],
+        port  = srv.port(),
+        auth  = {"user": "u", "password": "p"},
+    )
+    keys = client.keyscan()
+    assert(len(keys) == 1, "client.keyscan should return 1 key")
+    assert(keys[0].public_key == srv.host_key(), "public key should match")
+
+    srv.shutdown()
+
+def test_try_keyscan_error_handling():
+    """Test ssh.try_keyscan and client.try_keyscan on closed ports."""
+    r1 = ssh.try_keyscan(hosts=["127.0.0.1"], port=1, timeout="200ms")
+    assert(r1.ok == False, "try_keyscan should fail on closed port")
+    assert(len(r1.error) > 0, "error message should be populated")
+
+    client = ssh.config(hosts=["127.0.0.1"], port=1, timeout="200ms", auth={"user": "u"})
+    r2 = client.try_keyscan()
+    assert(r2.ok == False, "client.try_keyscan should fail on closed port")
+    assert(len(r2.error) > 0, "error message should be populated")
+

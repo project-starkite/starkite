@@ -208,6 +208,8 @@ def test_attr_names():
     assert(client.download != None, "download attr should exist")
     assert(client.hosts != None, "hosts attr should exist")
     assert(client.auth != None, "auth attr should exist")
+    assert(client.keyscan != None, "keyscan attr should exist")
+    assert(client.try_keyscan != None, "try_keyscan attr should exist")
     assert(client.try_exec != None, "try_exec attr should exist")
     assert(client.try_upload != None, "try_upload attr should exist")
     assert(client.try_download != None, "try_download attr should exist")
@@ -516,3 +518,21 @@ def test_ssh_config_prompt():
         dry_run = True,
     )
     assert(client.auth["prompt"] == True, "auth.prompt should be True")
+
+def test_keyscan_validations():
+    """Test parameter validation in ssh.keyscan."""
+    # 1. Empty hosts fails
+    r1 = ssh.try_keyscan(hosts=[])
+    assert(not r1.ok, "keyscan with empty hosts should fail")
+    assert("cannot be empty" in r1.error, "error should mention cannot be empty")
+
+    # 2. Unsupported algorithm fails
+    r2 = ssh.try_keyscan(hosts=["127.0.0.1"], type="dsa_invalid")
+    assert(not r2.ok, "keyscan with invalid type should fail")
+    assert("unsupported key algorithm" in r2.error, "error should mention unsupported key algorithm")
+
+    # 3. Invalid jump parameter fails
+    r3 = ssh.try_keyscan(hosts=["127.0.0.1"], jump="not_a_dict")
+    assert(not r3.ok, "keyscan with non-dict jump should fail")
+    assert("'jump' must be a dict" in r3.error, "error should mention jump must be a dict")
+

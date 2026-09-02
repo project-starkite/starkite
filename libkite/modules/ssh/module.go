@@ -43,6 +43,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"copy_id": starlark.NewBuiltin("ssh.copy_id", m.sshCopyId),
 			"exec":    starlark.NewBuiltin("ssh.exec", m.sshExec),
 			"keygen":  starlark.NewBuiltin("ssh.keygen", m.sshKeygen),
+			"keyscan": starlark.NewBuiltin("ssh.keyscan", m.sshKeyscan),
 		}
 		if config != nil && config.TestMode {
 			members["test_server"] = starlark.NewBuiltin("ssh.test_server", m.testserverFactory)
@@ -693,6 +694,8 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		switch baseName {
 		case "copy_id":
 			return libkite.TryWrap("ssh.client."+name, starlark.NewBuiltin("ssh.client.copy_id", c.copyId)), nil
+		case "keyscan":
+			return libkite.TryWrap("ssh.client."+name, starlark.NewBuiltin("ssh.client.keyscan", c.keyscan)), nil
 		case "exec":
 			return libkite.TryWrap("ssh.client."+name, starlark.NewBuiltin("ssh.client.exec", c.exec)), nil
 		case "upload":
@@ -705,6 +708,8 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 	switch name {
 	case "copy_id":
 		return starlark.NewBuiltin("ssh.client.copy_id", c.copyId), nil
+	case "keyscan":
+		return starlark.NewBuiltin("ssh.client.keyscan", c.keyscan), nil
 	case "exec":
 		return starlark.NewBuiltin("ssh.client.exec", c.exec), nil
 	case "upload":
@@ -757,5 +762,5 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 }
 
 func (c *SSHClient) AttrNames() []string {
-	return []string{"auth", "copy_id", "download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump", "try_copy_id", "try_download", "try_exec", "try_upload", "upload"}
+	return []string{"auth", "copy_id", "download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump", "keyscan", "try_copy_id", "try_download", "try_exec", "try_keyscan", "try_upload", "upload"}
 }

@@ -162,6 +162,18 @@ client = ssh.config(
 | `exec_max_workers` | `int` | Concurrency worker limit |
 | `exec_on_error` | `string` | Default batch error policy (`"stop"` or `"continue"`) |
 
+### `SSHClient` Methods
+
+All execution and file transfer methods support `try_` variants (e.g. `client.try_keyscan()`, `client.try_exec()`) that return `Result` values without raising on errors.
+
+| Method | Description |
+|--------|-------------|
+| `client.exec(cmd, ...)` | Execute single command or pipeline across target hosts |
+| `client.upload(src, dst, ...)` | Upload files or directories to target hosts via SCP |
+| `client.download(src, dst, ...)` | Download files from target hosts via SCP |
+| `client.copy_id(key, ...)` | Install public key into target hosts' `authorized_keys` |
+| `client.keyscan(...)` | Discover and inspect public host keys across target hosts |
+
 ---
 
 ## Public Key Distribution (`copy_id`)
@@ -248,8 +260,72 @@ keys = ssh.keygen(
 | `comment` | `string` | Comment string |
 | `path` | `string` | Saved private key path (or `""`) |
 | `pub_path` | `string` | Saved public key path (or `""`) |
+
+---
+
+## Host Key Discovery (`ssh.keyscan`)
+
+Discover and inspect remote public host keys without authentication (OpenSSH `ssh-keyscan` equivalent) to bootstrap `known_hosts`:
+
+```python
+# In-memory scan of target hosts
+keys = ssh.keyscan(["192.168.1.50", "192.168.1.51"])
+for k in keys:
+    print(k.host, k.type, k.fingerprint)
+
+# Scan and append to ~/.ssh/known_hosts (with deduplication and conflict checks)
+ssh.keyscan(
+    hosts = ["rbp4-1"],
+    save  = True,                   # Append to known_hosts
+    path  = "~/.ssh/known_hosts",    # Default
+)
+
+# Scan private hosts behind a bastion jump host
+private_keys = ssh.keyscan(
+    hosts = ["10.0.1.10", "10.0.1.11"],
+    jump  = {"host": "bastion.corp.net", "user": "admin", "key": "~/.ssh/bastion_key"},
+    save  = True,
+)
+
+# Scan through an existing client instance
+client = ssh.config(hosts=["192.168.1.50"], auth={"user": "deploy"})
+keys = client.keyscan(save=True)
+```
+
+### Keyscan Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `hosts` | `list[string]` \| `string` | required | Target host IP addresses or hostnames (can include `:port`) |
+| `port` | `int` | `22` | Default target SSH port |
+| `timeout` | `string` | `"5s"` | Connection and handshake timeout duration |
+| `type` | `string` | `""` | Filter scan to a specific algorithm (`"ed25519"`, `"rsa"`, `"ecdsa"`) |
+| `types` | `list[string]` | `[]` | Probe for multiple algorithms sequentially |
+| `save` | `bool` | `False` | Append discovered keys to known_hosts file |
+| `path` | `string` | `"~/.ssh/known_hosts"` | Destination known_hosts file path |
+| `hash` | `bool` | `False` | Hash hostnames in known_hosts file (`|1|...`) |
+| `jump` | `dict` | `None` | Optional bastion jump host configuration |
+
+### `SSHHostKey` Attributes
+
+| Attribute | Type | Description |
 |-----------|------|-------------|
-| `host` | `string` | Hostname this result is from |
+| `host` | `string` | Target hostname or IP address |
+| `port` | `int` | Target SSH port |
+| `type` | `string` | Host key algorithm (e.g. `"ssh-ed25519"`, `"rsa-sha2-512"`) |
+| `public_key` | `string` | OpenSSH authorized public key line |
+| `fingerprint` | `string` | SHA256 key fingerprint (`"SHA256:..."`) |
+| `line` | `string` | Standard OpenSSH `known_hosts` entry line |
+| `hashed_line` | `string` | Hashed OpenSSH `known_hosts` entry line |
+
+---
+
+## SSHResult
+
+Returned by `client.exec()` (or items within `SSHBatchResult.steps`), one per host.
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
 | `cmd` | `string` | The command string executed |
 | `stdout` | `string` | Standard output |
 | `stderr` | `string` | Standard error |
@@ -287,9 +363,11 @@ Returned by `client.upload()` and `client.download()`, one per host.
 
 ```python
 client = ssh.config(
-    hosts=["app-1", "app-2"],
-    user="deploy",
-    key="~/.ssh/deploy_key",
+    hosts = ["app-1", "app-2"],
+    auth  = {
+        "user": "deploy",
+        "key":  "~/.ssh/deploy_key",
+    },
 )
 
 # Run a command on all hosts
@@ -330,9 +408,11 @@ for b in batch_results:
 
 ```python
 client = ssh.config(
-    hosts=["web-1", "web-2", "web-3"],
-    user="deploy",
-    key="~/.ssh/deploy_key",
+    hosts = ["web-1", "web-2", "web-3"],
+    auth  = {
+        "user": "deploy",
+        "key":  "~/.ssh/deploy_key",
+    },
 )
 
 # Upload config to all hosts
