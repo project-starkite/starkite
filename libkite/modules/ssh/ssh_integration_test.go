@@ -906,6 +906,50 @@ func TestSSHCopyIdBasic(t *testing.T) {
 	}
 }
 
+func TestSSHCopyIdWithSudoDefaultsToConnectedUserHome(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("pi", "secret")
+	var executedCmd string
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		executedCmd = cmd
+		return "", "", 0
+	})
+
+	c := testClient(t, ts, func(c *SSHClient) {
+		c.user = "pi"
+		c.password = "secret"
+	})
+
+	kp, err := GenerateKeyPair("ed25519", 0, "test-copy-id-sudo")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	thread := &starlark.Thread{Name: "test-copy-id-sudo"}
+	val, err := c.copyId(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("key"), starlark.String(kp.PublicKey)},
+		{starlark.String("sudo"), starlark.Bool(true)},
+	})
+	if err != nil {
+		t.Fatalf("copyId with sudo failed: %v", err)
+	}
+
+	list := val.(*starlark.List)
+	if list.Len() != 1 {
+		t.Fatalf("expected 1 result, got %d", list.Len())
+	}
+
+	if !strings.HasPrefix(executedCmd, "sudo sh -c") {
+		t.Errorf("expected sudo command, got: %q", executedCmd)
+	}
+	if !strings.Contains(executedCmd, "eval echo ~pi") {
+		t.Errorf("expected command to resolve ~pi for target home, got: %q", executedCmd)
+	}
+	if !strings.Contains(executedCmd, "chown -R pi:pi") {
+		t.Errorf("expected command to chown to pi:pi, got: %q", executedCmd)
+	}
+}
+
 func TestSSHCopyIdFromFile(t *testing.T) {
 	ts := newTestServerForTest(t)
 	ts.AddPassword("pi", "secret")

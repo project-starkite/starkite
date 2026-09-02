@@ -151,12 +151,15 @@ func buildCopyIdCommand(pubKey string, asUser string) string {
 	homeSetup := ""
 	chownSetup := ""
 	if asUser != "" {
-		homeSetup = fmt.Sprintf(`TARGET_HOME=$(eval echo ~%s)`, asUser)
+		homeSetup = fmt.Sprintf(`USER_HOME=$(eval echo ~%s 2>/dev/null)
+if [ -n "${USER_HOME}" ] && [ -d "${USER_HOME}" ]; then
+    TARGET_HOME="${USER_HOME}"
+fi`, asUser)
 		chownSetup = fmt.Sprintf(`chown -R %s:%s "${TARGET_SSH}" 2>/dev/null || true`, asUser, asUser)
 	}
 
 	return fmt.Sprintf(`sh -c '
-KEY=$(echo "%s" | base64 --decode)
+KEY=$(echo "%s" | (base64 -d 2>/dev/null || base64 --decode))
 TARGET_HOME="${HOME}"
 %s
 TARGET_SSH="${TARGET_HOME}/.ssh"
@@ -209,6 +212,9 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 	asUser := p.AsUser
 	if asUser == "" {
 		asUser = c.defaultAsUser
+	}
+	if asUser == "" {
+		asUser = c.user
 	}
 	sudo := p.Sudo || c.defaultSudo
 
