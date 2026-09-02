@@ -10,7 +10,6 @@ import (
 
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
-	"golang.org/x/crypto/ssh/knownhosts"
 	"golang.org/x/term"
 )
 
@@ -151,35 +150,7 @@ func (c *SSHClient) buildSSHConfig() (*ssh.ClientConfig, error) {
 
 // hostKeyCallback returns the appropriate host key callback based on config.
 func (c *SSHClient) hostKeyCallback() (ssh.HostKeyCallback, error) {
-	if !c.hostKeyCheck {
-		return ssh.InsecureIgnoreHostKey(), nil
-	}
-
-	knownHostsPath := c.knownHostsFile
-	if knownHostsPath == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return nil, fmt.Errorf("failed to get home dir: %w", err)
-		}
-		knownHostsPath = filepath.Join(home, ".ssh", "known_hosts")
-	} else {
-		expanded, err := expandPath(knownHostsPath)
-		if err != nil {
-			return nil, err
-		}
-		knownHostsPath = expanded
-	}
-
-	// If known_hosts file doesn't exist, return an error explaining it
-	if _, err := os.Stat(knownHostsPath); os.IsNotExist(err) {
-		return nil, fmt.Errorf("known_hosts file not found: %s (set host_key_check=False to disable)", knownHostsPath)
-	}
-
-	callback, err := knownhosts.New(knownHostsPath)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse known_hosts: %w", err)
-	}
-	return callback, nil
+	return resolveHostKeyCallback(c.hostKeyCheck, c.knownHostsFile)
 }
 
 // dialHost connects to a host, routing through a jump host if configured.

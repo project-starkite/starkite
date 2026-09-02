@@ -477,6 +477,8 @@ func (s *StarlarkTestServer) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin("ssh.test_server.fingerprint", s.fingerprintMethod), nil
 	case "add_file":
 		return starlark.NewBuiltin("ssh.test_server.add_file", s.addFileMethod), nil
+	case "add_authorized_key":
+		return starlark.NewBuiltin("ssh.test_server.add_authorized_key", s.addAuthorizedKeyMethod), nil
 	case "uploaded":
 		return starlark.NewBuiltin("ssh.test_server.uploaded", s.uploadedMethod), nil
 	case "handle_exec":
@@ -486,7 +488,7 @@ func (s *StarlarkTestServer) Attr(name string) (starlark.Value, error) {
 }
 
 func (s *StarlarkTestServer) AttrNames() []string {
-	return []string{"add_file", "addr", "fingerprint", "handle_exec", "host_key", "port", "shutdown", "start", "uploaded"}
+	return []string{"add_authorized_key", "add_file", "addr", "fingerprint", "handle_exec", "host_key", "port", "shutdown", "start", "uploaded"}
 }
 
 func (s *StarlarkTestServer) startMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -527,6 +529,29 @@ func (s *StarlarkTestServer) fingerprintMethod(thread *starlark.Thread, fn *star
 	}
 	pk := s.server.hostSigner.PublicKey()
 	return starlark.String(gossh.FingerprintSHA256(pk)), nil
+}
+
+func (s *StarlarkTestServer) addAuthorizedKeyMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(args) != 1 {
+		return nil, fmt.Errorf("ssh.test_server.add_authorized_key: expected 1 argument (key)")
+	}
+	keyStr, ok := starlark.AsString(args[0])
+	if !ok {
+		return nil, fmt.Errorf("ssh.test_server.add_authorized_key: key must be a string")
+	}
+
+	pubKey, _, _, _, err := gossh.ParseAuthorizedKey([]byte(keyStr))
+	if err != nil {
+		if data, readErr := os.ReadFile(keyStr); readErr == nil {
+			pubKey, _, _, _, err = gossh.ParseAuthorizedKey(data)
+		}
+	}
+	if err != nil {
+		return nil, fmt.Errorf("ssh.test_server.add_authorized_key: failed to parse public key: %w", err)
+	}
+
+	s.server.AddAuthorizedKey(pubKey)
+	return starlark.None, nil
 }
 
 func (s *StarlarkTestServer) addFileMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

@@ -1483,3 +1483,176 @@ func TestSSHKeyscanSpecificAlgorithmAndErrors(t *testing.T) {
 		t.Errorf("expected connection error for closed port")
 	}
 }
+
+func TestSSHKeyCheckAcceptedAndRejected(t *testing.T) {
+	ts, err := NewTestServer()
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
+	if err := ts.Start(); err != nil {
+		t.Fatalf("failed to start test server: %v", err)
+	}
+	defer ts.Close()
+
+	// 1. Generate two separate keypairs
+	kp1, err := GenerateKeyPair("ed25519", 0, "test1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	kp2, err := GenerateKeyPair("ed25519", 0, "test2")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	pk2, _, _, _, err := gossh.ParseAuthorizedKey([]byte(kp2.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Add only kp2 to server's authorizedKeys so server restricts auth
+	ts.AddAuthorizedKey(pk2)
+
+	mod := New()
+	thread := &starlark.Thread{Name: "test-key-check"}
+
+	// 2. Check kp1 -> should NOT be accepted
+	res, err := mod.sshKeyCheck(thread, starlark.NewBuiltin("ssh.key_check", nil), nil, []starlark.Tuple{
+		{starlark.String("key"), starlark.String(kp1.PublicKey)},
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("user"), starlark.String("testuser")},
+		{starlark.String("host_key_check"), starlark.Bool(false)},
+	})
+	if err != nil {
+		t.Fatalf("ssh.key_check failed: %v", err)
+	}
+
+	list := res.(*starlark.List)
+	if list.Len() != 1 {
+		t.Fatalf("expected 1 result, got %d", list.Len())
+	}
+	s := list.Index(0).(*starlarkstruct.Struct)
+	accVal, _ := s.Attr("accepted")
+	if b, ok := accVal.(starlark.Bool); !ok || bool(b) {
+		t.Errorf("expected accepted=false for uninstalled key, got %v", accVal)
+	}
+	okVal, _ := s.Attr("ok")
+	if b, ok := okVal.(starlark.Bool); !ok || !bool(b) {
+		t.Errorf("expected ok=true for completed check, got %v", okVal)
+	}
+
+	// 3. Add kp1 to server's authorizedKeys
+	pk1, _, _, _, err := gossh.ParseAuthorizedKey([]byte(kp1.PublicKey))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ts.AddAuthorizedKey(pk1)
+
+	// 4. Check kp1 again -> should be accepted!
+	res2, err := mod.sshKeyCheck(thread, starlark.NewBuiltin("ssh.key_check", nil), nil, []starlark.Tuple{
+		{starlark.String("key"), starlark.String(kp1.PublicKey)},
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("user"), starlark.String("testuser")},
+		{starlark.String("host_key_check"), starlark.Bool(false)},
+	})
+	if err != nil {
+		t.Fatalf("ssh.key_check failed: %v", err)
+	}
+	s2 := res2.(*starlark.List).Index(0).(*starlarkstruct.Struct)
+	accVal2, _ := s2.Attr("accepted")
+	if b, ok := accVal2.(starlark.Bool); !ok || !bool(b) {
+		t.Errorf("expected accepted=true for installed key, got %v", accVal2)
+	}
+	fpVal2, _ := s2.Attr("fingerprint")
+	if fpStr, ok := starlark.AsString(fpVal2); !ok || fpStr != kp1.Fingerprint {
+		t.Errorf("fingerprint = %v, want %s", fpVal2, kp1.Fingerprint)
+	}
+}
+
+func TestSSHKeyCheckClientMethod(t *testing.T) {
+	ts, err := NewTestServer()
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
+	if err := ts.Start(); err != nil {
+		t.Fatalf("failed to start test server: %v", err)
+	}
+	defer ts.Close()
+
+	kp, err := GenerateKeyPair("ed25519", 0, "client-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk, _, _, _, _ := gossh.ParseAuthorizedKey([]byte(kp.PublicKey))
+	ts.AddAuthorizedKey(pk)
+
+	thread := &starlark.Thread{Name: "test-client-key-check"}
+
+	client := &SSHClient{
+		hosts:        []string{"127.0.0.1"},
+		port:         ts.Port(),
+		user:         "testuser",
+		timeout:      2 * time.Second,
+		hostKeyCheck: false,
+	}
+
+	res, err := client.keyCheck(thread, starlark.NewBuiltin("ssh.client.key_check", nil), starlark.Tuple{starlark.String(kp.PublicKey)}, nil)
+	if err != nil {
+		t.Fatalf("client.key_check failed: %v", err)
+	}
+	s := res.(*starlark.List).Index(0).(*starlarkstruct.Struct)
+	accVal, _ := s.Attr("accepted")
+	if b, ok := accVal.(starlark.Bool); !ok || !bool(b) {
+		t.Errorf("expected accepted=true from client.key_check, got %v", accVal)
+	}
+}
+
+func TestSSHCopyIdWithKeyCheckOptimization(t *testing.T) {
+	ts, err := NewTestServer()
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
+	if err := ts.Start(); err != nil {
+		t.Fatalf("failed to start test server: %v", err)
+	}
+	defer ts.Close()
+
+	kp, err := GenerateKeyPair("ed25519", 0, "copy-check")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk, _, _, _, _ := gossh.ParseAuthorizedKey([]byte(kp.PublicKey))
+	// Pre-authorize the key on the server
+	ts.AddAuthorizedKey(pk)
+
+	thread := &starlark.Thread{Name: "test-copy-id-check"}
+	client := &SSHClient{
+		hosts:        []string{"127.0.0.1"},
+		port:         ts.Port(),
+		user:         "testuser",
+		timeout:      2 * time.Second,
+		hostKeyCheck: false,
+	}
+
+	// 1. With key_check=True (default), should bypass prompt and return ALREADY INSTALLED
+	res, err := client.copyId(thread, starlark.NewBuiltin("ssh.client.copy_id", nil), starlark.Tuple{starlark.String(kp.PublicKey)}, []starlark.Tuple{
+		{starlark.String("key_check"), starlark.Bool(true)},
+	})
+	if err != nil {
+		t.Fatalf("copy_id with key_check=True failed: %v", err)
+	}
+
+	resList := res.(*starlark.List)
+	if resList.Len() != 1 {
+		t.Fatalf("expected 1 result, got %d", resList.Len())
+	}
+	s := resList.Index(0).(*starlarkstruct.Struct)
+	stdoutVal, _ := s.Attr("stdout")
+	if stdoutStr, ok := starlark.AsString(stdoutVal); !ok || !strings.Contains(stdoutStr, "ALREADY INSTALLED") {
+		t.Errorf("stdout = %v, expected string containing 'ALREADY INSTALLED'", stdoutVal)
+	}
+	okVal, _ := s.Attr("ok")
+	if b, ok := okVal.(starlark.Bool); !ok || !bool(b) {
+		t.Errorf("expected ok=true for already installed key")
+	}
+}

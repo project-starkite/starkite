@@ -172,25 +172,27 @@ All execution and file transfer methods support `try_` variants (e.g. `client.tr
 | `client.upload(src, dst, ...)` | Upload files or directories to target hosts via SCP |
 | `client.download(src, dst, ...)` | Download files from target hosts via SCP |
 | `client.copy_id(key, ...)` | Install public key into target hosts' `authorized_keys` |
+| `client.key_check(key, ...)` | Probe remote hosts for public key authorization without logging in |
 | `client.keyscan(...)` | Discover and inspect public host keys across target hosts |
 
 ---
 
 ## Public Key Distribution (`copy_id`)
 
-Installs public keys into `~/.ssh/authorized_keys` on target hosts idempotently.
+Installs public keys into `~/.ssh/authorized_keys` on target hosts idempotently. When `key_check=True` (default), it automatically probes each host first using the in-protocol RFC 4252 query and bypasses both password prompting and remote disk modifications on nodes that already accept the key.
 
 ### Module-Scope (`ssh.copy_id`)
 
 ```python
-# Install public key onto direct hosts
+# Install public key onto direct hosts (checks first by default)
 ssh.copy_id(
-    key     = "~/.ssh/id_ed25519.pub",
-    hosts   = ["192.168.1.50", "192.168.1.51"],
-    user    = "admin",
-    prompt  = True,  # Prompt once in terminal for remote user password
-    as_user = "deploy",
-    sudo    = True,
+    key       = "~/.ssh/id_ed25519.pub",
+    hosts     = ["192.168.1.50", "192.168.1.51"],
+    user      = "admin",
+    prompt    = True,      # Only prompts for password if any host actually needs the key
+    key_check = True,      # Default: True (probes first, skips authorized nodes)
+    as_user   = "deploy",
+    sudo      = True,
 )
 ```
 
@@ -212,6 +214,7 @@ results = client.copy_id(key="~/.ssh/id_ed25519.pub", sudo=True)
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `key` | `string` | `""` | Public key string or file path (reads local `~/.ssh/` or `ssh-agent` if omitted) |
+| `key_check` | `bool` | `True` | Probe remote `authorized_keys` first; bypass prompt and skip install if key is accepted |
 | `as_user` | `string` | `client.defaultAsUser` | Remote user whose `authorized_keys` will receive the key |
 | `sudo` | `bool` | `client.defaultSudo` | Execute installation script with sudo |
 | `prompt` | `bool` | `client.prompt` | Prompt in terminal for password |
@@ -317,6 +320,55 @@ keys = client.keyscan(save=True)
 | `fingerprint` | `string` | SHA256 key fingerprint (`"SHA256:..."`) |
 | `line` | `string` | Standard OpenSSH `known_hosts` entry line |
 | `hashed_line` | `string` | Hashed OpenSSH `known_hosts` entry line |
+
+---
+
+## Public Key Acceptance Check (`ssh.key_check`)
+
+Probes remote servers to discover whether a local public key is already authorized in `authorized_keys` for a specific user. Operates entirely in the SSH protocol (RFC 4252 §7) using only the public key—**no private keys, no passwords, and no remote shell sessions are required**:
+
+```python
+# Check if target hosts already authorize a local key
+results = ssh.key_check(
+    key   = "~/.ssh/id_ed25519.pub",
+    hosts = ["192.168.1.50", "192.168.1.51"],
+    user  = "deploy",
+)
+for r in results:
+    if r.accepted:
+        print(r.host, ": key is installed")
+    else:
+        print(r.host, ": key NOT accepted")
+
+# Probing through a configured client instance (inherits hosts, user, bastion)
+client = ssh.config(hosts=["192.168.1.50"], auth={"user": "deploy"})
+results = client.key_check("~/.ssh/id_ed25519.pub")
+```
+
+### Key Check Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `key` | `string` | `""` | Public key string or file path (reads local `~/.ssh/` or `ssh-agent` if omitted) |
+| `hosts` | `list[string]` \| `string` | required | Target host IP addresses or hostnames (can include `:port`) |
+| `user` | `string` | current OS user | Target user account probed on the remote system |
+| `port` | `int` | `22` | Default target SSH port |
+| `timeout` | `string` | `"5s"` | Connection and handshake timeout duration |
+| `host_key_check` | `bool` | `True` | Verify remote host public keys against `known_hosts` |
+| `jump` | `dict` | `None` | Optional bastion jump host configuration |
+
+### `SSHKeyCheckResult` Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `host` | `string` | Remote hostname or IP address |
+| `user` | `string` | Target user account checked |
+| `port` | `int` | Remote SSH port |
+| `accepted` | `bool` | `True` if public key is authorized in remote `authorized_keys`, `False` if rejected |
+| `key_type` | `string` | Key algorithm (e.g. `"ssh-ed25519"`) |
+| `fingerprint` | `string` | SHA256 key fingerprint (`"SHA256:..."`) |
+| `ok` | `bool` | `True` if check completed without network/connection errors |
+| `error` | `string` | Error message if connection or handshake failed |
 
 ---
 

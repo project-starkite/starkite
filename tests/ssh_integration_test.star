@@ -240,3 +240,103 @@ def test_try_keyscan_error_handling():
     assert(r2.ok == False, "client.try_keyscan should fail on closed port")
     assert(len(r2.error) > 0, "error message should be populated")
 
+def test_key_check_basic():
+    """Test remote public key acceptance probe."""
+    srv = ssh.test_server(user="u", password="p")
+    dummy_kp = ssh.keygen(type="ed25519")
+    srv.add_authorized_key(dummy_kp.public_key)
+    srv.start()
+
+    kp = ssh.keygen(type="ed25519")
+
+    # 1. Probe before key is installed -> accepted should be False
+    res1 = ssh.key_check(
+        key            = kp.public_key,
+        hosts          = ["127.0.0.1"],
+        port           = srv.port(),
+        user           = "u",
+        host_key_check = False,
+    )
+    assert(len(res1) == 1, "expected 1 result")
+    assert(res1[0].accepted == False, "key should not be accepted yet")
+    assert(res1[0].ok == True, "probe should complete successfully")
+    assert(res1[0].host == "127.0.0.1", "host should match")
+    assert(res1[0].user == "u", "user should match")
+
+    # 2. Add public key to server's authorized list
+    srv.add_authorized_key(kp.public_key)
+
+    # 3. Probe after key is installed -> accepted should be True!
+    res2 = ssh.key_check(
+        key            = kp.public_key,
+        hosts          = ["127.0.0.1"],
+        port           = srv.port(),
+        user           = "u",
+        host_key_check = False,
+    )
+    assert(len(res2) == 1, "expected 1 result")
+    assert(res2[0].accepted == True, "key should now be accepted")
+    assert(res2[0].ok == True, "probe should succeed")
+    assert(res2[0].fingerprint == kp.fingerprint, "fingerprint should match")
+
+    srv.shutdown()
+
+def test_client_key_check_method():
+    """Test client.key_check method."""
+    srv = ssh.test_server(user="deploy")
+    srv.start()
+
+    kp = ssh.keygen(type="ed25519")
+    srv.add_authorized_key(kp.public_key)
+
+    client = ssh.config(
+        hosts          = ["127.0.0.1"],
+        port           = srv.port(),
+        auth           = {"user": "deploy"},
+        host_key_check = False,
+    )
+    results = client.key_check(kp.public_key)
+    assert(len(results) == 1, "expected 1 result")
+    assert(results[0].accepted == True, "key should be accepted")
+
+    srv.shutdown()
+
+def test_copy_id_key_check_optimization():
+    """Test copy_id skips remote install when key_check=True and key is already authorized."""
+    srv = ssh.test_server(user="deploy")
+    srv.start()
+
+    kp = ssh.keygen(type="ed25519")
+    srv.add_authorized_key(kp.public_key)
+
+    client = ssh.config(
+        hosts          = ["127.0.0.1"],
+        port           = srv.port(),
+        auth           = {"user": "deploy"},
+        host_key_check = False,
+    )
+    results = client.copy_id(kp.public_key, key_check=True)
+    assert(len(results) == 1, "expected 1 result")
+    assert(results[0].ok == True, "result should be ok")
+    assert("ALREADY INSTALLED" in results[0].stdout, "output should indicate already installed")
+
+    srv.shutdown()
+
+def test_try_key_check_unreachable():
+    """Test try_key_check on closed port."""
+    kp = ssh.keygen(type="ed25519")
+    res = ssh.try_key_check(
+        hosts          = ["127.0.0.1"],
+        port           = 1,
+        user           = "u",
+        key            = kp.public_key,
+        timeout        = "200ms",
+        host_key_check = False,
+    )
+    # The call should complete without raising
+    assert(res.ok == True, "try_key_check should not raise Go error")
+    item = res.value[0]
+    assert(item.ok == False, "item ok should be False on closed port")
+    assert(len(item.error) > 0, "item error should describe connection failure")
+
+

@@ -210,6 +210,8 @@ def test_attr_names():
     assert(client.auth != None, "auth attr should exist")
     assert(client.keyscan != None, "keyscan attr should exist")
     assert(client.try_keyscan != None, "try_keyscan attr should exist")
+    assert(client.key_check != None, "key_check attr should exist")
+    assert(client.try_key_check != None, "try_key_check attr should exist")
     assert(client.try_exec != None, "try_exec attr should exist")
     assert(client.try_upload != None, "try_upload attr should exist")
     assert(client.try_download != None, "try_download attr should exist")

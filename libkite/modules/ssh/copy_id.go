@@ -11,6 +11,7 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
@@ -177,16 +178,15 @@ fi
 // copyId installs a public key onto the target fleet hosts.
 func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
-		Key    string `name:"key" position:"0"`
-		AsUser string `name:"as_user"`
-		Sudo   bool   `name:"sudo"`
-		Prompt bool   `name:"prompt"`
+		Key      string `name:"key" position:"0"`
+		AsUser   string `name:"as_user"`
+		Sudo     bool   `name:"sudo"`
+		Prompt   bool   `name:"prompt"`
+		KeyCheck bool   `name:"key_check"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-
-	prompt := p.Prompt || c.prompt
 
 	// 1. Resolve Public Key
 	pubKey, err := resolvePublicKey(p.Key, c.useAgent)
@@ -202,13 +202,8 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 		return starlark.NewList(results), nil
 	}
 
-	// 2. Handle interactive password prompt if necessary
-	promptedPassword, err := promptPasswordIfNeeded(c, prompt)
-	if err != nil {
-		return nil, err
-	}
-	if promptedPassword != "" {
-		c.password = promptedPassword
+	if len(c.hosts) == 0 {
+		return starlark.NewList(nil), nil
 	}
 
 	asUser := p.AsUser
@@ -217,21 +212,116 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 	sudo := p.Sudo || c.defaultSudo
 
-	if len(c.hosts) == 0 {
-		return starlark.NewList(nil), nil
+	// 2. Pre-flight Key Check (if key_check is enabled)
+	alreadyAccepted := make(map[string]bool)
+	var pendingHosts []string
+
+	if p.KeyCheck {
+		parsedPub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(pubKey))
+		if err == nil {
+			var jc *jumpConfig
+			if c.jumpHost != "" {
+				jc = &jumpConfig{
+					Host:       c.jumpHost,
+					Port:       c.jumpPort,
+					User:       c.jumpUser,
+					Key:        c.jumpKeyFile,
+					Passphrase: c.jumpKeyPassphrase,
+					Password:   c.jumpPassword,
+					UseAgent:   c.jumpUseAgent,
+					Prompt:     c.jumpPrompt,
+				}
+			}
+
+			probeUser := c.user
+			if asUser != "" {
+				probeUser = asUser
+			}
+
+			checkResults, _ := runKeyCheck(c.hosts, c.port, probeUser, parsedPub, c.timeout, c.hostKeyCheck, c.knownHostsFile, jc)
+			for _, cr := range checkResults {
+				if cr.Accepted {
+					alreadyAccepted[cr.Host] = true
+				} else {
+					pendingHosts = append(pendingHosts, cr.Host)
+				}
+			}
+		} else {
+			pendingHosts = append(pendingHosts, c.hosts...)
+		}
+	} else {
+		pendingHosts = append(pendingHosts, c.hosts...)
 	}
 
-	// 3. Generate idempotent remote shell command
+	// If all target hosts already accept the key, bypass prompts and remote install entirely
+	if len(pendingHosts) == 0 {
+		results := make([]starlark.Value, len(c.hosts))
+		for i, host := range c.hosts {
+			results[i] = newSSHResult(host, "copy_id", "[ALREADY INSTALLED] Public key already accepted by remote host", "", 0, true, false)
+		}
+		return starlark.NewList(results), nil
+	}
+
+	// 3. Handle interactive password prompt if necessary (only for pending hosts)
+	origHosts := c.hosts
+	c.hosts = pendingHosts
+	defer func() { c.hosts = origHosts }()
+
+	prompt := p.Prompt || c.prompt
+	promptedPassword, err := promptPasswordIfNeeded(c, prompt)
+	if err != nil {
+		return nil, err
+	}
+	if promptedPassword != "" {
+		c.password = promptedPassword
+	}
+
+	// 4. Generate idempotent remote shell command
 	installCmd := buildCopyIdCommand(pubKey, asUser)
 	if sudo {
 		installCmd = "sudo " + installCmd
 	}
 
-	// 4. Dispatch across fleet using configured execution strategy
+	// 5. Dispatch across pending hosts using configured execution strategy
+	var installResults starlark.Value
 	if c.execPolicy == "concurrent" {
-		return c.execConcurrent(installCmd, c.execMaxWorkers)
+		installResults, err = c.execConcurrent(installCmd, c.execMaxWorkers)
+	} else {
+		installResults, err = c.execLinear(installCmd)
 	}
-	return c.execLinear(installCmd)
+	if err != nil {
+		return nil, err
+	}
+
+	// 6. Merge results if some hosts were already accepted
+	if len(alreadyAccepted) > 0 {
+		installedList, ok := installResults.(*starlark.List)
+		if ok {
+			installedMap := make(map[string]starlark.Value)
+			for i := 0; i < installedList.Len(); i++ {
+				item := installedList.Index(i)
+				if s, ok := item.(*starlarkstruct.Struct); ok {
+					if hVal, err := s.Attr("host"); err == nil {
+						if hStr, ok := starlark.AsString(hVal); ok {
+							installedMap[hStr] = item
+						}
+					}
+				}
+			}
+
+			merged := make([]starlark.Value, len(origHosts))
+			for i, host := range origHosts {
+				if alreadyAccepted[host] {
+					merged[i] = newSSHResult(host, "copy_id", "[ALREADY INSTALLED] Public key already accepted by remote host", "", 0, true, false)
+				} else if r, ok := installedMap[host]; ok {
+					merged[i] = r
+				}
+			}
+			return starlark.NewList(merged), nil
+		}
+	}
+
+	return installResults, nil
 }
 
 // sshCopyId executes copy_id at the module level across a host list.
@@ -257,6 +347,7 @@ func (m *Module) sshCopyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 		Timeout      string `name:"timeout"`
 		DryRun       bool   `name:"dry_run"`
 		HostKeyCheck bool   `name:"host_key_check"`
+		KeyCheck     bool   `name:"key_check"`
 	}
 	p.HostKeyCheck = true
 
@@ -354,5 +445,12 @@ func (m *Module) sshCopyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 		}
 	}
 
-	return client.copyId(thread, fn, starlark.Tuple{starlark.String(keyStr)}, nil)
+	callKwargs := []starlark.Tuple{
+		{starlark.String("key_check"), starlark.Bool(p.KeyCheck)},
+	}
+	if p.Prompt {
+		callKwargs = append(callKwargs, starlark.Tuple{starlark.String("prompt"), starlark.Bool(true)})
+	}
+
+	return client.copyId(thread, fn, starlark.Tuple{starlark.String(keyStr)}, callKwargs)
 }
