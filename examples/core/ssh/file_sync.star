@@ -13,8 +13,10 @@ def main():
     
     client = ssh.config(
         hosts   = target_nodes,
-        user    = "deploy",
-        key     = "~/.ssh/id_ed25519",
+        auth    = {
+            "user": "deploy",
+            "key":  "~/.ssh/id_ed25519",
+        },
         dry_run = True,  # Set to False for live execution
     )
 

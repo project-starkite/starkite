@@ -4,6 +4,8 @@ package ssh
 
 import (
 	"fmt"
+	"os"
+	"os/user"
 	"strings"
 	"sync"
 	"time"
@@ -55,6 +57,16 @@ func (m *Module) Aliases() starlark.StringDict { return nil }
 
 func (m *Module) FactoryMethod() string { return "config" }
 
+func defaultUser() string {
+	if u, err := user.Current(); err == nil && u.Username != "" {
+		return u.Username
+	}
+	if u := os.Getenv("USER"); u != "" {
+		return u
+	}
+	return "root"
+}
+
 func newSSHKeyPair(kp *KeyPair) starlark.Value {
 	return starlarkstruct.FromStringDict(starlark.String("SSHKeyPair"), starlark.StringDict{
 		"public_key":  starlark.String(kp.PublicKey),
@@ -96,51 +108,314 @@ func (m *Module) sshKeygen(thread *starlark.Thread, fn *starlark.Builtin, args s
 	return newSSHKeyPair(kp), nil
 }
 
-// sshExec executes a command or pipeline across a fleet or host list in a single one-shot call.
-// Signatures:
-//   - ssh.exec("uptime", fleet=web_fleet, user="deploy")
-//   - ssh.exec("git", ["pull", "origin", "main"], hosts=["192.168.1.10"], user="root")
-//   - ssh.exec(cmd="uptime", hosts="192.168.1.10", user="root")
+// sshExec executes a command or pipeline in a single one-shot call across explicit target hosts.
+// Usage: ssh.exec("uptime", hosts=["192.168.1.10"], user="root", key="~/.ssh/id_ed25519", use_agent=True)
 func (m *Module) sshExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var execArgs starlark.Tuple
-	var execKwargs []starlark.Tuple
-	var configKwargs []starlark.Tuple
+	var rawCmd starlark.Value
+	var rawCommands starlark.Value
+	var rawHosts starlark.Value
+	var defaultEnv *starlark.Dict
 
 	if len(args) > 0 {
-		execArgs = args
+		rawCmd = args[0]
+		if len(args) > 1 {
+			execArgs = args[1:]
+		}
 	}
 
+	var p struct {
+		User         string `name:"user"`
+		Key          string `name:"key"`
+		Passphrase   string `name:"passphrase"`
+		Password     string `name:"password"`
+		UseAgent     bool   `name:"use_agent"`
+		Prompt       bool   `name:"prompt"`
+		Port         int    `name:"port"`
+		Timeout      string `name:"timeout"`
+		Sudo         bool   `name:"sudo"`
+		AsUser       string `name:"as_user"`
+		Cwd          string `name:"cwd"`
+		DryRun       bool   `name:"dry_run"`
+		HostKeyCheck bool   `name:"host_key_check"`
+		ExecOnError  string `name:"exec_on_error"`
+	}
+	p.HostKeyCheck = true
+
+	var remainingKwargs []starlark.Tuple
 	for _, kv := range kwargs {
 		key := string(kv[0].(starlark.String))
 		switch key {
 		case "cmd":
-			if len(execArgs) == 0 {
-				execArgs = starlark.Tuple{kv[1]}
-			} else {
-				execKwargs = append(execKwargs, kv)
+			rawCmd = kv[1]
+		case "commands":
+			rawCommands = kv[1]
+		case "hosts":
+			rawHosts = kv[1]
+		case "fleet":
+			return nil, fmt.Errorf("ssh.exec: 'fleet' parameter is not supported in module-scope functions; use ssh.config(fleet=...) instead")
+		case "jump", "jump_host", "jump_user", "jump_key", "jump_password", "jump_key_passphrase", "jump_port":
+			return nil, fmt.Errorf("ssh.exec: bastion/jump host routing is not supported in module-scope functions; use ssh.config(jump={...}) instead")
+		case "env":
+			if d, ok := kv[1].(*starlark.Dict); ok {
+				defaultEnv = d
 			}
-		case "commands", "sudo", "as_user", "cwd", "env", "exec_on_error":
-			execKwargs = append(execKwargs, kv)
 		default:
-			// config parameters (fleet, hosts, user, key, port, timeout, exec_policy, exec_max_workers, etc.)
-			configKwargs = append(configKwargs, kv)
+			remainingKwargs = append(remainingKwargs, kv)
 		}
 	}
 
-	clientVal, err := m.sshConfig(thread, fn, nil, configKwargs)
-	if err != nil {
+	if err := startype.Args(nil, remainingKwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	client, ok := clientVal.(*SSHClient)
-	if !ok {
-		return nil, fmt.Errorf("ssh.exec: failed to create SSH client")
+
+	if rawHosts == nil || rawHosts == starlark.None {
+		return nil, fmt.Errorf("ssh.exec: missing required parameter 'hosts'")
 	}
 
-	return client.exec(thread, fn, execArgs, execKwargs)
+	var hosts []string
+	switch h := rawHosts.(type) {
+	case *starlark.List:
+		for i := 0; i < h.Len(); i++ {
+			if s, ok := starlark.AsString(h.Index(i)); ok {
+				hosts = append(hosts, s)
+			}
+		}
+	case starlark.Tuple:
+		for _, elem := range h {
+			if s, ok := starlark.AsString(elem); ok {
+				hosts = append(hosts, s)
+			}
+		}
+	case starlark.String:
+		hosts = append(hosts, string(h))
+	default:
+		return nil, fmt.Errorf("ssh.exec: 'hosts' must be a string or list of strings, got %s", rawHosts.Type())
+	}
+
+	if len(hosts) == 0 {
+		return nil, fmt.Errorf("ssh.exec: 'hosts' cannot be empty")
+	}
+
+	user := p.User
+	if user == "" {
+		user = defaultUser()
+	}
+	port := p.Port
+	if port <= 0 {
+		port = 22
+	}
+	timeout := 30 * time.Second
+	if p.Timeout != "" {
+		d, err := time.ParseDuration(p.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("ssh.exec: invalid timeout %q: %w", p.Timeout, err)
+		}
+		timeout = d
+	}
+
+	client := &SSHClient{
+		thread:            thread,
+		dryRun:            p.DryRun || (m.config != nil && m.config.DryRun),
+		debug:             m.config != nil && m.config.Debug,
+		hosts:             hosts,
+		user:              user,
+		keyFile:           p.Key,
+		keyPassphrase:     p.Passphrase,
+		password:          p.Password,
+		useAgent:          p.UseAgent,
+		prompt:            p.Prompt,
+		port:              port,
+		timeout:           timeout,
+		maxRetries:        3,
+		execPolicy:        "concurrent",
+		execOnError:       p.ExecOnError,
+		hostKeyCheck:      p.HostKeyCheck,
+		keepAliveInterval: 30 * time.Second,
+		keepAliveMax:      3,
+		defaultSudo:       p.Sudo,
+		defaultAsUser:     p.AsUser,
+		defaultCwd:        p.Cwd,
+	}
+	if defaultEnv != nil {
+		client.defaultEnv = make(map[string]string)
+		for _, item := range defaultEnv.Items() {
+			if k, ok := starlark.AsString(item[0]); ok {
+				if v, ok := starlark.AsString(item[1]); ok {
+					client.defaultEnv[k] = v
+				}
+			}
+		}
+	}
+
+	var callArgs starlark.Tuple
+	var callKwargs []starlark.Tuple
+	if rawCmd != nil {
+		callArgs = append(starlark.Tuple{rawCmd}, execArgs...)
+	}
+	if rawCommands != nil {
+		callKwargs = append(callKwargs, starlark.Tuple{starlark.String("commands"), rawCommands})
+	}
+
+	return client.exec(thread, fn, callArgs, callKwargs)
+}
+
+type authConfig struct {
+	User       string
+	Key        string
+	Passphrase string
+	Password   string
+	UseAgent   bool
+	Prompt     bool
+}
+
+type jumpConfig struct {
+	Host       string
+	Port       int
+	User       string
+	Key        string
+	Passphrase string
+	Password   string
+	UseAgent   bool
+	Prompt     bool
+}
+
+func parseAuthDict(d *starlark.Dict) (authConfig, error) {
+	cfg := authConfig{
+		User: defaultUser(),
+	}
+	if d == nil {
+		return cfg, nil
+	}
+	for _, item := range d.Items() {
+		k, ok := starlark.AsString(item[0])
+		if !ok {
+			return cfg, fmt.Errorf("auth: key must be a string, got %s", item[0].Type())
+		}
+		switch k {
+		case "user":
+			if s, ok := starlark.AsString(item[1]); ok {
+				cfg.User = s
+			} else {
+				return cfg, fmt.Errorf("auth.user must be a string, got %s", item[1].Type())
+			}
+		case "key":
+			if s, ok := starlark.AsString(item[1]); ok {
+				cfg.Key = s
+			} else {
+				return cfg, fmt.Errorf("auth.key must be a string, got %s", item[1].Type())
+			}
+		case "passphrase":
+			if s, ok := starlark.AsString(item[1]); ok {
+				cfg.Passphrase = s
+			} else {
+				return cfg, fmt.Errorf("auth.passphrase must be a string, got %s", item[1].Type())
+			}
+		case "password":
+			if s, ok := starlark.AsString(item[1]); ok {
+				cfg.Password = s
+			} else {
+				return cfg, fmt.Errorf("auth.password must be a string, got %s", item[1].Type())
+			}
+		case "use_agent":
+			if b, ok := item[1].(starlark.Bool); ok {
+				cfg.UseAgent = bool(b)
+			} else {
+				return cfg, fmt.Errorf("auth.use_agent must be a bool, got %s", item[1].Type())
+			}
+		case "prompt":
+			if b, ok := item[1].(starlark.Bool); ok {
+				cfg.Prompt = bool(b)
+			} else {
+				return cfg, fmt.Errorf("auth.prompt must be a bool, got %s", item[1].Type())
+			}
+		default:
+			return cfg, fmt.Errorf("auth: unexpected field %q (allowed: user, key, passphrase, password, use_agent, prompt)", k)
+		}
+	}
+	return cfg, nil
+}
+
+func parseJumpDict(d *starlark.Dict, targetAuth authConfig) (jumpConfig, error) {
+	cfg := jumpConfig{
+		Port:       22,
+		User:       targetAuth.User,
+		Key:        targetAuth.Key,
+		Passphrase: targetAuth.Passphrase,
+		Password:   targetAuth.Password,
+		UseAgent:   targetAuth.UseAgent,
+		Prompt:     targetAuth.Prompt,
+	}
+	if d == nil {
+		return cfg, nil
+	}
+	for _, item := range d.Items() {
+		k, ok := starlark.AsString(item[0])
+		if !ok {
+			return cfg, fmt.Errorf("jump: key must be a string, got %s", item[0].Type())
+		}
+		switch k {
+		case "host":
+			if s, ok := starlark.AsString(item[1]); ok {
+				cfg.Host = s
+			} else {
+				return cfg, fmt.Errorf("jump.host must be a string, got %s", item[1].Type())
+			}
+		case "port":
+			var p int
+			if err := startype.Starlark(item[1]).Go(&p); err == nil && p > 0 {
+				cfg.Port = p
+			} else {
+				return cfg, fmt.Errorf("jump.port must be a positive integer, got %v", item[1])
+			}
+		case "user":
+			if s, ok := starlark.AsString(item[1]); ok {
+				cfg.User = s
+			} else {
+				return cfg, fmt.Errorf("jump.user must be a string, got %s", item[1].Type())
+			}
+		case "key":
+			if s, ok := starlark.AsString(item[1]); ok {
+				cfg.Key = s
+			} else {
+				return cfg, fmt.Errorf("jump.key must be a string, got %s", item[1].Type())
+			}
+		case "passphrase":
+			if s, ok := starlark.AsString(item[1]); ok {
+				cfg.Passphrase = s
+			} else {
+				return cfg, fmt.Errorf("jump.passphrase must be a string, got %s", item[1].Type())
+			}
+		case "password":
+			if s, ok := starlark.AsString(item[1]); ok {
+				cfg.Password = s
+			} else {
+				return cfg, fmt.Errorf("jump.password must be a string, got %s", item[1].Type())
+			}
+		case "use_agent":
+			if b, ok := item[1].(starlark.Bool); ok {
+				cfg.UseAgent = bool(b)
+			} else {
+				return cfg, fmt.Errorf("jump.use_agent must be a bool, got %s", item[1].Type())
+			}
+		case "prompt":
+			if b, ok := item[1].(starlark.Bool); ok {
+				cfg.Prompt = bool(b)
+			} else {
+				return cfg, fmt.Errorf("jump.prompt must be a bool, got %s", item[1].Type())
+			}
+		default:
+			return cfg, fmt.Errorf("jump: unexpected field %q (allowed: host, port, user, key, passphrase, password, use_agent, prompt)", k)
+		}
+	}
+	if cfg.Host == "" {
+		return cfg, fmt.Errorf("jump: 'host' is required in jump configuration")
+	}
+	return cfg, nil
 }
 
 // sshConfig creates a configured SSH client.
-// Usage: ssh.config(hosts=["host1", "host2"], user="root", key="/path/to/key", ...)
+// Usage: ssh.config(hosts=["host1", "host2"], auth={"user": "root", "key": "/path/to/key"}, jump={"host": "bastion"})
 func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	// Permission check for creating SSH client
 	if err := libkite.Check(thread, "ssh", "connect", "config", ""); err != nil {
@@ -160,9 +435,11 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		keepAliveMax:      3,
 	}
 
-	// Extract fleet, hosts shortcut, and env dict manually
+	// Extract fleet, hosts shortcut, auth dict, jump dict, and env dict manually
 	var rawFleet starlark.Value
 	var rawHosts starlark.Value
+	var rawAuth *starlark.Dict
+	var rawJump *starlark.Dict
 	var defaultEnv *starlark.Dict
 	filteredKwargs := make([]starlark.Tuple, 0, len(kwargs))
 	for _, kv := range kwargs {
@@ -172,10 +449,26 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 			rawFleet = kv[1]
 		case "hosts":
 			rawHosts = kv[1]
+		case "auth":
+			if d, ok := kv[1].(*starlark.Dict); ok {
+				rawAuth = d
+			} else {
+				return nil, fmt.Errorf("ssh.config: 'auth' must be a dict, got %s", kv[1].Type())
+			}
+		case "jump":
+			if d, ok := kv[1].(*starlark.Dict); ok {
+				rawJump = d
+			} else {
+				return nil, fmt.Errorf("ssh.config: 'jump' must be a dict, got %s", kv[1].Type())
+			}
 		case "env":
 			if d, ok := kv[1].(*starlark.Dict); ok {
 				defaultEnv = d
 			}
+		case "user", "key", "password", "key_passphrase", "passphrase", "use_agent", "ask_passphrase", "prompt", "ask_password":
+			return nil, fmt.Errorf("ssh.config: flat credential parameter %q is not supported; configure target credentials in auth={...}", key)
+		case "jump_host", "jump_user", "jump_key", "jump_password", "jump_key_passphrase", "jump_port":
+			return nil, fmt.Errorf("ssh.config: flat jump parameter %q is not supported; configure bastion routing in jump={...}", key)
 		default:
 			filteredKwargs = append(filteredKwargs, kv)
 		}
@@ -183,10 +476,6 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 
 	// Use startype for remaining simple parameters
 	var p struct {
-		User              string `name:"user"`
-		Key               string `name:"key"`
-		KeyPassphrase     string `name:"key_passphrase"`
-		Password          string `name:"password"`
 		Port              int    `name:"port"`
 		Timeout           string `name:"timeout"`
 		MaxRetries        int    `name:"max_retries"`
@@ -194,12 +483,6 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		ExecMaxWorkers    int    `name:"exec_max_workers"`
 		MaxWorkers        int    `name:"max_workers"`
 		ExecOnError       string `name:"exec_on_error"`
-		JumpHost          string `name:"jump_host"`
-		JumpUser          string `name:"jump_user"`
-		JumpKey           string `name:"jump_key"`
-		JumpKeyPassphrase string `name:"jump_key_passphrase"`
-		JumpPassword      string `name:"jump_password"`
-		JumpPort          int    `name:"jump_port"`
 		KnownHostsFile    string `name:"known_hosts_file"`
 		HostKeyCheck      bool   `name:"host_key_check"`
 		KeepAliveInterval string `name:"keep_alive_interval"`
@@ -208,8 +491,6 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		AsUser            string `name:"as_user"`
 		Cwd               string `name:"cwd"`
 		DryRun            bool   `name:"dry_run"`
-		UseAgent          bool   `name:"use_agent"`
-		AskPassphrase     bool   `name:"ask_passphrase"`
 	}
 	if err := startype.Args(args, filteredKwargs).Go(&p); err != nil {
 		return nil, err
@@ -274,19 +555,34 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		client.fleet = fleet.New(resources)
 	}
 
-	// Apply simple parameters
-	if p.User != "" {
-		client.user = p.User
+	// Apply structured auth
+	authCfg, err := parseAuthDict(rawAuth)
+	if err != nil {
+		return nil, fmt.Errorf("ssh.config: %w", err)
 	}
-	if p.Key != "" {
-		client.keyFile = p.Key
+	client.user = authCfg.User
+	client.keyFile = authCfg.Key
+	client.keyPassphrase = authCfg.Passphrase
+	client.password = authCfg.Password
+	client.useAgent = authCfg.UseAgent
+	client.prompt = authCfg.Prompt
+
+	// Apply structured jump
+	if rawJump != nil {
+		jumpCfg, err := parseJumpDict(rawJump, authCfg)
+		if err != nil {
+			return nil, fmt.Errorf("ssh.config: %w", err)
+		}
+		client.jumpHost = jumpCfg.Host
+		client.jumpPort = jumpCfg.Port
+		client.jumpUser = jumpCfg.User
+		client.jumpKeyFile = jumpCfg.Key
+		client.jumpKeyPassphrase = jumpCfg.Passphrase
+		client.jumpPassword = jumpCfg.Password
+		client.jumpUseAgent = jumpCfg.UseAgent
+		client.jumpPrompt = jumpCfg.Prompt
 	}
-	if p.KeyPassphrase != "" {
-		client.keyPassphrase = p.KeyPassphrase
-	}
-	if p.Password != "" {
-		client.password = p.Password
-	}
+
 	if p.Port > 0 {
 		client.port = p.Port
 	}
@@ -316,30 +612,10 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 	} else {
 		client.execOnError = "stop"
 	}
-	if p.JumpHost != "" {
-		client.jumpHost = p.JumpHost
-	}
-	if p.JumpUser != "" {
-		client.jumpUser = p.JumpUser
-	}
-	if p.JumpKey != "" {
-		client.jumpKeyFile = p.JumpKey
-	}
-	if p.JumpKeyPassphrase != "" {
-		client.jumpKeyPassphrase = p.JumpKeyPassphrase
-	}
-	if p.JumpPassword != "" {
-		client.jumpPassword = p.JumpPassword
-	}
-	if p.JumpPort > 0 {
-		client.jumpPort = p.JumpPort
-	}
 	if p.KnownHostsFile != "" {
 		client.knownHostsFile = p.KnownHostsFile
 	}
 	client.hostKeyCheck = p.HostKeyCheck
-	client.useAgent = p.UseAgent
-	client.askPassphrase = p.AskPassphrase
 	if p.KeepAliveInterval != "" {
 		d, err := time.ParseDuration(p.KeepAliveInterval)
 		if err != nil {
@@ -379,22 +655,24 @@ type SSHClient struct {
 	keyFile           string
 	keyPassphrase     string
 	password          string
+	useAgent          bool
+	prompt            bool
+	jumpHost          string
+	jumpPort          int
+	jumpUser          string
+	jumpKeyFile       string
+	jumpKeyPassphrase string
+	jumpPassword      string
+	jumpUseAgent      bool
+	jumpPrompt        bool
 	port              int
 	timeout           time.Duration
 	maxRetries        int
 	execPolicy        string // "concurrent" or "linear"
 	execMaxWorkers    int
 	execOnError       string // "stop" or "continue"
-	jumpHost          string
-	jumpUser          string
-	jumpKeyFile       string
-	jumpKeyPassphrase string
-	jumpPassword      string
-	jumpPort          int
 	knownHostsFile    string
 	hostKeyCheck      bool
-	useAgent          bool
-	askPassphrase     bool
 	keepAliveInterval time.Duration
 	keepAliveMax      int
 	defaultSudo       bool
@@ -444,27 +722,40 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 			return c.fleet, nil
 		}
 		return starlark.None, nil
+	case "auth":
+		d := starlark.NewDict(6)
+		d.SetKey(starlark.String("user"), starlark.String(c.user))
+		d.SetKey(starlark.String("key"), starlark.String(c.keyFile))
+		d.SetKey(starlark.String("passphrase"), starlark.String(c.keyPassphrase))
+		d.SetKey(starlark.String("password"), starlark.String(c.password))
+		d.SetKey(starlark.String("use_agent"), starlark.Bool(c.useAgent))
+		d.SetKey(starlark.String("prompt"), starlark.Bool(c.prompt))
+		return d, nil
+	case "jump":
+		if c.jumpHost == "" {
+			return starlark.None, nil
+		}
+		d := starlark.NewDict(8)
+		d.SetKey(starlark.String("host"), starlark.String(c.jumpHost))
+		d.SetKey(starlark.String("port"), starlark.MakeInt(c.jumpPort))
+		d.SetKey(starlark.String("user"), starlark.String(c.jumpUser))
+		d.SetKey(starlark.String("key"), starlark.String(c.jumpKeyFile))
+		d.SetKey(starlark.String("passphrase"), starlark.String(c.jumpKeyPassphrase))
+		d.SetKey(starlark.String("password"), starlark.String(c.jumpPassword))
+		d.SetKey(starlark.String("use_agent"), starlark.Bool(c.jumpUseAgent))
+		d.SetKey(starlark.String("prompt"), starlark.Bool(c.jumpPrompt))
+		return d, nil
 	case "exec_max_workers":
 		return starlark.MakeInt(c.execMaxWorkers), nil
 	case "exec_on_error":
 		return starlark.String(c.execOnError), nil
 	case "exec_policy":
 		return starlark.String(c.execPolicy), nil
-	case "jump_host":
-		return starlark.String(c.jumpHost), nil
-	case "jump_user":
-		return starlark.String(c.jumpUser), nil
-	case "jump_port":
-		return starlark.MakeInt(c.jumpPort), nil
-	case "use_agent":
-		return starlark.Bool(c.useAgent), nil
-	case "ask_passphrase":
-		return starlark.Bool(c.askPassphrase), nil
 	default:
 		return nil, nil
 	}
 }
 
 func (c *SSHClient) AttrNames() []string {
-	return []string{"ask_passphrase", "copy_id", "download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump_host", "jump_port", "jump_user", "try_copy_id", "try_download", "try_exec", "try_upload", "upload", "use_agent"}
+	return []string{"auth", "copy_id", "download", "exec", "exec_max_workers", "exec_on_error", "exec_policy", "fleet", "hosts", "jump", "try_copy_id", "try_download", "try_exec", "try_upload", "upload"}
 }

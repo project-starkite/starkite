@@ -5,11 +5,11 @@
 # ============================================================================
 
 def test_config_basic():
-    client = ssh.config(hosts=["host1", "host2"], user="root", key="/tmp/id_rsa", dry_run=True)
+    client = ssh.config(hosts=["host1", "host2"], auth={"user": "root", "key": "/tmp/id_rsa"}, dry_run=True)
     assert(type(client) == "ssh.client", "config should return ssh.client")
 
 def test_config_hosts_attribute():
-    client = ssh.config(hosts=["web1", "web2", "web3"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["web1", "web2", "web3"], auth={"user": "deploy"}, dry_run=True)
     hosts = client.hosts
     assert(len(hosts) == 3, "should have 3 hosts")
     assert(hosts[0] == "web1", "first host should be web1")
@@ -17,39 +17,53 @@ def test_config_hosts_attribute():
     assert(hosts[2] == "web3", "third host should be web3")
 
 def test_config_truth():
-    client_with_hosts = ssh.config(hosts=["h1"], user="u", dry_run=True)
+    client_with_hosts = ssh.config(hosts=["h1"], auth={"user": "u"}, dry_run=True)
     assert(client_with_hosts, "client with hosts should be truthy")
-    client_no_hosts = ssh.config(user="u", dry_run=True)
+    client_no_hosts = ssh.config(auth={"user": "u"}, dry_run=True)
     assert(not client_no_hosts, "client without hosts should be falsy")
 
 def test_config_all_params():
     client = ssh.config(
-        hosts=["host1"],
-        user="admin",
-        key="/tmp/key",
-        key_passphrase="secret",
-        password="pass",
-        port=2222,
-        timeout="60s",
-        max_retries=5,
-        exec_policy="linear",
-        exec_max_workers=16,
-        jump_host="bastion.example.com",
-        known_hosts_file="/tmp/known_hosts",
-        host_key_check=False,
-        keep_alive_interval="15s",
-        keep_alive_max=5,
-        sudo=True,
-        as_user="deploy",
-        cwd="/opt/app",
-        dry_run=True,
+        hosts = ["host1"],
+        auth = {
+            "user": "admin",
+            "key": "/tmp/key",
+            "passphrase": "secret",
+            "password": "pass",
+            "use_agent": True,
+            "prompt": False,
+        },
+        jump = {
+            "host": "bastion.example.com",
+            "port": 2222,
+            "user": "jumpadmin",
+            "key": "/tmp/jumpkey",
+            "use_agent": True,
+        },
+        port = 2222,
+        timeout = "60s",
+        max_retries = 5,
+        exec_policy = "linear",
+        exec_max_workers = 16,
+        known_hosts_file = "/tmp/known_hosts",
+        host_key_check = False,
+        keep_alive_interval = "15s",
+        keep_alive_max = 5,
+        sudo = True,
+        as_user = "deploy",
+        cwd = "/opt/app",
+        dry_run = True,
     )
     assert(type(client) == "ssh.client", "config with all params should work")
     assert(client.exec_max_workers == 16, "exec_max_workers should be 16")
     assert(client.exec_policy == "linear", "exec_policy should be linear")
+    assert(client.auth["user"] == "admin", "auth.user should be admin")
+    assert(client.auth["use_agent"] == True, "auth.use_agent should be True")
+    assert(client.jump["host"] == "bastion.example.com", "jump.host should match")
+    assert(client.jump["port"] == 2222, "jump.port should be 2222")
 
 def test_config_exec_max_workers():
-    c = ssh.config(hosts=["h1", "h2"], user="root", exec_max_workers=32, dry_run=True)
+    c = ssh.config(hosts=["h1", "h2"], auth={"user": "root"}, exec_max_workers=32, dry_run=True)
     assert(c.exec_max_workers == 32, "exec_max_workers should be 32")
     results = c.exec("uptime", exec_max_workers=8)
     assert(len(results) == 2, "should execute across 2 hosts")
@@ -59,7 +73,7 @@ def test_config_exec_max_workers():
 # ============================================================================
 
 def test_exec_dry_run():
-    client = ssh.config(hosts=["host1", "host2"], user="root", dry_run=True)
+    client = ssh.config(hosts=["host1", "host2"], auth={"user": "root"}, dry_run=True)
     results = client.exec("uname -a")
     assert(type(results) == "list", "exec should return a list")
     assert(len(results) == 2, "should have result per host")
@@ -73,31 +87,31 @@ def test_exec_dry_run():
     assert(r.stderr == "", "stderr should be empty")
 
 def test_exec_dry_run_with_sudo():
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     results = client.exec("systemctl restart app", sudo=True)
     r = results[0]
     assert("sudo" in r.stdout, "dry run stdout should contain sudo command")
 
 def test_exec_dry_run_with_as_user():
-    client = ssh.config(hosts=["host1"], user="root", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "root"}, dry_run=True)
     results = client.exec("whoami", sudo=True, as_user="www-data")
     r = results[0]
     assert("sudo -u www-data" in r.stdout, "should contain sudo -u www-data")
 
 def test_exec_dry_run_with_cwd():
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     results = client.exec("ls", cwd="/opt/app")
     r = results[0]
     assert("cd /opt/app" in r.stdout, "should contain cd /opt/app")
 
 def test_exec_dry_run_with_env():
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     results = client.exec("app start", env={"PORT": "8080"})
     r = results[0]
     assert("PORT=" in r.stdout, "should contain env var")
 
 def test_exec_empty_hosts():
-    client = ssh.config(user="deploy", dry_run=True)
+    client = ssh.config(auth={"user": "deploy"}, dry_run=True)
     results = client.exec("echo hello")
     assert(type(results) == "list", "should return list")
     assert(len(results) == 0, "empty hosts should produce empty results")
@@ -107,7 +121,7 @@ def test_exec_empty_hosts():
 # ============================================================================
 
 def test_upload_dry_run():
-    client = ssh.config(hosts=["host1", "host2"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1", "host2"], auth={"user": "deploy"}, dry_run=True)
     results = client.upload("/local/app.tar.gz", "/remote/app.tar.gz")
     assert(type(results) == "list", "upload should return a list")
     assert(len(results) == 2, "should have result per host")
@@ -121,13 +135,13 @@ def test_upload_dry_run():
     assert(r.dry_run == True, "should have dry_run flag")
 
 def test_upload_dry_run_with_mode():
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     results = client.upload("/local/script.sh", "/remote/script.sh", mode="0755")
     assert(len(results) == 1, "should have 1 result")
     assert(results[0].ok == True, "should be ok")
 
 def test_upload_empty_hosts():
-    client = ssh.config(user="deploy", dry_run=True)
+    client = ssh.config(auth={"user": "deploy"}, dry_run=True)
     results = client.upload("/local/file", "/remote/file")
     assert(len(results) == 0, "empty hosts should produce empty results")
 
@@ -136,7 +150,7 @@ def test_upload_empty_hosts():
 # ============================================================================
 
 def test_download_dry_run():
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     results = client.download("/remote/data.csv", "/local/data.csv")
     assert(type(results) == "list", "download should return a list")
     assert(len(results) == 1, "should have 1 result")
@@ -150,7 +164,7 @@ def test_download_dry_run():
     assert(r.dry_run == True, "should have dry_run flag")
 
 def test_download_empty_hosts():
-    client = ssh.config(user="deploy", dry_run=True)
+    client = ssh.config(auth={"user": "deploy"}, dry_run=True)
     results = client.download("/remote/file", "/local/file")
     assert(len(results) == 0, "empty hosts should produce empty results")
 
@@ -159,17 +173,16 @@ def test_download_empty_hosts():
 # ============================================================================
 
 def test_try_exec():
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     r = client.try_exec("echo hello")
     assert(type(r) == "Result", "try_exec should return Result")
     assert(r.ok == True, "try_exec should succeed in dry run")
-    # value contains the list of SSHResult
     results = r.value
     assert(type(results) == "list", "value should be a list")
     assert(len(results) == 1, "should have 1 result")
 
 def test_try_upload():
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     r = client.try_upload("/local/file", "/remote/file")
     assert(type(r) == "Result", "try_upload should return Result")
     assert(r.ok == True, "try_upload should succeed in dry run")
@@ -177,7 +190,7 @@ def test_try_upload():
     assert(type(results) == "list", "value should be a list")
 
 def test_try_download():
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     r = client.try_download("/remote/file", "/local/file")
     assert(type(r) == "Result", "try_download should return Result")
     assert(r.ok == True, "try_download should succeed in dry run")
@@ -189,29 +202,29 @@ def test_try_download():
 # ============================================================================
 
 def test_attr_names():
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
-    # Verify all expected methods are accessible
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     assert(client.exec != None, "exec attr should exist")
     assert(client.upload != None, "upload attr should exist")
     assert(client.download != None, "download attr should exist")
     assert(client.hosts != None, "hosts attr should exist")
+    assert(client.auth != None, "auth attr should exist")
     assert(client.try_exec != None, "try_exec attr should exist")
     assert(client.try_upload != None, "try_upload attr should exist")
     assert(client.try_download != None, "try_download attr should exist")
 
 def test_string_repr():
-    client = ssh.config(hosts=["h1", "h2"], user="root", dry_run=True)
+    client = ssh.config(hosts=["h1", "h2"], auth={"user": "root"}, dry_run=True)
     s = str(client)
     assert("ssh.client" in s, "string repr should contain ssh.client")
     assert("h1" in s, "string repr should contain host")
 
 def test_type():
-    client = ssh.config(hosts=["h1"], user="root", dry_run=True)
+    client = ssh.config(hosts=["h1"], auth={"user": "root"}, dry_run=True)
     assert(type(client) == "ssh.client", "type should be ssh.client")
 
 def test_exec_dry_run_dual_invocation_args():
     """Test SSH exec with dual invocation structured argument list."""
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     results = client.exec("git", ["commit", "-m", "release v0.1.0"])
     assert(len(results) == 1, "should return 1 result")
     r = results[0]
@@ -219,7 +232,7 @@ def test_exec_dry_run_dual_invocation_args():
 
 def test_exec_dry_run_quoted_string():
     """Test SSH exec with quoted command string."""
-    client = ssh.config(hosts=["host1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     results = client.exec('k3s kubectl apply -f "deploy.yaml"')
     assert(len(results) == 1, "should return 1 result")
     r = results[0]
@@ -246,7 +259,7 @@ def test_ssh_try_exec_oneshot():
 
 def test_exec_commands_pipeline_dry_run():
     """Test client.exec with commands list."""
-    client = ssh.config(hosts=["web1", "web2"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["web1", "web2"], auth={"user": "deploy"}, dry_run=True)
     results = client.exec(
         commands = [
             "git pull origin main",
@@ -270,7 +283,6 @@ def test_ssh_exec_commands_oneshot():
         commands = ["echo 1", "echo 2"],
         hosts = ["host1"],
         user = "deploy",
-        exec_on_error = "continue",
         dry_run = True,
     )
     assert(len(results) == 1, "should return result for 1 host")
@@ -281,7 +293,7 @@ def test_ssh_exec_commands_oneshot():
 
 def test_client_exec_positional_commands_list():
     """Test client.exec passing commands as positional list."""
-    client = ssh.config(hosts=["h1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["h1"], auth={"user": "deploy"}, dry_run=True)
     results = client.exec(["ls -la", "df -h"])
     assert(len(results) == 1, "should return 1 host result")
     assert(len(results[0].steps) == 2, "should have 2 step results")
@@ -290,14 +302,14 @@ def test_client_exec_positional_commands_list():
 
 def test_client_exec_positional_commands_tuple():
     """Test client.exec passing commands as positional tuple."""
-    client = ssh.config(hosts=["h1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["h1"], auth={"user": "deploy"}, dry_run=True)
     results = client.exec(("uptime", "whoami"))
     assert(len(results) == 1, "should return 1 host result")
     assert(len(results[0].steps) == 2, "should have 2 step results")
 
 def test_client_exec_commands_with_options():
     """Test client.exec commands with sudo, cwd, and env options."""
-    client = ssh.config(hosts=["h1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["h1"], auth={"user": "deploy"}, dry_run=True)
     results = client.exec(
         commands = ["make build", "make install"],
         cwd = "/opt/myapp",
@@ -314,7 +326,7 @@ def test_client_exec_commands_with_options():
 
 def test_client_try_exec_commands():
     """Test client.try_exec with multi-command pipeline."""
-    client = ssh.config(hosts=["h1"], user="deploy", dry_run=True)
+    client = ssh.config(hosts=["h1"], auth={"user": "deploy"}, dry_run=True)
     res = client.try_exec(commands=["echo 1", "echo 2"])
     assert(res.ok == True, "try_exec on dry_run should be ok")
     batch = res.value[0]
@@ -333,18 +345,20 @@ def test_ssh_try_exec_commands_oneshot():
     assert(len(res.value) == 2, "should return 2 hosts")
     assert(len(res.value[0].steps) == 2, "each host should have 2 steps")
 
-def test_ssh_exec_commands_with_fleet():
-    """Test ssh.exec with commands targeting a Fleet instance."""
+def test_client_exec_commands_with_fleet():
+    """Test client.exec with commands targeting a Fleet instance."""
     compute_fleet = fleet.new([
         {"id": "node-1", "name": "node-1", "address": "10.0.1.10"},
         {"id": "node-2", "name": "node-2", "address": "10.0.1.11"},
     ])
-    results = ssh.exec(
-        commands = ["cat /etc/os-release", "uname -r"],
+    client = ssh.config(
         fleet = compute_fleet,
-        user = "deploy",
+        auth = {"user": "deploy"},
         exec_max_workers = 4,
         dry_run = True,
+    )
+    results = client.exec(
+        commands = ["cat /etc/os-release", "uname -r"],
     )
     assert(len(results) == 2, "should return 2 hosts")
     assert(results[0].host == "10.0.1.10", "host 1 should match")
@@ -359,29 +373,31 @@ def test_ssh_exec_single_host_string():
     assert("hostname" in results[0].stdout, "stdout should contain hostname")
 
 def test_ssh_config_jump_host_params():
-    """Test jump_host, jump_user, jump_port configuration and attributes."""
+    """Test jump dictionary configuration and attributes."""
     client = ssh.config(
         hosts = ["picluster-0", "picluster-1"],
-        user = "pi",
-        jump_host = "rbp4-1",
-        jump_user = "vladimir",
-        jump_port = 2222,
+        auth = {"user": "pi"},
+        jump = {
+            "host": "rbp4-1",
+            "user": "vladimir",
+            "port": 2222,
+        },
         dry_run = True,
     )
-    assert(client.jump_host == "rbp4-1", "jump_host should be rbp4-1")
-    assert(client.jump_user == "vladimir", "jump_user should be vladimir")
-    assert(client.jump_port == 2222, "jump_port should be 2222")
+    assert(client.jump != None, "jump dict should exist")
+    assert(client.jump["host"] == "rbp4-1", "jump.host should be rbp4-1")
+    assert(client.jump["user"] == "vladimir", "jump.user should be vladimir")
+    assert(client.jump["port"] == 2222, "jump.port should be 2222")
 
-def test_ssh_exec_with_jump_host():
-    """Test one-shot ssh.exec through a jump host."""
-    results = ssh.exec(
-        "uname -m",
+def test_ssh_exec_with_jump_client():
+    """Test exec through a configured jump host client."""
+    client = ssh.config(
         hosts = ["picluster-0"],
-        user = "pi",
-        jump_host = "rbp4-1",
-        jump_user = "vladimir",
+        auth = {"user": "pi"},
+        jump = {"host": "rbp4-1", "user": "vladimir"},
         dry_run = True,
     )
+    results = client.exec("uname -m")
     assert(len(results) == 1, "should return 1 result")
     assert(results[0].host == "picluster-0", "target host should be picluster-0")
     assert("uname -m" in results[0].stdout, "stdout should contain uname -m")
@@ -436,7 +452,7 @@ def test_ssh_try_keygen():
 def test_client_copy_id_dry_run():
     """Test client.copy_id in dry-run mode."""
     kp = ssh.keygen(type="ed25519", comment="dry-run-copy")
-    client = ssh.config(hosts=["web1", "web2"], user="pi", dry_run=True)
+    client = ssh.config(hosts=["web1", "web2"], auth={"user": "pi"}, dry_run=True)
     results = client.copy_id(key=kp.public_key)
     assert(len(results) == 2, "should return 2 results")
     assert(results[0].ok == True, "result 0 ok")
@@ -444,14 +460,12 @@ def test_client_copy_id_dry_run():
     assert("[DRY RUN] Would install public key" in results[0].stdout, "stdout should contain dry run msg")
 
 def test_ssh_copy_id_oneshot_dry_run():
-    """Test one-shot ssh.copy_id across a fleet in dry-run mode."""
+    """Test one-shot ssh.copy_id across direct hosts in dry-run mode."""
     kp = ssh.keygen(type="ed25519", comment="oneshot-copy")
     results = ssh.copy_id(
         key = kp.public_key,
         hosts = ["srv1", "srv2", "srv3"],
         user = "pi",
-        jump_host = "bastion.lan",
-        jump_user = "admin",
         dry_run = True,
     )
     assert(len(results) == 3, "should return 3 results")
@@ -465,24 +479,25 @@ def test_ssh_try_copy_id_invalid():
     assert(res.error != None and len(res.error) > 0, "error message should be present")
 
 def test_ssh_config_use_agent():
-    """Test use_agent parameter and client attribute."""
+    """Test use_agent parameter in auth dict."""
     client = ssh.config(
         hosts = ["srv1"],
-        user = "pi",
-        use_agent = True,
+        auth = {"user": "pi", "use_agent": True},
         dry_run = True,
     )
-    assert(client.use_agent == True, "client.use_agent should be True")
+    assert(client.auth["use_agent"] == True, "auth.use_agent should be True")
 
 def test_ssh_config_key_passphrase():
-    """Test key_passphrase parameter in ssh.config."""
+    """Test passphrase parameter in auth dict."""
     kp = ssh.keygen(type="ed25519", passphrase="test-passphrase", path=(fs.path(temp_dir()) / "id_enc_test").string, overwrite=True)
     
     client = ssh.config(
         hosts = ["srv1"],
-        user = "pi",
-        key = kp.path,
-        key_passphrase = "test-passphrase",
+        auth = {
+            "user": "pi",
+            "key": kp.path,
+            "passphrase": "test-passphrase",
+        },
         dry_run = True,
     )
     res = client.exec("uptime")
@@ -493,13 +508,11 @@ def test_ssh_config_key_passphrase():
     fs.path(kp.path).remove()
     fs.path(kp.pub_path).remove()
 
-def test_ssh_config_ask_passphrase():
-    """Test ask_passphrase parameter and client attribute."""
+def test_ssh_config_prompt():
+    """Test prompt parameter in auth dict."""
     client = ssh.config(
         hosts = ["srv1"],
-        user = "pi",
-        ask_passphrase = True,
+        auth = {"user": "pi", "prompt": True},
         dry_run = True,
     )
-    assert(client.ask_passphrase == True, "client.ask_passphrase should be True")
-    assert("ask_passphrase" in dir(client), "ask_passphrase should be in dir(client)")
+    assert(client.auth["prompt"] == True, "auth.prompt should be True")

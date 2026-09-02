@@ -8,8 +8,10 @@ def test_exec_basic():
 
     client = ssh.config(
         hosts=["127.0.0.1"],
-        user="testuser",
-        password="testpass",
+        auth={
+            "user": "testuser",
+            "password": "testpass",
+        },
         port=srv.port(),
         host_key_check=False,
         max_retries=0,
@@ -28,7 +30,8 @@ def test_exec_nonzero_exit():
     srv.start()
 
     client = ssh.config(
-        hosts=["127.0.0.1"], user="testuser", password="pass",
+        hosts=["127.0.0.1"],
+        auth={"user": "testuser", "password": "pass"},
         port=srv.port(), host_key_check=False, max_retries=0,
     )
     results = client.exec("fail")
@@ -45,7 +48,8 @@ def test_exec_with_key_auth():
     srv.start()
 
     client = ssh.config(
-        hosts=["127.0.0.1"], user="deploy", key=key.path,
+        hosts=["127.0.0.1"],
+        auth={"user": "deploy", "key": key.path},
         port=srv.port(), host_key_check=False, max_retries=0,
     )
     results = client.exec("whoami")
@@ -61,7 +65,7 @@ def test_exec_multi_host():
 
     client = ssh.config(
         hosts=["127.0.0.1", "127.0.0.1", "127.0.0.1"],
-        user="u", password="p",
+        auth={"user": "u", "password": "p"},
         port=srv.port(), host_key_check=False, max_retries=0,
     )
     results = client.exec("test")
@@ -77,7 +81,8 @@ def test_try_exec():
     srv.start()
 
     client = ssh.config(
-        hosts=["127.0.0.1"], user="u", password="p",
+        hosts=["127.0.0.1"],
+        auth={"user": "u", "password": "p"},
         port=srv.port(), host_key_check=False, max_retries=0,
     )
     r = client.try_exec("test")
@@ -94,7 +99,8 @@ def test_upload():
     write_text(path, "upload content")
 
     client = ssh.config(
-        hosts=["127.0.0.1"], user="u", password="p",
+        hosts=["127.0.0.1"],
+        auth={"user": "u", "password": "p"},
         port=srv.port(), host_key_check=False, max_retries=0,
     )
     results = client.upload(path, "/remote/file.txt")
@@ -117,7 +123,8 @@ def test_download():
 
     local_path = (fs.path(temp_dir()) / "crsh_ssh_download_test.txt").string
     client = ssh.config(
-        hosts=["127.0.0.1"], user="u", password="p",
+        hosts=["127.0.0.1"],
+        auth={"user": "u", "password": "p"},
         port=srv.port(), host_key_check=False, max_retries=0,
     )
     results = client.download("/remote/data.txt", local_path)
@@ -143,7 +150,8 @@ def test_auth_failure():
     srv.start()
 
     client = ssh.config(
-        hosts=["127.0.0.1"], user="u", password="wrong",
+        hosts=["127.0.0.1"],
+        auth={"user": "u", "password": "wrong"},
         port=srv.port(), host_key_check=False, max_retries=0,
     )
     r = client.try_exec("test")

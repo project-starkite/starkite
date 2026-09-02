@@ -20,8 +20,10 @@ def main():
     # 1. Config-based client execution
     client = ssh.config(
         hosts    = target_host,
-        user     = ssh_user,
-        key      = ssh_key,
+        auth     = {
+            "user": ssh_user,
+            "key":  ssh_key,
+        },
         dry_run  = True,  # Set to False to run against live hosts
     )
 

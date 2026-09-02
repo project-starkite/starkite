@@ -148,7 +148,7 @@ resp = http.url("https://api.example.com/data").get()
 data = json.decode(resp.body)
 
 # SSH (multi-host concurrent execution)
-client = ssh.config(user="admin", host_list=["web1", "web2", "web3"])
+client = ssh.config(hosts=["web1", "web2", "web3"], auth={"user": "admin"})
 results = client.exec("uptime")
 
 # Concurrency

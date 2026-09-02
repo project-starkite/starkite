@@ -16,8 +16,10 @@ To run a command, call the `client.exec()` method. This function dispatches the 
 def check_host_uptime():
     client = ssh.config(
         hosts = ["alice-node-1.local", "alice-node-2.local"],
-        user  = "alice",
-        key   = "~/.ssh/id_ed25519",
+        auth  = {
+            "user": "alice",
+            "key":  "~/.ssh/id_ed25519",
+        },
     )
     
     # Run the command on all target hosts concurrently
@@ -53,8 +55,10 @@ You can control the remote execution context by specifying a working directory (
 def run_build_pipeline():
     client = ssh.config(
         hosts = ["alice-node-1.local"],
-        user  = "alice",
-        key   = "~/.ssh/id_ed25519",
+        auth  = {
+            "user": "alice",
+            "key":  "~/.ssh/id_ed25519",
+        },
     )
     
     # Run build commands in a specific directory with custom environment variables
@@ -81,8 +85,10 @@ For commands requiring root privileges, pass `sudo = True` directly to `client.e
 def restart_web_server():
     client = ssh.config(
         hosts = ["alice-node-1.local"],
-        user  = "alice",
-        key   = "~/.ssh/id_ed25519",
+        auth  = {
+            "user": "alice",
+            "key":  "~/.ssh/id_ed25519",
+        },
     )
     
     # Restarts the service with root privileges
@@ -100,8 +106,10 @@ To execute a command as a different non-root user, combine `sudo = True` with th
 def run_db_vacuum():
     client = ssh.config(
         hosts = ["alice-node-1.local"],
-        user  = "alice",
-        key   = "~/.ssh/id_ed25519",
+        auth  = {
+            "user": "alice",
+            "key":  "~/.ssh/id_ed25519",
+        },
     )
     
     # Executed as: sudo -u postgres vacuumdb -a

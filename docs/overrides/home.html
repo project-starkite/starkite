@@ -755,7 +755,7 @@
 def main():
     client = ssh.config(
         hosts = ["web-1", "web-2", "web-3"],
-        user = "ops",
+        auth  = {"user": "ops"},
         timeout = "10s",
     )
     for res in client.exec("uptime"):

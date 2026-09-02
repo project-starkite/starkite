@@ -141,9 +141,11 @@ def main():
 
     # Configure SSH provider
     ssh_client = ssh.config(
-        user = SSH_USER,
-        key = SSH_KEY,
         hosts = HOSTS,
+        auth = {
+            "user": SSH_USER,
+            "key": SSH_KEY,
+        },
         timeout = "10s",
         max_retries = 2,
         exec_policy = "concurrent",
@@ -169,9 +171,11 @@ def main():
 
         # Reconfigure SSH client with only reachable hosts
         ssh_client = ssh.config(
-            user = SSH_USER,
-            key = SSH_KEY,
             hosts = reachable,
+            auth = {
+                "user": SSH_USER,
+                "key": SSH_KEY,
+            },
             timeout = "10s",
             exec_policy = "concurrent",
         )

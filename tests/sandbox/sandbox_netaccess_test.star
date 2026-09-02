@@ -65,8 +65,10 @@ def test_ssh_loopback_password():
 
     client = ssh.config(
         hosts=["127.0.0.1"],
-        user="testuser",
-        password="testpass",
+        auth={
+            "user": "testuser",
+            "password": "testpass",
+        },
         port=srv.port(),
         host_key_check=False,
         max_retries=0,

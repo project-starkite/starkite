@@ -10,31 +10,32 @@ The `ssh` module provides a secure client to connect to remote hosts. Connection
 
 ## Configuring the Client
 
-To establish a connection, build an SSH client by specifying target hosts, the SSH username, and the path to your private key:
+To establish a connection, build an SSH client by specifying target hosts, the SSH username, and the path to your private key in the `auth` dictionary:
 
 ```python
 def main():
     # Configure the SSH client
     client = ssh.config(
         hosts = ["alice-node-1.local"],
-        user  = "alice",
-        key   = "~/.ssh/id_ed25519",
+        auth  = {
+            "user": "alice",
+            "key":  "~/.ssh/id_ed25519",
+        },
         timeout = "10s",
     )
     print("SSH client configured for:", client.hosts)
 ```
 
-The `hosts` parameter accepts a list of target hostnames or IP addresses. The client will establish connections to all named hosts.
+The `hosts` parameter accepts a list of target hostnames or IP addresses (or a single hostname/IP string). The client will establish connections to all named hosts.
 
 ---
 
 ## Configuration Parameters
 
-You can customize connection behavior using the following optional arguments in `ssh.config()`:
+You can customize connection behavior using the following arguments in `ssh.config()`:
 
-* **`user`**: The SSH username used to establish the connection (defaults to the current local system user if omitted).
-* **`key`**: The local path to your private SSH key (highly recommended over passwords).
-* **`key_passphrase`**: The passphrase to decrypt your private key, if required.
+* **`auth`**: A dictionary specifying target host credentials (`user`, `key`, `passphrase`, `password`, `use_agent`, `prompt`).
+* **`jump`**: An optional dictionary specifying bastion jump host configuration (`host`, `port`, `user`, `key`, `passphrase`, `password`, `use_agent`, `prompt`).
 * **`port`**: The target SSH port (defaults to `22`).
 * **`timeout`**: A duration string (e.g., `"10s"`, `"30s"`) defining the connection timeout.
 * **`host_key_check`**: A boolean (defaults to `True`) to verify the remote host's signature against your `known_hosts` file.
@@ -50,7 +51,7 @@ If your automation primarily performs administrative operations (such as install
 When you configure `sudo = True` in `ssh.config()`, Starkite establishes a client-wide default that automatically prefixes all subsequent remote commands with `sudo `. By default, `sudo` elevates the execution context of the command to the `root` user.
 
 ### Combining with the SSH User
-Starkite establishes the initial SSH connection using the SSH user specified in the configuration (e.g., `user = "alice"`). 
+Starkite establishes the initial SSH connection using the SSH user specified in the configuration (e.g., `auth = {"user": "alice"}`). 
 
 When `sudo = True` is enabled, the runtime authenticates as `alice` and executes the command as `sudo <cmd>`.
 
@@ -65,8 +66,10 @@ def run_database_maintenance():
     # 1. Connect as 'alice' with global sudo enabled
     client = ssh.config(
         hosts = ["alice-node-1.local"],
-        user  = "alice",
-        key   = "~/.ssh/id_ed25519",
+        auth  = {
+            "user": "alice",
+            "key":  "~/.ssh/id_ed25519",
+        },
         sudo  = True,
     )
     

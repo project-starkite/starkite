@@ -21,8 +21,10 @@ def main():
     # Configure client with worker pool concurrency limit
     client = ssh.config(
         fleet            = nodes,
-        user             = "deploy",
-        key              = "~/.ssh/id_ed25519",
+        auth             = {
+            "user": "deploy",
+            "key":  "~/.ssh/id_ed25519",
+        },
         exec_max_workers = 2,     # Limit concurrent active connections to 2
         dry_run          = True,  # Set to False for live execution
     )
@@ -44,8 +46,10 @@ def main():
     
     frontend_client = ssh.config(
         fleet         = frontend_fleet,
-        user          = "deploy",
-        key           = "~/.ssh/id_ed25519",
+        auth          = {
+            "user": "deploy",
+            "key":  "~/.ssh/id_ed25519",
+        },
         dry_run       = True,
     )
 

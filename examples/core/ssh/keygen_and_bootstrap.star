@@ -43,8 +43,10 @@ def main():
     print("\n[3/3] Verifying access with new key...")
     verify_client = ssh.config(
         hosts   = target_nodes,
-        user    = "deploy",
-        key     = keys.path,
+        auth    = {
+            "user": "deploy",
+            "key":  keys.path,
+        },
         dry_run = True,
     )
     verify_results = verify_client.exec("hostname")

@@ -20,12 +20,16 @@ def main():
     # Configure client to proxy through the bastion
     client = ssh.config(
         hosts         = internal_hosts,
-        user          = "appuser",
-        key           = "~/.ssh/id_ed25519",
-        jump_host     = bastion_host,
-        jump_user     = bastion_user,
-        jump_key      = "~/.ssh/bastion_key",
-        jump_port     = 22,
+        auth          = {
+            "user": "appuser",
+            "key":  "~/.ssh/id_ed25519",
+        },
+        jump          = {
+            "host": bastion_host,
+            "user": bastion_user,
+            "key":  "~/.ssh/bastion_key",
+            "port": 22,
+        },
         dry_run       = True,  # Set to False for live execution
     )
 

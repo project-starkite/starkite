@@ -19,8 +19,10 @@ def deploy_application_config():
     # Configure the SSH client
     client = ssh.config(
         hosts = ["alice-node-1.local"],
-        user  = "alice",
-        key   = "~/.ssh/id_ed25519",
+        auth  = {
+            "user": "alice",
+            "key":  "~/.ssh/id_ed25519",
+        },
     )
     
     # Upload a local config file and set its permission mode to 0640
@@ -48,8 +50,10 @@ To retrieve files from remote hosts, use the `client.download()` method. You spe
 def fetch_remote_logs():
     client = ssh.config(
         hosts = ["alice-node-1.local"],
-        user  = "alice",
-        key   = "~/.ssh/id_ed25519",
+        auth  = {
+            "user": "alice",
+            "key":  "~/.ssh/id_ed25519",
+        },
     )
     
     # Download remote logs to a local directory

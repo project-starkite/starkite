@@ -195,7 +195,7 @@ def test_ssh_config_with_fleet():
         {"name": "host2", "address": "10.0.1.11", "role": "web"},
     ])
     
-    client = ssh.config(fleet=f, user="deploy", dry_run=True)
+    client = ssh.config(fleet=f, auth={"user": "deploy"}, dry_run=True)
     assert(type(client) == "ssh.client", "expected ssh.client")
     assert(client.hosts == ["10.0.1.10", "10.0.1.11"], "expected hosts extracted from fleet")
     assert(client.fleet != None, "client.fleet should be populated")
@@ -207,7 +207,7 @@ def test_ssh_config_with_fleet():
     assert(results[1].host == "10.0.1.11", "second host should match")
 
 def test_ssh_config_with_hosts_shortcut():
-    client = ssh.config(hosts=["192.168.1.50", "192.168.1.51"], user="root", dry_run=True)
+    client = ssh.config(hosts=["192.168.1.50", "192.168.1.51"], auth={"user": "root"}, dry_run=True)
     assert(client.hosts == ["192.168.1.50", "192.168.1.51"], "expected hosts")
     assert(client.fleet != None, "fleet should be synthesized from hosts shortcut")
     assert(client.fleet.count == 2, "synthesized fleet count should be 2")

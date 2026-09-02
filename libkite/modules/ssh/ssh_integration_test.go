@@ -371,10 +371,13 @@ func TestSSHConfigWithFleet(t *testing.T) {
 		{ID: "node-2", Name: "node-2", Address: "10.0.1.11", Kind: "host"},
 	})
 
+	authDict := starlark.NewDict(1)
+	authDict.SetKey(starlark.String("user"), starlark.String("deploy"))
+
 	thread := &starlark.Thread{Name: "test-ssh-fleet"}
 	val, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
 		{starlark.String("fleet"), fl},
-		{starlark.String("user"), starlark.String("deploy")},
+		{starlark.String("auth"), authDict},
 	})
 	if err != nil {
 		t.Fatalf("ssh.config with fleet failed: %v", err)
@@ -399,10 +402,13 @@ func TestSSHConfigWithHostsShortcut(t *testing.T) {
 	mod := New()
 	thread := &starlark.Thread{Name: "test-ssh-hosts"}
 
+	authDict := starlark.NewDict(1)
+	authDict.SetKey(starlark.String("user"), starlark.String("root"))
+
 	// 1. hosts as list
 	val1, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
 		{starlark.String("hosts"), starlark.NewList([]starlark.Value{starlark.String("192.168.1.5")})},
-		{starlark.String("user"), starlark.String("root")},
+		{starlark.String("auth"), authDict},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -647,7 +653,7 @@ func TestSSHExecOneShotWithCommands(t *testing.T) {
 	}
 }
 
-func TestSSHExecOneShotWithFleet(t *testing.T) {
+func TestSSHExecWithFleetClient(t *testing.T) {
 	ts := newTestServerForTest(t)
 	ts.AddPassword("testuser", "secret")
 	ts.HandleExec(func(cmd string) (string, string, int) {
@@ -667,19 +673,28 @@ func TestSSHExecOneShotWithFleet(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	execBuiltin := dict["ssh"].(starlark.HasAttrs)
-	execFn, _ := execBuiltin.Attr("exec")
+	configBuiltin := dict["ssh"].(starlark.HasAttrs)
+	configFn, _ := configBuiltin.Attr("config")
+
+	authDict := starlark.NewDict(2)
+	authDict.SetKey(starlark.String("user"), starlark.String("testuser"))
+	authDict.SetKey(starlark.String("password"), starlark.String("secret"))
 
 	thread := &starlark.Thread{Name: "test-ssh-fleet-exec"}
-	res, err := starlark.Call(thread, execFn, starlark.Tuple{starlark.String("uptime")}, []starlark.Tuple{
+	clientVal, err := starlark.Call(thread, configFn, nil, []starlark.Tuple{
 		{starlark.String("fleet"), testFleet},
+		{starlark.String("auth"), authDict},
 		{starlark.String("port"), starlark.MakeInt(port)},
-		{starlark.String("user"), starlark.String("testuser")},
-		{starlark.String("password"), starlark.String("secret")},
 		{starlark.String("host_key_check"), starlark.False},
 	})
 	if err != nil {
-		t.Fatalf("ssh.exec error: %v", err)
+		t.Fatalf("ssh.config error: %v", err)
+	}
+
+	client := clientVal.(*SSHClient)
+	res, err := client.exec(thread, nil, starlark.Tuple{starlark.String("uptime")}, nil)
+	if err != nil {
+		t.Fatalf("client.exec error: %v", err)
 	}
 
 	list := res.(*starlark.List)
@@ -804,13 +819,19 @@ func TestSSHConfigJumpHostSettings(t *testing.T) {
 	mod := New()
 	thread := &starlark.Thread{Name: "test-jump-config"}
 
+	authDict := starlark.NewDict(1)
+	authDict.SetKey(starlark.String("user"), starlark.String("pi"))
+
+	jumpDict := starlark.NewDict(4)
+	jumpDict.SetKey(starlark.String("host"), starlark.String("bastion.lan"))
+	jumpDict.SetKey(starlark.String("user"), starlark.String("vladimir"))
+	jumpDict.SetKey(starlark.String("port"), starlark.MakeInt(2222))
+	jumpDict.SetKey(starlark.String("key"), starlark.String("/tmp/bastion_key"))
+
 	val, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
 		{starlark.String("hosts"), starlark.String("10.0.0.5")},
-		{starlark.String("user"), starlark.String("pi")},
-		{starlark.String("jump_host"), starlark.String("bastion.lan")},
-		{starlark.String("jump_user"), starlark.String("vladimir")},
-		{starlark.String("jump_port"), starlark.MakeInt(2222)},
-		{starlark.String("jump_key"), starlark.String("/tmp/bastion_key")},
+		{starlark.String("auth"), authDict},
+		{starlark.String("jump"), jumpDict},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -830,9 +851,14 @@ func TestSSHConfigJumpHostSettings(t *testing.T) {
 		t.Errorf("jumpKeyFile = %q, want /tmp/bastion_key", client.jumpKeyFile)
 	}
 
-	jumpUserAttr, _ := client.Attr("jump_user")
-	if s, ok := jumpUserAttr.(starlark.String); !ok || string(s) != "vladimir" {
-		t.Errorf("jump_user attr = %v, want vladimir", jumpUserAttr)
+	jumpAttr, _ := client.Attr("jump")
+	jumpD, ok := jumpAttr.(*starlark.Dict)
+	if !ok {
+		t.Fatalf("jump attr is not dict: %v", jumpAttr)
+	}
+	uVal, _, _ := jumpD.Get(starlark.String("user"))
+	if s, ok := uVal.(starlark.String); !ok || string(s) != "vladimir" {
+		t.Errorf("jump.user attr = %v, want vladimir", uVal)
 	}
 }
 
@@ -976,27 +1002,71 @@ func TestSSHCopyIdOneShotModule(t *testing.T) {
 	}
 }
 
-func TestSSHConfigUseAgent(t *testing.T) {
+func TestSSHConfigStructuredAuthAndJump(t *testing.T) {
 	mod := New()
-	thread := &starlark.Thread{Name: "test-use-agent-config"}
+	thread := &starlark.Thread{Name: "test-structured-config"}
+
+	authDict := starlark.NewDict(4)
+	authDict.SetKey(starlark.String("user"), starlark.String("pi"))
+	authDict.SetKey(starlark.String("key"), starlark.String("~/.ssh/id_ed25519"))
+	authDict.SetKey(starlark.String("use_agent"), starlark.True)
+	authDict.SetKey(starlark.String("prompt"), starlark.True)
+
+	jumpDict := starlark.NewDict(3)
+	jumpDict.SetKey(starlark.String("host"), starlark.String("jump.corp.net"))
+	jumpDict.SetKey(starlark.String("user"), starlark.String("vladimir"))
+	jumpDict.SetKey(starlark.String("port"), starlark.MakeInt(2222))
 
 	val, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
 		{starlark.String("hosts"), starlark.String("10.0.0.5")},
-		{starlark.String("user"), starlark.String("pi")},
-		{starlark.String("use_agent"), starlark.True},
+		{starlark.String("auth"), authDict},
+		{starlark.String("jump"), jumpDict},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	client := val.(*SSHClient)
+	if client.user != "pi" {
+		t.Errorf("user = %q, want 'pi'", client.user)
+	}
+	if client.keyFile != "~/.ssh/id_ed25519" {
+		t.Errorf("keyFile = %q, want '~/.ssh/id_ed25519'", client.keyFile)
+	}
 	if !client.useAgent {
 		t.Errorf("useAgent = %v, want true", client.useAgent)
 	}
+	if !client.prompt {
+		t.Errorf("prompt = %v, want true", client.prompt)
+	}
+	if client.jumpHost != "jump.corp.net" {
+		t.Errorf("jumpHost = %q, want 'jump.corp.net'", client.jumpHost)
+	}
+	if client.jumpUser != "vladimir" {
+		t.Errorf("jumpUser = %q, want 'vladimir'", client.jumpUser)
+	}
+	if client.jumpPort != 2222 {
+		t.Errorf("jumpPort = %d, want 2222", client.jumpPort)
+	}
 
-	useAgentAttr, _ := client.Attr("use_agent")
-	if useAgentAttr != starlark.True {
-		t.Errorf("use_agent attr = %v, want True", useAgentAttr)
+	// Verify client.auth dict attribute
+	authVal, _ := client.Attr("auth")
+	if authVal == nil {
+		t.Fatal("expected client.auth attribute")
+	}
+	userVal, _, _ := authVal.(*starlark.Dict).Get(starlark.String("user"))
+	if userVal != starlark.String("pi") {
+		t.Errorf("auth.user = %v, want 'pi'", userVal)
+	}
+
+	// Verify client.jump dict attribute
+	jumpVal, _ := client.Attr("jump")
+	if jumpVal == nil {
+		t.Fatal("expected client.jump attribute")
+	}
+	hostVal, _, _ := jumpVal.(*starlark.Dict).Get(starlark.String("host"))
+	if hostVal != starlark.String("jump.corp.net") {
+		t.Errorf("jump.host = %v, want 'jump.corp.net'", hostVal)
 	}
 }
 
@@ -1047,7 +1117,7 @@ func TestSSHEncryptedKeyWithPassphrase(t *testing.T) {
 		t.Fatalf("expected 1 auth method, got %d", len(cfg.Auth))
 	}
 
-	// 2. Build SSHClient without passphrase and askPassphrase=false (default: should return clear error)
+	// 2. Build SSHClient without passphrase and prompt=false (default: should return clear error)
 	cNoPass := &SSHClient{
 		hosts:   []string{"127.0.0.1"},
 		port:    22,
@@ -1061,42 +1131,19 @@ func TestSSHEncryptedKeyWithPassphrase(t *testing.T) {
 		t.Errorf("error = %q, want 'passphrase protected'", err.Error())
 	}
 
-	// 3. Build SSHClient with askPassphrase=true in non-terminal (should report non-terminal error)
+	// 3. Build SSHClient with prompt=true in non-terminal (should report non-terminal error)
 	cAskPass := &SSHClient{
-		hosts:         []string{"127.0.0.1"},
-		port:          22,
-		user:          "pi",
-		keyFile:       tmpFile,
-		askPassphrase: true,
+		hosts:   []string{"127.0.0.1"},
+		port:    22,
+		user:    "pi",
+		keyFile: tmpFile,
+		prompt:  true,
 	}
 	_, err = cAskPass.buildSSHConfig()
 	if err == nil {
-		t.Error("expected error when ask_passphrase=True in non-terminal")
+		t.Error("expected error when prompt=True in non-terminal")
 	} else if !strings.Contains(err.Error(), "standard input is not a terminal") {
 		t.Errorf("error = %q, want 'standard input is not a terminal'", err.Error())
-	}
-}
-
-func TestSSHAskPassphraseAttribute(t *testing.T) {
-	mod := New()
-	thread := &starlark.Thread{Name: "test-ask-passphrase-attr"}
-
-	val, err := mod.sshConfig(thread, starlark.NewBuiltin("ssh.config", nil), nil, []starlark.Tuple{
-		{starlark.String("hosts"), starlark.String("10.0.0.5")},
-		{starlark.String("ask_passphrase"), starlark.True},
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	client := val.(*SSHClient)
-	if !client.askPassphrase {
-		t.Errorf("askPassphrase = %v, want true", client.askPassphrase)
-	}
-
-	attrVal, _ := client.Attr("ask_passphrase")
-	if attrVal != starlark.True {
-		t.Errorf("ask_passphrase attr = %v, want True", attrVal)
 	}
 }
 
@@ -1131,14 +1178,14 @@ func TestSSHEncryptedKeyWithUseAgent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Client specifies use_agent=True, encrypted key on disk, ask_passphrase=False
+	// Client specifies use_agent=True, encrypted key on disk, prompt=False
 	c := &SSHClient{
-		hosts:         []string{"127.0.0.1"},
-		port:          22,
-		user:          "pi",
-		keyFile:       tmpFile,
-		useAgent:      true,
-		askPassphrase: false,
+		hosts:    []string{"127.0.0.1"},
+		port:     22,
+		user:     "pi",
+		keyFile:  tmpFile,
+		useAgent: true,
+		prompt:   false,
 	}
 
 	cfg, err := c.buildSSHConfig()
@@ -1147,5 +1194,44 @@ func TestSSHEncryptedKeyWithUseAgent(t *testing.T) {
 	}
 	if len(cfg.Auth) != 1 {
 		t.Fatalf("expected 1 auth method (agent callback), got %d", len(cfg.Auth))
+	}
+}
+
+func TestSSHOneShotRejectsFleetAndJump(t *testing.T) {
+	mod := New()
+	thread := &starlark.Thread{Name: "test-oneshot-rejections"}
+
+	// 1. ssh.exec rejects fleet
+	_, err := mod.sshExec(thread, starlark.NewBuiltin("ssh.exec", nil), starlark.Tuple{starlark.String("uptime")}, []starlark.Tuple{
+		{starlark.String("fleet"), starlark.None},
+	})
+	if err == nil || !strings.Contains(err.Error(), "'fleet' parameter is not supported") {
+		t.Errorf("expected error rejecting fleet on ssh.exec, got %v", err)
+	}
+
+	// 2. ssh.exec rejects jump
+	_, err = mod.sshExec(thread, starlark.NewBuiltin("ssh.exec", nil), starlark.Tuple{starlark.String("uptime")}, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("10.0.0.1")},
+		{starlark.String("jump_host"), starlark.String("bastion")},
+	})
+	if err == nil || !strings.Contains(err.Error(), "bastion/jump host routing is not supported") {
+		t.Errorf("expected error rejecting jump on ssh.exec, got %v", err)
+	}
+
+	// 3. ssh.copy_id rejects fleet
+	_, err = mod.sshCopyId(thread, starlark.NewBuiltin("ssh.copy_id", nil), nil, []starlark.Tuple{
+		{starlark.String("fleet"), starlark.None},
+	})
+	if err == nil || !strings.Contains(err.Error(), "'fleet' parameter is not supported") {
+		t.Errorf("expected error rejecting fleet on ssh.copy_id, got %v", err)
+	}
+
+	// 4. ssh.copy_id rejects jump
+	_, err = mod.sshCopyId(thread, starlark.NewBuiltin("ssh.copy_id", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("10.0.0.1")},
+		{starlark.String("jump_host"), starlark.String("bastion")},
+	})
+	if err == nil || !strings.Contains(err.Error(), "bastion/jump host routing is not supported") {
+		t.Errorf("expected error rejecting jump on ssh.copy_id, got %v", err)
 	}
 }

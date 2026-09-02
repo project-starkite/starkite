@@ -37,10 +37,10 @@ func expandPath(path string) (string, error) {
 // parsePrivateKeyWithPrompt parses a private key from raw bytes.
 // If the key is passphrase-protected and no passphrase was supplied:
 // - if useAgent=true, returns (nil, "", nil) delegating authentication to ssh-agent.
-// - if askPassphrase=true and stdin is a TTY, prompts the operator in the terminal.
-// - if askPassphrase=true and stdin is NOT a TTY, returns an error.
-// - if askPassphrase=false, returns an actionable error.
-func parsePrivateKeyWithPrompt(keyPath string, keyBytes []byte, passphrase string, askPassphrase bool, useAgent bool) (ssh.Signer, string, error) {
+// - if prompt=true and stdin is a TTY, prompts the operator in the terminal.
+// - if prompt=true and stdin is NOT a TTY, returns an error.
+// - if prompt=false, returns an actionable error.
+func parsePrivateKeyWithPrompt(keyPath string, keyBytes []byte, passphrase string, prompt bool, useAgent bool) (ssh.Signer, string, error) {
 	if passphrase != "" {
 		signer, err := ssh.ParsePrivateKeyWithPassphrase(keyBytes, []byte(passphrase))
 		if err != nil {
@@ -58,7 +58,7 @@ func parsePrivateKeyWithPrompt(keyPath string, keyBytes []byte, passphrase strin
 		if useAgent {
 			return nil, "", nil
 		}
-		if askPassphrase {
+		if prompt {
 			stdinFd := int(os.Stdin.Fd())
 			if term.IsTerminal(stdinFd) {
 				fmt.Fprintf(os.Stderr, "Enter passphrase for key %q: ", keyPath)
@@ -74,9 +74,9 @@ func parsePrivateKeyWithPrompt(keyPath string, keyBytes []byte, passphrase strin
 				}
 				return signer, enteredPass, nil
 			}
-			return nil, "", fmt.Errorf("private key %q: ask_passphrase=True specified but standard input is not a terminal", keyPath)
+			return nil, "", fmt.Errorf("private key %q: prompt=True specified but standard input is not a terminal", keyPath)
 		}
-		return nil, "", fmt.Errorf("private key %q is passphrase protected (supply key_passphrase, set ask_passphrase=True, or use use_agent=True)", keyPath)
+		return nil, "", fmt.Errorf("private key %q is passphrase protected (supply passphrase, set prompt=True, or use use_agent=True)", keyPath)
 	}
 
 	return nil, "", fmt.Errorf("failed to parse private key %q: %w", keyPath, err)
@@ -124,7 +124,7 @@ func (c *SSHClient) buildSSHConfig() (*ssh.ClientConfig, error) {
 			return nil, fmt.Errorf("failed to read private key: %w", err)
 		}
 
-		signer, usedPass, err := parsePrivateKeyWithPrompt(keyPath, key, c.keyPassphrase, c.askPassphrase, c.useAgent)
+		signer, usedPass, err := parsePrivateKeyWithPrompt(keyPath, key, c.keyPassphrase, c.prompt, c.useAgent)
 		if err != nil {
 			return nil, err
 		}
@@ -155,24 +155,29 @@ func (c *SSHClient) hostKeyCallback() (ssh.HostKeyCallback, error) {
 		return ssh.InsecureIgnoreHostKey(), nil
 	}
 
-	khFile := c.knownHostsFile
-	if khFile == "" {
+	knownHostsPath := c.knownHostsFile
+	if knownHostsPath == "" {
 		home, err := os.UserHomeDir()
 		if err != nil {
-			return nil, fmt.Errorf("cannot determine home directory: %w", err)
+			return nil, fmt.Errorf("failed to get home dir: %w", err)
 		}
-		khFile = filepath.Join(home, ".ssh", "known_hosts")
+		knownHostsPath = filepath.Join(home, ".ssh", "known_hosts")
 	} else {
-		var err error
-		khFile, err = expandPath(khFile)
+		expanded, err := expandPath(knownHostsPath)
 		if err != nil {
 			return nil, err
 		}
+		knownHostsPath = expanded
 	}
 
-	callback, err := knownhosts.New(khFile)
+	// If known_hosts file doesn't exist, return an error explaining it
+	if _, err := os.Stat(knownHostsPath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("known_hosts file not found: %s (set host_key_check=False to disable)", knownHostsPath)
+	}
+
+	callback, err := knownhosts.New(knownHostsPath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to load known_hosts %q: %w", khFile, err)
+		return nil, fmt.Errorf("failed to parse known_hosts: %w", err)
 	}
 	return callback, nil
 }
@@ -197,7 +202,7 @@ func (c *SSHClient) dialHost(host string) (*ssh.Client, error) {
 	return client, nil
 }
 
-// buildJumpSSHConfig creates an *ssh.ClientConfig for connecting to the jump/bastion host.
+// buildJumpSSHConfig creates an *ssh.ClientConfig for connecting to the jump host.
 func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
 	user := c.jumpUser
 	if user == "" {
@@ -224,6 +229,16 @@ func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
 	config.HostKeyCallback = hostKeyCallback
 
 	var authMethods []ssh.AuthMethod
+	if c.jumpUseAgent {
+		socket := os.Getenv("SSH_AUTH_SOCK")
+		if socket != "" {
+			conn, err := net.Dial("unix", socket)
+			if err == nil {
+				agentClient := agent.NewClient(conn)
+				authMethods = append(authMethods, ssh.PublicKeysCallback(agentClient.Signers))
+			}
+		}
+	}
 	if keyFile != "" {
 		keyPath, err := expandPath(keyFile)
 		if err != nil {
@@ -237,7 +252,7 @@ func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
 		if jumpPass == "" {
 			jumpPass = c.keyPassphrase
 		}
-		signer, usedPass, err := parsePrivateKeyWithPrompt(keyPath, key, jumpPass, c.askPassphrase, c.useAgent)
+		signer, usedPass, err := parsePrivateKeyWithPrompt(keyPath, key, jumpPass, c.jumpPrompt, c.jumpUseAgent)
 		if err != nil {
 			return nil, fmt.Errorf("jump host key: %w", err)
 		}
@@ -250,13 +265,6 @@ func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
 	}
 	if password != "" {
 		authMethods = append(authMethods, ssh.Password(password))
-	}
-	if socket := os.Getenv("SSH_AUTH_SOCK"); socket != "" {
-		conn, err := net.Dial("unix", socket)
-		if err == nil {
-			agentClient := agent.NewClient(conn)
-			authMethods = append(authMethods, ssh.PublicKeysCallback(agentClient.Signers))
-		}
 	}
 	if len(authMethods) == 0 {
 		return nil, fmt.Errorf("no authentication method configured for jump host")

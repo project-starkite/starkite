@@ -135,8 +135,10 @@ workers = cluster.filter(lambda h: h["name"].startswith("picluster-"))
 # Pass fleet directly to SSH client
 client = ssh.config(
     fleet       = workers,
-    user        = "deploy",
-    key         = "~/.ssh/id_ed25519",
+    auth        = {
+        "user": "deploy",
+        "key":  "~/.ssh/id_ed25519",
+    },
     exec_policy = "concurrent",
 )
 

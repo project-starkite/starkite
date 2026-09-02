@@ -7,30 +7,204 @@ keywords: [ssh, remote, command, execution, connect, scp, transfer, file, tunnel
 
 The `ssh` module provides remote command execution and file transfer over SSH connections.
 
+## Architecture
+
+The module exposes two distinct operational tiers:
+
+1. **One-Shot Execution (`ssh.exec`, `ssh.copy_id`)**: Lightweight, direct functions for ad-hoc commands against literal hosts (`hosts=["192.168.1.10"]`). Uses flat credential parameters and does not accept `fleet` or bastion jump hosts.
+2. **Configured Client (`ssh.config`)**: Client constructor supporting complex topologies (`fleet`, bastion jump tunnels) and execution controls. Uses structured `auth={...}` and `jump={...}` parameter objects.
+
+---
+
 ## One-Shot Execution
 
-For quick commands or health checks, call `ssh.exec()` or `ssh.try_exec()` directly without initializing a client:
+For quick commands or checks against explicit target addresses without configuring a client, call `ssh.exec()` or `ssh.try_exec()` directly:
 
 ```python
-# One-shot command across a Fleet
-results = ssh.exec("uptime", fleet=web_fleet, user="deploy")
+# Execute single command on literal hosts
+results = ssh.exec("uptime", hosts=["192.168.1.10", "192.168.1.11"], user="deploy", key="~/.ssh/id_ed25519")
 
-# One-shot multi-command pipeline
+# Multi-command pipeline
 results = ssh.exec(
     commands = [
         "git pull origin main",
         "systemctl restart webapp",
     ],
-    hosts         = ["192.168.1.10", "192.168.1.11"],
+    hosts         = ["192.168.1.10"],
     user          = "deploy",
     exec_on_error = "stop",
 )
 
 # Safe execution with try_exec
-res = ssh.try_exec("hostname", hosts=["10.0.0.1"], user="admin")
+res = ssh.try_exec("hostname", hosts=["10.0.0.1"], user="admin", prompt=True)
 if not res.ok:
     print("Execution failed:", res.error)
 ```
+
+### One-Shot Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `cmd` | `string` | required (if no `commands`) | Command string to execute |
+| `args` | `list[string]` | `[]` | Structured argument list (e.g. `ssh.exec("git", ["status", "-s"], ...)` ) |
+| `commands` | `list[string]` | `[]` | Sequential command pipeline |
+| `hosts` | `list[string]` \| `string` | required | Target host IP or hostname list |
+| `user` | `string` | current OS user | Target SSH username |
+| `key` | `string` | `""` | Path to private key file |
+| `passphrase` | `string` | `""` | Passphrase for private key |
+| `password` | `string` | `""` | Target SSH password |
+| `use_agent` | `bool` | `False` | Authenticate with local `ssh-agent` |
+| `prompt` | `bool` | `False` | Interactively prompt operator for password/passphrase if unset |
+| `port` | `int` | `22` | Target SSH port |
+| `sudo` | `bool` | `False` | Prefix command with sudo |
+| `as_user` | `string` | `""` | Execute as target user with `sudo -u <user>` |
+| `cwd` | `string` | `""` | Remote working directory |
+| `env` | `dict` | `{}` | Remote environment variables |
+| `timeout` | `string` | `"30s"` | Connection timeout |
+| `exec_on_error` | `string` | `"stop"` | Multi-command error policy (`"stop"` or `"continue"`) |
+| `host_key_check` | `bool` | `True` | Verify host key against known hosts |
+| `dry_run` | `bool` | `False` | Output execution plan without opening connections |
+
+> [!NOTE]
+> Module-scope functions (`ssh.exec`, `ssh.copy_id`) target literal addresses only. Passing `fleet` or bastion parameters (`jump_host`, `jump`) will return an error instructing you to use `ssh.config()`.
+
+---
+
+## Client Configuration (`ssh.config`)
+
+Initialize an `SSHClient` instance using `ssh.config()` when targeting `fleet` inventories, routing through bastion jump hosts, or managing persistent connections:
+
+```python
+# Targeting a Fleet with keypair and agent authentication
+client = ssh.config(
+    fleet = web_fleet,
+    auth  = {
+        "user":      "deploy",
+        "key":       "~/.ssh/id_ed25519",
+        "use_agent": True,
+    },
+    exec_max_workers = 8,
+)
+
+# Routing through a bastion jump host
+client = ssh.config(
+    hosts = ["10.0.1.10", "10.0.1.11"],
+    auth  = {
+        "user": "appuser",
+        "key":  "~/.ssh/id_ed25519",
+    },
+    jump  = {
+        "host": "bastion.corp.net",
+        "user": "vladimir",
+        "key":  "~/.ssh/bastion_key",
+        "port": 22,
+    },
+)
+```
+
+### Top-Level Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `fleet` | `Fleet` \| `source` | `None` | Compute resource `Fleet` instance |
+| `hosts` | `list[string]` \| `string` | `[]` | Target hostnames or IP addresses |
+| `auth` | `dict` | `{}` | Target authentication dictionary |
+| `jump` | `dict` | `None` | Bastion jump host configuration dictionary |
+| `port` | `int` | `22` | Default target SSH port |
+| `timeout` | `string` | `"30s"` | Connection timeout duration |
+| `max_retries` | `int` | `3` | Maximum connection retry attempts |
+| `exec_policy` | `string` | `"concurrent"` | Execution strategy (`"concurrent"` or `"linear"`) |
+| `exec_max_workers` | `int` | `0` | Max concurrent worker goroutines (`0` = unconstrained) |
+| `exec_on_error` | `string` | `"stop"` | Default error policy for batch commands (`"stop"` or `"continue"`) |
+| `known_hosts_file` | `string` | `""` | Custom `known_hosts` file path |
+| `host_key_check` | `bool` | `True` | Verify remote host public keys against known hosts |
+| `keep_alive_interval` | `string` | `"30s"` | SSH keep-alive probe interval |
+| `keep_alive_max` | `int` | `3` | Maximum unanswered keep-alive probes before disconnect |
+| `sudo` | `bool` | `False` | Default sudo execution policy |
+| `as_user` | `string` | `""` | Default user target for `sudo -u` |
+| `cwd` | `string` | `""` | Default remote working directory |
+| `env` | `dict` | `{}` | Default remote environment variables |
+| `dry_run` | `bool` | `False` | Run in dry-run simulation mode |
+
+### `auth` Sub-Object
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `user` | `string` | current OS user | SSH login username |
+| `key` | `string` | `""` | Path to private key file (expands `~`) |
+| `passphrase` | `string` | `""` | Passphrase to decrypt private key |
+| `password` | `string` | `""` | Plaintext password |
+| `use_agent` | `bool` | `False` | Authenticate using `ssh-agent` |
+| `prompt` | `bool` | `False` | Interactively prompt in terminal if password or key passphrase is required |
+
+### `jump` Sub-Object
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `host` | `string` | required | Bastion gateway hostname or IP address |
+| `port` | `int` | `22` | Bastion SSH port |
+| `user` | `string` | `auth.user` | Bastion login username |
+| `key` | `string` | `auth.key` | Bastion private key file path |
+| `passphrase` | `string` | `auth.passphrase` | Passphrase for bastion private key |
+| `password` | `string` | `auth.password` | Bastion login password |
+| `use_agent` | `bool` | `auth.use_agent` | Authenticate to bastion with `ssh-agent` |
+| `prompt` | `bool` | `auth.prompt` | Prompt in terminal for bastion credentials if required |
+
+### `SSHClient` Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `auth` | `dict` | Resolved target authentication dictionary |
+| `jump` | `dict` \| `None` | Resolved bastion jump dictionary |
+| `hosts` | `list[string]` | List of resolved target host addresses |
+| `fleet` | `Fleet` \| `None` | Associated fleet instance |
+| `exec_policy` | `string` | Configured execution policy (`"concurrent"` or `"linear"`) |
+| `exec_max_workers` | `int` | Concurrency worker limit |
+| `exec_on_error` | `string` | Default batch error policy (`"stop"` or `"continue"`) |
+
+---
+
+## Public Key Distribution (`copy_id`)
+
+Installs public keys into `~/.ssh/authorized_keys` on target hosts idempotently.
+
+### Module-Scope (`ssh.copy_id`)
+
+```python
+# Install public key onto direct hosts
+ssh.copy_id(
+    key     = "~/.ssh/id_ed25519.pub",
+    hosts   = ["192.168.1.50", "192.168.1.51"],
+    user    = "admin",
+    prompt  = True,  # Prompt once in terminal for remote user password
+    as_user = "deploy",
+    sudo    = True,
+)
+```
+
+### Method-Level (`client.copy_id`)
+
+Inherits authentication, bastion routing, and target inventory from the configured client:
+
+```python
+client = ssh.config(
+    fleet = pi_cluster,
+    auth  = {"user": "pi", "password": "initial_password"},
+    jump  = {"host": "bastion.lan", "user": "vladimir"},
+)
+
+# Installs key through bastion tunnel onto all fleet nodes
+results = client.copy_id(key="~/.ssh/id_ed25519.pub", sudo=True)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `key` | `string` | `""` | Public key string or file path (reads local `~/.ssh/` or `ssh-agent` if omitted) |
+| `as_user` | `string` | `client.defaultAsUser` | Remote user whose `authorized_keys` will receive the key |
+| `sudo` | `bool` | `client.defaultSudo` | Execute installation script with sudo |
+| `prompt` | `bool` | `client.prompt` | Prompt in terminal for password |
+
+---
 
 ## Key Generation (`ssh.keygen`)
 
@@ -59,8 +233,8 @@ keys = ssh.keygen(
 | `type` | `string` | `"ed25519"` | Algorithm (`"ed25519"`, `"rsa"`, `"ecdsa"`) |
 | `bits` | `int` | `0` | RSA bits (`2048`, `3072`, `4096`) or ECDSA bits (`256`, `384`, `521`) |
 | `comment` | `string` | `""` | Comment appended to public key line |
-| `passphrase` | `string` | `""` | Optional passphrase to encrypt private key |
-| `path` | `string` | `""` | Optional file path to write private key (`0600`) and `.pub` (`0644`) |
+| `passphrase` | `string` | `""` | Passphrase to encrypt private key |
+| `path` | `string` | `""` | File path to write private key (`0600`) and `.pub` (`0644`) |
 | `overwrite` | `bool` | `False` | Overwrite existing files when `path` is set |
 
 ### `SSHKeyPair` Attributes
@@ -74,180 +248,6 @@ keys = ssh.keygen(
 | `comment` | `string` | Comment string |
 | `path` | `string` | Saved private key path (or `""`) |
 | `pub_path` | `string` | Saved public key path (or `""`) |
-
-## Public Key Distribution (`ssh.copy_id`)
-
-Distribute public keys to remote target hosts or fleets idempotently:
-
-```python
-# Distribute key to a fleet with one-shot ssh.copy_id
-keys = ssh.keygen(type="ed25519", comment="deploy-key")
-ssh.copy_id(
-    key          = keys.public_key,
-    fleet        = pi_cluster,
-    user         = "pi",
-    ask_password = True,  # Prompt once in terminal for fleet auth
-)
-
-# Distribute key via an existing SSH client instance
-client = ssh.config(hosts=["192.168.1.50"], user="admin", password="password123")
-results = client.copy_id(key=keys.public_key, sudo=True, as_user="pi")
-```
-
-### Copy ID Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `key` | `string` | `""` | Public key string or file path (reads local `~/.ssh/` or `ssh-agent` if omitted) |
-| `use_agent` | `bool` | `False` | Explicit signal to use `ssh-agent` |
-| `as_user` | `string` | `""` | Target user to install key for |
-| `sudo` | `bool` | `False` | Run installer with sudo |
-| `ask_password` | `bool` | `False` | Prompt operator for password in terminal (`isatty`) |
-
-Returns a `list[SSHResult]`, one per host.
-
-## Configuration
-
-Create an SSH client with `ssh.config()`:
-
-```python
-# Option A: Target a Fleet directly
-client = ssh.config(
-    fleet=web_fleet,
-    user="deploy",
-    key="~/.ssh/id_ed25519",
-    port=22,
-    timeout="30s",
-    exec_max_workers=16,
-)
-
-# Option B: Target hosts shortcut (list of strings or single string)
-client = ssh.config(
-    hosts=["web-1", "web-2", "web-3"],
-    user="deploy",
-    key="~/.ssh/id_ed25519",
-)
-```
-
-### Parameters
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `fleet` | `Fleet` \| `source` | `None` | Compute resource `Fleet` instance to target |
-| `hosts` | `list[string]` \| `string` | `[]` | Shortcut for target hostnames or IPs |
-| `user` | `string` | current user | SSH username |
-| `key` | `string` | `""` | Path to private key file |
-| `key_passphrase` | `string` | `""` | Passphrase for private key |
-| `ask_passphrase` | `bool` | `false` | Prompt interactively in terminal if key is encrypted and passphrase unset |
-| `password` | `string` | `""` | SSH password (prefer keys) |
-| `use_agent` | `bool` | `false` | Authenticate using `ssh-agent` ($SSH_AUTH_SOCK) |
-| `sudo` | `bool` | `false` | Default sudo execution policy for all commands |
-| `port` | `int` | `22` | SSH port |
-| `timeout` | `string` | `"30s"` | Connection timeout |
-| `exec_policy` | `string` | `"concurrent"` | Execution strategy (`"concurrent"` or `"linear"`) |
-| `exec_max_workers` | `int` | `0` | Max concurrent worker goroutines (`0` = unconstrained) |
-| `exec_on_error` | `string` | `"stop"` | Multi-command error policy (`"stop"` or `"continue"`) |
-| `jump_host` | `string` | `""` | Bastion jump host address |
-| `jump_user` | `string` | `user` | Bastion jump host username (falls back to `user`) |
-| `jump_key` | `string` | `key` | Bastion jump host private key (falls back to `key`) |
-| `jump_key_passphrase` | `string` | `key_passphrase` | Passphrase for jump host private key |
-| `jump_password` | `string` | `password` | Bastion jump host password (falls back to `password`) |
-| `jump_port` | `int` | `port` | Bastion jump host SSH port (falls back to `port` or `22`) |
-| `host_key_check` | `bool` | `true` | Verify host key against known hosts |
-| `max_retries` | `int` | `0` | Max reconnection retries |
-| `keep_alive_interval` | `string` | `"30s"` | Keep-alive interval |
-
-## SSHClient Methods
-
-### exec
-
-Execute a single command or a multi-command pipeline on all configured hosts.
-
-```python
-# Single string command
-results = client.exec("k3s kubectl apply -f deploy.yaml", sudo=True)
-
-# Structured argument list (safe argument passing)
-results = client.exec("git", ["commit", "-m", "release v0.1.0"], cwd="/opt/app")
-
-# Multi-command pipeline
-batch_results = client.exec(
-    commands = [
-        "git pull origin main",
-        "npm install --production",
-        "systemctl restart webapp",
-    ],
-    exec_on_error = "stop",
-)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `cmd` | `string` | required (if no `commands`) | Command or binary name to execute |
-| `args` | `list[string]` | `[]` | Positional argument list |
-| `commands` | `list[string]` | `[]` | Multi-command sequence to execute per host |
-| `exec_max_workers` | `int` | client default | Override maximum concurrent active workers |
-| `exec_on_error` | `string` | client default | Error handling policy (`"stop"` or `"continue"`) |
-| `sudo` | `bool` | `False` | Run with sudo |
-| `as_user` | `string` | `""` | Run as a specific user (with sudo) |
-| `cwd` | `string` | `""` | Working directory for the command |
-| `env` | `dict` | `{}` | Environment variables |
-
-Returns `list[SSHResult]` when executing a single command, or `list[SSHBatchResult]` when `commands` is provided.
-
-### upload
-
-Upload a local file to all configured hosts.
-
-```python
-results = client.upload(src, dst, mode="0644")
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `src` | `string` | required | Local source file path |
-| `dst` | `string` | required | Remote destination path |
-| `mode` | `string` | `"0644"` | File permissions on remote |
-
-Returns a `list[SSHTransferResult]`, one per host.
-
-### download
-
-Download a file from all configured hosts.
-
-```python
-results = client.download(src, dst)
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `src` | `string` | required | Remote source file path |
-| `dst` | `string` | required | Local destination path |
-
-Returns a `list[SSHTransferResult]`, one per host. When downloading from multiple hosts, the local filename is suffixed with the hostname to avoid collisions.
-
-### copy_id
-
-Distribute a public key to all hosts in the client fleet.
-
-```python
-results = client.copy_id(key=pub_key, sudo=True, as_user="pi")
-```
-
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `key` | `string` | `""` | Public key string or file path |
-| `as_user` | `string` | `""` | Target user to install key for |
-| `sudo` | `bool` | `False` | Run installer with sudo |
-| `ask_password` | `bool` | `False` | Prompt operator for password in terminal |
-
-Returns a `list[SSHResult]`, one per host.
-
-## SSHResult
-
-Returned by `client.exec()` (or items within `SSHBatchResult.steps`), one per host.
-
-| Attribute | Type | Description |
 |-----------|------|-------------|
 | `host` | `string` | Hostname this result is from |
 | `cmd` | `string` | The command string executed |

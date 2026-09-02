@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
@@ -107,12 +108,12 @@ func resolvePublicKey(keyArg string, useAgent bool) (string, error) {
 }
 
 // promptPasswordIfNeeded prompts the operator in the terminal if password is required.
-func promptPasswordIfNeeded(c *SSHClient, askPassword bool) (string, error) {
-	if c.password != "" && !askPassword {
+func promptPasswordIfNeeded(c *SSHClient, prompt bool) (string, error) {
+	if c.password != "" && !prompt {
 		return c.password, nil
 	}
 
-	if (c.keyFile != "" || (c.useAgent && os.Getenv("SSH_AUTH_SOCK") != "")) && !askPassword {
+	if (c.keyFile != "" || (c.useAgent && os.Getenv("SSH_AUTH_SOCK") != "")) && !prompt {
 		return "", nil
 	}
 
@@ -131,12 +132,12 @@ func promptPasswordIfNeeded(c *SSHClient, askPassword bool) (string, error) {
 		return string(passBytes), nil
 	}
 
-	if askPassword {
-		return "", fmt.Errorf("ssh.copy_id: ask_password=True specified but standard input is not a terminal")
+	if prompt {
+		return "", fmt.Errorf("ssh.copy_id: prompt=True specified but standard input is not a terminal")
 	}
 
 	if c.password == "" && c.keyFile == "" && !c.useAgent {
-		return "", fmt.Errorf("ssh.copy_id: no password or key configured, and standard input is not a terminal")
+		return "", fmt.Errorf("ssh.copy_id: remote host password required for %s (pass password or set prompt=True)", c.hosts)
 	}
 
 	return "", nil
@@ -176,20 +177,19 @@ fi
 // copyId installs a public key onto the target fleet hosts.
 func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
-		Key         string `name:"key" position:"0"`
-		AsUser      string `name:"as_user"`
-		Sudo        bool   `name:"sudo"`
-		AskPassword bool   `name:"ask_password"`
-		UseAgent    bool   `name:"use_agent"`
+		Key    string `name:"key" position:"0"`
+		AsUser string `name:"as_user"`
+		Sudo   bool   `name:"sudo"`
+		Prompt bool   `name:"prompt"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
 
-	useAgent := p.UseAgent || c.useAgent
+	prompt := p.Prompt || c.prompt
 
 	// 1. Resolve Public Key
-	pubKey, err := resolvePublicKey(p.Key, useAgent)
+	pubKey, err := resolvePublicKey(p.Key, c.useAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -203,7 +203,7 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	// 2. Handle interactive password prompt if necessary
-	promptedPassword, err := promptPasswordIfNeeded(c, p.AskPassword)
+	promptedPassword, err := promptPasswordIfNeeded(c, prompt)
 	if err != nil {
 		return nil, err
 	}
@@ -234,38 +234,125 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 	return c.execLinear(installCmd)
 }
 
-// sshCopyId executes copy_id at the module level across a fleet or hosts list.
+// sshCopyId executes copy_id at the module level across a host list.
+// Usage: ssh.copy_id(hosts=["192.168.1.10"], user="pi", password="...")
 func (m *Module) sshCopyId(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var copyIdArgs starlark.Tuple
-	var copyIdKwargs []starlark.Tuple
-	var configKwargs []starlark.Tuple
+	var rawKey starlark.Value
+	var rawHosts starlark.Value
 
 	if len(args) > 0 {
-		copyIdArgs = args
+		rawKey = args[0]
 	}
 
+	var p struct {
+		Key          string `name:"key"`
+		User         string `name:"user"`
+		Password     string `name:"password"`
+		Passphrase   string `name:"passphrase"`
+		UseAgent     bool   `name:"use_agent"`
+		Prompt       bool   `name:"prompt"`
+		AsUser       string `name:"as_user"`
+		Sudo         bool   `name:"sudo"`
+		Port         int    `name:"port"`
+		Timeout      string `name:"timeout"`
+		DryRun       bool   `name:"dry_run"`
+		HostKeyCheck bool   `name:"host_key_check"`
+	}
+	p.HostKeyCheck = true
+
+	var remainingKwargs []starlark.Tuple
 	for _, kv := range kwargs {
 		key := string(kv[0].(starlark.String))
 		switch key {
 		case "key":
-			if len(copyIdArgs) == 0 {
-				copyIdArgs = starlark.Tuple{kv[1]}
-			} else {
-				copyIdKwargs = append(copyIdKwargs, kv)
-			}
-		case "as_user", "sudo", "ask_password", "use_agent":
-			copyIdKwargs = append(copyIdKwargs, kv)
+			rawKey = kv[1]
+		case "hosts":
+			rawHosts = kv[1]
+		case "fleet":
+			return nil, fmt.Errorf("ssh.copy_id: 'fleet' parameter is not supported in module-scope functions; use ssh.config(fleet=...) instead")
+		case "jump", "jump_host", "jump_user", "jump_key", "jump_password", "jump_key_passphrase", "jump_port":
+			return nil, fmt.Errorf("ssh.copy_id: bastion/jump host routing is not supported in module-scope functions; use ssh.config(jump={...}) instead")
 		default:
-			configKwargs = append(configKwargs, kv)
+			remainingKwargs = append(remainingKwargs, kv)
 		}
 	}
 
-	// Create ephemeral SSHClient
-	clientVal, err := m.sshConfig(thread, fn, nil, configKwargs)
-	if err != nil {
+	if err := startype.Args(nil, remainingKwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	client := clientVal.(*SSHClient)
 
-	return client.copyId(thread, fn, copyIdArgs, copyIdKwargs)
+	if rawHosts == nil || rawHosts == starlark.None {
+		return nil, fmt.Errorf("ssh.copy_id: missing required parameter 'hosts'")
+	}
+
+	var hosts []string
+	switch h := rawHosts.(type) {
+	case *starlark.List:
+		for i := 0; i < h.Len(); i++ {
+			if s, ok := starlark.AsString(h.Index(i)); ok {
+				hosts = append(hosts, s)
+			}
+		}
+	case starlark.Tuple:
+		for _, elem := range h {
+			if s, ok := starlark.AsString(elem); ok {
+				hosts = append(hosts, s)
+			}
+		}
+	case starlark.String:
+		hosts = append(hosts, string(h))
+	default:
+		return nil, fmt.Errorf("ssh.copy_id: 'hosts' must be a string or list of strings, got %s", rawHosts.Type())
+	}
+
+	if len(hosts) == 0 {
+		return nil, fmt.Errorf("ssh.copy_id: 'hosts' cannot be empty")
+	}
+
+	user := p.User
+	if user == "" {
+		user = defaultUser()
+	}
+	port := p.Port
+	if port <= 0 {
+		port = 22
+	}
+	timeout := 30 * time.Second
+	if p.Timeout != "" {
+		d, err := time.ParseDuration(p.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("ssh.copy_id: invalid timeout %q: %w", p.Timeout, err)
+		}
+		timeout = d
+	}
+
+	client := &SSHClient{
+		thread:            thread,
+		dryRun:            p.DryRun || (m.config != nil && m.config.DryRun),
+		debug:             m.config != nil && m.config.Debug,
+		hosts:             hosts,
+		user:              user,
+		password:          p.Password,
+		keyPassphrase:     p.Passphrase,
+		useAgent:          p.UseAgent,
+		prompt:            p.Prompt,
+		port:              port,
+		timeout:           timeout,
+		maxRetries:        3,
+		execPolicy:        "concurrent",
+		hostKeyCheck:      p.HostKeyCheck,
+		keepAliveInterval: 30 * time.Second,
+		keepAliveMax:      3,
+		defaultSudo:       p.Sudo,
+		defaultAsUser:     p.AsUser,
+	}
+
+	keyStr := p.Key
+	if rawKey != nil {
+		if s, ok := starlark.AsString(rawKey); ok {
+			keyStr = s
+		}
+	}
+
+	return client.copyId(thread, fn, starlark.Tuple{starlark.String(keyStr)}, nil)
 }

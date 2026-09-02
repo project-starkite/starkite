@@ -208,9 +208,13 @@ workers = cluster.filter(lambda h: h["name"].startswith("picluster-") and h["nam
 # 3. Configure concurrent SSH client targeting the worker sub-fleet
 client = ssh.config(
     fleet       = workers,
-    user        = "deploy",
-    key         = "~/.ssh/id_ed25519",
-    jump_host   = "bastion.corp.local",
+    auth        = {
+        "user": "deploy",
+        "key":  "~/.ssh/id_ed25519",
+    },
+    jump        = {
+        "host": "bastion.corp.local",
+    },
     exec_policy = "concurrent",
 )
 
