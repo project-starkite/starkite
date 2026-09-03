@@ -35,6 +35,20 @@ def check_host_uptime():
 
 ---
 
+## Ad-Hoc One-Shot Execution (`ssh.exec`)
+
+For quick scripts or one-off tasks against literal hosts without constructing an `SSHClient` instance, call the module-level `ssh.exec()` or `ssh.try_exec()` directly:
+
+```python
+# Run ad-hoc commands on target hosts
+results = ssh.exec("uptime", hosts=["web-1", "web-2"], user="ops")
+for r in results:
+    if r.ok:
+        print(r.host, "->", r.stdout.strip())
+```
+
+---
+
 ## Processing Execution Results
 
 The `client.exec()` method always returns a list of `SSHResult` objects, even when targeting a single host. Each result object exposes the following attributes to let you handle success and failures:

@@ -750,22 +750,38 @@
               <!-- Slide 0: SSH Fleet Execution -->
               <div class="hero-slide active" data-filename="ssh_fleet.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-auto-0" class="language-python"># Execute remote commands across hosts with SSH
+                  <pre><code id="code-auto-0" class="language-python"># Execute remote commands across fleet hosts via bastion
 
 def main():
     client = ssh.config(
-        hosts = ["web-1", "web-2", "web-3"],
-        auth  = {"user": "ops"},
+        hosts   = ["node-1", "node-2", "node-3"],
+        auth    = {"user": "ops", "key": "~/.ssh/id_ed25519"},
+        jump    = {"host": "bastion.corp.net", "user": "admin"},
         timeout = "10s",
     )
     for res in client.exec("uptime"):
         print(res.host, "->", res.stdout.strip())</code></pre>
                 </div>
               </div>
-              <!-- Slide 1: API Server -->
+              <!-- Slide 1: SSH Key Discovery & Bootstrap -->
+              <div class="hero-slide" data-filename="ssh_bootstrap.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-auto-1" class="language-python"># Scan host keys and distribute credentials safely
+
+def main():
+    # 1. Discover and save host keys to known_hosts
+    ssh.keyscan(hosts=["node-1", "node-2", "node-3"], save=True)
+
+    # 2. Check and copy public key (skips already-authorized nodes)
+    client = ssh.config(hosts=["node-1", "node-2", "node-3"], auth={"user": "deploy"})
+    for r in client.copy_id("~/.ssh/id_ed25519.pub", key_check=True):
+        print(r.host, "->", r.stdout.strip())</code></pre>
+                </div>
+              </div>
+              <!-- Slide 2: API Server -->
               <div class="hero-slide" data-filename="http_server.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-auto-1" class="language-python"># Easily create HTTP servers and API endpoints
+                  <pre><code id="code-auto-2" class="language-python"># Easily create HTTP servers and API endpoints
 
 def handle_webhook(req):
     event = json.decode(req.body)
@@ -777,10 +793,10 @@ def main():
     srv.serve(port=8080)</code></pre>
                 </div>
               </div>
-              <!-- Slide 2: HTTP Client -->
+              <!-- Slide 3: HTTP Client -->
               <div class="hero-slide" data-filename="http_client.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-auto-2" class="language-python"># Create clients to handle remote HTTP services/APIs
+                  <pre><code id="code-auto-3" class="language-python"># Create clients to handle remote HTTP services/APIs
 
 def main():
     resp = http.url("https://httpbin.org/json").get(

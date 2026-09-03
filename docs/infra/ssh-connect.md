@@ -43,6 +43,63 @@ You can customize connection behavior using the following arguments in `ssh.conf
 
 ---
 
+## Bastion Jump Host Routing
+
+To connect to private nodes behind an edge bastion, configure the `jump` dictionary:
+
+```python
+client = ssh.config(
+    hosts = ["10.0.1.10", "10.0.1.11"],
+    auth  = {
+        "user": "pi",
+        "key":  "~/.ssh/cluster_key",
+    },
+    jump  = {
+        "host": "bastion.corp.net",
+        "user": "vladimir",
+        "key":  "~/.ssh/bastion_key",
+    },
+)
+```
+
+All connection dials, execution sessions, file transfers, and key operations route transparently through the encrypted bastion tunnel.
+
+---
+
+## Host Key Discovery (`ssh.keyscan`)
+
+When connecting with `host_key_check = True` (the secure default), connections fail if remote host keys are not already in `~/.ssh/known_hosts`.
+
+Use `ssh.keyscan()` to retrieve and persist remote public host keys before initiating operations:
+
+```python
+# Discover and append host keys to ~/.ssh/known_hosts (supports bastions)
+ssh.keyscan(
+    hosts = ["10.0.1.10", "10.0.1.11"],
+    save  = True,
+    jump  = {"host": "bastion.corp.net", "user": "vladimir"},
+)
+```
+
+---
+
+## Public Key Distribution (`client.copy_id`)
+
+To bootstrap or distribute public keys onto fleet nodes, use `client.copy_id()`:
+
+```python
+# Install public key (probes first via RFC 4252; skips if already authorized)
+client.copy_id(
+    key       = "~/.ssh/id_ed25519.pub",
+    key_check = True,
+    sudo      = True,
+)
+```
+
+When `key_check = True` is passed, Starkite probes each node using the SSH protocol without requiring passwords or shell logins. Hosts that already authorize the key are skipped automatically. By default, `copy_id` targets the connected user's home directory and sets correct file permissions.
+
+---
+
 ## Configuring Default Privileges (Sudo)
 
 If your automation primarily performs administrative operations (such as installing software, restarting system daemons, or modifying system configurations), you can enable `sudo` globally at the client level.

@@ -11,7 +11,7 @@ The `ssh` module provides remote command execution and file transfer over SSH co
 
 The module exposes two distinct operational tiers:
 
-1. **One-Shot Execution (`ssh.exec`, `ssh.copy_id`)**: Lightweight, direct functions for ad-hoc commands against literal hosts (`hosts=["192.168.1.10"]`). Uses flat credential parameters and does not accept `fleet` or bastion jump hosts.
+1. **One-Shot Utilities (`ssh.exec`, `ssh.copy_id`, `ssh.keyscan`, `ssh.key_check`, `ssh.keygen`)**: Lightweight, direct functions for ad-hoc command execution, key discovery, and credential management against literal hosts.
 2. **Configured Client (`ssh.config`)**: Client constructor supporting complex topologies (`fleet`, bastion jump tunnels) and execution controls. Uses structured `auth={...}` and `jump={...}` parameter objects.
 
 ---
