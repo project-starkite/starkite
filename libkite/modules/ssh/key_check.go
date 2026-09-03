@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/vladimirvivien/startype"
@@ -134,6 +135,15 @@ func checkSingleHostKey(targetAddr string, host string, user string, port int, p
 
 	_ = conn.SetDeadline(time.Now().Add(timeout))
 
+	var timedOut atomic.Bool
+	if timeout > 0 {
+		timer := time.AfterFunc(timeout, func() {
+			timedOut.Store(true)
+			_ = conn.Close()
+		})
+		defer timer.Stop()
+	}
+
 	clientConn, _, _, err := gossh.NewClientConn(conn, targetAddr, config)
 	if clientConn != nil {
 		_ = clientConn.Close()
@@ -142,6 +152,12 @@ func checkSingleHostKey(targetAddr string, host string, user string, port int, p
 	if accepted {
 		res.Accepted = true
 		res.Ok = true
+		return res
+	}
+
+	if timedOut.Load() {
+		res.Ok = false
+		res.Error = fmt.Sprintf("connection to %s timed out after %v", targetAddr, timeout)
 		return res
 	}
 
@@ -181,8 +197,18 @@ func runKeyCheck(hosts []string, defaultPort int, user string, pubKey gossh.Publ
 
 		var tunnel net.Conn
 		if jClient != nil {
-			t, err := jClient.Dial("tcp", targetAddr)
-			if err != nil {
+			type dialResult struct {
+				tunnel net.Conn
+				err    error
+			}
+			dialDone := make(chan dialResult, 1)
+			go func() {
+				t, err := jClient.Dial("tcp", targetAddr)
+				dialDone <- dialResult{tunnel: t, err: err}
+			}()
+
+			select {
+			case <-time.After(timeout):
 				results = append(results, &KeyCheckResult{
 					Host:        h,
 					User:        user,
@@ -190,11 +216,24 @@ func runKeyCheck(hosts []string, defaultPort int, user string, pubKey gossh.Publ
 					KeyType:     pubKey.Type(),
 					Fingerprint: gossh.FingerprintSHA256(pubKey),
 					Ok:          false,
-					Error:       fmt.Sprintf("failed to tunnel through jump host: %v", err),
+					Error:       fmt.Sprintf("tunnel connection to %s timed out after %v", targetAddr, timeout),
 				})
 				continue
+			case res := <-dialDone:
+				if res.err != nil {
+					results = append(results, &KeyCheckResult{
+						Host:        h,
+						User:        user,
+						Port:        p,
+						KeyType:     pubKey.Type(),
+						Fingerprint: gossh.FingerprintSHA256(pubKey),
+						Ok:          false,
+						Error:       fmt.Sprintf("failed to tunnel through jump host: %v", res.err),
+					})
+					continue
+				}
+				tunnel = res.tunnel
 			}
-			tunnel = t
 		}
 
 		res := checkSingleHostKey(targetAddr, h, user, p, pubKey, timeout, hostKeyCheck, knownHostsPath, tunnel)
@@ -204,8 +243,8 @@ func runKeyCheck(hosts []string, defaultPort int, user string, pubKey gossh.Publ
 	return results, nil
 }
 
-// sshKeyCheck implements module-level `ssh.key_check(key=..., hosts=..., user=...)`.
-func (m *Module) sshKeyCheck(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+// sshCheckAuthorizedKey implements module-level `ssh.check_authorized_key(key=..., hosts=..., user=...)`.
+func (m *Module) sshCheckAuthorizedKey(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var rawHosts starlark.Value
 	var rawKey starlark.Value
 	var jumpDict *starlark.Dict
@@ -238,7 +277,7 @@ func (m *Module) sshKeyCheck(thread *starlark.Thread, fn *starlark.Builtin, args
 			if d, ok := kv[1].(*starlark.Dict); ok {
 				jumpDict = d
 			} else {
-				return nil, fmt.Errorf("ssh.key_check: 'jump' must be a dict, got %s", kv[1].Type())
+				return nil, fmt.Errorf("ssh.check_authorized_key: 'jump' must be a dict, got %s", kv[1].Type())
 			}
 		default:
 			leftoverKwargs = append(leftoverKwargs, kv)
@@ -258,17 +297,19 @@ func (m *Module) sshKeyCheck(thread *starlark.Thread, fn *starlark.Builtin, args
 	if rawKey != nil {
 		if s, ok := starlark.AsString(rawKey); ok {
 			keyArg = s
+		} else {
+			return nil, fmt.Errorf("ssh.check_authorized_key: 'key' must be a string, got %s", rawKey.Type())
 		}
 	}
 
-	pubKeyStr, err := resolvePublicKey(keyArg, true)
+	pubKeyStr, err := resolvePublicKey(keyArg, false)
 	if err != nil {
-		return nil, fmt.Errorf("ssh.key_check: %w", err)
+		return nil, fmt.Errorf("ssh.check_authorized_key: %w", err)
 	}
 
 	pubKey, _, _, _, err := gossh.ParseAuthorizedKey([]byte(pubKeyStr))
 	if err != nil {
-		return nil, fmt.Errorf("ssh.key_check: failed to parse public key: %w", err)
+		return nil, fmt.Errorf("ssh.check_authorized_key: failed to parse public key: %w", err)
 	}
 
 	var hosts []string
@@ -288,14 +329,14 @@ func (m *Module) sshKeyCheck(thread *starlark.Thread, fn *starlark.Builtin, args
 				hosts = append(hosts, s)
 			}
 		default:
-			return nil, fmt.Errorf("ssh.key_check: 'hosts' must be a string or list of strings, got %s", rawHosts.Type())
+			return nil, fmt.Errorf("ssh.check_authorized_key: 'hosts' must be a string or list of strings, got %s", rawHosts.Type())
 		}
 	} else if p.Hosts != "" {
 		hosts = append(hosts, p.Hosts)
 	}
 
 	if len(hosts) == 0 {
-		return nil, fmt.Errorf("ssh.key_check: 'hosts' is required and cannot be empty")
+		return nil, fmt.Errorf("ssh.check_authorized_key: 'hosts' is required and cannot be empty")
 	}
 
 	user := p.User
@@ -305,25 +346,25 @@ func (m *Module) sshKeyCheck(thread *starlark.Thread, fn *starlark.Builtin, args
 
 	timeout := 5 * time.Second
 	if p.Timeout != "" {
-		if d, err := time.ParseDuration(p.Timeout); err == nil {
-			timeout = d
-		} else {
-			return nil, fmt.Errorf("ssh.key_check: invalid timeout %q: %w", p.Timeout, err)
+		d, err := time.ParseDuration(p.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("ssh.check_authorized_key: invalid timeout %q: %w", p.Timeout, err)
 		}
+		timeout = d
 	}
 
 	var jc *jumpConfig
 	if jumpDict != nil {
 		j, err := parseJumpDict(jumpDict, authConfig{})
 		if err != nil {
-			return nil, fmt.Errorf("ssh.key_check: %w", err)
+			return nil, fmt.Errorf("ssh.check_authorized_key: %w", err)
 		}
 		jc = &j
 	}
 
 	checkResults, err := runKeyCheck(hosts, p.Port, user, pubKey, timeout, p.HostKeyCheck, "", jc)
 	if err != nil {
-		return nil, fmt.Errorf("ssh.key_check: %w", err)
+		return nil, fmt.Errorf("ssh.check_authorized_key: %w", err)
 	}
 
 	items := make([]starlark.Value, len(checkResults))
@@ -333,8 +374,13 @@ func (m *Module) sshKeyCheck(thread *starlark.Thread, fn *starlark.Builtin, args
 	return starlark.NewList(items), nil
 }
 
-// keyCheck implements client-level `client.key_check(key=...)`.
-func (c *SSHClient) keyCheck(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+// sshKeyCheck is a backwards-compatible alias for sshCheckAuthorizedKey.
+func (m *Module) sshKeyCheck(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.sshCheckAuthorizedKey(thread, fn, args, kwargs)
+}
+
+// checkAuthorizedKey implements client-level `client.check_authorized_key(key=...)`.
+func (c *SSHClient) checkAuthorizedKey(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var rawHosts starlark.Value
 	var rawKey starlark.Value
 
@@ -386,12 +432,12 @@ func (c *SSHClient) keyCheck(thread *starlark.Thread, fn *starlark.Builtin, args
 
 	pubKeyStr, err := resolvePublicKey(keyArg, c.useAgent)
 	if err != nil {
-		return nil, fmt.Errorf("ssh.client.key_check: %w", err)
+		return nil, fmt.Errorf("ssh.client.check_authorized_key: %w", err)
 	}
 
 	pubKey, _, _, _, err := gossh.ParseAuthorizedKey([]byte(pubKeyStr))
 	if err != nil {
-		return nil, fmt.Errorf("ssh.client.key_check: failed to parse public key: %w", err)
+		return nil, fmt.Errorf("ssh.client.check_authorized_key: failed to parse public key: %w", err)
 	}
 
 	var hosts []string
@@ -418,7 +464,7 @@ func (c *SSHClient) keyCheck(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 
 	if len(hosts) == 0 {
-		return nil, fmt.Errorf("ssh.client.key_check: no target hosts configured")
+		return nil, fmt.Errorf("ssh.client.check_authorized_key: no target hosts configured")
 	}
 
 	user := p.User
@@ -449,7 +495,7 @@ func (c *SSHClient) keyCheck(thread *starlark.Thread, fn *starlark.Builtin, args
 
 	checkResults, err := runKeyCheck(hosts, p.Port, user, pubKey, timeout, p.HostKeyCheck, c.knownHostsFile, jc)
 	if err != nil {
-		return nil, fmt.Errorf("ssh.client.key_check: %w", err)
+		return nil, fmt.Errorf("ssh.client.check_authorized_key: %w", err)
 	}
 
 	items := make([]starlark.Value, len(checkResults))
@@ -457,4 +503,9 @@ func (c *SSHClient) keyCheck(thread *starlark.Thread, fn *starlark.Builtin, args
 		items[i] = newSSHKeyCheckResult(r)
 	}
 	return starlark.NewList(items), nil
+}
+
+// keyCheck is a backwards-compatible alias for checkAuthorizedKey.
+func (c *SSHClient) keyCheck(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return c.checkAuthorizedKey(thread, fn, args, kwargs)
 }

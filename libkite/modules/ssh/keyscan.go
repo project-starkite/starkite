@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/vladimirvivien/startype"
@@ -116,12 +117,24 @@ func scanSingleHostKey(targetAddr string, host string, port int, algos []string,
 
 	_ = conn.SetDeadline(time.Now().Add(timeout))
 
+	var timedOut atomic.Bool
+	if timeout > 0 {
+		timer := time.AfterFunc(timeout, func() {
+			timedOut.Store(true)
+			_ = conn.Close()
+		})
+		defer timer.Stop()
+	}
+
 	clientConn, _, _, _ := gossh.NewClientConn(conn, targetAddr, config)
 	if clientConn != nil {
 		_ = clientConn.Close()
 	}
 
 	if capturedKey == nil {
+		if timedOut.Load() {
+			return nil, fmt.Errorf("connection to %s timed out after %v", targetAddr, timeout)
+		}
 		return nil, fmt.Errorf("failed to retrieve host key from %s", targetAddr)
 	}
 
@@ -282,11 +295,25 @@ func runKeyscan(hosts []string, defaultPort int, timeout time.Duration, algoGrou
 		for _, algos := range algoGroups {
 			var tunnel net.Conn
 			if jClient != nil {
-				t, err := jClient.Dial("tcp", targetAddr)
-				if err != nil {
-					return nil, fmt.Errorf("failed to tunnel through jump host to %s: %w", targetAddr, err)
+				type dialResult struct {
+					tunnel net.Conn
+					err    error
 				}
-				tunnel = t
+				dialDone := make(chan dialResult, 1)
+				go func() {
+					t, err := jClient.Dial("tcp", targetAddr)
+					dialDone <- dialResult{tunnel: t, err: err}
+				}()
+
+				select {
+				case <-time.After(timeout):
+					return nil, fmt.Errorf("connection to %s via jump host timed out after %v", targetAddr, timeout)
+				case res := <-dialDone:
+					if res.err != nil {
+						return nil, fmt.Errorf("failed to tunnel through jump host to %s: %w", targetAddr, res.err)
+					}
+					tunnel = res.tunnel
+				}
 			}
 
 			hk, err := scanSingleHostKey(targetAddr, h, p, algos, timeout, tunnel)
@@ -306,8 +333,8 @@ func runKeyscan(hosts []string, defaultPort int, timeout time.Duration, algoGrou
 	return scannedKeys, nil
 }
 
-// sshKeyscan implements module-level `ssh.keyscan(hosts, ...)`.
-func (m *Module) sshKeyscan(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+// sshScanHostKeys implements module-level `ssh.scan_host_keys(hosts, ...)`.
+func (m *Module) sshScanHostKeys(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var rawHosts starlark.Value
 	var rawTypes starlark.Value
 	var jumpDict *starlark.Dict
@@ -341,7 +368,7 @@ func (m *Module) sshKeyscan(thread *starlark.Thread, fn *starlark.Builtin, args 
 			if d, ok := kv[1].(*starlark.Dict); ok {
 				jumpDict = d
 			} else {
-				return nil, fmt.Errorf("ssh.keyscan: 'jump' must be a dict, got %s", kv[1].Type())
+				return nil, fmt.Errorf("ssh.scan_host_keys: 'jump' must be a dict, got %s", kv[1].Type())
 			}
 		default:
 			leftoverKwargs = append(leftoverKwargs, kv)
@@ -374,14 +401,14 @@ func (m *Module) sshKeyscan(thread *starlark.Thread, fn *starlark.Builtin, args 
 				hosts = append(hosts, s)
 			}
 		default:
-			return nil, fmt.Errorf("ssh.keyscan: 'hosts' must be a string or list of strings, got %s", rawHosts.Type())
+			return nil, fmt.Errorf("ssh.scan_host_keys: 'hosts' must be a string or list of strings, got %s", rawHosts.Type())
 		}
 	} else if p.Hosts != "" {
 		hosts = append(hosts, p.Hosts)
 	}
 
 	if len(hosts) == 0 {
-		return nil, fmt.Errorf("ssh.keyscan: 'hosts' is required and cannot be empty")
+		return nil, fmt.Errorf("ssh.scan_host_keys: 'hosts' is required and cannot be empty")
 	}
 
 	var typeList []string
@@ -399,7 +426,7 @@ func (m *Module) sshKeyscan(thread *starlark.Thread, fn *starlark.Builtin, args 
 				}
 			}
 		} else {
-			return nil, fmt.Errorf("ssh.keyscan: 'types' must be a list of strings, got %s", rawTypes.Type())
+			return nil, fmt.Errorf("ssh.scan_host_keys: 'types' must be a list of strings, got %s", rawTypes.Type())
 		}
 	}
 
@@ -412,7 +439,7 @@ func (m *Module) sshKeyscan(thread *starlark.Thread, fn *starlark.Builtin, args 
 	if p.Timeout != "" {
 		d, err := time.ParseDuration(p.Timeout)
 		if err != nil {
-			return nil, fmt.Errorf("ssh.keyscan: invalid timeout %q: %w", p.Timeout, err)
+			return nil, fmt.Errorf("ssh.scan_host_keys: invalid timeout %q: %w", p.Timeout, err)
 		}
 		timeout = d
 	}
@@ -421,14 +448,14 @@ func (m *Module) sshKeyscan(thread *starlark.Thread, fn *starlark.Builtin, args 
 	if jumpDict != nil {
 		j, err := parseJumpDict(jumpDict, authConfig{})
 		if err != nil {
-			return nil, fmt.Errorf("ssh.keyscan: %w", err)
+			return nil, fmt.Errorf("ssh.scan_host_keys: %w", err)
 		}
 		jc = &j
 	}
 
 	keys, err := runKeyscan(hosts, p.Port, timeout, algoGroups, p.Save, p.Path, p.Hash, jc)
 	if err != nil {
-		return nil, fmt.Errorf("ssh.keyscan: %w", err)
+		return nil, fmt.Errorf("ssh.scan_host_keys: %w", err)
 	}
 
 	items := make([]starlark.Value, 0, len(keys))
@@ -438,8 +465,13 @@ func (m *Module) sshKeyscan(thread *starlark.Thread, fn *starlark.Builtin, args 
 	return starlark.NewList(items), nil
 }
 
-// keyscan implements client-level `client.keyscan(...)`.
-func (c *SSHClient) keyscan(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+// sshKeyscan is a backwards-compatible alias for sshScanHostKeys.
+func (m *Module) sshKeyscan(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.sshScanHostKeys(thread, fn, args, kwargs)
+}
+
+// scanHostKeys implements client-level `client.scan_host_keys(...)`.
+func (c *SSHClient) scanHostKeys(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var rawHosts starlark.Value
 	var rawTypes starlark.Value
 
@@ -509,7 +541,7 @@ func (c *SSHClient) keyscan(thread *starlark.Thread, fn *starlark.Builtin, args 
 	}
 
 	if len(hosts) == 0 {
-		return nil, fmt.Errorf("ssh.client.keyscan: no target hosts configured")
+		return nil, fmt.Errorf("ssh.client.scan_host_keys: no target hosts configured")
 	}
 
 	var typeList []string
@@ -526,6 +558,8 @@ func (c *SSHClient) keyscan(thread *starlark.Thread, fn *starlark.Builtin, args 
 					typeList = append(typeList, strings.TrimSpace(s))
 				}
 			}
+		} else {
+			return nil, fmt.Errorf("ssh.client.scan_host_keys: 'types' must be a list of strings, got %s", rawTypes.Type())
 		}
 	}
 
@@ -557,7 +591,7 @@ func (c *SSHClient) keyscan(thread *starlark.Thread, fn *starlark.Builtin, args 
 
 	keys, err := runKeyscan(hosts, p.Port, timeout, algoGroups, p.Save, p.Path, p.Hash, jc)
 	if err != nil {
-		return nil, fmt.Errorf("ssh.client.keyscan: %w", err)
+		return nil, fmt.Errorf("ssh.client.scan_host_keys: %w", err)
 	}
 
 	items := make([]starlark.Value, 0, len(keys))
@@ -565,4 +599,9 @@ func (c *SSHClient) keyscan(thread *starlark.Thread, fn *starlark.Builtin, args 
 		items = append(items, newSSHHostKey(k))
 	}
 	return starlark.NewList(items), nil
+}
+
+// keyscan is a backwards-compatible alias for scanHostKeys.
+func (c *SSHClient) keyscan(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return c.scanHostKeys(thread, fn, args, kwargs)
 }

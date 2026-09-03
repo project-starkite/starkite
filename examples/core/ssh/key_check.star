@@ -12,13 +12,13 @@ def main():
     key_path = env("KEY", "~/.ssh/id_ed25519.pub")
 
     print("=" * 60)
-    print("SSH Remote Key Acceptance Probe (ssh.key_check)")
+    print("SSH Remote Key Acceptance Probe (ssh.check_authorized_key)")
     print("=" * 60)
     printf("Host: %s:%d | User: %s | Key: %s\n\n", target_host, target_port, target_user, key_path)
 
     # 1. Standalone in-protocol key check (requires NO private key, NO password, NO session)
     print("[1/3] Probing remote host for public key authorization...")
-    res = ssh.try_key_check(
+    res = ssh.try_check_authorized_key(
         key            = key_path,
         hosts          = [target_host],
         user           = target_user,
@@ -49,15 +49,15 @@ def main():
         auth           = {"user": target_user},
         host_key_check = False,
     )
-    client_check = client.try_key_check(key_path)
+    client_check = client.try_check_authorized_key(key_path)
     if client_check.ok:
         for item in client_check.value:
             printf("  [%s] Accepted via client: %s\n", item.host, item.accepted)
 
-    # 3. Smart copy_id with key_check=True (default)
-    print("\n[3/3] Running copy_id with key_check=True...")
+    # 3. Smart copy_id with check_first=True
+    print("\n[3/3] Running copy_id with check_first=True...")
     print("  (If key is already accepted, installation and password prompt are bypassed)")
-    copy_results = client.try_copy_id(key=key_path, key_check=True)
+    copy_results = client.try_copy_id(key=key_path, check_first=True)
     if copy_results.ok:
         for r in copy_results.value:
             printf("  [%s] Result: %s\n", r.host, r.stdout.strip())

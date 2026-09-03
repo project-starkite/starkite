@@ -181,11 +181,13 @@ fi
 // copyId installs a public key onto the target fleet hosts.
 func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
-		Key      string `name:"key" position:"0"`
-		AsUser   string `name:"as_user"`
-		Sudo     bool   `name:"sudo"`
-		Prompt   bool   `name:"prompt"`
-		KeyCheck bool   `name:"key_check"`
+		Key             string `name:"key" position:"0"`
+		AsUser          string `name:"as_user"`
+		Sudo            bool   `name:"sudo"`
+		Prompt          bool   `name:"prompt"`
+		CheckFirst      bool   `name:"check_first"`
+		CheckAuthorized bool   `name:"check_authorized"`
+		KeyCheck        bool   `name:"key_check"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
@@ -218,11 +220,11 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 	sudo := p.Sudo || c.defaultSudo
 
-	// 2. Pre-flight Key Check (if key_check is enabled)
+	// 2. Pre-flight Key Check (if check_first / check_authorized / key_check is enabled)
 	alreadyAccepted := make(map[string]bool)
 	var pendingHosts []string
 
-	if p.KeyCheck {
+	if p.CheckFirst || p.CheckAuthorized || p.KeyCheck {
 		parsedPub, _, _, _, err := ssh.ParseAuthorizedKey([]byte(pubKey))
 		if err == nil {
 			var jc *jumpConfig
@@ -341,19 +343,21 @@ func (m *Module) sshCopyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	var p struct {
-		Key          string `name:"key"`
-		User         string `name:"user"`
-		Password     string `name:"password"`
-		Passphrase   string `name:"passphrase"`
-		UseAgent     bool   `name:"use_agent"`
-		Prompt       bool   `name:"prompt"`
-		AsUser       string `name:"as_user"`
-		Sudo         bool   `name:"sudo"`
-		Port         int    `name:"port"`
-		Timeout      string `name:"timeout"`
-		DryRun       bool   `name:"dry_run"`
-		HostKeyCheck bool   `name:"host_key_check"`
-		KeyCheck     bool   `name:"key_check"`
+		Key             string `name:"key"`
+		User            string `name:"user"`
+		Password        string `name:"password"`
+		Passphrase      string `name:"passphrase"`
+		UseAgent        bool   `name:"use_agent"`
+		Prompt          bool   `name:"prompt"`
+		AsUser          string `name:"as_user"`
+		Sudo            bool   `name:"sudo"`
+		Port            int    `name:"port"`
+		Timeout         string `name:"timeout"`
+		DryRun          bool   `name:"dry_run"`
+		HostKeyCheck    bool   `name:"host_key_check"`
+		CheckFirst      bool   `name:"check_first"`
+		CheckAuthorized bool   `name:"check_authorized"`
+		KeyCheck        bool   `name:"key_check"`
 	}
 	p.HostKeyCheck = true
 
@@ -451,8 +455,10 @@ func (m *Module) sshCopyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 		}
 	}
 
+	checkFirst := p.CheckFirst || p.CheckAuthorized || p.KeyCheck
 	callKwargs := []starlark.Tuple{
-		{starlark.String("key_check"), starlark.Bool(p.KeyCheck)},
+		{starlark.String("check_first"), starlark.Bool(checkFirst)},
+		{starlark.String("key_check"), starlark.Bool(checkFirst)},
 	}
 	if p.Prompt {
 		callKwargs = append(callKwargs, starlark.Tuple{starlark.String("prompt"), starlark.Bool(true)})

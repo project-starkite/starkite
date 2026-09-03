@@ -1699,4 +1699,100 @@ func TestSSHCopyIdWithKeyCheckOptimization(t *testing.T) {
 	if b, ok := okVal.(starlark.Bool); !ok || !bool(b) {
 		t.Errorf("expected ok=true for already installed key")
 	}
+
+	// 2. Also verify check_first=True alias
+	resCheckFirst, err := client.copyId(thread, starlark.NewBuiltin("ssh.client.copy_id", nil), starlark.Tuple{starlark.String(kp.PublicKey)}, []starlark.Tuple{
+		{starlark.String("check_first"), starlark.Bool(true)},
+	})
+	if err != nil {
+		t.Fatalf("copy_id with check_first=True failed: %v", err)
+	}
+	sCheckFirst := resCheckFirst.(*starlark.List).Index(0).(*starlarkstruct.Struct)
+	stdoutVal2, _ := sCheckFirst.Attr("stdout")
+	if stdoutStr, ok := starlark.AsString(stdoutVal2); !ok || !strings.Contains(stdoutStr, "ALREADY INSTALLED") {
+		t.Errorf("stdout = %v, expected string containing 'ALREADY INSTALLED'", stdoutVal2)
+	}
+}
+
+func TestSSHScanHostKeysAndCheckAuthorizedKeyNewNames(t *testing.T) {
+	ts, err := NewTestServer()
+	if err != nil {
+		t.Fatalf("failed to create test server: %v", err)
+	}
+	if err := ts.Start(); err != nil {
+		t.Fatalf("failed to start test server: %v", err)
+	}
+	defer ts.Close()
+
+	kp, err := GenerateKeyPair("ed25519", 0, "new-names-test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pk, _, _, _, _ := gossh.ParseAuthorizedKey([]byte(kp.PublicKey))
+	ts.AddAuthorizedKey(pk)
+
+	mod := New()
+	thread := &starlark.Thread{Name: "test-new-names"}
+
+	// 1. Test module-level ssh.scan_host_keys
+	scanRes, err := mod.sshScanHostKeys(thread, starlark.NewBuiltin("ssh.scan_host_keys", nil), nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("timeout"), starlark.String("2s")},
+	})
+	if err != nil {
+		t.Fatalf("ssh.scan_host_keys failed: %v", err)
+	}
+	scanList := scanRes.(*starlark.List)
+	if scanList.Len() != 1 {
+		t.Fatalf("expected 1 host key from scan_host_keys, got %d", scanList.Len())
+	}
+
+	// 2. Test module-level ssh.check_authorized_key
+	checkRes, err := mod.sshCheckAuthorizedKey(thread, starlark.NewBuiltin("ssh.check_authorized_key", nil), nil, []starlark.Tuple{
+		{starlark.String("key"), starlark.String(kp.PublicKey)},
+		{starlark.String("hosts"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(ts.Port())},
+		{starlark.String("user"), starlark.String("testuser")},
+		{starlark.String("host_key_check"), starlark.Bool(false)},
+	})
+	if err != nil {
+		t.Fatalf("ssh.check_authorized_key failed: %v", err)
+	}
+	checkList := checkRes.(*starlark.List)
+	if checkList.Len() != 1 {
+		t.Fatalf("expected 1 check result, got %d", checkList.Len())
+	}
+	s := checkList.Index(0).(*starlarkstruct.Struct)
+	accVal, _ := s.Attr("accepted")
+	if b, ok := accVal.(starlark.Bool); !ok || !bool(b) {
+		t.Errorf("expected accepted=true from ssh.check_authorized_key, got %v", accVal)
+	}
+
+	// 3. Test client-level client.scan_host_keys and client.check_authorized_key
+	client := &SSHClient{
+		hosts:        []string{"127.0.0.1"},
+		port:         ts.Port(),
+		user:         "testuser",
+		timeout:      2 * time.Second,
+		hostKeyCheck: false,
+	}
+
+	clientScanRes, err := client.scanHostKeys(thread, starlark.NewBuiltin("ssh.client.scan_host_keys", nil), nil, nil)
+	if err != nil {
+		t.Fatalf("client.scan_host_keys failed: %v", err)
+	}
+	if clientScanRes.(*starlark.List).Len() != 1 {
+		t.Fatalf("expected 1 host key from client.scan_host_keys, got %v", clientScanRes)
+	}
+
+	clientCheckRes, err := client.checkAuthorizedKey(thread, starlark.NewBuiltin("ssh.client.check_authorized_key", nil), starlark.Tuple{starlark.String(kp.PublicKey)}, nil)
+	if err != nil {
+		t.Fatalf("client.check_authorized_key failed: %v", err)
+	}
+	clientCheckStruct := clientCheckRes.(*starlark.List).Index(0).(*starlarkstruct.Struct)
+	clientAccVal, _ := clientCheckStruct.Attr("accepted")
+	if b, ok := clientAccVal.(starlark.Bool); !ok || !bool(b) {
+		t.Errorf("expected accepted=true from client.check_authorized_key, got %v", clientAccVal)
+	}
 }

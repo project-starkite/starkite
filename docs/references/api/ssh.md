@@ -172,27 +172,27 @@ All execution and file transfer methods support `try_` variants (e.g. `client.tr
 | `client.upload(src, dst, ...)` | Upload files or directories to target hosts via SCP |
 | `client.download(src, dst, ...)` | Download files from target hosts via SCP |
 | `client.copy_id(key, ...)` | Install public key into target hosts' `authorized_keys` |
-| `client.key_check(key, ...)` | Probe remote hosts for public key authorization without logging in |
-| `client.keyscan(...)` | Discover and inspect public host keys across target hosts |
+| `client.scan_host_keys(...)` | Discover and inspect public host keys across target hosts (alias: `client.keyscan`) |
+| `client.check_authorized_key(key, ...)` | Probe remote hosts for public key authorization without logging in (alias: `client.key_check`) |
 
 ---
 
 ## Public Key Distribution (`copy_id`)
 
-Installs public keys into `~/.ssh/authorized_keys` on target hosts idempotently. When `key_check=True` (default), it automatically probes each host first using the in-protocol RFC 4252 query and bypasses both password prompting and remote disk modifications on nodes that already accept the key.
+Installs public keys into `~/.ssh/authorized_keys` on target hosts idempotently. When `check_first=True` (or `key_check=True`), it automatically probes each host first using the in-protocol RFC 4252 query and bypasses both password prompting and remote disk modifications on nodes that already accept the key.
 
 ### Module-Scope (`ssh.copy_id`)
 
 ```python
-# Install public key onto direct hosts (checks first by default)
+# Install public key onto direct hosts
 ssh.copy_id(
-    key       = "~/.ssh/id_ed25519.pub",
-    hosts     = ["192.168.1.50", "192.168.1.51"],
-    user      = "admin",
-    prompt    = True,      # Only prompts for password if any host actually needs the key
-    key_check = True,      # Default: True (probes first, skips authorized nodes)
-    as_user   = "deploy",
-    sudo      = True,
+    key         = "~/.ssh/id_ed25519.pub",
+    hosts       = ["192.168.1.50", "192.168.1.51"],
+    user        = "admin",
+    prompt      = True,            # Only prompts for password if any host actually needs the key
+    check_first = True,            # Probes first, skips already authorized nodes
+    as_user     = "deploy",
+    sudo        = True,
 )
 ```
 
@@ -208,45 +208,48 @@ client = ssh.config(
 )
 
 # Installs key through bastion tunnel onto all fleet nodes
-results = client.copy_id(key="~/.ssh/id_ed25519.pub", sudo=True)
+results = client.copy_id(key="~/.ssh/id_ed25519.pub", sudo=True, check_first=True)
 ```
+
+### `copy_id` Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `key` | `string` | `""` | Public key string or file path (reads local `~/.ssh/` or `ssh-agent` if omitted) |
-| `key_check` | `bool` | `True` | Probe remote `authorized_keys` first; bypass prompt and skip install if key is accepted |
-| `as_user` | `string` | `client.defaultAsUser` | Remote user whose `authorized_keys` will receive the key |
+| `check_first` | `bool` | `False` | Probe remote `authorized_keys` first; bypass prompt and skip install if key is accepted (aliases: `check_authorized`, `key_check`) |
+| `as_user` | `string` | connected user | Remote user whose `authorized_keys` will receive the key |
 | `sudo` | `bool` | `client.defaultSudo` | Execute installation script with sudo |
 | `prompt` | `bool` | `client.prompt` | Prompt in terminal for password |
 
 ---
 
-## Key Generation (`ssh.keygen`)
+## Key Pair Generation (`ssh.keygen`)
 
-Generate in-memory or on-disk cryptographic SSH keypairs:
+Generate cryptographic keypairs natively in pure Go without shelling out to `ssh-keygen`:
 
 ```python
-# In-memory Ed25519 keypair
-keys = ssh.keygen(type="ed25519", comment="cluster-admin")
-print(keys.public_key)   # "ssh-ed25519 AAA... cluster-admin\n"
-print(keys.fingerprint)  # "SHA256:..."
+# Generate default Ed25519 keypair in memory
+keys = ssh.keygen()
+print("Public Key:", keys.public_key)
+print("Fingerprint:", keys.fingerprint)
 
-# On-disk keypair with 0600 permissions
+# Generate passphrase-encrypted key written to disk
 keys = ssh.keygen(
-    type       = "rsa",
-    bits       = 4096,
-    path       = "~/.ssh/id_cluster_rsa",
-    passphrase = "optional_passphrase",
+    type       = "ed25519",
+    comment    = "cluster-admin-2026",
+    path       = "~/.ssh/id_cluster",
+    passphrase = "secure-passphrase-here",
     overwrite  = True,
 )
+printf("Saved keypair to %s and %s\n", keys.path, keys.pub_path)
 ```
 
 ### Keygen Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `type` | `string` | `"ed25519"` | Algorithm (`"ed25519"`, `"rsa"`, `"ecdsa"`) |
-| `bits` | `int` | `0` | RSA bits (`2048`, `3072`, `4096`) or ECDSA bits (`256`, `384`, `521`) |
+| `type` | `string` | `"ed25519"` | Key algorithm: `"ed25519"`, `"rsa"`, or `"ecdsa"` |
+| `bits` | `int` | `0` | Bit length for RSA (defaults to `3072`) or ECDSA (`256`, `384`, `521`) |
 | `comment` | `string` | `""` | Comment appended to public key line |
 | `passphrase` | `string` | `""` | Passphrase to encrypt private key |
 | `path` | `string` | `""` | File path to write private key (`0600`) and `.pub` (`0644`) |
@@ -266,25 +269,25 @@ keys = ssh.keygen(
 
 ---
 
-## Host Key Discovery (`ssh.keyscan`)
+## Host Key Discovery (`ssh.scan_host_keys`)
 
-Discover and inspect remote public host keys without authentication (OpenSSH `ssh-keyscan` equivalent) to bootstrap `known_hosts`:
+Discover and inspect remote public host keys without authentication (pure-Go OpenSSH `ssh-keyscan` equivalent) to bootstrap `known_hosts`:
 
 ```python
 # In-memory scan of target hosts
-keys = ssh.keyscan(["192.168.1.50", "192.168.1.51"])
+keys = ssh.scan_host_keys(["192.168.1.50", "192.168.1.51"])
 for k in keys:
     print(k.host, k.type, k.fingerprint)
 
 # Scan and append to ~/.ssh/known_hosts (with deduplication and conflict checks)
-ssh.keyscan(
+ssh.scan_host_keys(
     hosts = ["rbp4-1"],
     save  = True,                   # Append to known_hosts
     path  = "~/.ssh/known_hosts",    # Default
 )
 
 # Scan private hosts behind a bastion jump host
-private_keys = ssh.keyscan(
+private_keys = ssh.scan_host_keys(
     hosts = ["10.0.1.10", "10.0.1.11"],
     jump  = {"host": "bastion.corp.net", "user": "admin", "key": "~/.ssh/bastion_key"},
     save  = True,
@@ -292,10 +295,13 @@ private_keys = ssh.keyscan(
 
 # Scan through an existing client instance
 client = ssh.config(hosts=["192.168.1.50"], auth={"user": "deploy"})
-keys = client.keyscan(save=True)
+keys = client.scan_host_keys(save=True)
 ```
 
-### Keyscan Parameters
+> [!TIP]
+> `ssh.keyscan` and `client.keyscan` remain available as aliases for `ssh.scan_host_keys`.
+
+### Scan Host Keys Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
@@ -323,13 +329,13 @@ keys = client.keyscan(save=True)
 
 ---
 
-## Public Key Acceptance Check (`ssh.key_check`)
+## Public Key Acceptance Check (`ssh.check_authorized_key`)
 
 Probes remote servers to discover whether a local public key is already authorized in `authorized_keys` for a specific user. Operates entirely in the SSH protocol (RFC 4252 §7) using only the public key—**no private keys, no passwords, and no remote shell sessions are required**:
 
 ```python
 # Check if target hosts already authorize a local key
-results = ssh.key_check(
+results = ssh.check_authorized_key(
     key   = "~/.ssh/id_ed25519.pub",
     hosts = ["192.168.1.50", "192.168.1.51"],
     user  = "deploy",
@@ -342,10 +348,13 @@ for r in results:
 
 # Probing through a configured client instance (inherits hosts, user, bastion)
 client = ssh.config(hosts=["192.168.1.50"], auth={"user": "deploy"})
-results = client.key_check("~/.ssh/id_ed25519.pub")
+results = client.check_authorized_key("~/.ssh/id_ed25519.pub")
 ```
 
-### Key Check Parameters
+> [!TIP]
+> `ssh.key_check` and `client.key_check` remain available as aliases for `ssh.check_authorized_key`.
+
+### Check Authorized Key Parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|

@@ -10,13 +10,13 @@ def main():
     scan_port = int(env("PORT", "22"))
 
     print("=" * 60)
-    print("SSH Host Key Discovery (ssh.keyscan)")
+    print("SSH Host Key Discovery (ssh.scan_host_keys)")
     print("=" * 60)
     printf("Target Host: %s:%d\n\n", target_host, scan_port)
 
     # 1. In-memory host key discovery
     print("[1/4] Scanning remote host key in-memory...")
-    res = ssh.try_keyscan(
+    res = ssh.try_scan_host_keys(
         hosts   = [target_host],
         port    = scan_port,
         timeout = "3s",
@@ -35,7 +35,7 @@ def main():
 
     # 2. Scanning specific key algorithms
     print("[2/4] Scanning with explicit algorithm filter (ed25519)...")
-    ed_keys = ssh.try_keyscan(
+    ed_keys = ssh.try_scan_host_keys(
         hosts = [target_host],
         port  = scan_port,
         type  = "ed25519",
@@ -47,7 +47,7 @@ def main():
     # 3. Discover and save to custom known_hosts file
     print("\n[3/4] Scanning and persisting to known_hosts...")
     kh_file = (fs.path(temp_dir()) / "discovered_known_hosts").string
-    ssh.keyscan(
+    ssh.scan_host_keys(
         hosts = [target_host],
         port  = scan_port,
         save  = True,
@@ -63,7 +63,7 @@ def main():
         port  = scan_port,
         auth  = {"user": env("USER", "root")},
     )
-    client_keys = client.try_keyscan()
+    client_keys = client.try_scan_host_keys()
     if client_keys.ok:
         printf("  Discovered %d keys via client\n", len(client_keys.value))
 

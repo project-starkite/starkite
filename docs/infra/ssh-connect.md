@@ -66,15 +66,15 @@ All connection dials, execution sessions, file transfers, and key operations rou
 
 ---
 
-## Host Key Discovery (`ssh.keyscan`)
+## Host Key Discovery (`ssh.scan_host_keys`)
 
 When connecting with `host_key_check = True` (the secure default), connections fail if remote host keys are not already in `~/.ssh/known_hosts`.
 
-Use `ssh.keyscan()` to retrieve and persist remote public host keys before initiating operations:
+Use `ssh.scan_host_keys()` (or alias `ssh.keyscan()`) to retrieve and persist remote public host keys before initiating operations:
 
 ```python
 # Discover and append host keys to ~/.ssh/known_hosts (supports bastions)
-ssh.keyscan(
+ssh.scan_host_keys(
     hosts = ["10.0.1.10", "10.0.1.11"],
     save  = True,
     jump  = {"host": "bastion.corp.net", "user": "vladimir"},
@@ -90,13 +90,13 @@ To bootstrap or distribute public keys onto fleet nodes, use `client.copy_id()`:
 ```python
 # Install public key (probes first via RFC 4252; skips if already authorized)
 client.copy_id(
-    key       = "~/.ssh/id_ed25519.pub",
-    key_check = True,
-    sudo      = True,
+    key         = "~/.ssh/id_ed25519.pub",
+    check_first = True,
+    sudo        = True,
 )
 ```
 
-When `key_check = True` is passed, Starkite probes each node using the SSH protocol without requiring passwords or shell logins. Hosts that already authorize the key are skipped automatically. By default, `copy_id` targets the connected user's home directory and sets correct file permissions.
+When `check_first = True` (or `key_check = True`) is passed, Starkite probes each node using the SSH protocol without requiring passwords or shell logins. Hosts that already authorize the key are skipped automatically. By default, `copy_id` targets the connected user's home directory and sets correct file permissions.
 
 ---
 

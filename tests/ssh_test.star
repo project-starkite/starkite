@@ -208,6 +208,11 @@ def test_attr_names():
     assert(client.download != None, "download attr should exist")
     assert(client.hosts != None, "hosts attr should exist")
     assert(client.auth != None, "auth attr should exist")
+    assert(client.scan_host_keys != None, "scan_host_keys attr should exist")
+    assert(client.try_scan_host_keys != None, "try_scan_host_keys attr should exist")
+    assert(client.check_authorized_key != None, "check_authorized_key attr should exist")
+    assert(client.try_check_authorized_key != None, "try_check_authorized_key attr should exist")
+    # Backwards-compatible aliases
     assert(client.keyscan != None, "keyscan attr should exist")
     assert(client.try_keyscan != None, "try_keyscan attr should exist")
     assert(client.key_check != None, "key_check attr should exist")
@@ -521,20 +526,32 @@ def test_ssh_config_prompt():
     )
     assert(client.auth["prompt"] == True, "auth.prompt should be True")
 
-def test_keyscan_validations():
-    """Test parameter validation in ssh.keyscan."""
+def test_scan_host_keys_validations():
+    """Test parameter validation in ssh.scan_host_keys and ssh.keyscan."""
     # 1. Empty hosts fails
-    r1 = ssh.try_keyscan(hosts=[])
-    assert(not r1.ok, "keyscan with empty hosts should fail")
+    r1 = ssh.try_scan_host_keys(hosts=[])
+    assert(not r1.ok, "scan_host_keys with empty hosts should fail")
     assert("cannot be empty" in r1.error, "error should mention cannot be empty")
 
     # 2. Unsupported algorithm fails
-    r2 = ssh.try_keyscan(hosts=["127.0.0.1"], type="dsa_invalid")
-    assert(not r2.ok, "keyscan with invalid type should fail")
+    r2 = ssh.try_scan_host_keys(hosts=["127.0.0.1"], type="dsa_invalid")
+    assert(not r2.ok, "scan_host_keys with invalid type should fail")
     assert("unsupported key algorithm" in r2.error, "error should mention unsupported key algorithm")
 
     # 3. Invalid jump parameter fails
-    r3 = ssh.try_keyscan(hosts=["127.0.0.1"], jump="not_a_dict")
-    assert(not r3.ok, "keyscan with non-dict jump should fail")
+    r3 = ssh.try_scan_host_keys(hosts=["127.0.0.1"], jump="not_a_dict")
+    assert(not r3.ok, "scan_host_keys with non-dict jump should fail")
     assert("'jump' must be a dict" in r3.error, "error should mention jump must be a dict")
+
+    # 4. Backward-compatible alias
+    r4 = ssh.try_keyscan(hosts=[])
+    assert(not r4.ok, "keyscan alias should fail on empty hosts")
+
+def test_check_authorized_key_validations():
+    """Test parameter validation in ssh.check_authorized_key and ssh.key_check."""
+    r1 = ssh.try_check_authorized_key(key="invalid key content", hosts=["127.0.0.1"])
+    assert(not r1.ok, "check_authorized_key with invalid key should fail")
+
+    r2 = ssh.try_key_check(key="invalid key content", hosts=["127.0.0.1"])
+    assert(not r2.ok, "key_check alias should fail on invalid key")
 

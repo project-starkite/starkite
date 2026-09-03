@@ -39,7 +39,7 @@ Starkite provides concurrent remote host management by pairing the `ssh` module 
 ### Key Features
 * **Daemonless Execution**: Manages remote systems, restarts services, and runs scripts over standard SSH without installing target-side control software.
 * **Bastion Jump Host Traversal**: Routes connections, file transfers, and commands transparently through edge bastions to manage private subnets and VPC nodes.
-* **Host Key Discovery & Key Bootstrap**: Scans and verifies host keys with `ssh.keyscan()`, and distributes public keys safely with `client.copy_id()`.
+* **Host Key Discovery & Key Bootstrap**: Scans and verifies host keys with `ssh.scan_host_keys()`, and distributes public keys safely with `client.copy_id()`.
 * **File Orchestration**: Uploads configuration files, packages, or application code and downloads logs or diagnostics across the fleet concurrently.
 * **Sudo Privilege Escalation**: Runs administrative commands securely with automatic home directory resolution and user ownership setup.
 * **Structured Fleet Inventories**: Organizes nodes into groups (e.g., `web`, `db`, `staging`) and filters them dynamically to target specific subsets of infrastructure.

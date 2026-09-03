@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/crypto/ssh"
@@ -271,17 +272,46 @@ func (c *SSHClient) dialViaJump(targetAddr string, targetConfig *ssh.ClientConfi
 	}
 
 	// Create a tunnel from jump host to target
-	tunnel, err := jumpClient.Dial("tcp", targetAddr)
-	if err != nil {
+	type dialResult struct {
+		tunnel net.Conn
+		err    error
+	}
+	dialDone := make(chan dialResult, 1)
+	go func() {
+		t, err := jumpClient.Dial("tcp", targetAddr)
+		dialDone <- dialResult{tunnel: t, err: err}
+	}()
+
+	var tunnel net.Conn
+	select {
+	case <-time.After(c.timeout):
 		jumpClient.Close()
-		return nil, fmt.Errorf("failed to tunnel from %s to %s: %w", jumpAddr, targetAddr, err)
+		return nil, fmt.Errorf("connection to %s via %s timed out after %v", targetAddr, jumpAddr, c.timeout)
+	case res := <-dialDone:
+		if res.err != nil {
+			jumpClient.Close()
+			return nil, fmt.Errorf("failed to tunnel from %s to %s: %w", jumpAddr, targetAddr, res.err)
+		}
+		tunnel = res.tunnel
 	}
 
 	// Create an SSH connection over the tunnel
+	var timedOut atomic.Bool
+	if c.timeout > 0 {
+		timer := time.AfterFunc(c.timeout, func() {
+			timedOut.Store(true)
+			_ = tunnel.Close()
+		})
+		defer timer.Stop()
+	}
+
 	conn, chans, reqs, err := ssh.NewClientConn(tunnel, targetAddr, targetConfig)
 	if err != nil {
 		tunnel.Close()
 		jumpClient.Close()
+		if timedOut.Load() {
+			return nil, fmt.Errorf("connection to %s via %s timed out after %v", targetAddr, jumpAddr, c.timeout)
+		}
 		return nil, fmt.Errorf("failed to establish SSH over tunnel to %s: %w", targetAddr, err)
 	}
 

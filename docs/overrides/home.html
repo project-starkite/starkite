@@ -770,11 +770,11 @@ def main():
 
 def main():
     # 1. Discover and save host keys to known_hosts
-    ssh.keyscan(hosts=["node-1", "node-2", "node-3"], save=True)
+    ssh.scan_host_keys(hosts=["node-1", "node-2", "node-3"], save=True)
 
     # 2. Check and copy public key (skips already-authorized nodes)
     client = ssh.config(hosts=["node-1", "node-2", "node-3"], auth={"user": "deploy"})
-    for r in client.copy_id("~/.ssh/id_ed25519.pub", key_check=True):
+    for r in client.copy_id("~/.ssh/id_ed25519.pub", check_first=True):
         print(r.host, "->", r.stdout.strip())</code></pre>
                 </div>
               </div>
