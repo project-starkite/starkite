@@ -49,7 +49,7 @@ func (m *Module) ensureDefaultClient(thread *starlark.Thread) (*K8sClient, error
 		return m.defaultClient, nil
 	}
 
-	client, err := newK8sClient(thread, m.config, "", "", "", "")
+	client, err := newK8sClient(thread, m.config, clientOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("k8s: failed to create default client: %w", err)
 	}
@@ -70,23 +70,49 @@ func (m *Module) withDefault(name string, method clientMethod) *starlark.Builtin
 }
 
 // configFactory creates a K8sClient with explicit configuration.
-// Signature: k8s.config(context="", namespace="", kubeconfig="", timeout="")
+// Signature: k8s.config(context="", namespace="", kubeconfig="", timeout="", jump=None, server="", tls_server_name="")
 func (m *Module) configFactory(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if err := libkite.Check(thread, "k8s", "config", "config", ""); err != nil {
 		return nil, err
 	}
 
-	var p struct {
-		Context    string `name:"context"`
-		Namespace  string `name:"namespace"`
-		Kubeconfig string `name:"kubeconfig"`
-		Timeout    string `name:"timeout"`
+	var rawJump *starlark.Dict
+	for _, kv := range kwargs {
+		if string(kv[0].(starlark.String)) == "jump" {
+			if kv[1] != starlark.None {
+				if d, ok := kv[1].(*starlark.Dict); ok {
+					rawJump = d
+				} else if a, ok := kv[1].(*AttrDict); ok {
+					rawJump = a.ToDict()
+				} else {
+					return nil, fmt.Errorf("k8s.config: 'jump' must be a dict, got %s", kv[1].Type())
+				}
+			}
+		}
 	}
-	if err := startype.Args(args, kwargs).Go(&p); err != nil {
+	filteredKwargs := filterKwarg(kwargs, "jump", &rawJump)
+
+	var p struct {
+		Context       string `name:"context"`
+		Namespace     string `name:"namespace"`
+		Kubeconfig    string `name:"kubeconfig"`
+		Timeout       string `name:"timeout"`
+		Server        string `name:"server"`
+		TLSServerName string `name:"tls_server_name"`
+	}
+	if err := startype.Args(args, filteredKwargs).Go(&p); err != nil {
 		return nil, err
 	}
 
-	return newK8sClient(thread, m.config, p.Context, p.Namespace, p.Kubeconfig, p.Timeout)
+	return newK8sClient(thread, m.config, clientOptions{
+		contextName:   p.Context,
+		namespace:     p.Namespace,
+		kubeconfig:    p.Kubeconfig,
+		timeout:       p.Timeout,
+		server:        p.Server,
+		tlsServerName: p.TLSServerName,
+		jumpDict:      rawJump,
+	})
 }
 
 // yamlHelper converts a Starlark value (KubeObject, dict, or list) to a YAML string.

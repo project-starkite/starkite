@@ -3,6 +3,8 @@ package k8s
 import (
 	"context"
 	"fmt"
+	"net"
+	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -10,6 +12,7 @@ import (
 	"go.starlark.net/starlark"
 
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/project-starkite/starkite/libkite/modules/ssh"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/rest"
@@ -28,6 +31,7 @@ type K8sClient struct {
 	timeout   string
 	config    *libkite.ModuleConfig
 	thread    *starlark.Thread
+	dialer    *ssh.TunnelDialer
 }
 
 // Starlark value interface
@@ -66,11 +70,14 @@ var allMethods = map[string]clientMethod{
 	"port_forward": (*K8sClient).portForward,
 
 	// Tier 1: Cluster info & Fleets
-	"context":        (*K8sClient).contextName,
-	"namespace_name": (*K8sClient).namespaceName,
-	"version":        (*K8sClient).version,
-	"api_resources":  (*K8sClient).apiResources,
-	"fleet":          (*K8sClient).fleet,
+	"context":         (*K8sClient).contextName,
+	"namespace_name":  (*K8sClient).namespaceName,
+	"version":         (*K8sClient).version,
+	"api_resources":   (*K8sClient).apiResources,
+	"fleet":           (*K8sClient).fleet,
+	"server":          (*K8sClient).serverEndpoint,
+	"tls_server_name": (*K8sClient).tlsServerName,
+	"close":           (*K8sClient).closeClient,
 
 	// Tier 2: High-level
 	"deploy":        (*K8sClient).deployHighLevel,
@@ -143,19 +150,65 @@ func (c *K8sClient) contextWithTimeout(perCallTimeout string) (context.Context, 
 	return ctx, cancel, nil
 }
 
-// newK8sClient creates a K8sClient from kubeconfig parameters.
-func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, contextName, namespace, kubeconfig, timeout string) (*K8sClient, error) {
+type clientOptions struct {
+	contextName   string
+	namespace     string
+	kubeconfig    string
+	timeout       string
+	server        string
+	tlsServerName string
+	jumpDict      *starlark.Dict
+}
+
+// resolveTargetAddr parses an API server URL or host:port string and extracts a strict host:port.
+func resolveTargetAddr(rawURL string) (string, error) {
+	if rawURL == "" {
+		return "", fmt.Errorf("empty API server address")
+	}
+
+	parseURL := rawURL
+	if !strings.Contains(rawURL, "://") {
+		parseURL = "https://" + rawURL
+	}
+
+	u, err := url.Parse(parseURL)
+	if err != nil {
+		return "", fmt.Errorf("invalid API server URL %q: %w", rawURL, err)
+	}
+
+	host := u.Hostname()
+	if host == "" {
+		return "", fmt.Errorf("missing host in API server URL %q", rawURL)
+	}
+
+	port := u.Port()
+	if port == "" {
+		switch strings.ToLower(u.Scheme) {
+		case "https":
+			port = "443"
+		case "http":
+			port = "80"
+		default:
+			return "", fmt.Errorf("cannot infer port for scheme %q in API server URL %q", u.Scheme, rawURL)
+		}
+	}
+
+	return net.JoinHostPort(host, port), nil
+}
+
+// newK8sClient creates a K8sClient from kubeconfig parameters and optional SSH bastion configuration.
+func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, opts clientOptions) (*K8sClient, error) {
 	rules := clientcmd.NewDefaultClientConfigLoadingRules()
-	if kubeconfig != "" {
-		rules.ExplicitPath = kubeconfig
+	if opts.kubeconfig != "" {
+		rules.ExplicitPath = opts.kubeconfig
 	}
 
 	overrides := &clientcmd.ConfigOverrides{}
-	if contextName != "" {
-		overrides.CurrentContext = contextName
+	if opts.contextName != "" {
+		overrides.CurrentContext = opts.contextName
 	}
-	if namespace != "" {
-		overrides.Context.Namespace = namespace
+	if opts.namespace != "" {
+		overrides.Context.Namespace = opts.namespace
 	}
 
 	clientConfig := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(rules, overrides)
@@ -169,17 +222,62 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, context
 		}
 	}
 
+	// Apply server endpoint override if specified
+	if opts.server != "" {
+		restCfg.Host = opts.server
+	}
+
+	// Apply TLS SNI server name override if specified
+	if opts.tlsServerName != "" {
+		restCfg.TLSClientConfig.ServerName = opts.tlsServerName
+	}
+
+	// Establish SSH bastion tunnel if jump is configured
+	var tunnelDialer *ssh.TunnelDialer
+	if opts.jumpDict != nil {
+		jumpCfg, err := ssh.ParseJumpDict(opts.jumpDict)
+		if err != nil {
+			return nil, fmt.Errorf("k8s.config: invalid jump configuration: %w", err)
+		}
+
+		targetAddr, err := resolveTargetAddr(restCfg.Host)
+		if err != nil {
+			return nil, fmt.Errorf("k8s.config: failed to resolve target API server address from %q: %w", restCfg.Host, err)
+		}
+
+		var dialTimeout time.Duration
+		if opts.timeout != "" {
+			if d, err := time.ParseDuration(opts.timeout); err == nil {
+				dialTimeout = d
+			}
+		}
+
+		tunnelDialer, err = ssh.NewTunnelDialer(jumpCfg, targetAddr, dialTimeout)
+		if err != nil {
+			return nil, fmt.Errorf("k8s.config: failed to initialize SSH tunnel dialer: %w", err)
+		}
+
+		restCfg.Dial = tunnelDialer.DialContext
+	}
+
 	dynClient, err := dynamic.NewForConfig(restCfg)
 	if err != nil {
+		if tunnelDialer != nil {
+			_ = tunnelDialer.Close()
+		}
 		return nil, fmt.Errorf("k8s.config: failed to create dynamic client: %w", err)
 	}
 
 	disc, err := discovery.NewDiscoveryClientForConfig(restCfg)
 	if err != nil {
+		if tunnelDialer != nil {
+			_ = tunnelDialer.Close()
+		}
 		return nil, fmt.Errorf("k8s.config: failed to create discovery client: %w", err)
 	}
 
 	// Resolve the actual namespace if not explicitly set
+	namespace := opts.namespace
 	if namespace == "" {
 		ns, _, err := clientConfig.Namespace()
 		if err == nil && ns != "" {
@@ -190,6 +288,7 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, context
 	}
 
 	// Resolve the actual context
+	contextName := opts.contextName
 	if contextName == "" {
 		rawConfig, err := clientConfig.RawConfig()
 		if err == nil {
@@ -204,9 +303,10 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, context
 		restCfg:   restCfg,
 		namespace: namespace,
 		context:   contextName,
-		timeout:   timeout,
+		timeout:   opts.timeout,
 		config:    config,
 		thread:    thread,
+		dialer:    tunnelDialer,
 	}, nil
 }
 
@@ -265,4 +365,40 @@ func filterKwargCallable(kwargs []starlark.Tuple, name string, dest *starlark.Ca
 		}
 	}
 	return filtered
+}
+
+func (c *K8sClient) serverEndpoint(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if c.restCfg != nil {
+		return starlark.String(c.restCfg.Host), nil
+	}
+	return starlark.None, nil
+}
+
+func (c *K8sClient) tlsServerName(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if c.restCfg != nil && c.restCfg.TLSClientConfig.ServerName != "" {
+		return starlark.String(c.restCfg.TLSClientConfig.ServerName), nil
+	}
+	return starlark.None, nil
+}
+
+func (c *K8sClient) closeClient(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := c.Close(); err != nil {
+		return nil, err
+	}
+	return starlark.None, nil
+}
+
+// Close terminates any active tunnel dialer and associated network channels.
+func (c *K8sClient) Close() error {
+	if c.dialer != nil {
+		err := c.dialer.Close()
+		c.dialer = nil
+		return err
+	}
+	return nil
+}
+
+// Dialer returns the configured TunnelDialer, or nil if not running over an SSH tunnel.
+func (c *K8sClient) Dialer() *ssh.TunnelDialer {
+	return c.dialer
 }
