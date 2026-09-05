@@ -265,7 +265,8 @@ func (m *Module) sshExec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 	return client.exec(thread, fn, callArgs, callKwargs)
 }
 
-type authConfig struct {
+// AuthConfig holds SSH authentication credentials.
+type AuthConfig struct {
 	User       string
 	Key        string
 	Passphrase string
@@ -274,19 +275,27 @@ type authConfig struct {
 	Prompt     bool
 }
 
-type jumpConfig struct {
-	Host       string
-	Port       int
-	User       string
-	Key        string
-	Passphrase string
-	Password   string
-	UseAgent   bool
-	Prompt     bool
+type authConfig = AuthConfig
+
+// JumpConfig specifies SSH bastion configuration.
+type JumpConfig struct {
+	Host           string
+	Port           int
+	User           string
+	Key            string
+	Passphrase     string
+	Password       string
+	UseAgent       bool
+	Prompt         bool
+	HostKeyCheck   bool
+	KnownHostsFile string
 }
 
-func parseAuthDict(d *starlark.Dict) (authConfig, error) {
-	cfg := authConfig{
+type jumpConfig = JumpConfig
+
+// ParseAuthDict parses a Starlark dictionary into an AuthConfig.
+func ParseAuthDict(d *starlark.Dict) (AuthConfig, error) {
+	cfg := AuthConfig{
 		User: defaultUser(),
 	}
 	if d == nil {
@@ -341,15 +350,28 @@ func parseAuthDict(d *starlark.Dict) (authConfig, error) {
 	return cfg, nil
 }
 
-func parseJumpDict(d *starlark.Dict, targetAuth authConfig) (jumpConfig, error) {
-	cfg := jumpConfig{
-		Port:       22,
-		User:       targetAuth.User,
-		Key:        targetAuth.Key,
-		Passphrase: targetAuth.Passphrase,
-		Password:   targetAuth.Password,
-		UseAgent:   targetAuth.UseAgent,
-		Prompt:     targetAuth.Prompt,
+var parseAuthDict = ParseAuthDict
+
+// ParseJumpDict parses a Starlark dictionary into a JumpConfig.
+// If targetAuth is provided, its credentials are used as fallbacks for unspecified jump fields.
+func ParseJumpDict(d *starlark.Dict, targetAuth ...AuthConfig) (JumpConfig, error) {
+	var auth AuthConfig
+	if len(targetAuth) > 0 {
+		auth = targetAuth[0]
+	}
+	user := auth.User
+	if user == "" {
+		user = defaultUser()
+	}
+	cfg := JumpConfig{
+		Port:         22,
+		User:         user,
+		Key:          auth.Key,
+		Passphrase:   auth.Passphrase,
+		Password:     auth.Password,
+		UseAgent:     auth.UseAgent,
+		Prompt:       auth.Prompt,
+		HostKeyCheck: true,
 	}
 	if d == nil {
 		return cfg, nil
@@ -409,8 +431,20 @@ func parseJumpDict(d *starlark.Dict, targetAuth authConfig) (jumpConfig, error) 
 			} else {
 				return cfg, fmt.Errorf("jump.prompt must be a bool, got %s", item[1].Type())
 			}
+		case "host_key_check":
+			if b, ok := item[1].(starlark.Bool); ok {
+				cfg.HostKeyCheck = bool(b)
+			} else {
+				return cfg, fmt.Errorf("jump.host_key_check must be a bool, got %s", item[1].Type())
+			}
+		case "known_hosts_file":
+			if s, ok := starlark.AsString(item[1]); ok {
+				cfg.KnownHostsFile = s
+			} else {
+				return cfg, fmt.Errorf("jump.known_hosts_file must be a string, got %s", item[1].Type())
+			}
 		default:
-			return cfg, fmt.Errorf("jump: unexpected field %q (allowed: host, port, user, key, passphrase, password, use_agent, prompt)", k)
+			return cfg, fmt.Errorf("jump: unexpected field %q (allowed: host, port, user, key, passphrase, password, use_agent, prompt, host_key_check, known_hosts_file)", k)
 		}
 	}
 	if cfg.Host == "" {
@@ -418,6 +452,8 @@ func parseJumpDict(d *starlark.Dict, targetAuth authConfig) (jumpConfig, error) 
 	}
 	return cfg, nil
 }
+
+var parseJumpDict = ParseJumpDict
 
 // sshConfig creates a configured SSH client.
 // Usage: ssh.config(hosts=["host1", "host2"], auth={"user": "root", "key": "/path/to/key"}, jump={"host": "bastion"})
@@ -586,6 +622,8 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		client.jumpPassword = jumpCfg.Password
 		client.jumpUseAgent = jumpCfg.UseAgent
 		client.jumpPrompt = jumpCfg.Prompt
+		client.jumpHostKeyCheck = jumpCfg.HostKeyCheck
+		client.jumpKnownHostsFile = jumpCfg.KnownHostsFile
 	}
 
 	if p.Port > 0 {
@@ -651,39 +689,41 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 
 // SSHClient represents a configured SSH client for remote execution.
 type SSHClient struct {
-	thread            *starlark.Thread
-	dryRun            bool
-	debug             bool
-	fleet             *fleet.Fleet
-	hosts             []string
-	user              string
-	keyFile           string
-	keyPassphrase     string
-	password          string
-	useAgent          bool
-	prompt            bool
-	jumpHost          string
-	jumpPort          int
-	jumpUser          string
-	jumpKeyFile       string
-	jumpKeyPassphrase string
-	jumpPassword      string
-	jumpUseAgent      bool
-	jumpPrompt        bool
-	port              int
-	timeout           time.Duration
-	maxRetries        int
-	execPolicy        string // "concurrent" or "linear"
-	execMaxWorkers    int
-	execOnError       string // "stop" or "continue"
-	knownHostsFile    string
-	hostKeyCheck      bool
-	keepAliveInterval time.Duration
-	keepAliveMax      int
-	defaultSudo       bool
-	defaultAsUser     string
-	defaultEnv        map[string]string
-	defaultCwd        string
+	thread             *starlark.Thread
+	dryRun             bool
+	debug              bool
+	fleet              *fleet.Fleet
+	hosts              []string
+	user               string
+	keyFile            string
+	keyPassphrase      string
+	password           string
+	useAgent           bool
+	prompt             bool
+	jumpHost           string
+	jumpPort           int
+	jumpUser           string
+	jumpKeyFile        string
+	jumpKeyPassphrase  string
+	jumpPassword       string
+	jumpUseAgent       bool
+	jumpPrompt         bool
+	jumpHostKeyCheck   bool
+	jumpKnownHostsFile string
+	port               int
+	timeout            time.Duration
+	maxRetries         int
+	execPolicy         string // "concurrent" or "linear"
+	execMaxWorkers     int
+	execOnError        string // "stop" or "continue"
+	knownHostsFile     string
+	hostKeyCheck       bool
+	keepAliveInterval  time.Duration
+	keepAliveMax       int
+	defaultSudo        bool
+	defaultAsUser      string
+	defaultEnv         map[string]string
+	defaultCwd         string
 }
 
 func (c *SSHClient) String() string        { return fmt.Sprintf("<ssh.client hosts=%v>", c.hosts) }
@@ -748,7 +788,7 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		if c.jumpHost == "" {
 			return starlark.None, nil
 		}
-		d := starlark.NewDict(8)
+		d := starlark.NewDict(10)
 		d.SetKey(starlark.String("host"), starlark.String(c.jumpHost))
 		d.SetKey(starlark.String("port"), starlark.MakeInt(c.jumpPort))
 		d.SetKey(starlark.String("user"), starlark.String(c.jumpUser))
@@ -757,6 +797,8 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		d.SetKey(starlark.String("password"), starlark.String(c.jumpPassword))
 		d.SetKey(starlark.String("use_agent"), starlark.Bool(c.jumpUseAgent))
 		d.SetKey(starlark.String("prompt"), starlark.Bool(c.jumpPrompt))
+		d.SetKey(starlark.String("host_key_check"), starlark.Bool(c.jumpHostKeyCheck))
+		d.SetKey(starlark.String("known_hosts_file"), starlark.String(c.jumpKnownHostsFile))
 		return d, nil
 	case "exec_max_workers":
 		return starlark.MakeInt(c.execMaxWorkers), nil

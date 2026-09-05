@@ -221,16 +221,66 @@ func (ts *TestServer) handleConn(nConn net.Conn) {
 	}()
 
 	for newCh := range chans {
-		if newCh.ChannelType() != "session" {
+		switch newCh.ChannelType() {
+		case "session":
+			ch, sessionReqs, err := newCh.Accept()
+			if err != nil {
+				continue
+			}
+			go ts.handleSession(ch, sessionReqs)
+		case "direct-tcpip":
+			go ts.handleDirectTCPIP(newCh)
+		default:
 			newCh.Reject(gossh.UnknownChannelType, "unknown channel type")
-			continue
 		}
-		ch, sessionReqs, err := newCh.Accept()
-		if err != nil {
-			continue
-		}
-		go ts.handleSession(ch, sessionReqs)
 	}
+}
+
+func (ts *TestServer) handleDirectTCPIP(newCh gossh.NewChannel) {
+	var msg struct {
+		DestAddr   string
+		DestPort   uint32
+		OriginAddr string
+		OriginPort uint32
+	}
+	if err := gossh.Unmarshal(newCh.ExtraData(), &msg); err != nil {
+		newCh.Reject(gossh.ConnectionFailed, "failed to parse direct-tcpip extra data")
+		return
+	}
+
+	target := net.JoinHostPort(msg.DestAddr, fmt.Sprintf("%d", msg.DestPort))
+	destConn, err := net.Dial("tcp", target)
+	if err != nil {
+		newCh.Reject(gossh.ConnectionFailed, fmt.Sprintf("failed to dial target %s: %v", target, err))
+		return
+	}
+
+	ch, reqs, err := newCh.Accept()
+	if err != nil {
+		destConn.Close()
+		return
+	}
+	go gossh.DiscardRequests(reqs)
+
+	go func() {
+		defer ch.Close()
+		defer destConn.Close()
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_, _ = io.Copy(ch, destConn)
+			_ = ch.CloseWrite()
+		}()
+		go func() {
+			defer wg.Done()
+			_, _ = io.Copy(destConn, ch)
+			if tcp, ok := destConn.(*net.TCPConn); ok {
+				_ = tcp.CloseWrite()
+			}
+		}()
+		wg.Wait()
+	}()
 }
 
 func (ts *TestServer) handleSession(ch gossh.Channel, reqs <-chan *gossh.Request) {

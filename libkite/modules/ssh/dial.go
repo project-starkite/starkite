@@ -194,7 +194,17 @@ func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
 		Timeout: c.timeout,
 	}
 
-	hostKeyCallback, err := c.hostKeyCallback()
+	hostKeyCheck := c.hostKeyCheck
+	knownHostsPath := c.knownHostsFile
+	if c.jumpHost != "" {
+		if !c.jumpHostKeyCheck {
+			hostKeyCheck = false
+		}
+		if c.jumpKnownHostsFile != "" {
+			knownHostsPath = c.jumpKnownHostsFile
+		}
+	}
+	hostKeyCallback, err := resolveHostKeyCallback(hostKeyCheck, knownHostsPath)
 	if err != nil {
 		return nil, fmt.Errorf("jump host key setup: %w", err)
 	}
