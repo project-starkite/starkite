@@ -16,10 +16,10 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 
 | Category | Functions |
 |----------|-----------|
-| [CRUD & Inspection](#crud) | `get`, `list`, `create`, `apply`, `delete`, `patch`, `label`, `annotate`, `status`, `event`, `claims`, `pvcs`, `pvs`, `storage_classes` |
+| [CRUD & Inspection](#crud) | `get`, `list`, `create`, `apply`, `delete`, `patch`, `label`, `annotate`, `status`, `event`, `validate`, `claims`, `pvcs`, `pvs`, `storage_classes` |
 | [Conditions & Finalizers](#conditions-and-finalizers) | `k8s.condition.*`, `k8s.finalizer.*`, `k8s.is_deleting` |
 | [Watch & wait](#watch-and-wait) | `watch`, `wait_for` |
-| [High-level workloads](#high-level-workloads) | `deploy`, `run`, `expose`, `scale`, `autoscale`, `rollout`, `resize`, `set_image`, `set_env`, `set_resources` |
+| [High-level workloads](#high-level-workloads) | `deploy`, `run`, `expose`, `route`, `scale`, `autoscale`, `rollout`, `resize`, `set_image`, `set_env`, `set_resources` |
 | [Logs, exec, port-forward, copy](#logs-exec-port-forward-copy) | `logs`, `logs_follow`, `exec`, `debug`, `port_forward`, `cp` |
 | [Describe](#describe) | `describe` |
 | [Node operations](#node-operations) | `drain`, `cordon`, `uncordon`, `taint`, `untaint` |
@@ -43,6 +43,7 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | `k8s.annotate(kind, name, annotations, namespace="", timeout="")` | `AttrDict` | Set annotations on a resource |
 | `k8s.status(obj, status, namespace="", timeout="")` | `AttrDict` | Update the status subresource of a resource. Pass the resource as `obj` and the new status dict as `status` |
 | `k8s.event(obj, reason, message, type="Normal", namespace="", timeout="")` | `AttrDict` | Emit a Kubernetes event attached to `obj`. `type` can be `"Normal"` or `"Warning"` |
+| `k8s.validate(manifest, policy=None, expression="", strict=False)` | `AttrDict` | Evaluate CEL validation policies or expressions against a manifest client-side prior to cluster submission. Returns `{"valid": bool, "violations": list[str], "policy": str}` |
 | `k8s.claims(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `resource.k8s.io/v1` `ResourceClaim` objects for Dynamic Resource Allocation (DRA) |
 | `k8s.pvcs(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `PersistentVolumeClaim` objects |
 | `k8s.pvs(labels="", timeout="")` | `list[AttrDict]` | List cluster-scoped `PersistentVolume` objects |
@@ -61,6 +62,16 @@ k8s.status(obj, {"ready": True, "message": "initialized"}, namespace="default")
 ```python
 deploy = k8s.get("deployment", "web", namespace="default")
 k8s.event(deploy, reason="DriftCorrected", message="Replicas scaled down to policy limit", type="Normal")
+```
+
+### Example — client-side admission validation via CEL
+
+```python
+# Evaluate a manifest against a CEL expression prior to applying
+pod = k8s.obj.pod(name="test-pod", containers=[k8s.obj.container(name="app", image="alpine")])
+result = k8s.validate(pod, expression="!object.spec.containers.exists(c, c.securityContext.?privileged.orValue(false))")
+if not result.valid:
+    print("Policy violations:", result.violations)
 ```
 
 ## Conditions and Finalizers
@@ -109,6 +120,7 @@ if result.ready:
 | `k8s.deploy(name, image, replicas=1, port=0, namespace="", labels=None, env=None, timeout="")` | `AttrDict` | Create a Deployment (returns `{"deployment": str, "service": str}`) |
 | `k8s.run(name, image, command=None, namespace="", restart="Never", rm=False, timeout="3m")` | `AttrDict` | Run a one-off Pod (like `kubectl run`) |
 | `k8s.expose(kind, name, port, target_port=0, type="ClusterIP", namespace="", timeout="")` | `AttrDict` | Expose a resource as a Service |
+| `k8s.route(name, gateway, service, port, prefix="/", host="", namespace="", timeout="")` | `AttrDict` | Create or update an HTTPRoute binding a Gateway to a Service backend (returns `{"route": str}`) |
 
 ### Scale and rollout
 
@@ -459,6 +471,15 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 | `k8s.obj.resource_claim_template(name, spec=None, claim_metadata={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `ResourceClaimTemplate` |
 | `k8s.obj.resource_slice(name, node_name="", driver="", pool={}, devices={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `ResourceSlice` |
 | `k8s.obj.crd(group, version, kind, plural, scope="Namespaced", spec={}, status={})` | `CRDResource` | Construct a CustomResourceDefinition manifest |
+| `k8s.obj.gateway_class(name, controller_name, description="", parameters_ref={}, labels={}, annotations={})` | `KubeResource` | Construct a `gateway.networking.k8s.io/v1` `GatewayClass` manifest (cluster-scoped) |
+| `k8s.obj.gateway(name, gateway_class, listeners=[], addresses=[], infrastructure={}, labels={}, annotations={})` | `KubeResource` | Construct a `gateway.networking.k8s.io/v1` `Gateway` manifest |
+| `k8s.obj.http_route(name, parent_refs=[], hostnames=[], rules=[], labels={}, annotations={})` | `KubeResource` | Construct a `gateway.networking.k8s.io/v1` `HTTPRoute` manifest |
+| `k8s.obj.grpc_route(name, parent_refs=[], hostnames=[], rules=[], labels={}, annotations={})` | `KubeResource` | Construct a `gateway.networking.k8s.io/v1` `GRPCRoute` manifest |
+| `k8s.obj.reference_grant(name, from_refs=[], to_refs=[], labels={}, annotations={})` | `KubeResource` | Construct a `gateway.networking.k8s.io/v1` `ReferenceGrant` manifest |
+| `k8s.obj.validating_admission_policy(name, failure_policy="Fail", match_constraints={}, match_conditions=[], validations=[], audit_annotations=[], variables=[], param_kind={}, labels={}, annotations={})` | `KubeResource` | Construct an `admissionregistration.k8s.io/v1` `ValidatingAdmissionPolicy` manifest (cluster-scoped, alias `k8s.obj.vap`) |
+| `k8s.obj.validating_admission_policy_binding(name, policy_name, param_ref={}, match_resources={}, validation_actions=["Deny"], labels={}, annotations={})` | `KubeResource` | Construct an `admissionregistration.k8s.io/v1` `ValidatingAdmissionPolicyBinding` manifest (cluster-scoped) |
+| `k8s.obj.mutating_admission_policy(name, failure_policy="Fail", match_constraints={}, match_conditions=[], mutations=[], reinvocation_policy="", variables=[], param_kind={}, labels={}, annotations={})` | `KubeResource` | Construct an `admissionregistration.k8s.io/v1alpha1` `MutatingAdmissionPolicy` manifest (cluster-scoped, alias `k8s.obj.map`) |
+| `k8s.obj.mutating_admission_policy_binding(name, policy_name, param_ref={}, match_resources={}, labels={}, annotations={})` | `KubeResource` | Construct an `admissionregistration.k8s.io/v1alpha1` `MutatingAdmissionPolicyBinding` manifest (cluster-scoped) |
 
 ### Sub-object constructors
 
@@ -691,6 +712,100 @@ k8s.apply(pod, namespace="default")
 
 # 2. Resize the running container in-place without pod restarts
 k8s.resize("secure-worker", container="worker", cpu="500m", memory="256Mi", namespace="default")
+```
+
+### Example — Gateway API Networking
+
+Gateway API (`gateway.networking.k8s.io/v1`) models role-oriented traffic routing decoupling gateway infrastructure from route configurations:
+
+```python
+# 1. Define GatewayClass and Gateway
+gc = k8s.obj.gateway_class(
+    name = "cilium",
+    controller_name = "io.cilium/gateway-controller",
+    description = "Cilium GatewayClass",
+)
+k8s.apply(gc)
+
+gw = k8s.obj.gateway(
+    name = "prod-gw",
+    gateway_class = gc,  # unwraps KubeResource name
+    listeners = [
+        {
+            "name": "http",
+            "port": 80,
+            "protocol": "HTTP",
+            "allowed_routes": {"namespaces": {"from": "Same"}},
+        },
+    ],
+)
+k8s.apply(gw, namespace="default")
+
+# 2. Define HTTPRoute referencing Gateway
+route = k8s.obj.http_route(
+    name = "api-route",
+    parent_refs = [gw],  # unwraps to {"name": "prod-gw"}
+    hostnames = ["api.example.com"],
+    rules = [
+        {
+            "matches": [{"path": {"type": "PathPrefix", "value": "/v1"}}],
+            "backend_refs": [{"name": "api-service", "port": 8080}],
+        },
+    ],
+)
+k8s.apply(route, namespace="default")
+
+# 3. High-level routing shortcut
+k8s.route("web-route", gateway="prod-gw", service="web-service", port=80, prefix="/web", namespace="default")
+```
+
+### Example — In-Tree Admission Governance via CEL
+
+ValidatingAdmissionPolicy (`admissionregistration.k8s.io/v1`) provides declarative admission evaluation inside the API server via CEL expressions:
+
+```python
+# 1. Define ValidatingAdmissionPolicy
+vap = k8s.obj.validating_admission_policy(
+    name = "disallow-privileged",
+    match_constraints = {
+        "resource_rules": [{
+            "api_groups": [""],
+            "api_versions": ["v1"],
+            "resources": ["pods"],
+            "operations": ["CREATE", "UPDATE"],
+        }],
+    },
+    validations = [
+        {
+            "expression": "!object.spec.containers.exists(c, c.securityContext.?privileged.orValue(false))",
+            "message": "Privileged containers are prohibited",
+        },
+    ],
+)
+k8s.apply(vap)
+
+# 2. Bind policy with actions
+binding = k8s.obj.validating_admission_policy_binding(
+    name = "disallow-privileged-binding",
+    policy_name = vap,  # unwraps to "disallow-privileged"
+    validation_actions = ["Deny"],
+)
+k8s.apply(binding)
+
+# 3. Pre-flight client-side evaluation prior to submission
+pod = k8s.obj.pod(
+    name = "insecure-pod",
+    containers = [
+        k8s.obj.container(
+            name = "app",
+            image = "alpine",
+            security_context = k8s.obj.security_context(privileged=True),
+        ),
+    ],
+)
+res = k8s.validate(pod, policy=vap)
+if not res.valid:
+    print("Pre-flight validation failed:", res.violations)
 ```
 
 ### Utilities

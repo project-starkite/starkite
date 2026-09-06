@@ -101,6 +101,8 @@ var allMethods = map[string]clientMethod{
 	"set_env":       (*K8sClient).setEnv,
 	"set_resources": (*K8sClient).setResources,
 	"resize":        (*K8sClient).resize,
+	"route":         (*K8sClient).route,
+	"validate":      (*K8sClient).validate,
 
 	// Tier 2: Node ops
 	"drain":     (*K8sClient).drain,

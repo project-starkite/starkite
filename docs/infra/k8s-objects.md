@@ -177,6 +177,92 @@ pod = k8s.obj.pod(
 k8s.apply(pod, namespace="production")
 ```
 
+### Example: Gateway API and Traffic Routing
+
+Starkite models Gateway API (`gateway.networking.k8s.io/v1`) primitives for role-oriented traffic routing:
+
+```python
+# 1. Define GatewayClass
+gc = k8s.obj.gateway_class(
+    name = "envoy",
+    controller_name = "gateway.envoyproxy.io/gatewayclass-controller",
+)
+k8s.apply(gc)
+
+# 2. Define Gateway referencing GatewayClass
+gw = k8s.obj.gateway(
+    name = "edge-gw",
+    gateway_class = gc,  # KubeResource reference unwraps to "envoy"
+    listeners = [
+        {
+            "name": "http",
+            "port": 80,
+            "protocol": "HTTP",
+            "allowed_routes": {"namespaces": {"from": "Same"}},
+        },
+    ],
+)
+k8s.apply(gw, namespace="production")
+
+# 3. Define HTTPRoute referencing Gateway
+route = k8s.obj.http_route(
+    name = "app-route",
+    parent_refs = [gw],  # KubeResource reference unwraps to {"name": "edge-gw"}
+    hostnames = ["app.example.com"],
+    rules = [
+        {
+            "matches": [{"path": {"type": "PathPrefix", "value": "/api"}}],
+            "backend_refs": [{"name": "app-svc", "port": 8080}],
+        },
+    ],
+)
+k8s.apply(route, namespace="production")
+```
+
+### Example: In-Tree CEL Admission Governance
+
+Starkite models `admissionregistration.k8s.io/v1` ValidatingAdmissionPolicy and provides pre-flight CEL validation:
+
+```python
+# 1. Define ValidatingAdmissionPolicy with CEL validation rules
+vap = k8s.obj.validating_admission_policy(
+    name = "require-run-as-non-root",
+    match_constraints = {
+        "resource_rules": [{
+            "api_groups": [""],
+            "api_versions": ["v1"],
+            "resources": ["pods"],
+            "operations": ["CREATE", "UPDATE"],
+        }],
+    },
+    validations = [
+        {
+            "expression": "object.spec.securityContext.?runAsNonRoot.orValue(false) == true",
+            "message": "Pod securityContext.runAsNonRoot must be true",
+        },
+    ],
+)
+k8s.apply(vap)
+
+# 2. Bind policy to cluster
+binding = k8s.obj.validating_admission_policy_binding(
+    name = "require-run-as-non-root-binding",
+    policy_name = vap,  # KubeResource reference unwraps to "require-run-as-non-root"
+    validation_actions = ["Deny"],
+)
+k8s.apply(binding)
+
+# 3. Client-side pre-flight evaluation before cluster submission
+manifest = k8s.obj.pod(
+    name = "app-pod",
+    security_context = k8s.obj.security_context(run_as_non_root=True),
+    containers = [k8s.obj.container(name="app", image="alpine:latest")],
+)
+val = k8s.validate(manifest, policy=vap)
+if val.valid:
+    k8s.apply(manifest, namespace="production")
+```
+
 ---
 
 ## Runtime Representation & Dot Notation

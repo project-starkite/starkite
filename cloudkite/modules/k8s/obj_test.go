@@ -1602,3 +1602,236 @@ func TestPhase2_ContainerResizePolicy(t *testing.T) {
 		t.Errorf("item0 = %v, want cpu/NotRequired", item0)
 	}
 }
+
+func TestPhase3_GatewayAPI(t *testing.T) {
+	thread := &starlark.Thread{Name: "test"}
+	m := New()
+	dict, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	k8sMod := dict["k8s"].(*libkite.TryModule)
+	yamlFnVal, _ := k8sMod.Attr("yaml")
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+
+	// 1. GatewayClass
+	gc, err := newKubeResource(gatewayClassSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("cilium")},
+		{starlark.String("controller_name"), starlark.String("io.cilium/gateway-controller")},
+		{starlark.String("description"), starlark.String("Cilium GatewayClass")},
+	})
+	if err != nil {
+		t.Fatalf("gateway_class error: %v", err)
+	}
+	gcYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{gc}, nil)
+	gcYAML := string(gcYAMLVal.(starlark.String))
+	if !strings.Contains(gcYAML, "controllerName: io.cilium/gateway-controller") {
+		t.Errorf("GatewayClass YAML missing controllerName:\n%s", gcYAML)
+	}
+
+	// 2. Gateway with reference to GatewayClass KubeResource and snake_case listeners
+	listener := starlark.NewDict(4)
+	listener.SetKey(starlark.String("name"), starlark.String("http"))
+	listener.SetKey(starlark.String("port"), starlark.MakeInt(80))
+	listener.SetKey(starlark.String("protocol"), starlark.String("HTTP"))
+	allowedRoutes := starlark.NewDict(1)
+	nsMap := starlark.NewDict(1)
+	nsMap.SetKey(starlark.String("from"), starlark.String("Same"))
+	allowedRoutes.SetKey(starlark.String("namespaces"), nsMap)
+	listener.SetKey(starlark.String("allowed_routes"), allowedRoutes)
+
+	gw, err := newKubeResource(gatewaySchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("prod-gw")},
+		{starlark.String("gateway_class"), gc}, // KubeResource reference unwraps to "cilium"
+		{starlark.String("listeners"), starlark.NewList([]starlark.Value{listener})},
+	})
+	if err != nil {
+		t.Fatalf("gateway error: %v", err)
+	}
+	gwYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{gw}, nil)
+	gwYAML := string(gwYAMLVal.(starlark.String))
+	if !strings.Contains(gwYAML, "gatewayClassName: cilium") {
+		t.Errorf("Gateway YAML missing gatewayClassName:\n%s", gwYAML)
+	}
+	if !strings.Contains(gwYAML, "allowedRoutes:") {
+		t.Errorf("Gateway YAML missing normalized allowedRoutes:\n%s", gwYAML)
+	}
+
+	// 3. HTTPRoute with parentRefs=[gw] and snake_case rules
+	rule := starlark.NewDict(2)
+	match := starlark.NewDict(1)
+	pathMap := starlark.NewDict(2)
+	pathMap.SetKey(starlark.String("type"), starlark.String("PathPrefix"))
+	pathMap.SetKey(starlark.String("value"), starlark.String("/api"))
+	match.SetKey(starlark.String("path"), pathMap)
+	rule.SetKey(starlark.String("matches"), starlark.NewList([]starlark.Value{match}))
+
+	backendRef := starlark.NewDict(2)
+	backendRef.SetKey(starlark.String("name"), starlark.String("api-svc"))
+	backendRef.SetKey(starlark.String("port"), starlark.MakeInt(8080))
+	rule.SetKey(starlark.String("backend_refs"), starlark.NewList([]starlark.Value{backendRef}))
+
+	route, err := newKubeResource(httpRouteSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("api-route")},
+		{starlark.String("parent_refs"), starlark.NewList([]starlark.Value{gw})}, // KubeResource reference
+		{starlark.String("rules"), starlark.NewList([]starlark.Value{rule})},
+	})
+	if err != nil {
+		t.Fatalf("http_route error: %v", err)
+	}
+	routeYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{route}, nil)
+	routeYAML := string(routeYAMLVal.(starlark.String))
+	if !strings.Contains(routeYAML, "parentRefs:") || !strings.Contains(routeYAML, "name: prod-gw") {
+		t.Errorf("HTTPRoute YAML missing parentRefs pointing to prod-gw:\n%s", routeYAML)
+	}
+	if !strings.Contains(routeYAML, "backendRefs:") || !strings.Contains(routeYAML, "name: api-svc") {
+		t.Errorf("HTTPRoute YAML missing normalized backendRefs:\n%s", routeYAML)
+	}
+
+	// 4. GRPCRoute
+	grpcRoute, err := newKubeResource(grpcRouteSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("grpc-route")},
+		{starlark.String("parent_refs"), starlark.NewList([]starlark.Value{starlark.String("prod-gw")})},
+		{starlark.String("rules"), starlark.NewList([]starlark.Value{rule})},
+	})
+	if err != nil {
+		t.Fatalf("grpc_route error: %v", err)
+	}
+	grpcYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{grpcRoute}, nil)
+	grpcYAML := string(grpcYAMLVal.(starlark.String))
+	if !strings.Contains(grpcYAML, "kind: GRPCRoute") {
+		t.Errorf("GRPCRoute YAML missing kind:\n%s", grpcYAML)
+	}
+
+	// 5. ReferenceGrant
+	grant, err := newKubeResource(referenceGrantSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("grant-ref")},
+		{starlark.String("from"), starlark.NewList([]starlark.Value{
+			starlark.NewDict(2),
+		})},
+		{starlark.String("to"), starlark.NewList([]starlark.Value{
+			starlark.NewDict(2),
+		})},
+	})
+	if err != nil {
+		t.Fatalf("reference_grant error: %v", err)
+	}
+	grantYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{grant}, nil)
+	grantYAML := string(grantYAMLVal.(starlark.String))
+	if !strings.Contains(grantYAML, "kind: ReferenceGrant") {
+		t.Errorf("ReferenceGrant YAML missing kind:\n%s", grantYAML)
+	}
+}
+
+func TestPhase3_CELAdmissionGovernance(t *testing.T) {
+	thread := &starlark.Thread{Name: "test"}
+	m := New()
+	dict, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	k8sMod := dict["k8s"].(*libkite.TryModule)
+	yamlFnVal, _ := k8sMod.Attr("yaml")
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+
+	// 1. ValidatingAdmissionPolicy with match_constraints and validations
+	v1 := starlark.NewDict(2)
+	v1.SetKey(starlark.String("expression"), starlark.String("!object.spec.containers.exists(c, c.securityContext.?privileged.orValue(false))"))
+	v1.SetKey(starlark.String("message"), starlark.String("Privileged containers are not allowed"))
+
+	rule := starlark.NewDict(4)
+	rule.SetKey(starlark.String("api_groups"), starlark.NewList([]starlark.Value{starlark.String("")}))
+	rule.SetKey(starlark.String("api_versions"), starlark.NewList([]starlark.Value{starlark.String("v1")}))
+	rule.SetKey(starlark.String("resources"), starlark.NewList([]starlark.Value{starlark.String("pods")}))
+	rule.SetKey(starlark.String("operations"), starlark.NewList([]starlark.Value{starlark.String("CREATE")}))
+
+	matchConstraints := starlark.NewDict(1)
+	matchConstraints.SetKey(starlark.String("resource_rules"), starlark.NewList([]starlark.Value{rule}))
+
+	vap, err := newKubeResource(validatingAdmissionPolicySchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("disallow-privileged")},
+		{starlark.String("validations"), starlark.NewList([]starlark.Value{v1})},
+		{starlark.String("match_constraints"), matchConstraints},
+	})
+	if err != nil {
+		t.Fatalf("validating_admission_policy error: %v", err)
+	}
+	vapYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{vap}, nil)
+	vapYAML := string(vapYAMLVal.(starlark.String))
+	if !strings.Contains(vapYAML, "kind: ValidatingAdmissionPolicy") {
+		t.Errorf("VAP YAML missing kind:\n%s", vapYAML)
+	}
+	if !strings.Contains(vapYAML, "matchConstraints:") || !strings.Contains(vapYAML, "resourceRules:") {
+		t.Errorf("VAP YAML missing normalized matchConstraints/resourceRules:\n%s", vapYAML)
+	}
+	if !strings.Contains(vapYAML, "apiGroups:") || !strings.Contains(vapYAML, "apiVersions:") {
+		t.Errorf("VAP YAML missing normalized apiGroups/apiVersions:\n%s", vapYAML)
+	}
+
+	// 2. ValidatingAdmissionPolicyBinding referencing vap
+	binding, err := newKubeResource(validatingAdmissionPolicyBindingSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("disallow-privileged-prod")},
+		{starlark.String("policy_name"), vap}, // KubeResource unwraps to "disallow-privileged"
+		{starlark.String("validation_actions"), starlark.NewList([]starlark.Value{starlark.String("Deny")})},
+	})
+	if err != nil {
+		t.Fatalf("validating_admission_policy_binding error: %v", err)
+	}
+	bindingYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{binding}, nil)
+	bindingYAML := string(bindingYAMLVal.(starlark.String))
+	if !strings.Contains(bindingYAML, "policyName: disallow-privileged") {
+		t.Errorf("Binding YAML missing policyName:\n%s", bindingYAML)
+	}
+	if !strings.Contains(bindingYAML, "validationActions:") {
+		t.Errorf("Binding YAML missing validationActions:\n%s", bindingYAML)
+	}
+
+	// 3. MutatingAdmissionPolicy
+	mut := starlark.NewDict(2)
+	mut.SetKey(starlark.String("patch_type"), starlark.String("ApplyConfiguration"))
+	appConf := starlark.NewDict(1)
+	appConf.SetKey(starlark.String("expression"), starlark.String("Object{metadata: ObjectMeta{annotations: {'sidecar': 'true'}}}"))
+	mut.SetKey(starlark.String("apply_configuration"), appConf)
+
+	mapObj, err := newKubeResource(mutatingAdmissionPolicySchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("inject-sidecar")},
+		{starlark.String("mutations"), starlark.NewList([]starlark.Value{mut})},
+	})
+	if err != nil {
+		t.Fatalf("mutating_admission_policy error: %v", err)
+	}
+	mapYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{mapObj}, nil)
+	mapYAML := string(mapYAMLVal.(starlark.String))
+	if !strings.Contains(mapYAML, "kind: MutatingAdmissionPolicy") {
+		t.Errorf("MAP YAML missing kind:\n%s", mapYAML)
+	}
+	if !strings.Contains(mapYAML, "patchType: ApplyConfiguration") {
+		t.Errorf("MAP YAML missing normalized patchType:\n%s", mapYAML)
+	}
+	if !strings.Contains(mapYAML, "applyConfiguration:") {
+		t.Errorf("MAP YAML missing normalized applyConfiguration:\n%s", mapYAML)
+	}
+
+	// 4. MutatingAdmissionPolicyBinding
+	mapBinding, err := newKubeResource(mutatingAdmissionPolicyBindingSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("inject-sidecar-binding")},
+		{starlark.String("policy_name"), mapObj},
+	})
+	if err != nil {
+		t.Fatalf("mutating_admission_policy_binding error: %v", err)
+	}
+	mapBindingYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{mapBinding}, nil)
+	mapBindingYAML := string(mapBindingYAMLVal.(starlark.String))
+	if !strings.Contains(mapBindingYAML, "policyName: inject-sidecar") {
+		t.Errorf("MAP Binding YAML missing policyName:\n%s", mapBindingYAML)
+	}
+
+	// 5. Test alias constructors "vap" and "map"
+	objConstructors := ObjConstructors()
+	if _, ok := objConstructors["vap"]; !ok {
+		t.Error("k8s.obj.vap constructor not found")
+	}
+	if _, ok := objConstructors["map"]; !ok {
+		t.Error("k8s.obj.map constructor not found")
+	}
+}

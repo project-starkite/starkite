@@ -10,6 +10,7 @@ import (
 
 	"github.com/project-starkite/starkite/libkite"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -973,4 +974,141 @@ func (c *K8sClient) resize(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	return unstructuredToDict(patched)
+}
+
+// route creates or updates an HTTPRoute resource binding a Gateway to a Service backend.
+// Signature: k8s.route(name, gateway, service, port, prefix="/", host="", namespace="", timeout="")
+func (c *K8sClient) route(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+		return nil, err
+	}
+
+	var p struct {
+		Name      string `name:"name" position:"0" required:"true"`
+		Gateway   any    `name:"gateway"`
+		Service   string `name:"service"`
+		Port      int    `name:"port"`
+		Prefix    string `name:"prefix"`
+		Host      string `name:"host"`
+		Namespace string `name:"namespace"`
+		Timeout   string `name:"timeout"`
+	}
+	if err := startype.Args(args, kwargs).Go(&p); err != nil {
+		return nil, err
+	}
+
+	if p.Name == "" {
+		return nil, fmt.Errorf("k8s.route: name is required")
+	}
+	if p.Gateway == nil {
+		return nil, fmt.Errorf("k8s.route: gateway is required")
+	}
+	if p.Service == "" {
+		return nil, fmt.Errorf("k8s.route: service is required")
+	}
+	if p.Port == 0 {
+		return nil, fmt.Errorf("k8s.route: port is required")
+	}
+	if p.Prefix == "" {
+		p.Prefix = "/"
+	}
+	ns := p.Namespace
+	if ns == "" {
+		ns = c.namespace
+	}
+	if ns == "" {
+		ns = "default"
+	}
+
+	gatewayName := ""
+	switch g := p.Gateway.(type) {
+	case string:
+		gatewayName = g
+	case *KubeResource:
+		if n, ok := g.data["name"].(string); ok {
+			gatewayName = n
+		}
+	case *AttrDict:
+		if n := g.data["name"]; n != nil {
+			gatewayName = fmt.Sprint(n)
+		} else if md, ok := g.data["metadata"].(map[string]any); ok && md["name"] != nil {
+			gatewayName = fmt.Sprint(md["name"])
+		}
+	default:
+		gatewayName = fmt.Sprint(p.Gateway)
+	}
+
+	routeManifest := map[string]any{
+		"apiVersion": "gateway.networking.k8s.io/v1",
+		"kind":       "HTTPRoute",
+		"metadata": map[string]any{
+			"name":      p.Name,
+			"namespace": ns,
+		},
+		"spec": map[string]any{
+			"parentRefs": []any{
+				map[string]any{"name": gatewayName},
+			},
+			"rules": []any{
+				map[string]any{
+					"matches": []any{
+						map[string]any{
+							"path": map[string]any{
+								"type":  "PathPrefix",
+								"value": p.Prefix,
+							},
+						},
+					},
+					"backendRefs": []any{
+						map[string]any{
+							"name": p.Service,
+							"port": int64(p.Port),
+						},
+					},
+				},
+			},
+		},
+	}
+	if p.Host != "" {
+		routeManifest["spec"].(map[string]any)["hostnames"] = []any{p.Host}
+	}
+
+	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.route: %w", err)
+	}
+	defer cancel()
+
+	routeData, err := json.Marshal(routeManifest)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.route: marshal HTTPRoute: %w", err)
+	}
+
+	gvr, _, err := c.resolver.Resolve("httproute")
+	if err != nil {
+		gvr = schema.GroupVersionResource{
+			Group:    "gateway.networking.k8s.io",
+			Version:  "v1",
+			Resource: "httproutes",
+		}
+	}
+
+	force := true
+	applyOpts := metav1.PatchOptions{
+		FieldManager: "starkite",
+		Force:        &force,
+	}
+
+	if _, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.ApplyPatchType, routeData, applyOpts); err != nil {
+		return nil, fmt.Errorf("k8s.route: apply HTTPRoute: %w", err)
+	}
+
+	return NewAttrDict(map[string]any{
+		"route":     p.Name,
+		"gateway":   gatewayName,
+		"service":   p.Service,
+		"port":      int64(p.Port),
+		"prefix":    p.Prefix,
+		"namespace": ns,
+	}), nil
 }

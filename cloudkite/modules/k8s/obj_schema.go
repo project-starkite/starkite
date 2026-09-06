@@ -328,6 +328,110 @@ var resourceSliceSchema = &ResourceSchema{
 	}),
 }
 
+// --- gateway.networking.k8s.io/v1 schemas (Gateway API) ---
+
+var gatewayClassSchema = &ResourceSchema{
+	Kind:       "GatewayClass",
+	APIVersion: "gateway.networking.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"controller_name": {JSONKey: "controllerName", Typ: FieldString, SpecKey: true, Required: true},
+		"description":     {JSONKey: "description", Typ: FieldString, SpecKey: true},
+		"parameters_ref":  {JSONKey: "parametersRef", Typ: FieldDict, SpecKey: true},
+	}),
+}
+
+var gatewaySchema = &ResourceSchema{
+	Kind:       "Gateway",
+	APIVersion: "gateway.networking.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"gateway_class":      {JSONKey: "gatewayClassName", Typ: FieldString, SpecKey: true},
+		"gateway_class_name": {JSONKey: "gatewayClassName", Typ: FieldString, SpecKey: true},
+		"listeners":          {JSONKey: "listeners", Typ: FieldList, SpecKey: true, Required: true},
+		"addresses":          {JSONKey: "addresses", Typ: FieldList, SpecKey: true},
+		"infrastructure":     {JSONKey: "infrastructure", Typ: FieldDict, SpecKey: true},
+	}),
+}
+
+var httpRouteSchema = &ResourceSchema{
+	Kind:       "HTTPRoute",
+	APIVersion: "gateway.networking.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"parent_refs": {JSONKey: "parentRefs", Typ: FieldList, SpecKey: true},
+		"hostnames":   {JSONKey: "hostnames", Typ: FieldList, SpecKey: true},
+		"rules":       {JSONKey: "rules", Typ: FieldList, SpecKey: true},
+	}),
+}
+
+var grpcRouteSchema = &ResourceSchema{
+	Kind:       "GRPCRoute",
+	APIVersion: "gateway.networking.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"parent_refs": {JSONKey: "parentRefs", Typ: FieldList, SpecKey: true},
+		"hostnames":   {JSONKey: "hostnames", Typ: FieldList, SpecKey: true},
+		"rules":       {JSONKey: "rules", Typ: FieldList, SpecKey: true},
+	}),
+}
+
+var referenceGrantSchema = &ResourceSchema{
+	Kind:       "ReferenceGrant",
+	APIVersion: "gateway.networking.k8s.io/v1beta1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"from": {JSONKey: "from", Typ: FieldList, SpecKey: true, Required: true},
+		"to":   {JSONKey: "to", Typ: FieldList, SpecKey: true, Required: true},
+	}),
+}
+
+// --- admissionregistration.k8s.io schemas (In-Tree Admission Governance) ---
+
+var validatingAdmissionPolicySchema = &ResourceSchema{
+	Kind:       "ValidatingAdmissionPolicy",
+	APIVersion: "admissionregistration.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"validations":       {JSONKey: "validations", Typ: FieldList, SpecKey: true},
+		"match_constraints": {JSONKey: "matchConstraints", Typ: FieldDict, SpecKey: true},
+		"match_conditions":  {JSONKey: "matchConditions", Typ: FieldList, SpecKey: true},
+		"failure_policy":    {JSONKey: "failurePolicy", Typ: FieldString, SpecKey: true},
+		"param_kind":        {JSONKey: "paramKind", Typ: FieldDict, SpecKey: true},
+		"audit_annotations": {JSONKey: "auditAnnotations", Typ: FieldList, SpecKey: true},
+		"variables":         {JSONKey: "variables", Typ: FieldList, SpecKey: true},
+	}),
+}
+
+var validatingAdmissionPolicyBindingSchema = &ResourceSchema{
+	Kind:       "ValidatingAdmissionPolicyBinding",
+	APIVersion: "admissionregistration.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"policy_name":        {JSONKey: "policyName", Typ: FieldString, SpecKey: true, Required: true},
+		"validation_actions": {JSONKey: "validationActions", Typ: FieldList, SpecKey: true},
+		"match_resources":    {JSONKey: "matchResources", Typ: FieldDict, SpecKey: true},
+		"param_ref":          {JSONKey: "paramRef", Typ: FieldDict, SpecKey: true},
+	}),
+}
+
+var mutatingAdmissionPolicySchema = &ResourceSchema{
+	Kind:       "MutatingAdmissionPolicy",
+	APIVersion: "admissionregistration.k8s.io/v1alpha1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"mutations":           {JSONKey: "mutations", Typ: FieldList, SpecKey: true},
+		"match_constraints":   {JSONKey: "matchConstraints", Typ: FieldDict, SpecKey: true},
+		"match_conditions":    {JSONKey: "matchConditions", Typ: FieldList, SpecKey: true},
+		"failure_policy":      {JSONKey: "failurePolicy", Typ: FieldString, SpecKey: true},
+		"param_kind":          {JSONKey: "paramKind", Typ: FieldDict, SpecKey: true},
+		"reinvocation_policy": {JSONKey: "reinvocationPolicy", Typ: FieldString, SpecKey: true},
+		"variables":           {JSONKey: "variables", Typ: FieldList, SpecKey: true},
+	}),
+}
+
+var mutatingAdmissionPolicyBindingSchema = &ResourceSchema{
+	Kind:       "MutatingAdmissionPolicyBinding",
+	APIVersion: "admissionregistration.k8s.io/v1alpha1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"policy_name":     {JSONKey: "policyName", Typ: FieldString, SpecKey: true, Required: true},
+		"match_resources": {JSONKey: "matchResources", Typ: FieldDict, SpecKey: true},
+		"param_ref":       {JSONKey: "paramRef", Typ: FieldDict, SpecKey: true},
+	}),
+}
+
 // --- Pod fields for workload flattening ---
 // These fields are accepted by workload constructors (Deployment, StatefulSet, etc.)
 // and consumed by autoTemplate() to build the pod template automatically.
@@ -612,49 +716,60 @@ var securityContextSchema = &ResourceSchema{
 // --- Schema registry ---
 
 var allSchemas = map[string]*ResourceSchema{
-	"pod":                       podSchema,
-	"deployment":                deploymentSchema,
-	"stateful_set":              statefulSetSchema,
-	"daemon_set":                daemonSetSchema,
-	"job":                       jobSchema,
-	"cron_job":                  cronJobSchema,
-	"service":                   serviceSchema,
-	"ingress":                   ingressSchema,
-	"config_map":                configMapSchema,
-	"secret":                    secretSchema,
-	"namespace":                 namespaceSchema,
-	"persistent_volume_claim":   pvcSchema,
-	"service_account":           serviceAccountSchema,
-	"horizontal_pod_autoscaler": hpaSchema,
-	"role":                      roleSchema,
-	"cluster_role":              clusterRoleSchema,
-	"role_binding":              roleBindingSchema,
-	"cluster_role_binding":      clusterRoleBindingSchema,
-	"network_policy":            networkPolicySchema,
-	"pod_spec":                  podSpecSchema,
-	"pod_template":              podTemplateSchema,
-	"container":                 containerSchema,
-	"container_port":            containerPortSchema,
-	"volume":                    volumeSchema,
-	"volume_mount":              volumeMountSchema,
-	"env_var":                   envVarSchema,
-	"env_from":                  envFromSchema,
-	"resource_requirements":     resourceRequirementsSchema,
-	"probe":                     probeSchema,
-	"service_port":              servicePortSchema,
-	"ingress_rule":              ingressRuleSchema,
-	"ingress_path":              ingressPathSchema,
-	"toleration":                tolerationSchema,
-	"affinity":                  affinitySchema,
-	"policy_rule":               policyRuleSchema,
-	"subject":                   subjectSchema,
-	"security_context":          securityContextSchema,
-	"device_class":              deviceClassSchema,
-	"resource_claim":            resourceClaimSchema,
-	"resource_claim_template":   resourceClaimTemplateSchema,
-	"resource_slice":            resourceSliceSchema,
-	"persistent_volume":         persistentVolumeSchema,
-	"storage_class":             storageClassSchema,
+	"pod":                                 podSchema,
+	"deployment":                          deploymentSchema,
+	"stateful_set":                        statefulSetSchema,
+	"daemon_set":                          daemonSetSchema,
+	"job":                                 jobSchema,
+	"cron_job":                            cronJobSchema,
+	"service":                             serviceSchema,
+	"ingress":                             ingressSchema,
+	"config_map":                          configMapSchema,
+	"secret":                              secretSchema,
+	"namespace":                           namespaceSchema,
+	"persistent_volume_claim":             pvcSchema,
+	"service_account":                     serviceAccountSchema,
+	"horizontal_pod_autoscaler":           hpaSchema,
+	"role":                                roleSchema,
+	"cluster_role":                        clusterRoleSchema,
+	"role_binding":                        roleBindingSchema,
+	"cluster_role_binding":                clusterRoleBindingSchema,
+	"network_policy":                      networkPolicySchema,
+	"pod_spec":                            podSpecSchema,
+	"pod_template":                        podTemplateSchema,
+	"container":                           containerSchema,
+	"container_port":                      containerPortSchema,
+	"volume":                              volumeSchema,
+	"volume_mount":                        volumeMountSchema,
+	"env_var":                             envVarSchema,
+	"env_from":                            envFromSchema,
+	"resource_requirements":               resourceRequirementsSchema,
+	"probe":                               probeSchema,
+	"service_port":                        servicePortSchema,
+	"ingress_rule":                        ingressRuleSchema,
+	"ingress_path":                        ingressPathSchema,
+	"toleration":                          tolerationSchema,
+	"affinity":                            affinitySchema,
+	"policy_rule":                         policyRuleSchema,
+	"subject":                             subjectSchema,
+	"security_context":                    securityContextSchema,
+	"device_class":                        deviceClassSchema,
+	"resource_claim":                      resourceClaimSchema,
+	"resource_claim_template":             resourceClaimTemplateSchema,
+	"resource_slice":                      resourceSliceSchema,
+	"persistent_volume":                   persistentVolumeSchema,
+	"storage_class":                       storageClassSchema,
+	"gateway_class":                       gatewayClassSchema,
+	"gateway":                             gatewaySchema,
+	"http_route":                          httpRouteSchema,
+	"grpc_route":                          grpcRouteSchema,
+	"reference_grant":                     referenceGrantSchema,
+	"validating_admission_policy":         validatingAdmissionPolicySchema,
+	"validating_admission_policy_binding": validatingAdmissionPolicyBindingSchema,
+	"mutating_admission_policy":           mutatingAdmissionPolicySchema,
+	"mutating_admission_policy_binding":   mutatingAdmissionPolicyBindingSchema,
+	"vap":                                 validatingAdmissionPolicySchema,
+	"map":                                 mutatingAdmissionPolicySchema,
 }
 
 // makeObjConstructor creates a Starlark builtin for a k8s.obj constructor.

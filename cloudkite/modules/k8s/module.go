@@ -252,6 +252,8 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"set_env":       m.withDefault("set_env", (*K8sClient).setEnv),
 			"set_resources": m.withDefault("set_resources", (*K8sClient).setResources),
 			"resize":        m.withDefault("resize", (*K8sClient).resize),
+			"route":         m.withDefault("route", (*K8sClient).route),
+			"validate":      starlark.NewBuiltin("k8s.validate", runValidate),
 
 			// Tier 2: Node ops
 			"drain":     m.withDefault("drain", (*K8sClient).drain),

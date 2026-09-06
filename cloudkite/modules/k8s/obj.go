@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"unicode"
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
@@ -163,6 +164,32 @@ func (r *KubeResource) buildResourceDict() *starlark.Dict {
 		if fieldName == "security_context" {
 			if _, isKR := val.(*KubeResource); !isKR {
 				val = normalizeSecurityContext(val)
+			}
+		}
+		if fieldName == "gateway_class" || fieldName == "gateway_class_name" || fieldName == "policy_name" {
+			if kr, ok := val.(*KubeResource); ok {
+				if n, ok := kr.data["name"].(string); ok {
+					val = n
+				}
+			} else if m, ok := val.(map[string]any); ok {
+				if n, ok := m["name"].(string); ok {
+					val = n
+				} else if meta, ok := m["metadata"].(map[string]any); ok {
+					if n, ok := meta["name"].(string); ok {
+						val = n
+					}
+				}
+			}
+		}
+		if fieldName == "parent_refs" {
+			val = normalizeParentRefs(val)
+		}
+		switch r.schema.Kind {
+		case "Gateway", "GatewayClass", "HTTPRoute", "GRPCRoute", "ReferenceGrant",
+			"ValidatingAdmissionPolicy", "ValidatingAdmissionPolicyBinding",
+			"MutatingAdmissionPolicy", "MutatingAdmissionPolicyBinding":
+			if fieldName != "parent_refs" && fieldName != "gateway_class" && fieldName != "gateway_class_name" && fieldName != "policy_name" {
+				val = normalizeSnakeKeys(val)
 			}
 		}
 		sv, err := goToStarlark(val, fieldSpec.Typ)
@@ -668,6 +695,133 @@ func normalizeResourceClaims(val any) any {
 	return normalized
 }
 
+// snakeToCamel converts a snake_case identifier to lowerCamelCase.
+func snakeToCamel(s string) string {
+	if !strings.Contains(s, "_") {
+		return s
+	}
+	var b strings.Builder
+	capitalizeNext := false
+	for _, r := range s {
+		if r == '_' {
+			capitalizeNext = true
+			continue
+		}
+		if capitalizeNext {
+			b.WriteRune(unicode.ToUpper(r))
+			capitalizeNext = false
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+// normalizeSnakeKeys recursively converts dictionary keys in nested maps/lists
+// from snake_case to Kubernetes camelCase.
+func normalizeSnakeKeys(val any) any {
+	switch v := val.(type) {
+	case *starlark.Dict:
+		d := starlark.NewDict(v.Len())
+		for _, item := range v.Items() {
+			k, ok := starlark.AsString(item[0])
+			if ok {
+				d.SetKey(starlark.String(snakeToCamel(k)), normalizeSnakeKeysValue(item[1]))
+			} else {
+				d.SetKey(item[0], normalizeSnakeKeysValue(item[1]))
+			}
+		}
+		return d
+	case *starlark.List:
+		elems := make([]starlark.Value, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			elems[i] = normalizeSnakeKeysValue(v.Index(i))
+		}
+		return starlark.NewList(elems)
+	case map[string]any:
+		res := make(map[string]any, len(v))
+		for k, item := range v {
+			res[snakeToCamel(k)] = normalizeSnakeKeys(item)
+		}
+		return res
+	case []any:
+		res := make([]any, len(v))
+		for i, item := range v {
+			res[i] = normalizeSnakeKeys(item)
+		}
+		return res
+	default:
+		return val
+	}
+}
+
+func normalizeSnakeKeysValue(val starlark.Value) starlark.Value {
+	switch v := val.(type) {
+	case *starlark.Dict:
+		d := starlark.NewDict(v.Len())
+		for _, item := range v.Items() {
+			k, ok := starlark.AsString(item[0])
+			if ok {
+				d.SetKey(starlark.String(snakeToCamel(k)), normalizeSnakeKeysValue(item[1]))
+			} else {
+				d.SetKey(item[0], normalizeSnakeKeysValue(item[1]))
+			}
+		}
+		return d
+	case *starlark.List:
+		elems := make([]starlark.Value, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			elems[i] = normalizeSnakeKeysValue(v.Index(i))
+		}
+		return starlark.NewList(elems)
+	default:
+		return val
+	}
+}
+
+// normalizeParentRefs converts parent references (strings, KubeResource, or dicts)
+// to standard Gateway API parentRef structures.
+func normalizeParentRefs(val any) any {
+	switch v := val.(type) {
+	case *starlark.List:
+		elems := make([]starlark.Value, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			item := v.Index(i)
+			switch it := item.(type) {
+			case *KubeResource:
+				d := starlark.NewDict(1)
+				if name, ok := it.data["name"].(string); ok {
+					d.SetKey(starlark.String("name"), starlark.String(name))
+				}
+				elems[i] = d
+			case starlark.String:
+				d := starlark.NewDict(1)
+				d.SetKey(starlark.String("name"), it)
+				elems[i] = d
+			default:
+				elems[i] = normalizeSnakeKeysValue(it)
+			}
+		}
+		return starlark.NewList(elems)
+	case []any:
+		res := make([]any, len(v))
+		for i, item := range v {
+			switch it := item.(type) {
+			case *KubeResource:
+				name, _ := it.data["name"].(string)
+				res[i] = map[string]any{"name": name}
+			case string:
+				res[i] = map[string]any{"name": it}
+			default:
+				res[i] = normalizeSnakeKeys(it)
+			}
+		}
+		return res
+	default:
+		return normalizeSnakeKeys(val)
+	}
+}
+
 // autoTemplate builds spec.template (and spec.selector) automatically when
 // `containers` is provided to a workload constructor without an explicit `template`.
 // For CronJob, it builds the full jobTemplate.spec.template chain.
@@ -798,6 +952,13 @@ func newKubeResource(schema *ResourceSchema, args starlark.Tuple, kwargs []starl
 		}
 		if key == "resource_claims" {
 			goVal = normalizeResourceClaims(goVal)
+		}
+		if key == "gateway_class" || key == "gateway_class_name" || key == "policy_name" {
+			if kr, ok := val.(*KubeResource); ok {
+				if n, ok := kr.data["name"].(string); ok {
+					goVal = n
+				}
+			}
 		}
 		data[key] = goVal
 	}
@@ -997,6 +1158,13 @@ func goToStarlarkDeep(val any) (starlark.Value, error) {
 
 // starlarkToGo converts a starlark.Value to a Go value with type hint.
 func starlarkToGo(val starlark.Value, typ FieldType) (any, error) {
+	if kr, ok := val.(*KubeResource); ok {
+		if typ == FieldString {
+			if n, ok := kr.data["name"].(string); ok {
+				return n, nil
+			}
+		}
+	}
 	switch typ {
 	case FieldKubeObject:
 		if kr, ok := val.(*KubeResource); ok {
