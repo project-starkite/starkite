@@ -1835,3 +1835,76 @@ func TestPhase3_CELAdmissionGovernance(t *testing.T) {
 		t.Error("k8s.obj.map constructor not found")
 	}
 }
+
+func TestPhase4_ResilienceAndPDB(t *testing.T) {
+	m := New()
+	modMap, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	k8sMod := modMap["k8s"].(starlark.HasAttrs)
+	yamlFnVal, _ := k8sMod.Attr("yaml")
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+	thread := &starlark.Thread{Name: "test-thread"}
+
+	// 1. PodDisruptionBudget constructor with flat selector
+	selDict := starlark.NewDict(1)
+	selDict.SetKey(starlark.String("app"), starlark.String("api"))
+
+	pdbObj, err := newKubeResource(podDisruptionBudgetSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("api-pdb")},
+		{starlark.String("namespace"), starlark.String("prod")},
+		{starlark.String("min_available"), starlark.MakeInt(2)},
+		{starlark.String("selector"), selDict},
+	})
+	if err != nil {
+		t.Fatalf("pod_disruption_budget error: %v", err)
+	}
+
+	pdbYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{pdbObj}, nil)
+	if err != nil {
+		t.Fatalf("yaml(pdb) error: %v", err)
+	}
+	pdbYAML := string(pdbYAMLVal.(starlark.String))
+
+	if !strings.Contains(pdbYAML, "kind: PodDisruptionBudget") {
+		t.Errorf("PDB YAML missing kind:\n%s", pdbYAML)
+	}
+	if !strings.Contains(pdbYAML, "apiVersion: policy/v1") {
+		t.Errorf("PDB YAML missing apiVersion:\n%s", pdbYAML)
+	}
+	if !strings.Contains(pdbYAML, "minAvailable: 2") {
+		t.Errorf("PDB YAML missing minAvailable:\n%s", pdbYAML)
+	}
+	if !strings.Contains(pdbYAML, "matchLabels:") || !strings.Contains(pdbYAML, "app: api") {
+		t.Errorf("PDB YAML missing matchLabels selector normalization:\n%s", pdbYAML)
+	}
+
+	// 2. Alias pdb constructor check
+	objConstructors := ObjConstructors()
+	if _, ok := objConstructors["pod_disruption_budget"]; !ok {
+		t.Error("k8s.obj.pod_disruption_budget constructor missing")
+	}
+	if _, ok := objConstructors["pdb"]; !ok {
+		t.Error("k8s.obj.pdb constructor missing")
+	}
+
+	// 3. Service with traffic_distribution (GA 1.35)
+	svcObj, err := newKubeResource(serviceSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("api-svc")},
+		{starlark.String("traffic_distribution"), starlark.String("PreferClose")},
+	})
+	if err != nil {
+		t.Fatalf("service with traffic_distribution error: %v", err)
+	}
+
+	svcYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{svcObj}, nil)
+	if err != nil {
+		t.Fatalf("yaml(svc) error: %v", err)
+	}
+	svcYAML := string(svcYAMLVal.(starlark.String))
+
+	if !strings.Contains(svcYAML, "trafficDistribution: PreferClose") {
+		t.Errorf("Service YAML missing trafficDistribution:\n%s", svcYAML)
+	}
+}

@@ -11,6 +11,8 @@ import (
 
 	"github.com/project-starkite/starkite/libkite"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 )
 
@@ -236,6 +238,8 @@ func (c *K8sClient) apply(thread *starlark.Thread, fn *starlark.Builtin, args st
 		FieldManager string `name:"field_manager"`
 		DryRun       bool   `name:"dry_run"`
 		Force        bool   `name:"force"`
+		Prune        bool   `name:"prune"`
+		PruneLabels  any    `name:"prune_labels"`
 		Timeout      string `name:"timeout"`
 	}
 	if err := startype.Args(remaining, filteredKwargs).Go(&p); err != nil {
@@ -274,6 +278,14 @@ func (c *K8sClient) apply(thread *starlark.Thread, fn *starlark.Builtin, args st
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
 
+	appliedKeys := make(map[string]bool)
+	type gvrTarget struct {
+		gvr        schema.GroupVersionResource
+		namespaced bool
+		namespaces map[string]bool
+	}
+	targetGVRs := make(map[schema.GroupVersionResource]*gvrTarget)
+
 	results := make([]starlark.Value, 0, len(objs))
 	for _, obj := range objs {
 		gvk := obj.GroupVersionKind()
@@ -302,6 +314,21 @@ func (c *K8sClient) apply(thread *starlark.Thread, fn *starlark.Builtin, args st
 			objNs = n
 		}
 
+		key := gvr.String() + "/" + objNs + "/" + obj.GetName()
+		appliedKeys[key] = true
+		if p.Prune {
+			tgt, ok := targetGVRs[gvr]
+			if !ok {
+				tgt = &gvrTarget{
+					gvr:        gvr,
+					namespaced: namespaced,
+					namespaces: make(map[string]bool),
+				}
+				targetGVRs[gvr] = tgt
+			}
+			tgt.namespaces[objNs] = true
+		}
+
 		var applied *unstructuredObj
 		if namespaced {
 			applied, err = c.dynClient.Resource(gvr).Namespace(objNs).Patch(ctx, obj.GetName(), types.ApplyPatchType, data, opts)
@@ -317,6 +344,72 @@ func (c *K8sClient) apply(thread *starlark.Thread, fn *starlark.Builtin, args st
 			return nil, fmt.Errorf("k8s.apply: convert result: %w", err)
 		}
 		results = append(results, dict)
+	}
+
+	// Prune omitted resources previously managed by field_manager
+	if p.Prune {
+		var pruneLabelSelector string
+		if p.PruneLabels != nil {
+			switch pl := p.PruneLabels.(type) {
+			case string:
+				pruneLabelSelector = pl
+			case map[string]any:
+				var pairs []string
+				for k, v := range pl {
+					pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
+				}
+				pruneLabelSelector = strings.Join(pairs, ",")
+			case *starlark.Dict:
+				d, _ := startype.Dict(pl).ToMap()
+				var pairs []string
+				for k, v := range d {
+					pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
+				}
+				pruneLabelSelector = strings.Join(pairs, ",")
+			}
+		}
+
+		delOpts := metav1.DeleteOptions{}
+		for _, tgt := range targetGVRs {
+			listOpts := metav1.ListOptions{LabelSelector: pruneLabelSelector}
+			if tgt.namespaced {
+				for tgtNs := range tgt.namespaces {
+					list, err := c.dynClient.Resource(tgt.gvr).Namespace(tgtNs).List(ctx, listOpts)
+					if err != nil {
+						continue
+					}
+					for i := range list.Items {
+						item := &list.Items[i]
+						itemKey := tgt.gvr.String() + "/" + tgtNs + "/" + item.GetName()
+						if appliedKeys[itemKey] {
+							continue
+						}
+						if isManagedByFieldManager(item, fieldManager) {
+							if !p.DryRun {
+								_ = c.dynClient.Resource(tgt.gvr).Namespace(tgtNs).Delete(ctx, item.GetName(), delOpts)
+							}
+						}
+					}
+				}
+			} else {
+				list, err := c.dynClient.Resource(tgt.gvr).List(ctx, listOpts)
+				if err != nil {
+					continue
+				}
+				for i := range list.Items {
+					item := &list.Items[i]
+					itemKey := tgt.gvr.String() + "//" + item.GetName()
+					if appliedKeys[itemKey] {
+						continue
+					}
+					if isManagedByFieldManager(item, fieldManager) {
+						if !p.DryRun {
+							_ = c.dynClient.Resource(tgt.gvr).Delete(ctx, item.GetName(), delOpts)
+						}
+					}
+				}
+			}
+		}
 	}
 
 	if len(results) == 1 {
@@ -1098,4 +1191,20 @@ func (c *K8sClient) storageClasses(thread *starlark.Thread, fn *starlark.Builtin
 	}
 
 	return starlark.NewList(items), nil
+}
+
+// isManagedByFieldManager returns true if metadata.managedFields contains an entry with the given fieldManager.
+func isManagedByFieldManager(item *unstructured.Unstructured, fieldManager string) bool {
+	mfList, ok, _ := unstructured.NestedSlice(item.Object, "metadata", "managedFields")
+	if !ok || len(mfList) == 0 {
+		return false
+	}
+	for _, mf := range mfList {
+		if m, ok := mf.(map[string]any); ok {
+			if mgr, ok := m["manager"].(string); ok && mgr == fieldManager {
+				return true
+			}
+		}
+	}
+	return false
 }

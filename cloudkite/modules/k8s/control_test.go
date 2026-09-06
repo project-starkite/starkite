@@ -14,6 +14,7 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes/fake"
@@ -361,14 +362,23 @@ func setupControlFakeClient(scheme *runtime.Scheme, customListKinds map[schema.G
 		tracker := fakeClient.Tracker()
 
 		obj, err := tracker.Get(gvr, ns, patchAction.GetName())
+		var patchMap map[string]any
+		if err := json.Unmarshal(patchAction.GetPatch(), &patchMap); err != nil {
+			return true, nil, err
+		}
+
 		if err != nil {
+			if patchAction.GetPatchType() == types.ApplyPatchType {
+				newObj := &unstructured.Unstructured{Object: patchMap}
+				_ = tracker.Create(gvr, newObj, ns)
+				return true, newObj, nil
+			}
 			return true, nil, err
 		}
 		u := obj.(*unstructured.Unstructured).DeepCopy()
 
-		var patchMap map[string]any
-		if err := json.Unmarshal(patchAction.GetPatch(), &patchMap); err != nil {
-			return true, nil, err
+		if patchAction.GetPatchType() == types.ApplyPatchType {
+			mergePatchMaps(u.Object, patchMap)
 		}
 
 		if metaPatch, ok := patchMap["metadata"].(map[string]any); ok {
@@ -406,6 +416,18 @@ func setupControlFakeClient(scheme *runtime.Scheme, customListKinds map[schema.G
 	})
 
 	return fakeClient
+}
+
+func mergePatchMaps(target, patch map[string]any) {
+	for k, v := range patch {
+		if vMap, ok := v.(map[string]any); ok {
+			if tMap, ok := target[k].(map[string]any); ok {
+				mergePatchMaps(tMap, vMap)
+				continue
+			}
+		}
+		target[k] = v
+	}
 }
 
 func TestControlAutomaticFinalizerInjection(t *testing.T) {

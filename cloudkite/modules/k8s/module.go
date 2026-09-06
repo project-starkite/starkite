@@ -8,7 +8,6 @@ import (
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
-	"gopkg.in/yaml.v3"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -149,13 +148,13 @@ func (m *Module) yamlHelper(thread *starlark.Thread, fn *starlark.Builtin, args 
 	return starlark.String(data), nil
 }
 
-// encodeOne converts a single Starlark value to YAML bytes via startype.
+// encodeOne converts a single Starlark value to YAML bytes via startype and encodeKYAML.
 func encodeOne(val starlark.Value) ([]byte, error) {
 	var goVal any
 	if err := startype.Starlark(val).Go(&goVal); err != nil {
 		return nil, err
 	}
-	return yaml.Marshal(goVal)
+	return encodeKYAML(goVal)
 }
 
 // Load builds the k8s module with all three tiers.
@@ -214,6 +213,8 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"create":          m.withDefault("create", (*K8sClient).create),
 			"apply":           m.withDefault("apply", (*K8sClient).apply),
 			"delete":          m.withDefault("delete", (*K8sClient).del),
+			"diff":            m.withDefault("diff", (*K8sClient).diff),
+			"evict":           m.withDefault("evict", (*K8sClient).evict),
 			"patch":           m.withDefault("patch", (*K8sClient).patch),
 			"label":           m.withDefault("label", (*K8sClient).label),
 			"annotate":        m.withDefault("annotate", (*K8sClient).annotate),

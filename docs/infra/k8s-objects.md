@@ -263,6 +263,45 @@ if val.valid:
     k8s.apply(manifest, namespace="production")
 ```
 
+### Example: Workload Resilience with PodDisruptionBudget
+
+Starkite models `policy/v1` `PodDisruptionBudget` resources and provides standalone eviction testing:
+
+```python
+# 1. Define PodDisruptionBudget ensuring minimum available instances
+pdb = k8s.obj.pod_disruption_budget(
+    name = "api-pdb",
+    min_available = 2,
+    selector = {"app": "api"},
+)
+k8s.apply(pdb, namespace="production")
+
+# 2. Test disruption budget adherence via standalone eviction subresource
+eviction_test = k8s.evict("api-pod-0", namespace="production", dry_run=True)
+if eviction_test.evicted:
+    print("Pod can be evicted without violating PDB constraints")
+```
+
+### Example: GitOps Drift Detection and Manifest Pruning
+
+Starkite supports Server-Side Apply dry-run diffing and declarative pruning:
+
+```python
+# 1. Inspect drift against live cluster state
+report = k8s.diff("manifests/production.yaml", namespace="production")
+if report.has_drift:
+    print("Detected drift in fields:", report.drifted_fields)
+    print(report.diff)
+
+# 2. Apply desired resources and prune omitted resources
+k8s.apply(
+    [app_dep, app_svc],
+    namespace = "production",
+    prune = True,
+    prune_labels = {"app": "production-stack"},
+)
+```
+
 ---
 
 ## Runtime Representation & Dot Notation

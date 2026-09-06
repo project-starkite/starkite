@@ -113,6 +113,23 @@ var builtinKinds = map[string]resolvedGVR{
 	"csidrivers":        {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "csidrivers"}, namespaced: false},
 	"csinode":           {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "csinodes"}, namespaced: false},
 	"csinodes":          {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "csinodes"}, namespaced: false},
+
+	// policy/v1
+	"poddisruptionbudget":  {gvr: schema.GroupVersionResource{Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"}, namespaced: true},
+	"poddisruptionbudgets": {gvr: schema.GroupVersionResource{Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"}, namespaced: true},
+	"pdb":                  {gvr: schema.GroupVersionResource{Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"}, namespaced: true},
+
+	// gateway.networking.k8s.io/v1
+	"gatewayclass":    {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "gatewayclasses"}, namespaced: false},
+	"gatewayclasses":  {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "gatewayclasses"}, namespaced: false},
+	"gateway":         {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "gateways"}, namespaced: true},
+	"gateways":        {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "gateways"}, namespaced: true},
+	"httproute":       {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "httproutes"}, namespaced: true},
+	"httproutes":      {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "httproutes"}, namespaced: true},
+	"grpcroute":       {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "grpcroutes"}, namespaced: true},
+	"grpcroutes":      {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "grpcroutes"}, namespaced: true},
+	"referencegrant":  {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "referencegrants"}, namespaced: true},
+	"referencegrants": {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "referencegrants"}, namespaced: true},
 }
 
 // NewResolver creates a new Resolver with the given discovery client.

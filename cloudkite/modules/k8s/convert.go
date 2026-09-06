@@ -41,27 +41,41 @@ func unstructuredToDict(obj *unstructured.Unstructured) (*AttrDict, error) {
 	return unstructuredToAttrDict(obj), nil
 }
 
-// parseYAML parses a YAML string into a *starlark.Dict.
+// parseYAML parses a YAML string into a *starlark.Dict, enforcing KYAML duplicate key checks.
 func parseYAML(s string) (*starlark.Dict, error) {
+	var node yaml.Node
+	if err := yaml.Unmarshal([]byte(s), &node); err != nil {
+		return nil, fmt.Errorf("yaml parse: %w", err)
+	}
+	if err := checkDuplicateKeys(&node); err != nil {
+		return nil, err
+	}
 	var m map[string]any
-	if err := yaml.Unmarshal([]byte(s), &m); err != nil {
+	if err := node.Decode(&m); err != nil {
 		return nil, fmt.Errorf("yaml parse: %w", err)
 	}
 	return startype.Map(m).ToDict()
 }
 
-// yamlToUnstructuredList parses multi-document YAML into a list of Unstructured objects.
+// yamlToUnstructuredList parses multi-document YAML into a list of Unstructured objects, enforcing KYAML duplicate key checks.
 func yamlToUnstructuredList(yamlStr string) ([]*unstructured.Unstructured, error) {
 	var result []*unstructured.Unstructured
 	decoder := yaml.NewDecoder(bytes.NewReader([]byte(yamlStr)))
 
 	for {
-		var doc map[string]any
-		err := decoder.Decode(&doc)
+		var node yaml.Node
+		err := decoder.Decode(&node)
 		if err == io.EOF {
 			break
 		}
 		if err != nil {
+			return nil, fmt.Errorf("yaml decode: %w", err)
+		}
+		if err := checkDuplicateKeys(&node); err != nil {
+			return nil, err
+		}
+		var doc map[string]any
+		if err := node.Decode(&doc); err != nil {
 			return nil, fmt.Errorf("yaml decode: %w", err)
 		}
 		if doc == nil {

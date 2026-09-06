@@ -56,6 +56,8 @@ var allMethods = map[string]clientMethod{
 	"create":           (*K8sClient).create,
 	"apply":            (*K8sClient).apply,
 	"delete":           (*K8sClient).del,
+	"diff":             (*K8sClient).diff,
+	"evict":            (*K8sClient).evict,
 	"patch":            (*K8sClient).patch,
 	"label":            (*K8sClient).label,
 	"annotate":         (*K8sClient).annotate,

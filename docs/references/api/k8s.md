@@ -36,7 +36,9 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | `k8s.get(kind, name, namespace="", timeout="")` | `AttrDict` | Get a single resource |
 | `k8s.list(kind, namespace="", labels="", fields="", timeout="")` | `list[AttrDict]` | List resources with optional label/field selectors |
 | `k8s.create(manifest, namespace="", dry_run=False, timeout="")` | `AttrDict` | Create a resource from a manifest (dict, AttrDict, or YAML string) |
-| `k8s.apply(manifest, namespace="", field_manager="starkite", dry_run=False, force=False, timeout="")` | `AttrDict` | Apply a resource (server-side apply) |
+| `k8s.apply(manifest, namespace="", field_manager="starkite", dry_run=False, force=False, prune=False, prune_labels={}, timeout="")` | `AttrDict` | Apply a resource (server-side apply). When `prune=True`, prunes omitted resources managed by `field_manager` matching `prune_labels` |
+| `k8s.diff(manifest, namespace="", field_manager="starkite", timeout="")` | `AttrDict` | Server-side apply dry-run diff against live cluster state (`has_drift`, `drifted_fields`, `conflicts`, `diff`, `live`, `applied`) |
+| `k8s.evict(name, namespace="", dry_run=False, timeout="")` | `AttrDict` | Evict a Pod via `/eviction` subresource, honoring `PodDisruptionBudgets` |
 | `k8s.delete(kind, name, namespace="", propagation="Background", timeout="")` | `None` | Delete a resource |
 | `k8s.patch(kind, name, patch, namespace="", type="merge", timeout="")` | `AttrDict` | Patch a resource. `type`: `"merge"`, `"strategic"`, or `"json"` |
 | `k8s.label(kind, name, labels, namespace="", timeout="")` | `AttrDict` | Set labels on a resource |
@@ -452,7 +454,8 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 | Constructor | Returns | Description |
 |-------------|---------|-------------|
 | `k8s.obj.deployment(name, replicas=1, containers=[], resource_claims=[], labels={}, annotations={}, selector={}, template=None)` | `KubeResource` | Construct a Deployment manifest |
-| `k8s.obj.service(name, ports=[], selector={}, type="ClusterIP", labels={}, annotations={})` | `KubeResource` | Construct a Service manifest |
+| `k8s.obj.service(name, ports=[], selector={}, type="ClusterIP", traffic_distribution="", labels={}, annotations={})` | `KubeResource` | Construct a Service manifest (`traffic_distribution` sets `spec.trafficDistribution`, GA 1.35) |
+| `k8s.obj.pod_disruption_budget(name, min_available=None, max_unavailable=None, selector={}, unhealthy_pod_eviction_policy="", labels={}, annotations={})` | `KubeResource` | Construct a `policy/v1` `PodDisruptionBudget` manifest (alias `k8s.obj.pdb`) |
 | `k8s.obj.config_map(name, data={}, binary_data={}, labels={}, annotations={})` | `KubeResource` | Construct a ConfigMap manifest |
 | `k8s.obj.secret(name, data={}, string_data={}, type="Opaque", labels={}, annotations={})` | `KubeResource` | Construct a Secret manifest |
 | `k8s.obj.pod(name, containers=[], resource_claims=[], restart_policy="Always", host_users=True, labels={}, annotations={})` | `KubeResource` | Construct a Pod manifest |
@@ -927,6 +930,46 @@ k8s.patch("deployment", "web", {"spec": {"replicas": 5}},
 ```python
 k8s.label("pod", "web-abc123", {"version": "v2", "canary": "true"}, namespace="default")
 k8s.annotate("deployment", "web", {"deploy-note": "hotfix"}, namespace="default")
+```
+
+### Server-Side Apply Diffing
+
+Inspect drift between local manifests and live cluster state before applying:
+
+```python
+diff_report = k8s.diff("deployment.yaml", namespace="production")
+if diff_report.has_drift:
+    print("Detected drift in fields:", diff_report.drifted_fields)
+    print("Unified diff:\n", diff_report.diff)
+if diff_report.conflicts:
+    print("Field ownership conflicts:", diff_report.conflicts)
+```
+
+### Declarative Pruning
+
+Apply a manifest set and automatically delete omitted resources previously managed by `field_manager`:
+
+```python
+# Apply current desired resources and prune stale resources labeled with app=my-stack
+k8s.apply(
+    [app_dep, app_svc],
+    namespace = "production",
+    prune = True,
+    prune_labels = {"app": "my-stack"},
+)
+```
+
+### Pod Eviction & Disruption Budgets
+
+Evict a Pod via the `/eviction` subresource, honoring `PodDisruptionBudget` constraints:
+
+```python
+# Test eviction using dry_run without terminating the pod
+result = k8s.evict("web-worker-0", namespace="production", dry_run=True)
+print("Eviction permitted:", result.evicted)
+
+# Real eviction
+k8s.evict("web-worker-0", namespace="production")
 ```
 
 ### Cluster info

@@ -111,12 +111,13 @@ var serviceSchema = &ResourceSchema{
 	Kind:       "Service",
 	APIVersion: "v1",
 	Fields: mergeFields(map[string]*FieldSpec{
-		"ports":            {JSONKey: "ports", Typ: FieldList, SpecKey: true},
-		"selector":         {JSONKey: "selector", Typ: FieldDict, SpecKey: true},
-		"type":             {JSONKey: "type", Typ: FieldString, SpecKey: true, DefaultVal: "ClusterIP"},
-		"cluster_ip":       {JSONKey: "clusterIP", Typ: FieldString, SpecKey: true},
-		"external_ips":     {JSONKey: "externalIPs", Typ: FieldList, SpecKey: true},
-		"session_affinity": {JSONKey: "sessionAffinity", Typ: FieldString, SpecKey: true},
+		"ports":                {JSONKey: "ports", Typ: FieldList, SpecKey: true},
+		"selector":             {JSONKey: "selector", Typ: FieldDict, SpecKey: true},
+		"type":                 {JSONKey: "type", Typ: FieldString, SpecKey: true, DefaultVal: "ClusterIP"},
+		"cluster_ip":           {JSONKey: "clusterIP", Typ: FieldString, SpecKey: true},
+		"external_ips":         {JSONKey: "externalIPs", Typ: FieldList, SpecKey: true},
+		"session_affinity":     {JSONKey: "sessionAffinity", Typ: FieldString, SpecKey: true},
+		"traffic_distribution": {JSONKey: "trafficDistribution", Typ: FieldString, SpecKey: true},
 	}),
 }
 
@@ -429,6 +430,17 @@ var mutatingAdmissionPolicyBindingSchema = &ResourceSchema{
 		"policy_name":     {JSONKey: "policyName", Typ: FieldString, SpecKey: true, Required: true},
 		"match_resources": {JSONKey: "matchResources", Typ: FieldDict, SpecKey: true},
 		"param_ref":       {JSONKey: "paramRef", Typ: FieldDict, SpecKey: true},
+	}),
+}
+
+var podDisruptionBudgetSchema = &ResourceSchema{
+	Kind:       "PodDisruptionBudget",
+	APIVersion: "policy/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"min_available":                 {JSONKey: "minAvailable", Typ: FieldAny, SpecKey: true},
+		"max_unavailable":               {JSONKey: "maxUnavailable", Typ: FieldAny, SpecKey: true},
+		"selector":                      {JSONKey: "selector", Typ: FieldDict, SpecKey: true},
+		"unhealthy_pod_eviction_policy": {JSONKey: "unhealthyPodEvictionPolicy", Typ: FieldString, SpecKey: true},
 	}),
 }
 
@@ -770,6 +782,8 @@ var allSchemas = map[string]*ResourceSchema{
 	"mutating_admission_policy_binding":   mutatingAdmissionPolicyBindingSchema,
 	"vap":                                 validatingAdmissionPolicySchema,
 	"map":                                 mutatingAdmissionPolicySchema,
+	"pod_disruption_budget":               podDisruptionBudgetSchema,
+	"pdb":                                 podDisruptionBudgetSchema,
 }
 
 // makeObjConstructor creates a Starlark builtin for a k8s.obj constructor.

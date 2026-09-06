@@ -58,6 +58,11 @@ func TestResolveBuiltinKinds(t *testing.T) {
 		{"resourceclaimtemplates", "resource.k8s.io", "resourceclaimtemplates", true},
 		{"resourceslice", "resource.k8s.io", "resourceslices", false},
 		{"resourceslices", "resource.k8s.io", "resourceslices", false},
+		{"poddisruptionbudget", "policy", "poddisruptionbudgets", true},
+		{"poddisruptionbudgets", "policy", "poddisruptionbudgets", true},
+		{"pdb", "policy", "poddisruptionbudgets", true},
+		{"gateway", "gateway.networking.k8s.io", "gateways", true},
+		{"httproute", "gateway.networking.k8s.io", "httproutes", true},
 	}
 
 	for _, tt := range tests {

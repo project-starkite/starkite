@@ -212,6 +212,26 @@ func (r *KubeResource) buildResourceDict() *starlark.Dict {
 		}
 	}
 
+	// PodDisruptionBudget convenience: expand flat selector into spec.selector.matchLabels if needed
+	if r.schema.Kind == "PodDisruptionBudget" {
+		if selVal, ok := r.data["selector"]; ok {
+			if m, ok := selVal.(map[string]any); ok {
+				if _, hasML := m["matchLabels"]; !hasML {
+					if _, hasME := m["matchExpressions"]; !hasME {
+						matchLabelsDict := starlark.NewDict(len(m))
+						for k, v := range m {
+							sv, _ := startype.Go(v).ToStarlarkValue()
+							_ = matchLabelsDict.SetKey(starlark.String(k), sv)
+						}
+						selDict := starlark.NewDict(1)
+						_ = selDict.SetKey(starlark.String("matchLabels"), matchLabelsDict)
+						spec.SetKey(starlark.String("selector"), selDict)
+					}
+				}
+			}
+		}
+	}
+
 	// PersistentVolume convenience: expand "storage" shorthand into spec.capacity.storage
 	if r.schema.Kind == "PersistentVolume" {
 		if storageVal, ok := r.data["storage"]; ok {
