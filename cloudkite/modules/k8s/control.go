@@ -80,6 +80,8 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		LeaderElection          bool   `name:"leader_election"`
 		LeaderElectionID        string `name:"leader_election_id"`
 		LeaderElectionNamespace string `name:"leader_election_namespace"`
+		LeaderElectionIdentity  string `name:"leader_election_identity"`
+		Identity                string `name:"identity"`
 	}
 	p.Workers = 1
 	p.MaxRetries = 5
@@ -259,37 +261,43 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		}
 	}
 
+	leaderIdentity := p.LeaderElectionIdentity
+	if leaderIdentity == "" {
+		leaderIdentity = p.Identity
+	}
+
 	ctrl := &controller{
-		kind:                 p.Kind,
-		gvr:                  gvr,
-		namespaced:           namespaced,
-		namespace:            ns,
-		labels:               p.Labels,
-		resync:               resyncInterval,
-		poll:                 pollInterval,
-		workers:              p.Workers,
-		maxRetries:           p.MaxRetries,
-		backoff:              backoff,
-		generationChanged:    genChanged,
-		reconcileFn:          reconcileFn,
-		onCreateFn:           onCreateFn,
-		onUpdateFn:           onUpdateFn,
-		onDeleteFn:           onDeleteFn,
-		finalizeFn:           finalizeFn,
-		finalizerName:        finalizerName,
-		healthPort:           p.HealthPort,
-		watchRelated:         relatedWatchers,
-		client:               client,
-		thread:               thread,
-		cache:                make(map[string]*unstructured.Unstructured),
-		watchOwned:           watchOwned,
-		predicateFn:          predicateFn,
-		fieldSelector:        p.FieldSelector,
-		enableLeaderElection: p.LeaderElection,
-		leaderElectionID:     leaderID,
-		leaderElectionNS:     leaderNS,
-		echoKeys:             make(map[string]time.Time),
-		watchedGVRs:          make(map[schema.GroupVersionResource]context.CancelFunc),
+		kind:                   p.Kind,
+		gvr:                    gvr,
+		namespaced:             namespaced,
+		namespace:              ns,
+		labels:                 p.Labels,
+		resync:                 resyncInterval,
+		poll:                   pollInterval,
+		workers:                p.Workers,
+		maxRetries:             p.MaxRetries,
+		backoff:                backoff,
+		generationChanged:      genChanged,
+		reconcileFn:            reconcileFn,
+		onCreateFn:             onCreateFn,
+		onUpdateFn:             onUpdateFn,
+		onDeleteFn:             onDeleteFn,
+		finalizeFn:             finalizeFn,
+		finalizerName:          finalizerName,
+		healthPort:             p.HealthPort,
+		watchRelated:           relatedWatchers,
+		client:                 client,
+		thread:                 thread,
+		cache:                  make(map[string]*unstructured.Unstructured),
+		watchOwned:             watchOwned,
+		predicateFn:            predicateFn,
+		fieldSelector:          p.FieldSelector,
+		enableLeaderElection:   p.LeaderElection,
+		leaderElectionID:       leaderID,
+		leaderElectionNS:       leaderNS,
+		leaderElectionIdentity: leaderIdentity,
+		echoKeys:               make(map[string]time.Time),
+		watchedGVRs:            make(map[schema.GroupVersionResource]context.CancelFunc),
 	}
 
 	return ctrl.run()
@@ -330,9 +338,10 @@ type controller struct {
 	leading      atomic.Bool
 	watchRelated []relatedWatcher
 
-	enableLeaderElection bool
-	leaderElectionID     string
-	leaderElectionNS     string
+	enableLeaderElection   bool
+	leaderElectionID       string
+	leaderElectionNS       string
+	leaderElectionIdentity string
 
 	client  *K8sClient
 	thread  *starlark.Thread
@@ -440,9 +449,14 @@ func (c *controller) runWithLeaderElection(wg *sync.WaitGroup) {
 		return
 	}
 
-	id, err := os.Hostname()
-	if err != nil {
-		id = fmt.Sprintf("controller-%d", os.Getpid())
+	id := c.leaderElectionIdentity
+	if id == "" {
+		host, err := os.Hostname()
+		if err != nil {
+			id = fmt.Sprintf("controller-%d", os.Getpid())
+		} else {
+			id = fmt.Sprintf("%s_%d", host, os.Getpid())
+		}
 	}
 
 	lock := &resourcelock.LeaseLock{
