@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -46,12 +47,13 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 	}
 
 	// Extract callable and complex kwargs before startype parsing
-	var reconcileFn, onCreateFn, onUpdateFn, onDeleteFn starlark.Callable
+	var reconcileFn, onCreateFn, onUpdateFn, onDeleteFn, finalizeFn starlark.Callable
 	var watchOwnedValue starlark.Value
 	filtered := filterKwargCallable(kwargs, "reconcile", &reconcileFn)
 	filtered = filterKwargCallable(filtered, "on_create", &onCreateFn)
 	filtered = filterKwargCallable(filtered, "on_update", &onUpdateFn)
 	filtered = filterKwargCallable(filtered, "on_delete", &onDeleteFn)
+	filtered = filterKwargCallable(filtered, "finalize", &finalizeFn)
 	filtered = filterKwargValue(filtered, "watch_owned", &watchOwnedValue)
 	var predicateFn starlark.Callable
 	filtered = filterKwargCallable(filtered, "predicate", &predicateFn)
@@ -62,6 +64,7 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		Labels                  string `name:"labels"`
 		Resync                  string `name:"resync"`
 		Poll                    string `name:"poll"`
+		Finalizer               string `name:"finalizer"`
 		Workers                 int    `name:"workers"`
 		MaxRetries              int    `name:"max_retries"`
 		Backoff                 string `name:"backoff"`
@@ -84,14 +87,24 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 	}
 
 	// Validate: at least one handler
-	if reconcileFn == nil && onCreateFn == nil && onUpdateFn == nil && onDeleteFn == nil {
-		return nil, fmt.Errorf("k8s.control: at least one handler required (reconcile, on_create, on_update, or on_delete)")
+	if reconcileFn == nil && onCreateFn == nil && onUpdateFn == nil && onDeleteFn == nil && finalizeFn == nil {
+		return nil, fmt.Errorf("k8s.control: at least one handler required (reconcile, finalize, on_create, on_update, or on_delete)")
 	}
 
 	// Resolve GVR
 	gvr, namespaced, err := client.resolver.Resolve(p.Kind)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.control: %w", err)
+	}
+
+	// Compute default finalizer name if finalize is configured
+	finalizerName := p.Finalizer
+	if finalizerName == "" && finalizeFn != nil {
+		if gvr.Group != "" {
+			finalizerName = fmt.Sprintf("%s.%s/finalizer", strings.ToLower(gvr.Resource), gvr.Group)
+		} else {
+			finalizerName = fmt.Sprintf("%s/finalizer", strings.ToLower(gvr.Resource))
+		}
 	}
 
 	// Parse durations
@@ -160,6 +173,8 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		onCreateFn:           onCreateFn,
 		onUpdateFn:           onUpdateFn,
 		onDeleteFn:           onDeleteFn,
+		finalizeFn:           finalizeFn,
+		finalizerName:        finalizerName,
 		client:               client,
 		thread:               thread,
 		cache:                make(map[string]*unstructured.Unstructured),
@@ -191,12 +206,14 @@ type controller struct {
 
 	generationChanged bool
 
-	reconcileFn starlark.Callable
-	onCreateFn  starlark.Callable
-	onUpdateFn  starlark.Callable
-	onDeleteFn  starlark.Callable
-	predicateFn starlark.Callable // predicate: fn(event, obj) -> bool
-	watchOwned  []string          // owned resource kinds to watch (e.g., ["deployments", "services"])
+	reconcileFn   starlark.Callable
+	onCreateFn    starlark.Callable
+	onUpdateFn    starlark.Callable
+	onDeleteFn    starlark.Callable
+	finalizeFn    starlark.Callable
+	finalizerName string
+	predicateFn   starlark.Callable // predicate: fn(event, obj) -> bool
+	watchOwned    []string          // owned resource kinds to watch (e.g., ["deployments", "services"])
 
 	enableLeaderElection bool
 	leaderElectionID     string
@@ -763,10 +780,15 @@ func (c *controller) dispatch(item queueItem) error {
 	obj, exists := c.cache[item.key]
 	c.cacheMu.RUnlock()
 
-	// For non-delete events, re-fetch if not in cache
 	if !exists && item.eventType != string(watch.Deleted) {
 		ns, name := splitKey(item.key)
-		fetched, err := c.client.dynClient.Resource(c.gvr).Namespace(ns).Get(c.ctx, name, metav1.GetOptions{})
+		var fetched *unstructured.Unstructured
+		var err error
+		if c.namespaced && ns != "" {
+			fetched, err = c.client.dynClient.Resource(c.gvr).Namespace(ns).Get(c.ctx, name, metav1.GetOptions{})
+		} else {
+			fetched, err = c.client.dynClient.Resource(c.gvr).Get(c.ctx, name, metav1.GetOptions{})
+		}
 		if err != nil {
 			return nil // object gone, skip
 		}
@@ -789,6 +811,35 @@ func (c *controller) dispatch(item queueItem) error {
 		libkite.SetPermissions(childThread, perms)
 	}
 	childThread.SetLocal(ActiveControllerKey, c)
+
+	isDeleting := !obj.GetDeletionTimestamp().IsZero()
+
+	// Declarative teardown hook (finalize)
+	if c.finalizeFn != nil {
+		if isDeleting {
+			if hasFinalizer(obj, c.finalizerName) {
+				if err := c.callFinalize(childThread, attrDict); err != nil {
+					fmt.Fprintf(os.Stderr, "k8s.control: finalize error on %s: %v\n", item.key, err)
+					c.updateReadyCondition(obj, false, "FinalizeError", err.Error())
+					return err
+				}
+				// Teardown succeeded cleanly. Strip finalizer to allow deletion.
+				if err := c.removeFinalizer(obj); err != nil {
+					return fmt.Errorf("strip finalizer %q on %s: %w", c.finalizerName, item.key, err)
+				}
+				return nil
+			}
+			return nil
+		}
+
+		// Resource is active: ensure finalizer is injected
+		if !hasFinalizer(obj, c.finalizerName) {
+			if err := c.addFinalizer(obj); err != nil {
+				return fmt.Errorf("add finalizer %q on %s: %w", c.finalizerName, item.key, err)
+			}
+			attrDict = unstructuredToAttrDict(obj)
+		}
+	}
 
 	var ret starlark.Value
 	var err error
@@ -827,13 +878,17 @@ func (c *controller) dispatch(item queueItem) error {
 	}
 
 	if err != nil {
+		if !isDeleting {
+			c.updateReadyCondition(obj, false, "ReconcileError", err.Error())
+		}
 		return err
 	}
 
 	// Handle functional return values for non-deleted objects
-	if ret != nil && item.eventType != string(watch.Deleted) {
+	if ret != nil && item.eventType != string(watch.Deleted) && !isDeleting {
 		if list, ok := ret.(*starlark.List); ok {
 			if err := c.reconcileDesiredChildren(obj, list); err != nil {
+				c.updateReadyCondition(obj, false, "ReconcileError", err.Error())
 				return err
 			}
 		} else if durStr, ok := starlark.AsString(ret); ok {
@@ -843,14 +898,188 @@ func (c *controller) dispatch(item queueItem) error {
 		}
 	}
 
+	// Automatically infer Ready condition on successful reconciliation
+	if !isDeleting && (c.reconcileFn != nil || c.onCreateFn != nil || c.onUpdateFn != nil) {
+		c.updateReadyCondition(obj, true, "Reconciled", "Resource synchronized successfully")
+	}
+
 	// Controller-level periodic polling
-	if c.poll > 0 && item.eventType != string(watch.Deleted) {
+	if c.poll > 0 && item.eventType != string(watch.Deleted) && !isDeleting {
 		if _, isDur := starlark.AsString(ret); !isDur {
 			c.queue.AddAfter(item, c.poll)
 		}
 	}
 
 	return nil
+}
+
+func (c *controller) callFinalize(thread *starlark.Thread, attrDict *AttrDict) error {
+	if fn, ok := c.finalizeFn.(*starlark.Function); ok {
+		if fn.NumParams() == 1 {
+			_, err := starlark.Call(thread, c.finalizeFn, starlark.Tuple{attrDict}, nil)
+			return err
+		}
+	}
+	_, err := starlark.Call(thread, c.finalizeFn, starlark.Tuple{attrDict}, nil)
+	if err != nil && strings.Contains(err.Error(), "got 1 arguments, want 2") {
+		_, err = starlark.Call(thread, c.finalizeFn, starlark.Tuple{starlark.String("DELETING"), attrDict}, nil)
+	}
+	return err
+}
+
+func hasFinalizer(obj *unstructured.Unstructured, finalizerName string) bool {
+	return slices.Contains(obj.GetFinalizers(), finalizerName)
+}
+
+func (c *controller) addFinalizer(obj *unstructured.Unstructured) error {
+	finalizers := obj.GetFinalizers()
+	if slices.Contains(finalizers, c.finalizerName) {
+		return nil
+	}
+	finalizers = append(finalizers, c.finalizerName)
+
+	patchData, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{
+			"finalizers": finalizers,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+	defer cancel()
+
+	var updated *unstructured.Unstructured
+	if c.namespaced && obj.GetNamespace() != "" {
+		updated, err = c.client.dynClient.Resource(c.gvr).Namespace(obj.GetNamespace()).Patch(ctx, obj.GetName(), types.MergePatchType, patchData, metav1.PatchOptions{})
+	} else {
+		updated, err = c.client.dynClient.Resource(c.gvr).Patch(ctx, obj.GetName(), types.MergePatchType, patchData, metav1.PatchOptions{})
+	}
+	if err != nil {
+		return err
+	}
+	if updated != nil {
+		c.RecordSelfEcho(string(updated.GetUID()), updated.GetResourceVersion())
+		c.cacheMu.Lock()
+		c.cache[keyForObject(updated)] = updated.DeepCopy()
+		c.cacheMu.Unlock()
+		*obj = *updated
+	}
+	return nil
+}
+
+func (c *controller) removeFinalizer(obj *unstructured.Unstructured) error {
+	finalizers := obj.GetFinalizers()
+	var newFinalizers []string
+	found := false
+	for _, f := range finalizers {
+		if f == c.finalizerName {
+			found = true
+			continue
+		}
+		newFinalizers = append(newFinalizers, f)
+	}
+	if !found {
+		return nil
+	}
+
+	patchData, err := json.Marshal(map[string]any{
+		"metadata": map[string]any{
+			"finalizers": newFinalizers,
+		},
+	})
+	if err != nil {
+		return err
+	}
+
+	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+	defer cancel()
+
+	var updated *unstructured.Unstructured
+	if c.namespaced && obj.GetNamespace() != "" {
+		updated, err = c.client.dynClient.Resource(c.gvr).Namespace(obj.GetNamespace()).Patch(ctx, obj.GetName(), types.MergePatchType, patchData, metav1.PatchOptions{})
+	} else {
+		updated, err = c.client.dynClient.Resource(c.gvr).Patch(ctx, obj.GetName(), types.MergePatchType, patchData, metav1.PatchOptions{})
+	}
+	if err != nil {
+		return err
+	}
+	if updated != nil {
+		c.RecordSelfEcho(string(updated.GetUID()), updated.GetResourceVersion())
+		c.cacheMu.Lock()
+		c.cache[keyForObject(updated)] = updated.DeepCopy()
+		c.cacheMu.Unlock()
+		*obj = *updated
+	}
+	return nil
+}
+
+func (c *controller) updateReadyCondition(obj *unstructured.Unstructured, ready bool, reason, message string) {
+	status := "False"
+	if ready {
+		status = "True"
+	}
+
+	rawConds, _, _ := unstructured.NestedSlice(obj.Object, "status", "conditions")
+	lastTransition := time.Now().UTC().Format(time.RFC3339)
+
+	// Preserve lastTransitionTime if status unchanged
+	for _, raw := range rawConds {
+		if cm, ok := raw.(map[string]any); ok {
+			if cm["type"] == "Ready" && cm["status"] == status {
+				if prevTime, ok := cm["lastTransitionTime"].(string); ok && prevTime != "" {
+					lastTransition = prevTime
+				}
+				break
+			}
+		}
+	}
+
+	condMap := map[string]any{
+		"type":               "Ready",
+		"status":             status,
+		"observedGeneration": obj.GetGeneration(),
+		"lastTransitionTime": lastTransition,
+		"reason":             reason,
+		"message":            message,
+	}
+
+	found := false
+	for i, raw := range rawConds {
+		if cm, ok := raw.(map[string]any); ok {
+			if cm["type"] == "Ready" {
+				rawConds[i] = condMap
+				found = true
+				break
+			}
+		}
+	}
+	if !found {
+		rawConds = append(rawConds, condMap)
+	}
+
+	_ = unstructured.SetNestedSlice(obj.Object, rawConds, "status", "conditions")
+
+	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+	defer cancel()
+
+	var updated *unstructured.Unstructured
+	var err error
+	if c.namespaced && obj.GetNamespace() != "" {
+		updated, err = c.client.dynClient.Resource(c.gvr).Namespace(obj.GetNamespace()).UpdateStatus(ctx, obj, metav1.UpdateOptions{})
+	} else {
+		updated, err = c.client.dynClient.Resource(c.gvr).UpdateStatus(ctx, obj, metav1.UpdateOptions{})
+	}
+	if err != nil {
+		return
+	}
+	if updated != nil {
+		c.RecordSelfEcho(string(updated.GetUID()), updated.GetResourceVersion())
+		c.cacheMu.Lock()
+		c.cache[keyForObject(updated)] = updated.DeepCopy()
+		c.cacheMu.Unlock()
+	}
 }
 
 func (c *controller) callReconcile(thread *starlark.Thread, eventType string, attrDict *AttrDict) (starlark.Value, error) {

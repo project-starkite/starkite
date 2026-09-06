@@ -49,15 +49,18 @@ func (c *K8sClient) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable ty
 // Tier 1 and Tier 2 methods that are not yet implemented return stubs.
 var allMethods = map[string]clientMethod{
 	// Tier 1: CRUD
-	"get":      (*K8sClient).get,
-	"list":     (*K8sClient).listResources,
-	"create":   (*K8sClient).create,
-	"apply":    (*K8sClient).apply,
-	"delete":   (*K8sClient).del,
-	"patch":    (*K8sClient).patch,
-	"label":    (*K8sClient).label,
-	"annotate": (*K8sClient).annotate,
-	"status":   (*K8sClient).updateStatus,
+	"get":              (*K8sClient).get,
+	"list":             (*K8sClient).listResources,
+	"create":           (*K8sClient).create,
+	"apply":            (*K8sClient).apply,
+	"delete":           (*K8sClient).del,
+	"patch":            (*K8sClient).patch,
+	"label":            (*K8sClient).label,
+	"annotate":         (*K8sClient).annotate,
+	"status":           (*K8sClient).updateStatus,
+	"finalizer_add":    (*K8sClient).finalizerAdd,
+	"finalizer_remove": (*K8sClient).finalizerRemove,
+	"condition_set":    (*K8sClient).conditionSet,
 
 	// Tier 1: Watch
 	"watch":    (*K8sClient).watch,

@@ -169,6 +169,25 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			Members: ObjConstructors(),
 		}
 
+		// Build k8s.finalizer sub-namespace
+		finalizerModule := &starlarkstruct.Module{
+			Name: "k8s.finalizer",
+			Members: starlark.StringDict{
+				"has":    starlark.NewBuiltin("k8s.finalizer.has", m.finalizerHas),
+				"add":    m.withDefault("finalizer.add", (*K8sClient).finalizerAdd),
+				"remove": m.withDefault("finalizer.remove", (*K8sClient).finalizerRemove),
+			},
+		}
+
+		// Build k8s.condition sub-namespace
+		conditionModule := &starlarkstruct.Module{
+			Name: "k8s.condition",
+			Members: starlark.StringDict{
+				"get": starlark.NewBuiltin("k8s.condition.get", m.conditionGet),
+				"set": m.withDefault("condition.set", (*K8sClient).conditionSet),
+			},
+		}
+
 		// Build top-level members
 		members := starlark.StringDict{
 			// Factory
@@ -181,10 +200,13 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"webhook": starlark.NewBuiltin("k8s.webhook", m.webhookBuiltin),
 
 			// Utility
-			"yaml": starlark.NewBuiltin("k8s.yaml", m.yamlHelper),
+			"yaml":        starlark.NewBuiltin("k8s.yaml", m.yamlHelper),
+			"is_deleting": starlark.NewBuiltin("k8s.is_deleting", m.isDeleting),
 
-			// k8s.obj sub-namespace
-			"obj": objModule,
+			// Sub-namespaces
+			"obj":       objModule,
+			"finalizer": finalizerModule,
+			"condition": conditionModule,
 
 			// Tier 1: CRUD
 			"get":      m.withDefault("get", (*K8sClient).get),

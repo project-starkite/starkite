@@ -345,3 +345,464 @@ func TestControlReconcileDesiredChildrenAndOrphanPruning(t *testing.T) {
 		t.Fatal("expected orphan service test-app-svc to be deleted/pruned, but it still exists")
 	}
 }
+
+func setupControlFakeClient(scheme *runtime.Scheme, customListKinds map[schema.GroupVersionResource]string) *dynamicfake.FakeDynamicClient {
+	fakeClient := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, customListKinds)
+
+	fakeClient.PrependReactor("patch", "*", func(action clienttesting.Action) (bool, runtime.Object, error) {
+		patchAction := action.(clienttesting.PatchAction)
+		gvr := patchAction.GetResource()
+		ns := patchAction.GetNamespace()
+		tracker := fakeClient.Tracker()
+
+		obj, err := tracker.Get(gvr, ns, patchAction.GetName())
+		if err != nil {
+			return true, nil, err
+		}
+		u := obj.(*unstructured.Unstructured).DeepCopy()
+
+		var patchMap map[string]any
+		if err := json.Unmarshal(patchAction.GetPatch(), &patchMap); err != nil {
+			return true, nil, err
+		}
+
+		if metaPatch, ok := patchMap["metadata"].(map[string]any); ok {
+			if finVal, ok := metaPatch["finalizers"]; ok {
+				if finSlice, ok := finVal.([]any); ok {
+					var fins []string
+					for _, f := range finSlice {
+						fins = append(fins, f.(string))
+					}
+					u.SetFinalizers(fins)
+				} else if finVal == nil {
+					u.SetFinalizers(nil)
+				}
+			}
+		}
+
+		if err := tracker.Update(gvr, u, ns); err != nil {
+			return true, nil, err
+		}
+		return true, u, nil
+	})
+
+	fakeClient.PrependReactor("update", "*", func(action clienttesting.Action) (bool, runtime.Object, error) {
+		if action.GetSubresource() == "status" {
+			updateAction := action.(clienttesting.UpdateAction)
+			u := updateAction.GetObject().(*unstructured.Unstructured)
+			gvr := updateAction.GetResource()
+			ns := updateAction.GetNamespace()
+			if err := fakeClient.Tracker().Update(gvr, u, ns); err != nil {
+				return true, nil, err
+			}
+			return true, u, nil
+		}
+		return false, nil, nil
+	})
+
+	return fakeClient
+}
+
+func TestControlAutomaticFinalizerInjection(t *testing.T) {
+	parentGVR := schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: "testapps"}
+	scheme := runtime.NewScheme()
+	fakeClient := setupControlFakeClient(scheme, map[schema.GroupVersionResource]string{
+		parentGVR: "TestAppList",
+	})
+	ctx := t.Context()
+
+	// Active parent object with NO finalizers
+	parentObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "example.io/v1",
+			"kind":       "TestApp",
+			"metadata": map[string]any{
+				"name":       "test-app",
+				"namespace":  "default",
+				"uid":        "parent-uuid-1",
+				"generation": int64(1),
+			},
+		},
+	}
+	_, err := fakeClient.Resource(parentGVR).Namespace("default").Create(ctx, parentObj, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create test parent: %v", err)
+	}
+
+	var reconciledNames []string
+	var finalizedNames []string
+	predeclared := starlark.StringDict{
+		"record_reconcile": starlark.NewBuiltin("record_reconcile", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			var name string
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "name", &name); err != nil {
+				return nil, err
+			}
+			reconciledNames = append(reconciledNames, name)
+			return starlark.None, nil
+		}),
+		"record_finalize": starlark.NewBuiltin("record_finalize", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			var name string
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "name", &name); err != nil {
+				return nil, err
+			}
+			finalizedNames = append(finalizedNames, name)
+			return starlark.None, nil
+		}),
+	}
+	thread := &starlark.Thread{Name: "test-thread"}
+	starSrc := `
+def reconcile(cr):
+    record_reconcile(cr.metadata.name)
+def finalize(cr):
+    record_finalize(cr.metadata.name)
+`
+	globals, err := starlark.ExecFile(thread, "test_finalize.star", starSrc, predeclared)
+	if err != nil {
+		t.Fatalf("ExecFile: %v", err)
+	}
+
+	c := &controller{
+		kind:          "TestApp",
+		gvr:           parentGVR,
+		namespaced:    true,
+		namespace:     "default",
+		finalizerName: "testapps.example.io/finalizer",
+		finalizeFn:    globals["finalize"].(starlark.Callable),
+		reconcileFn:   globals["reconcile"].(starlark.Callable),
+		client: &K8sClient{
+			dynClient: fakeClient,
+			namespace: "default",
+		},
+		ctx:      ctx,
+		cache:    map[string]*unstructured.Unstructured{"default/test-app": parentObj.DeepCopy()},
+		echoKeys: make(map[string]time.Time),
+	}
+
+	// Dispatch ADDED item
+	err = c.dispatch(queueItem{key: "default/test-app", eventType: "ADDED"})
+	if err != nil {
+		t.Fatalf("dispatch error: %v", err)
+	}
+
+	// 1. Verify finalizer was injected into the stored object
+	gotObj, err := fakeClient.Resource(parentGVR).Namespace("default").Get(ctx, "test-app", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get parent after dispatch: %v", err)
+	}
+	fins := gotObj.GetFinalizers()
+	if len(fins) != 1 || fins[0] != "testapps.example.io/finalizer" {
+		t.Fatalf("expected finalizers [testapps.example.io/finalizer], got: %v", fins)
+	}
+
+	// 2. Verify reconcile ran and finalize did NOT run
+	if len(reconciledNames) != 1 || reconciledNames[0] != "test-app" {
+		t.Fatalf("expected reconcile to be called once with test-app, got %v", reconciledNames)
+	}
+	if len(finalizedNames) != 0 {
+		t.Fatalf("expected finalize to NOT be called for active resource, got %d calls", len(finalizedNames))
+	}
+
+	// 3. Verify Ready condition was automatically set to True
+	conds, _, _ := unstructured.NestedSlice(gotObj.Object, "status", "conditions")
+	if len(conds) != 1 {
+		t.Fatalf("expected 1 condition, got %v", conds)
+	}
+	cond := conds[0].(map[string]any)
+	if cond["type"] != "Ready" || cond["status"] != "True" || cond["reason"] != "Reconciled" {
+		t.Fatalf("unexpected ready condition: %+v", cond)
+	}
+}
+
+func TestControlFinalizeExecutionAndStripping(t *testing.T) {
+	parentGVR := schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: "testapps"}
+	scheme := runtime.NewScheme()
+	fakeClient := setupControlFakeClient(scheme, map[schema.GroupVersionResource]string{
+		parentGVR: "TestAppList",
+	})
+	ctx := t.Context()
+
+	now := metav1.Now()
+	// Deleting parent object with finalizer present
+	parentObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "example.io/v1",
+			"kind":       "TestApp",
+			"metadata": map[string]any{
+				"name":              "test-app",
+				"namespace":         "default",
+				"uid":               "parent-uuid-2",
+				"generation":        int64(2),
+				"deletionTimestamp": now.Format(time.RFC3339),
+				"finalizers": []any{
+					"testapps.example.io/finalizer",
+				},
+			},
+		},
+	}
+	_, err := fakeClient.Resource(parentGVR).Namespace("default").Create(ctx, parentObj, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create test parent: %v", err)
+	}
+
+	var reconciledNames []string
+	var finalizedNames []string
+	predeclared := starlark.StringDict{
+		"record_reconcile": starlark.NewBuiltin("record_reconcile", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			var name string
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "name", &name); err != nil {
+				return nil, err
+			}
+			reconciledNames = append(reconciledNames, name)
+			return starlark.None, nil
+		}),
+		"record_finalize": starlark.NewBuiltin("record_finalize", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			var name string
+			if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "name", &name); err != nil {
+				return nil, err
+			}
+			finalizedNames = append(finalizedNames, name)
+			return starlark.None, nil
+		}),
+	}
+	thread := &starlark.Thread{Name: "test-thread"}
+	starSrc := `
+def reconcile(cr):
+    record_reconcile(cr.metadata.name)
+def finalize(cr):
+    record_finalize(cr.metadata.name)
+`
+	globals, err := starlark.ExecFile(thread, "test_finalize2.star", starSrc, predeclared)
+	if err != nil {
+		t.Fatalf("ExecFile: %v", err)
+	}
+
+	c := &controller{
+		kind:          "TestApp",
+		gvr:           parentGVR,
+		namespaced:    true,
+		namespace:     "default",
+		finalizerName: "testapps.example.io/finalizer",
+		finalizeFn:    globals["finalize"].(starlark.Callable),
+		reconcileFn:   globals["reconcile"].(starlark.Callable),
+		client: &K8sClient{
+			dynClient: fakeClient,
+			namespace: "default",
+		},
+		ctx:      ctx,
+		cache:    map[string]*unstructured.Unstructured{"default/test-app": parentObj.DeepCopy()},
+		echoKeys: make(map[string]time.Time),
+	}
+
+	// Dispatch MODIFIED item on deleting object
+	err = c.dispatch(queueItem{key: "default/test-app", eventType: "MODIFIED"})
+	if err != nil {
+		t.Fatalf("dispatch error: %v", err)
+	}
+
+	// 1. Verify finalize was called and reconcile was NOT called
+	if len(finalizedNames) != 1 || finalizedNames[0] != "test-app" {
+		t.Fatalf("expected finalize to be called once with test-app, got %v", finalizedNames)
+	}
+	if len(reconciledNames) != 0 {
+		t.Fatalf("expected reconcile to NOT be called on deleting resource, got %d", len(reconciledNames))
+	}
+
+	// 2. Verify finalizer was stripped cleanly
+	gotObj, err := fakeClient.Resource(parentGVR).Namespace("default").Get(ctx, "test-app", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get parent after dispatch: %v", err)
+	}
+	if len(gotObj.GetFinalizers()) != 0 {
+		t.Fatalf("expected finalizers to be empty after finalize, got: %v", gotObj.GetFinalizers())
+	}
+}
+
+func TestControlFinalizeErrorRetention(t *testing.T) {
+	parentGVR := schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: "testapps"}
+	scheme := runtime.NewScheme()
+	fakeClient := setupControlFakeClient(scheme, map[schema.GroupVersionResource]string{
+		parentGVR: "TestAppList",
+	})
+	ctx := t.Context()
+
+	now := metav1.Now()
+	// Deleting parent object with finalizer present
+	parentObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "example.io/v1",
+			"kind":       "TestApp",
+			"metadata": map[string]any{
+				"name":              "test-app",
+				"namespace":         "default",
+				"uid":               "parent-uuid-3",
+				"generation":        int64(2),
+				"deletionTimestamp": now.Format(time.RFC3339),
+				"finalizers": []any{
+					"testapps.example.io/finalizer",
+				},
+			},
+		},
+	}
+	_, err := fakeClient.Resource(parentGVR).Namespace("default").Create(ctx, parentObj, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create test parent: %v", err)
+	}
+
+	thread := &starlark.Thread{Name: "test-thread"}
+	starSrc := `
+def finalize(cr):
+    fail("external dependency cleanup failed")
+`
+	globals, err := starlark.ExecFile(thread, "test_finalize_err.star", starSrc, nil)
+	if err != nil {
+		t.Fatalf("ExecFile: %v", err)
+	}
+
+	c := &controller{
+		kind:          "TestApp",
+		gvr:           parentGVR,
+		namespaced:    true,
+		namespace:     "default",
+		finalizerName: "testapps.example.io/finalizer",
+		finalizeFn:    globals["finalize"].(starlark.Callable),
+		client: &K8sClient{
+			dynClient: fakeClient,
+			namespace: "default",
+		},
+		ctx:      ctx,
+		cache:    map[string]*unstructured.Unstructured{"default/test-app": parentObj.DeepCopy()},
+		echoKeys: make(map[string]time.Time),
+	}
+
+	// Dispatch item on deleting object — finalize will fail
+	err = c.dispatch(queueItem{key: "default/test-app", eventType: "MODIFIED"})
+	if err == nil {
+		t.Fatal("expected dispatch error when finalize fails, got nil")
+	}
+
+	// 1. Verify finalizer was RETAINED (not stripped)
+	gotObj, err := fakeClient.Resource(parentGVR).Namespace("default").Get(ctx, "test-app", metav1.GetOptions{})
+	if err != nil {
+		t.Fatalf("failed to get parent after dispatch: %v", err)
+	}
+	fins := gotObj.GetFinalizers()
+	if len(fins) != 1 || fins[0] != "testapps.example.io/finalizer" {
+		t.Fatalf("expected finalizer to be retained, got: %v", fins)
+	}
+
+	// 2. Verify Ready condition set to False with FinalizeError
+	conds, _, _ := unstructured.NestedSlice(gotObj.Object, "status", "conditions")
+	if len(conds) != 1 {
+		t.Fatalf("expected 1 condition, got %v", conds)
+	}
+	cond := conds[0].(map[string]any)
+	if cond["type"] != "Ready" || cond["status"] != "False" || cond["reason"] != "FinalizeError" {
+		t.Fatalf("unexpected ready condition: %+v", cond)
+	}
+}
+
+func TestControlReadyConditionInference(t *testing.T) {
+	parentGVR := schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: "testapps"}
+	scheme := runtime.NewScheme()
+	fakeClient := setupControlFakeClient(scheme, map[schema.GroupVersionResource]string{
+		parentGVR: "TestAppList",
+	})
+	ctx := t.Context()
+
+	parentObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "example.io/v1",
+			"kind":       "TestApp",
+			"metadata": map[string]any{
+				"name":       "test-app",
+				"namespace":  "default",
+				"uid":        "parent-uuid-4",
+				"generation": int64(1),
+			},
+		},
+	}
+	_, err := fakeClient.Resource(parentGVR).Namespace("default").Create(ctx, parentObj, metav1.CreateOptions{})
+	if err != nil {
+		t.Fatalf("failed to create test parent: %v", err)
+	}
+
+	shouldFail := false
+	predeclared := starlark.StringDict{
+		"should_fail": starlark.NewBuiltin("should_fail", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			return starlark.Bool(shouldFail), nil
+		}),
+	}
+
+	thread := &starlark.Thread{Name: "test-thread"}
+	starSrc := `
+def reconcile(cr):
+    if should_fail():
+        fail("reconciliation exploded")
+    return None
+`
+	globals, err := starlark.ExecFile(thread, "test_ready.star", starSrc, predeclared)
+	if err != nil {
+		t.Fatalf("ExecFile: %v", err)
+	}
+
+	c := &controller{
+		kind:        "TestApp",
+		gvr:         parentGVR,
+		namespaced:  true,
+		namespace:   "default",
+		reconcileFn: globals["reconcile"].(starlark.Callable),
+		client: &K8sClient{
+			dynClient: fakeClient,
+			namespace: "default",
+		},
+		ctx:      ctx,
+		cache:    map[string]*unstructured.Unstructured{"default/test-app": parentObj.DeepCopy()},
+		echoKeys: make(map[string]time.Time),
+	}
+
+	// 1. First reconciliation: should set Ready=True
+	err = c.dispatch(queueItem{key: "default/test-app", eventType: "ADDED"})
+	if err != nil {
+		t.Fatalf("dispatch error: %v", err)
+	}
+	got1, _ := fakeClient.Resource(parentGVR).Namespace("default").Get(ctx, "test-app", metav1.GetOptions{})
+	conds1, _, _ := unstructured.NestedSlice(got1.Object, "status", "conditions")
+	if len(conds1) != 1 {
+		t.Fatalf("expected 1 condition, got %v", conds1)
+	}
+	cond1 := conds1[0].(map[string]any)
+	if cond1["status"] != "True" || cond1["reason"] != "Reconciled" {
+		t.Fatalf("expected Ready=True/Reconciled, got: %+v", cond1)
+	}
+	t1 := cond1["lastTransitionTime"].(string)
+	if t1 == "" {
+		t.Fatal("expected non-empty lastTransitionTime")
+	}
+
+	// 2. Second reconciliation (success again): lastTransitionTime must be PRESERVED
+	time.Sleep(10 * time.Millisecond)
+	err = c.dispatch(queueItem{key: "default/test-app", eventType: "MODIFIED"})
+	if err != nil {
+		t.Fatalf("dispatch 2 error: %v", err)
+	}
+	got2, _ := fakeClient.Resource(parentGVR).Namespace("default").Get(ctx, "test-app", metav1.GetOptions{})
+	conds2, _, _ := unstructured.NestedSlice(got2.Object, "status", "conditions")
+	cond2 := conds2[0].(map[string]any)
+	t2 := cond2["lastTransitionTime"].(string)
+	if t2 != t1 {
+		t.Fatalf("lastTransitionTime changed when status was unchanged: got %s, want %s", t2, t1)
+	}
+
+	// 3. Third reconciliation: trigger error -> Ready=False, reason="ReconcileError"
+	shouldFail = true
+	err = c.dispatch(queueItem{key: "default/test-app", eventType: "MODIFIED"})
+	if err == nil {
+		t.Fatal("expected error on failed reconcile")
+	}
+	got3, _ := fakeClient.Resource(parentGVR).Namespace("default").Get(ctx, "test-app", metav1.GetOptions{})
+	conds3, _, _ := unstructured.NestedSlice(got3.Object, "status", "conditions")
+	cond3 := conds3[0].(map[string]any)
+	if cond3["status"] != "False" || cond3["reason"] != "ReconcileError" {
+		t.Fatalf("expected Ready=False/ReconcileError, got: %+v", cond3)
+	}
+}
