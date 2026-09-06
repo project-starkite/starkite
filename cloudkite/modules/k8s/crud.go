@@ -287,6 +287,9 @@ func (c *K8sClient) apply(thread *starlark.Thread, fn *starlark.Builtin, args st
 			if err := injectOwnerRef(obj, ownerValue); err != nil {
 				return nil, fmt.Errorf("k8s.apply: owner: %w", err)
 			}
+			if act, ok := thread.Local(ActiveControllerKey).(ActiveController); ok && act != nil {
+				act.AutoWatch(gvr)
+			}
 		}
 
 		data, err := json.Marshal(obj.Object)
@@ -838,7 +841,7 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("k8s.status: status must be a dict or AttrDict, got %s", statusValue.Type())
 	}
 
-	gvr, _, err := c.resolver.Resolve(objKind)
+	gvr, namespaced, err := c.resolver.Resolve(objKind)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.status: %w", err)
 	}
@@ -849,7 +852,12 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 	}
 	defer cancel()
 
-	current, err := c.dynClient.Resource(gvr).Namespace(objNs).Get(ctx, objName, metav1.GetOptions{})
+	var current *unstructuredObj
+	if namespaced {
+		current, err = c.dynClient.Resource(gvr).Namespace(objNs).Get(ctx, objName, metav1.GetOptions{})
+	} else {
+		current, err = c.dynClient.Resource(gvr).Get(ctx, objName, metav1.GetOptions{})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("k8s.status: get %s %q: %w", objKind, objName, err)
 	}
@@ -861,9 +869,18 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 	maps.Copy(currentStatus, statusMap)
 	current.Object["status"] = currentStatus
 
-	updated, err := c.dynClient.Resource(gvr).Namespace(objNs).UpdateStatus(ctx, current, metav1.UpdateOptions{})
+	var updated *unstructuredObj
+	if namespaced {
+		updated, err = c.dynClient.Resource(gvr).Namespace(objNs).UpdateStatus(ctx, current, metav1.UpdateOptions{})
+	} else {
+		updated, err = c.dynClient.Resource(gvr).UpdateStatus(ctx, current, metav1.UpdateOptions{})
+	}
 	if err != nil {
 		return nil, fmt.Errorf("k8s.status: update %s %q: %w", objKind, objName, err)
+	}
+
+	if act, ok := thread.Local(ActiveControllerKey).(ActiveController); ok && act != nil {
+		act.RecordSelfEcho(string(updated.GetUID()), updated.GetResourceVersion())
 	}
 
 	return unstructuredToDict(updated)

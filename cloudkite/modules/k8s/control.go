@@ -2,6 +2,7 @@ package k8s
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/leaderelection"
@@ -59,10 +61,12 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		Namespace               string `name:"namespace"`
 		Labels                  string `name:"labels"`
 		Resync                  string `name:"resync"`
+		Poll                    string `name:"poll"`
 		Workers                 int    `name:"workers"`
 		MaxRetries              int    `name:"max_retries"`
 		Backoff                 string `name:"backoff"`
 		FieldSelector           string `name:"field_selector"`
+		GenerationChanged       *bool  `name:"generation_changed"`
 		LeaderElection          bool   `name:"leader_election"`
 		LeaderElectionID        string `name:"leader_election_id"`
 		LeaderElectionNamespace string `name:"leader_election_namespace"`
@@ -72,6 +76,11 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 	p.Backoff = "5s"
 	if err := startype.Args(args, filtered).Go(&p); err != nil {
 		return nil, fmt.Errorf("k8s.control: %w", err)
+	}
+
+	genChanged := true
+	if p.GenerationChanged != nil {
+		genChanged = *p.GenerationChanged
 	}
 
 	// Validate: at least one handler
@@ -91,6 +100,13 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		resyncInterval, err = time.ParseDuration(p.Resync)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.control: invalid resync %q: %w", p.Resync, err)
+		}
+	}
+	var pollInterval time.Duration
+	if p.Poll != "" {
+		pollInterval, err = time.ParseDuration(p.Poll)
+		if err != nil {
+			return nil, fmt.Errorf("k8s.control: invalid poll %q: %w", p.Poll, err)
 		}
 	}
 	backoff, err := time.ParseDuration(p.Backoff)
@@ -135,9 +151,11 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		namespace:            ns,
 		labels:               p.Labels,
 		resync:               resyncInterval,
+		poll:                 pollInterval,
 		workers:              p.Workers,
 		maxRetries:           p.MaxRetries,
 		backoff:              backoff,
+		generationChanged:    genChanged,
 		reconcileFn:          reconcileFn,
 		onCreateFn:           onCreateFn,
 		onUpdateFn:           onUpdateFn,
@@ -151,6 +169,8 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		enableLeaderElection: p.LeaderElection,
 		leaderElectionID:     leaderID,
 		leaderElectionNS:     leaderNS,
+		echoKeys:             make(map[string]time.Time),
+		watchedGVRs:          make(map[schema.GroupVersionResource]context.CancelFunc),
 	}
 
 	return ctrl.run()
@@ -164,9 +184,12 @@ type controller struct {
 	labels        string
 	fieldSelector string
 	resync        time.Duration
+	poll          time.Duration
 	workers       int
 	maxRetries    int
 	backoff       time.Duration
+
+	generationChanged bool
 
 	reconcileFn starlark.Callable
 	onCreateFn  starlark.Callable
@@ -186,6 +209,12 @@ type controller struct {
 	cacheMu sync.RWMutex
 	ctx     context.Context
 	cancel  context.CancelFunc
+
+	echoMu   sync.RWMutex
+	echoKeys map[string]time.Time
+
+	autoWatchMu sync.Mutex
+	watchedGVRs map[schema.GroupVersionResource]context.CancelFunc
 }
 
 // run starts the controller and blocks until stopped.
@@ -219,10 +248,14 @@ func (c *controller) run() (starlark.Value, error) {
 
 	// Start owned resource watch goroutines
 	for _, ownedKind := range c.watchOwned {
-		kind := ownedKind
-		wg.Go(func() {
-			c.watchOwnedLoop(kind)
-		})
+		if gvr, _, err := c.client.resolver.Resolve(ownedKind); err == nil {
+			c.AutoWatch(gvr)
+		} else {
+			kind := ownedKind
+			wg.Go(func() {
+				c.watchOwnedLoop(kind)
+			})
+		}
 	}
 
 	// Start worker goroutines (leader-only if leader election enabled)
@@ -367,6 +400,13 @@ func (c *controller) doWatch() error {
 				continue
 			}
 
+			// Suppress self-echoed events from status updates performed by this controller
+			uid := string(obj.GetUID())
+			rv := obj.GetResourceVersion()
+			if uid != "" && rv != "" && c.isSelfEcho(uid, rv) {
+				continue
+			}
+
 			// Apply predicate before enqueuing
 			if c.predicateFn != nil {
 				if !c.applyPredicate(string(event.Type), obj) {
@@ -381,6 +421,13 @@ func (c *controller) doWatch() error {
 			old := c.cache[key]
 			c.cache[key] = obj.DeepCopy()
 			c.cacheMu.Unlock()
+
+			// Inherent generation filter: skip enqueuing when generation hasn't changed on MODIFIED events
+			if c.generationChanged && event.Type == watch.Modified {
+				if old != nil && obj.GetGeneration() != 0 && old.GetGeneration() == obj.GetGeneration() {
+					continue
+				}
+			}
 
 			// Enqueue with previous version
 			c.queue.Add(queueItem{
@@ -519,7 +566,7 @@ func (c *controller) doWatchOwned(ownedKind string) error {
 
 			// Look up ownerReferences — enqueue parent if it matches the controller's primary kind
 			for _, ref := range obj.GetOwnerReferences() {
-				if strings.EqualFold(ref.Kind, c.kind) {
+				if c.matchesOwnerRef(ref) {
 					parentKey := obj.GetNamespace() + "/" + ref.Name
 					if obj.GetNamespace() == "" {
 						parentKey = ref.Name
@@ -532,6 +579,138 @@ func (c *controller) doWatchOwned(ownedKind string) error {
 			}
 		}
 	}
+}
+
+// AutoWatch registers a child GVR to be watched dynamically.
+// If an event occurs on a resource of this GVR with an ownerReference
+// pointing to the controller's kind, the parent custom resource is enqueued.
+func (c *controller) AutoWatch(gvr schema.GroupVersionResource) {
+	c.autoWatchMu.Lock()
+	defer c.autoWatchMu.Unlock()
+
+	if _, exists := c.watchedGVRs[gvr]; exists || gvr == c.gvr {
+		return
+	}
+
+	watchCtx, cancel := context.WithCancel(c.ctx)
+	c.watchedGVRs[gvr] = cancel
+
+	go c.runDynamicChildWatch(watchCtx, gvr)
+}
+
+// RecordSelfEcho records the UID and resourceVersion from a status update performed by this controller.
+func (c *controller) RecordSelfEcho(uid, resourceVersion string) {
+	c.echoMu.Lock()
+	defer c.echoMu.Unlock()
+
+	now := time.Now()
+	for k, t := range c.echoKeys {
+		if now.Sub(t) > time.Minute {
+			delete(c.echoKeys, k)
+		}
+	}
+	c.echoKeys[uid+":"+resourceVersion] = now
+}
+
+// isSelfEcho returns true if the incoming event matches a recorded self-echo, and consumes the entry.
+func (c *controller) isSelfEcho(uid, resourceVersion string) bool {
+	c.echoMu.Lock()
+	defer c.echoMu.Unlock()
+
+	key := uid + ":" + resourceVersion
+	if _, exists := c.echoKeys[key]; exists {
+		delete(c.echoKeys, key)
+		return true
+	}
+	return false
+}
+
+func (c *controller) runDynamicChildWatch(ctx context.Context, gvr schema.GroupVersionResource) {
+	backoff := time.Second
+	maxBackoff := 30 * time.Second
+
+	for {
+		if ctx.Err() != nil {
+			return
+		}
+
+		err := c.doWatchDynamicChild(ctx, gvr)
+		if ctx.Err() != nil {
+			return
+		}
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "k8s.control: dynamic child watch %v error: %v, reconnecting in %v\n", gvr, err, backoff)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, maxBackoff)
+	}
+}
+
+func (c *controller) doWatchDynamicChild(ctx context.Context, gvr schema.GroupVersionResource) error {
+	opts := metav1.ListOptions{}
+
+	var watcher watch.Interface
+	var err error
+	if c.namespaced && c.namespace != "" {
+		watcher, err = c.client.dynClient.Resource(gvr).Namespace(c.namespace).Watch(ctx, opts)
+	} else {
+		watcher, err = c.client.dynClient.Resource(gvr).Watch(ctx, opts)
+	}
+	if err != nil {
+		return fmt.Errorf("watch child %v: %w", gvr, err)
+	}
+	defer watcher.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				return fmt.Errorf("child watch channel closed")
+			}
+
+			obj, ok := event.Object.(*unstructuredObj)
+			if !ok {
+				continue
+			}
+
+			// Check ownerReferences — enqueue parent if it matches controller kind
+			for _, ref := range obj.GetOwnerReferences() {
+				if c.matchesOwnerRef(ref) {
+					parentKey := obj.GetNamespace() + "/" + ref.Name
+					if obj.GetNamespace() == "" {
+						parentKey = ref.Name
+					}
+					c.queue.Add(queueItem{
+						key:       parentKey,
+						eventType: string(watch.Modified),
+					})
+				}
+			}
+		}
+	}
+}
+
+func (c *controller) matchesOwnerRef(ref metav1.OwnerReference) bool {
+	if strings.EqualFold(ref.Kind, c.kind) ||
+		strings.EqualFold(ref.Kind+"s", c.kind) ||
+		strings.EqualFold(ref.Kind, c.kind+"s") ||
+		strings.EqualFold(ref.Kind, c.gvr.Resource) ||
+		strings.EqualFold(ref.Kind+"s", c.gvr.Resource) {
+		return true
+	}
+	if c.client != nil && c.client.resolver != nil {
+		if gvr, _, err := c.client.resolver.Resolve(ref.Kind); err == nil {
+			return gvr == c.gvr
+		}
+	}
+	return false
 }
 
 // ============================================================================
@@ -564,6 +743,7 @@ func (c *controller) processNextItem() bool {
 
 	err := c.dispatch(item)
 	if err != nil {
+		fmt.Fprintf(os.Stderr, "k8s.control: dispatch error on %s: %v\n", item.key, err)
 		if c.queue.NumRequeues(raw) < c.maxRetries {
 			c.queue.AddRateLimited(raw)
 		} else {
@@ -608,16 +788,17 @@ func (c *controller) dispatch(item queueItem) error {
 	if perms := libkite.GetPermissions(c.thread); perms != nil {
 		libkite.SetPermissions(childThread, perms)
 	}
+	childThread.SetLocal(ActiveControllerKey, c)
+
+	var ret starlark.Value
+	var err error
 
 	switch item.eventType {
 	case string(watch.Added):
 		if c.onCreateFn != nil {
-			_, err := starlark.Call(childThread, c.onCreateFn, starlark.Tuple{attrDict}, nil)
-			return err
-		}
-		if c.reconcileFn != nil {
-			_, err := starlark.Call(childThread, c.reconcileFn, starlark.Tuple{starlark.String("ADDED"), attrDict}, nil)
-			return err
+			ret, err = starlark.Call(childThread, c.onCreateFn, starlark.Tuple{attrDict}, nil)
+		} else if c.reconcileFn != nil {
+			ret, err = c.callReconcile(childThread, "ADDED", attrDict)
 		}
 
 	case string(watch.Modified):
@@ -627,12 +808,9 @@ func (c *controller) dispatch(item queueItem) error {
 				oldDict = unstructuredToAttrDict(item.old)
 			}
 			newDict := attrDict
-			_, err := starlark.Call(childThread, c.onUpdateFn, starlark.Tuple{oldDict, newDict}, nil)
-			return err
-		}
-		if c.reconcileFn != nil {
-			_, err := starlark.Call(childThread, c.reconcileFn, starlark.Tuple{starlark.String("MODIFIED"), attrDict}, nil)
-			return err
+			ret, err = starlark.Call(childThread, c.onUpdateFn, starlark.Tuple{oldDict, newDict}, nil)
+		} else if c.reconcileFn != nil {
+			ret, err = c.callReconcile(childThread, "MODIFIED", attrDict)
 		}
 
 	case string(watch.Deleted):
@@ -642,16 +820,187 @@ func (c *controller) dispatch(item queueItem) error {
 		c.cacheMu.Unlock()
 
 		if c.onDeleteFn != nil {
-			_, err := starlark.Call(childThread, c.onDeleteFn, starlark.Tuple{attrDict}, nil)
-			return err
+			ret, err = starlark.Call(childThread, c.onDeleteFn, starlark.Tuple{attrDict}, nil)
+		} else if c.reconcileFn != nil {
+			ret, err = c.callReconcile(childThread, "DELETED", attrDict)
 		}
-		if c.reconcileFn != nil {
-			_, err := starlark.Call(childThread, c.reconcileFn, starlark.Tuple{starlark.String("DELETED"), attrDict}, nil)
-			return err
+	}
+
+	if err != nil {
+		return err
+	}
+
+	// Handle functional return values for non-deleted objects
+	if ret != nil && item.eventType != string(watch.Deleted) {
+		if list, ok := ret.(*starlark.List); ok {
+			if err := c.reconcileDesiredChildren(obj, list); err != nil {
+				return err
+			}
+		} else if durStr, ok := starlark.AsString(ret); ok {
+			if dur, parseErr := time.ParseDuration(durStr); parseErr == nil && dur > 0 {
+				c.queue.AddAfter(item, dur)
+			}
+		}
+	}
+
+	// Controller-level periodic polling
+	if c.poll > 0 && item.eventType != string(watch.Deleted) {
+		if _, isDur := starlark.AsString(ret); !isDur {
+			c.queue.AddAfter(item, c.poll)
 		}
 	}
 
 	return nil
+}
+
+func (c *controller) callReconcile(thread *starlark.Thread, eventType string, attrDict *AttrDict) (starlark.Value, error) {
+	if fn, ok := c.reconcileFn.(*starlark.Function); ok {
+		if fn.NumParams() == 1 {
+			return starlark.Call(thread, c.reconcileFn, starlark.Tuple{attrDict}, nil)
+		}
+	}
+	res, err := starlark.Call(thread, c.reconcileFn, starlark.Tuple{starlark.String(eventType), attrDict}, nil)
+	if err != nil && strings.Contains(err.Error(), "got 2 arguments, want 1") {
+		return starlark.Call(thread, c.reconcileFn, starlark.Tuple{attrDict}, nil)
+	}
+	return res, err
+}
+
+func (c *controller) reconcileDesiredChildren(parentObj *unstructured.Unstructured, childrenList *starlark.List) error {
+	objs, err := parseManifest(childrenList)
+	if err != nil {
+		return fmt.Errorf("reconcile child resources: %w", err)
+	}
+
+	parentUID := parentObj.GetUID()
+	parentNs := parentObj.GetNamespace()
+	if parentNs == "" && c.namespaced {
+		parentNs = c.namespace
+	}
+
+	desiredKeys := make(map[string]bool)
+
+	for _, child := range objs {
+		childKind := child.GetKind()
+		childGVR, namespaced, err := c.client.resolver.Resolve(childKind)
+		if err != nil {
+			return fmt.Errorf("resolve child kind %q: %w", childKind, err)
+		}
+
+		childNs := child.GetNamespace()
+		if childNs == "" && namespaced {
+			childNs = parentNs
+			child.SetNamespace(childNs)
+		}
+
+		// Inject ownerReference pointing to parent
+		trueVal := true
+		ownerRef := metav1.OwnerReference{
+			APIVersion:         parentObj.GetAPIVersion(),
+			Kind:               parentObj.GetKind(),
+			Name:               parentObj.GetName(),
+			UID:                parentUID,
+			Controller:         &trueVal,
+			BlockOwnerDeletion: &trueVal,
+		}
+		addOrUpdateOwnerRef(child, ownerRef)
+
+		// AutoWatch this child GVR
+		c.AutoWatch(childGVR)
+
+		// Server-Side Apply
+		data, err := json.Marshal(child.Object)
+		if err != nil {
+			return fmt.Errorf("marshal child %s/%s: %w", childKind, child.GetName(), err)
+		}
+
+		opts := metav1.PatchOptions{
+			FieldManager: "starkite",
+			Force:        &trueVal,
+		}
+
+		if namespaced {
+			_, err = c.client.dynClient.Resource(childGVR).Namespace(childNs).Patch(c.ctx, child.GetName(), types.ApplyPatchType, data, opts)
+		} else {
+			_, err = c.client.dynClient.Resource(childGVR).Patch(c.ctx, child.GetName(), types.ApplyPatchType, data, opts)
+		}
+		if err != nil {
+			return fmt.Errorf("apply child %s/%s: %w", childKind, child.GetName(), err)
+		}
+
+		key := childGVR.String() + "/" + childNs + "/" + child.GetName()
+		desiredKeys[key] = true
+	}
+
+	// Auto-prune orphaned children
+	c.pruneOrphanedChildren(string(parentUID), parentNs, desiredKeys)
+
+	return nil
+}
+
+func addOrUpdateOwnerRef(child *unstructured.Unstructured, newRef metav1.OwnerReference) {
+	refs := child.GetOwnerReferences()
+	found := false
+	for i, ref := range refs {
+		if ref.UID == newRef.UID {
+			refs[i] = newRef
+			found = true
+			break
+		}
+	}
+	if !found {
+		refs = append(refs, newRef)
+	}
+	child.SetOwnerReferences(refs)
+}
+
+func (c *controller) pruneOrphanedChildren(parentUID, parentNs string, desiredKeys map[string]bool) {
+	c.autoWatchMu.Lock()
+	gvrs := make([]schema.GroupVersionResource, 0, len(c.watchedGVRs))
+	for gvr := range c.watchedGVRs {
+		gvrs = append(gvrs, gvr)
+	}
+	c.autoWatchMu.Unlock()
+
+	prop := metav1.DeletePropagationBackground
+	delOpts := metav1.DeleteOptions{PropagationPolicy: &prop}
+
+	for _, gvr := range gvrs {
+		var list *unstructured.UnstructuredList
+		var err error
+		if c.namespaced && parentNs != "" {
+			list, err = c.client.dynClient.Resource(gvr).Namespace(parentNs).List(c.ctx, metav1.ListOptions{})
+		} else {
+			list, err = c.client.dynClient.Resource(gvr).List(c.ctx, metav1.ListOptions{})
+		}
+		if err != nil {
+			continue
+		}
+
+		for i := range list.Items {
+			item := &list.Items[i]
+			isOwned := false
+			for _, ref := range item.GetOwnerReferences() {
+				if string(ref.UID) == parentUID {
+					isOwned = true
+					break
+				}
+			}
+			if !isOwned {
+				continue
+			}
+
+			key := gvr.String() + "/" + item.GetNamespace() + "/" + item.GetName()
+			if !desiredKeys[key] {
+				// Child belongs to this parent but is no longer in desired set — prune it!
+				if item.GetNamespace() != "" {
+					_ = c.client.dynClient.Resource(gvr).Namespace(item.GetNamespace()).Delete(c.ctx, item.GetName(), delOpts)
+				} else {
+					_ = c.client.dynClient.Resource(gvr).Delete(c.ctx, item.GetName(), delOpts)
+				}
+			}
+		}
+	}
 }
 
 // ============================================================================

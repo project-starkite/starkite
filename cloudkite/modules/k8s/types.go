@@ -2,7 +2,17 @@ package k8s
 
 import (
 	"go.starlark.net/starlark"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
+
+// ActiveController is an interface implemented by an active k8s.control instance
+// to receive events from k8s.apply and k8s.status on the worker thread.
+type ActiveController interface {
+	AutoWatch(gvr schema.GroupVersionResource)
+	RecordSelfEcho(uid, resourceVersion string)
+}
+
+const ActiveControllerKey = "k8s_active_controller"
 
 // KubeObject is the interface for all Kubernetes object types returned by k8s.obj constructors.
 // It implements starlark.HasAttrs for attribute access and provides conversion to dict form.
