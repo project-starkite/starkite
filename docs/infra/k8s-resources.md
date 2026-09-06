@@ -46,6 +46,33 @@ def query_filtered_pods():
         print("  - Pod:", pod.metadata.name, "IP:", pod.status.get("podIP", "unassigned"))
 ```
 
+### Specialized Inspection Helpers
+
+In addition to general `k8s.list()`, Starkite provides dedicated query helpers for hardware claims and storage resources:
+
+* `k8s.claims(namespace="", labels="")`: Lists `resource.k8s.io/v1` `ResourceClaim` objects.
+* `k8s.pvcs(namespace="", labels="")`: Lists `PersistentVolumeClaim` objects.
+* `k8s.pvs(labels="")`: Lists cluster-scoped `PersistentVolume` objects.
+* `k8s.storage_classes(labels="")`: Lists cluster-scoped `StorageClass` definitions.
+
+```python
+def inspect_storage_and_devices():
+    # List active hardware claims
+    claims = k8s.claims(namespace="ml-workloads")
+    for c in claims:
+        print("Claim:", c.metadata.name, "Status:", c.status.get("allocation"))
+
+    # Inspect persistent volume claims and matching PVs
+    pvcs = k8s.pvcs(namespace="production")
+    for pvc in pvcs:
+        print("PVC:", pvc.metadata.name, "Phase:", pvc.status.phase, "Volume:", pvc.spec.get("volumeName"))
+
+    # List cluster storage classes
+    classes = k8s.storage_classes()
+    for sc in classes:
+        print("StorageClass:", sc.metadata.name, "Provisioner:", sc.provisioner)
+```
+
 ## Waiting for Resource Conditions
 
 To coordinate multi-step workflows (such as waiting for a database to become ready before running database migrations), use the `k8s.wait_for()` function. It blocks script execution until the resource reaches the specified condition or the timeout expires.

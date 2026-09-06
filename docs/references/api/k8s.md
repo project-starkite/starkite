@@ -16,7 +16,7 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 
 | Category | Functions |
 |----------|-----------|
-| [CRUD](#crud) | `get`, `list`, `create`, `apply`, `delete`, `patch`, `label`, `annotate`, `status`, `event` |
+| [CRUD & Inspection](#crud) | `get`, `list`, `create`, `apply`, `delete`, `patch`, `label`, `annotate`, `status`, `event`, `claims`, `pvcs`, `pvs`, `storage_classes` |
 | [Conditions & Finalizers](#conditions-and-finalizers) | `k8s.condition.*`, `k8s.finalizer.*`, `k8s.is_deleting` |
 | [Watch & wait](#watch-and-wait) | `watch`, `wait_for` |
 | [High-level workloads](#high-level-workloads) | `deploy`, `run`, `expose`, `scale`, `autoscale`, `rollout`, `set_image`, `set_env`, `set_resources` |

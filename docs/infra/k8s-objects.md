@@ -60,6 +60,94 @@ k8s.apply([dep, svc], namespace="production")
 
 Constructors return a `KubeResource` value that can be passed directly to `k8s.apply()`, encoded to YAML via `k8s.yaml()`, or converted to a standard dictionary with `.to_dict()`.
 
+### Example: Dynamic Resource Allocation (DRA)
+
+Dynamic Resource Allocation (`resource.k8s.io/v1`) allocates accelerators, GPUs, and specialized hardware devices via scheduler-evaluated claims:
+
+```python
+# 1. Define cluster-level device class
+gpu_class = k8s.obj.device_class(
+    name = "gpu.nvidia.com",
+    selectors = [
+        {"cel": {"expression": "device.capacity.memory >= 40Gi"}},
+    ],
+)
+k8s.apply(gpu_class)
+
+# 2. Define resource claim requesting hardware allocation
+claim = k8s.obj.resource_claim(
+    name = "ml-gpu-claim",
+    device_class = "gpu.nvidia.com",
+    count = 1,
+    device_tolerations = [
+        {"key": "gpu.nvidia.com/mig", "operator": "Exists"},
+    ],
+)
+k8s.apply(claim, namespace="production")
+
+# 3. Bind claim to workload and container
+workload = k8s.obj.deployment(
+    name = "llm-inference",
+    replicas = 2,
+    resource_claims = [{"name": "gpu", "claim_name": "ml-gpu-claim"}],
+    containers = [
+        k8s.obj.container(
+            name = "engine",
+            image = "vllm/vllm-openai:latest",
+            claims = [{"name": "gpu"}],
+        ),
+    ],
+)
+k8s.apply(workload, namespace="production")
+```
+
+### Example: Storage and Volume Management
+
+Starkite provides typed constructors for storage primitives and ergonomic volume bindings:
+
+```python
+# 1. Define cluster-level StorageClass
+sc = k8s.obj.storage_class(
+    name = "fast-ssd",
+    provisioner = "kubernetes.io/no-provisioner",
+    volume_binding_mode = "WaitForFirstConsumer",
+    allow_volume_expansion = True,
+)
+k8s.apply(sc)
+
+# 2. Define PersistentVolumeClaim
+pvc = k8s.obj.persistent_volume_claim(
+    name = "app-storage",
+    storage = "50Gi",
+    storage_class_name = "fast-ssd",
+    access_modes = ["ReadWriteOnce"],
+)
+k8s.apply(pvc, namespace="production")
+
+# 3. Bind volumes to pod with object shortcuts
+pod = k8s.obj.pod(
+    name = "data-processor",
+    volumes = [
+        k8s.obj.volume(name="data", pvc=pvc),             # KubeResource or string PVC name
+        k8s.obj.volume(name="scratch", empty_dir=True),    # boolean emptyDir shortcut
+        k8s.obj.volume(name="config", config_map="app-cm"),# string ConfigMap name shortcut
+    ],
+    containers = [
+        k8s.obj.container(
+            name = "worker",
+            image = "alpine:latest",
+            command = ["sleep", "3600"],
+            volume_mounts = [
+                k8s.obj.volume_mount(name="data", mount_path="/var/data"),
+                k8s.obj.volume_mount(name="scratch", mount_path="/tmp"),
+                k8s.obj.volume_mount(name="config", mount_path="/etc/app", read_only=True),
+            ],
+        ),
+    ],
+)
+k8s.apply(pod, namespace="production")
+```
+
 ---
 
 ## Runtime Representation & Dot Notation
