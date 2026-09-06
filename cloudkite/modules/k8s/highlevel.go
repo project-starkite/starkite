@@ -854,3 +854,123 @@ func (c *K8sClient) setResources(thread *starlark.Thread, fn *starlark.Builtin, 
 
 	return unstructuredToDict(patched)
 }
+
+// resize performs In-Place Pod Vertical Scaling on a running container (Kubernetes 1.27+, GA 1.35).
+// Signature: k8s.resize(name, container, cpu=None, memory=None, requests=None, limits=None, namespace="", timeout="30s")
+func (c *K8sClient) resize(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+		return nil, err
+	}
+
+	var requestsDict, limitsDict *starlark.Dict
+	filteredKwargs := filterKwarg(kwargs, "requests", &requestsDict)
+	filteredKwargs = filterKwarg(filteredKwargs, "limits", &limitsDict)
+
+	var p struct {
+		Name      string `name:"name" position:"0" required:"true"`
+		Container string `name:"container" position:"1"`
+		CPU       string `name:"cpu"`
+		Memory    string `name:"memory"`
+		Namespace string `name:"namespace"`
+		Timeout   string `name:"timeout"`
+	}
+	p.Timeout = "30s"
+	if err := startype.Args(args, filteredKwargs).Go(&p); err != nil {
+		return nil, err
+	}
+
+	if p.Container == "" {
+		return nil, fmt.Errorf("k8s.resize: missing required argument: container")
+	}
+
+	ns := p.Namespace
+	if ns == "" {
+		ns = c.namespace
+	}
+
+	reqs := map[string]any{}
+	lims := map[string]any{}
+
+	if requestsDict != nil {
+		for _, item := range requestsDict.Items() {
+			k, _ := starlark.AsString(item[0])
+			v, _ := starlark.AsString(item[1])
+			reqs[k] = v
+		}
+	}
+	if limitsDict != nil {
+		for _, item := range limitsDict.Items() {
+			k, _ := starlark.AsString(item[0])
+			v, _ := starlark.AsString(item[1])
+			lims[k] = v
+		}
+	}
+
+	if p.CPU != "" {
+		if _, ok := reqs["cpu"]; !ok {
+			reqs["cpu"] = p.CPU
+		}
+		if _, ok := lims["cpu"]; !ok {
+			lims["cpu"] = p.CPU
+		}
+	}
+	if p.Memory != "" {
+		if _, ok := reqs["memory"]; !ok {
+			reqs["memory"] = p.Memory
+		}
+		if _, ok := lims["memory"]; !ok {
+			lims["memory"] = p.Memory
+		}
+	}
+
+	if len(reqs) == 0 && len(lims) == 0 {
+		return nil, fmt.Errorf("k8s.resize: at least one resource request or limit must be specified (cpu, memory, requests, limits)")
+	}
+
+	resMap := map[string]any{}
+	if len(reqs) > 0 {
+		resMap["requests"] = reqs
+	}
+	if len(lims) > 0 {
+		resMap["limits"] = lims
+	}
+
+	patchObj := map[string]any{
+		"spec": map[string]any{
+			"containers": []any{
+				map[string]any{
+					"name":      p.Container,
+					"resources": resMap,
+				},
+			},
+		},
+	}
+	patchBytes, err := json.Marshal(patchObj)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.resize: marshal patch: %w", err)
+	}
+
+	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.resize: %w", err)
+	}
+	defer cancel()
+
+	podGVR, _, err := c.resolver.Resolve("pod")
+	if err != nil {
+		return nil, fmt.Errorf("k8s.resize: %w", err)
+	}
+
+	// Try with the "resize" subresource first (Kubernetes 1.27+ GA 1.35 InPlacePodVerticalScaling)
+	patched, patchErr := c.dynClient.Resource(podGVR).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}, "resize")
+	if patchErr != nil {
+		// Fallback to direct pod patch if subresource fails
+		var fallbackErr error
+		patched, fallbackErr = c.dynClient.Resource(podGVR).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
+		if fallbackErr != nil {
+			return nil, fmt.Errorf("k8s.resize: %w", patchErr)
+		}
+	}
+
+	return unstructuredToDict(patched)
+}

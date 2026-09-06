@@ -40,6 +40,7 @@ var podSchema = &ResourceSchema{
 		"dns_policy":       {JSONKey: "dnsPolicy", Typ: FieldString, SpecKey: true},
 		"security_context": {JSONKey: "securityContext", Typ: FieldKubeObject, SpecKey: true},
 		"resource_claims":  {JSONKey: "resourceClaims", Typ: FieldList, SpecKey: true},
+		"host_users":       {JSONKey: "hostUsers", Typ: FieldBool, SpecKey: true},
 	}),
 }
 
@@ -345,6 +346,7 @@ var podTemplateFields = map[string]*FieldSpec{
 	"dns_policy":           {JSONKey: "dnsPolicy", Typ: FieldString},
 	"security_context":     {JSONKey: "securityContext", Typ: FieldKubeObject},
 	"resource_claims":      {JSONKey: "resourceClaims", Typ: FieldList},
+	"host_users":           {JSONKey: "hostUsers", Typ: FieldBool},
 	"template_labels":      {JSONKey: "templateLabels", Typ: FieldDict},
 	"template_annotations": {JSONKey: "templateAnnotations", Typ: FieldDict},
 }
@@ -374,6 +376,7 @@ var podSpecSchema = &ResourceSchema{
 		"dns_policy":       {JSONKey: "dnsPolicy", Typ: FieldString},
 		"security_context": {JSONKey: "securityContext", Typ: FieldKubeObject},
 		"resource_claims":  {JSONKey: "resourceClaims", Typ: FieldList},
+		"host_users":       {JSONKey: "hostUsers", Typ: FieldBool},
 	},
 }
 
@@ -396,6 +399,7 @@ var podTemplateSchema = &ResourceSchema{
 		"dns_policy":       {JSONKey: "dnsPolicy", Typ: FieldString},
 		"security_context": {JSONKey: "securityContext", Typ: FieldKubeObject},
 		"resource_claims":  {JSONKey: "resourceClaims", Typ: FieldList},
+		"host_users":       {JSONKey: "hostUsers", Typ: FieldBool},
 	},
 }
 
@@ -419,6 +423,8 @@ var containerSchema = &ResourceSchema{
 		"image_pull_policy": {JSONKey: "imagePullPolicy", Typ: FieldString},
 		"security_context":  {JSONKey: "securityContext", Typ: FieldKubeObject},
 		"claims":            {JSONKey: "claims", Typ: FieldList},
+		"resize_policy":     {JSONKey: "resizePolicy", Typ: FieldList},
+		"restart_policy":    {JSONKey: "restartPolicy", Typ: FieldString},
 	},
 }
 
@@ -589,12 +595,17 @@ var securityContextSchema = &ResourceSchema{
 	Kind:        "SecurityContext",
 	IsSubObject: true,
 	Fields: map[string]*FieldSpec{
-		"run_as_user":     {JSONKey: "runAsUser", Typ: FieldInt},
-		"run_as_group":    {JSONKey: "runAsGroup", Typ: FieldInt},
-		"run_as_non_root": {JSONKey: "runAsNonRoot", Typ: FieldBool},
-		"read_only_root":  {JSONKey: "readOnlyRootFilesystem", Typ: FieldBool},
-		"privileged":      {JSONKey: "privileged", Typ: FieldBool},
-		"capabilities":    {JSONKey: "capabilities", Typ: FieldDict},
+		"run_as_user":            {JSONKey: "runAsUser", Typ: FieldInt},
+		"run_as_group":           {JSONKey: "runAsGroup", Typ: FieldInt},
+		"run_as_non_root":        {JSONKey: "runAsNonRoot", Typ: FieldBool},
+		"read_only_root":         {JSONKey: "readOnlyRootFilesystem", Typ: FieldBool},
+		"privileged":             {JSONKey: "privileged", Typ: FieldBool},
+		"capabilities":           {JSONKey: "capabilities", Typ: FieldDict},
+		"apparmor_profile":       {JSONKey: "appArmorProfile", Typ: FieldDict},
+		"seccomp_profile":        {JSONKey: "seccompProfile", Typ: FieldDict},
+		"windows_options":        {JSONKey: "windowsOptions", Typ: FieldDict},
+		"fs_group":               {JSONKey: "fsGroup", Typ: FieldInt},
+		"fs_group_change_policy": {JSONKey: "fsGroupChangePolicy", Typ: FieldString},
 	},
 }
 

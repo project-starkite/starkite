@@ -14,6 +14,7 @@ import (
 
 	"github.com/project-starkite/starkite/libkite"
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/portforward"
@@ -368,4 +369,159 @@ func (c *K8sClient) portForward(thread *starlark.Thread, fn *starlark.Builtin, a
 		localPort: localPort,
 		stopCh:    stopCh,
 	}, nil
+}
+
+// debug attaches or executes commands in a pod using an ephemeral container (zero-shell diagnostics).
+// Signature: k8s.debug(name, image="nicolaka/netshoot", target_container="", command=None, namespace="", timeout="3m")
+// Returns: AttrDict with {"stdout": str, "stderr": str, "code": int, "container": str, "pod": str}
+func (c *K8sClient) debug(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "k8s", "exec", "exec", ""); err != nil {
+		return nil, err
+	}
+
+	var command starlark.Value
+	filteredKwargs := filterKwargValue(kwargs, "command", &command)
+	remaining := args
+	if command == nil && len(args) > 1 {
+		command = args[1]
+		remaining = args[:1]
+	}
+
+	var p struct {
+		Name            string `name:"name" position:"0" required:"true"`
+		Image           string `name:"image"`
+		TargetContainer string `name:"target_container"`
+		Namespace       string `name:"namespace"`
+		Timeout         string `name:"timeout"`
+	}
+	p.Image = "nicolaka/netshoot"
+	p.Timeout = "3m"
+	if err := startype.Args(remaining, filteredKwargs).Go(&p); err != nil {
+		return nil, err
+	}
+	if p.Image == "" {
+		p.Image = "nicolaka/netshoot"
+	}
+
+	ns := p.Namespace
+	if ns == "" {
+		ns = c.namespace
+	}
+
+	var cmd []string
+	if command != nil && command != starlark.None {
+		switch v := command.(type) {
+		case starlark.String:
+			cmd = []string{"/bin/sh", "-c", string(v)}
+		case *starlark.List:
+			for i := 0; i < v.Len(); i++ {
+				s, ok := starlark.AsString(v.Index(i))
+				if !ok {
+					return nil, fmt.Errorf("k8s.debug: command list elements must be strings")
+				}
+				cmd = append(cmd, s)
+			}
+		default:
+			return nil, fmt.Errorf("k8s.debug: command must be string or list, got %s", command.Type())
+		}
+	}
+
+	clientset, err := kubernetes.NewForConfig(c.restCfg)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.debug: %w", err)
+	}
+
+	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.debug: %w", err)
+	}
+	defer cancel()
+
+	pod, err := clientset.CoreV1().Pods(ns).Get(ctx, p.Name, metav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("k8s.debug: get pod %q: %w", p.Name, err)
+	}
+
+	debugContainerName := fmt.Sprintf("debugger-%d", time.Now().UnixNano()%1000000)
+	ec := corev1.EphemeralContainer{
+		TargetContainerName: p.TargetContainer,
+		EphemeralContainerCommon: corev1.EphemeralContainerCommon{
+			Name:                     debugContainerName,
+			Image:                    p.Image,
+			Command:                  cmd,
+			ImagePullPolicy:          corev1.PullIfNotPresent,
+			TerminationMessagePolicy: corev1.TerminationMessageReadFile,
+		},
+	}
+
+	pod.Spec.EphemeralContainers = append(pod.Spec.EphemeralContainers, ec)
+	_, err = clientset.CoreV1().Pods(ns).UpdateEphemeralContainers(ctx, p.Name, pod, metav1.UpdateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("k8s.debug: inject ephemeral container: %w", err)
+	}
+
+	// Wait for the ephemeral container to reach running or terminated state
+	var exitCode int
+	var stdout string
+	waitTicker := time.NewTicker(400 * time.Millisecond)
+	defer waitTicker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil, fmt.Errorf("k8s.debug: timeout waiting for container %q: %w", debugContainerName, ctx.Err())
+		case <-waitTicker.C:
+		}
+
+		currentPod, getErr := clientset.CoreV1().Pods(ns).Get(ctx, p.Name, metav1.GetOptions{})
+		if getErr != nil {
+			continue
+		}
+
+		var foundStatus bool
+		for _, cs := range currentPod.Status.EphemeralContainerStatuses {
+			if cs.Name != debugContainerName {
+				continue
+			}
+			foundStatus = true
+
+			// If terminated, get exit code and logs
+			if cs.State.Terminated != nil {
+				exitCode = int(cs.State.Terminated.ExitCode)
+				logReq := clientset.CoreV1().Pods(ns).GetLogs(p.Name, &corev1.PodLogOptions{
+					Container: debugContainerName,
+				})
+				if stream, sErr := logReq.Stream(ctx); sErr == nil {
+					var buf bytes.Buffer
+					_, _ = io.Copy(&buf, stream)
+					stream.Close()
+					stdout = buf.String()
+				}
+				res := map[string]any{
+					"stdout":    stdout,
+					"stderr":    "",
+					"code":      exitCode,
+					"container": debugContainerName,
+					"pod":       p.Name,
+				}
+				return NewAttrDict(res), nil
+			}
+
+			// If running and no command was specified, it's ready
+			if cs.State.Running != nil && len(cmd) == 0 {
+				res := map[string]any{
+					"stdout":    "",
+					"stderr":    "",
+					"code":      0,
+					"container": debugContainerName,
+					"pod":       p.Name,
+				}
+				return NewAttrDict(res), nil
+			}
+		}
+
+		if !foundStatus {
+			continue
+		}
+	}
 }

@@ -1498,3 +1498,107 @@ func TestVolume_WorkloadIntegration(t *testing.T) {
 		t.Errorf("pod YAML missing readOnly: %s", podYAML)
 	}
 }
+
+func TestPhase2_HostUsersAndSecurityContext(t *testing.T) {
+	m := New()
+	loaded, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	k8sMod := loaded["k8s"].(starlark.HasAttrs)
+	yamlFnVal, _ := k8sMod.Attr("yaml")
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+	thread := &starlark.Thread{Name: "test"}
+
+	// 1. Pod with host_users = False
+	c, _ := newKubeResource(containerSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("app")},
+		{starlark.String("image"), starlark.String("alpine")},
+	})
+	secDict := starlark.NewDict(3)
+	secDict.SetKey(starlark.String("run_as_non_root"), starlark.Bool(true))
+	apparmorDict := starlark.NewDict(1)
+	apparmorDict.SetKey(starlark.String("type"), starlark.String("RuntimeDefault"))
+	secDict.SetKey(starlark.String("apparmor_profile"), apparmorDict)
+
+	pod, err := newKubeResource(podSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("rootless-pod")},
+		{starlark.String("host_users"), starlark.Bool(false)},
+		{starlark.String("security_context"), secDict},
+		{starlark.String("containers"), starlark.NewList([]starlark.Value{c})},
+	})
+	if err != nil {
+		t.Fatalf("pod error: %v", err)
+	}
+
+	podYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{pod}, nil)
+	if err != nil {
+		t.Fatalf("yaml(pod) error: %v", err)
+	}
+	podYAML := string(podYAMLVal.(starlark.String))
+
+	if !strings.Contains(podYAML, "hostUsers: false") {
+		t.Errorf("pod YAML missing hostUsers: false:\n%s", podYAML)
+	}
+	if !strings.Contains(podYAML, "runAsNonRoot: true") {
+		t.Errorf("pod YAML missing runAsNonRoot: true:\n%s", podYAML)
+	}
+	if !strings.Contains(podYAML, "appArmorProfile:") {
+		t.Errorf("pod YAML missing appArmorProfile:\n%s", podYAML)
+	}
+
+	// 2. Deployment with host_users = False autoTemplate propagation
+	deploy, err := newKubeResource(deploymentSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("rootless-deploy")},
+		{starlark.String("host_users"), starlark.Bool(false)},
+		{starlark.String("containers"), starlark.NewList([]starlark.Value{c})},
+	})
+	if err != nil {
+		t.Fatalf("deploy error: %v", err)
+	}
+	deployYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{deploy}, nil)
+	if err != nil {
+		t.Fatalf("yaml(deploy) error: %v", err)
+	}
+	deployYAML := string(deployYAMLVal.(starlark.String))
+
+	if !strings.Contains(deployYAML, "hostUsers: false") {
+		t.Errorf("deploy YAML missing hostUsers: false:\n%s", deployYAML)
+	}
+}
+
+func TestPhase2_ContainerResizePolicy(t *testing.T) {
+	rp1 := starlark.NewDict(2)
+	rp1.SetKey(starlark.String("resource_name"), starlark.String("cpu"))
+	rp1.SetKey(starlark.String("restart_policy"), starlark.String("NotRequired"))
+
+	rp2 := starlark.NewDict(2)
+	rp2.SetKey(starlark.String("resource_name"), starlark.String("memory"))
+	rp2.SetKey(starlark.String("restart_policy"), starlark.String("RestartContainer"))
+
+	c, err := newKubeResource(containerSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("worker")},
+		{starlark.String("image"), starlark.String("worker:latest")},
+		{starlark.String("resize_policy"), starlark.NewList([]starlark.Value{rp1, rp2})},
+	})
+	if err != nil {
+		t.Fatalf("container error: %v", err)
+	}
+
+	d := c.ToDict()
+	rpVal, found, _ := d.Get(starlark.String("resizePolicy"))
+	if !found {
+		t.Fatal("resizePolicy not found on container")
+	}
+	rpList := rpVal.(*starlark.List)
+	if rpList.Len() != 2 {
+		t.Fatalf("resizePolicy len = %d, want 2", rpList.Len())
+	}
+
+	item0 := rpList.Index(0).(*starlark.Dict)
+	resName, _, _ := item0.Get(starlark.String("resourceName"))
+	restartPolicy, _, _ := item0.Get(starlark.String("restartPolicy"))
+	if resName.String() != `"cpu"` || restartPolicy.String() != `"NotRequired"` {
+		t.Errorf("item0 = %v, want cpu/NotRequired", item0)
+	}
+}

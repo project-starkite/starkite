@@ -19,8 +19,8 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | [CRUD & Inspection](#crud) | `get`, `list`, `create`, `apply`, `delete`, `patch`, `label`, `annotate`, `status`, `event`, `claims`, `pvcs`, `pvs`, `storage_classes` |
 | [Conditions & Finalizers](#conditions-and-finalizers) | `k8s.condition.*`, `k8s.finalizer.*`, `k8s.is_deleting` |
 | [Watch & wait](#watch-and-wait) | `watch`, `wait_for` |
-| [High-level workloads](#high-level-workloads) | `deploy`, `run`, `expose`, `scale`, `autoscale`, `rollout`, `set_image`, `set_env`, `set_resources` |
-| [Logs, exec, port-forward, copy](#logs-exec-port-forward-copy) | `logs`, `logs_follow`, `exec`, `port_forward`, `cp` |
+| [High-level workloads](#high-level-workloads) | `deploy`, `run`, `expose`, `scale`, `autoscale`, `rollout`, `resize`, `set_image`, `set_env`, `set_resources` |
+| [Logs, exec, port-forward, copy](#logs-exec-port-forward-copy) | `logs`, `logs_follow`, `exec`, `debug`, `port_forward`, `cp` |
 | [Describe](#describe) | `describe` |
 | [Node operations](#node-operations) | `drain`, `cordon`, `uncordon`, `taint`, `untaint` |
 | [Metrics](#metrics) | `top_nodes`, `top_pods` |
@@ -117,6 +117,7 @@ if result.ready:
 | `k8s.scale(kind, name, replicas, namespace="", timeout="")` | `AttrDict` | Scale a resource to the given replica count |
 | `k8s.autoscale(kind, name, min=1, max=10, cpu_percent=80, namespace="", timeout="")` | `AttrDict` | Create a HorizontalPodAutoscaler |
 | `k8s.rollout(kind, name, action="status", namespace="", timeout="")` | `AttrDict` | Manage rollouts. `action`: `"status"`, `"restart"`, `"pause"`, `"resume"` |
+| `k8s.resize(name, container, cpu=None, memory=None, requests=None, limits=None, namespace="", timeout="30s")` | `AttrDict` | Resize CPU and memory allocations of a running container in-place without pod restart |
 
 ### Configuration
 
@@ -133,6 +134,7 @@ if result.ready:
 | `k8s.logs(name, namespace="", container="", tail=0, since="", previous=False, timeout="")` | `string` | Fetch pod logs. `tail` caps line count; `since` is a duration string (e.g., `"10m"`); `previous=True` reads the previous container instance |
 | `k8s.logs_follow(name, handler, namespace="", container="", tail=0, timeout="")` | `None` | Stream logs, calling `handler(line)` per line. Blocks until the pod ends or `timeout` elapses |
 | `k8s.exec(name, command, namespace="", container="", timeout="")` | `AttrDict` | Run a command in a pod. `command` may be a string (executed via `/bin/sh -c`) or a list (argv). Returns `{"stdout", "stderr", "code"}` |
+| `k8s.debug(name, image="nicolaka/netshoot", target_container="", command=None, namespace="", timeout="3m")` | `AttrDict` | Attach an ephemeral container to a running pod for zero-shell diagnostics. Returns `{"stdout", "stderr", "code", "container", "pod"}` |
 | `k8s.port_forward(name, port, local_port=0, namespace="")` | `PortForwardHandle` | Forward a local port to a pod port. Blocks until interrupted. `local_port=0` picks a free port |
 | `k8s.cp(pod, src, dst, namespace="", container="", timeout="")` | `AttrDict` | Copy files to/from a pod. Use `pod:path` as `src` to download, `pod:path` as `dst` to upload |
 
@@ -150,6 +152,21 @@ k8s.logs_follow("web-abc123", handle_line, namespace="default", tail=100)
 
 ```python
 result = k8s.exec("web-abc123", ["cat", "/etc/hostname"], namespace="default")
+print(result.stdout)
+```
+
+### Example — zero-shell diagnostics with ephemeral containers
+
+```python
+# Attach an ephemeral debug container to a distroless pod
+result = k8s.debug(
+    "auth-service-xyz",
+    image = "nicolaka/netshoot",
+    target_container = "auth",
+    command = ["tcpdump", "-i", "any", "-c", "5", "port", "8080"],
+    namespace = "default",
+)
+print("Exit code:", result.code)
 print(result.stdout)
 ```
 
@@ -426,7 +443,7 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 | `k8s.obj.service(name, ports=[], selector={}, type="ClusterIP", labels={}, annotations={})` | `KubeResource` | Construct a Service manifest |
 | `k8s.obj.config_map(name, data={}, binary_data={}, labels={}, annotations={})` | `KubeResource` | Construct a ConfigMap manifest |
 | `k8s.obj.secret(name, data={}, string_data={}, type="Opaque", labels={}, annotations={})` | `KubeResource` | Construct a Secret manifest |
-| `k8s.obj.pod(name, containers=[], resource_claims=[], restart_policy="Always", labels={}, annotations={})` | `KubeResource` | Construct a Pod manifest |
+| `k8s.obj.pod(name, containers=[], resource_claims=[], restart_policy="Always", host_users=True, labels={}, annotations={})` | `KubeResource` | Construct a Pod manifest |
 | `k8s.obj.job(name, containers=[], resource_claims=[], completions=1, parallelism=1, labels={}, annotations={})` | `KubeResource` | Construct a Job manifest |
 | `k8s.obj.cron_job(name, schedule, job_template=None, containers=[], resource_claims=[], labels={}, annotations={})` | `KubeResource` | Construct a CronJob manifest |
 | `k8s.obj.stateful_set(name, service_name="", replicas=1, containers=[], resource_claims=[], labels={}, annotations={})` | `KubeResource` | Construct a StatefulSet manifest |
@@ -447,13 +464,14 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 
 | Constructor | Returns | Description |
 |-------------|---------|-------------|
-| `k8s.obj.container(name, image, ports=[], env=[], command=[], args=[], volume_mounts=[], resources=None, claims=[], liveness_probe=None, readiness_probe=None)` | `KubeResource` | Container specification |
+| `k8s.obj.container(name, image, ports=[], env=[], command=[], args=[], volume_mounts=[], resources=None, claims=[], resize_policy=[], restart_policy="", liveness_probe=None, readiness_probe=None)` | `KubeResource` | Container specification |
 | `k8s.obj.container_port(container_port, name="", protocol="TCP", host_port=0)` | `KubeResource` | Container port definition |
 | `k8s.obj.service_port(port, target_port=0, name="", protocol="TCP", node_port=0)` | `KubeResource` | Service port definition |
 | `k8s.obj.env_var(name, value="", value_from={})` | `KubeResource` | Environment variable definition |
 | `k8s.obj.env_from(config_map_ref={}, secret_ref={}, prefix="")` | `KubeResource` | Environment variable source from ConfigMap or Secret |
 | `k8s.obj.resource_requirements(requests={}, limits={}, claims=[])` | `KubeResource` | Resource requests, limits, and claim bindings |
 | `k8s.obj.probe(http_get={}, tcp_socket={}, exec={}, initial_delay_seconds=0, period_seconds=10, timeout_seconds=1, failure_threshold=3)` | `KubeResource` | Health probe configuration |
+| `k8s.obj.security_context(run_as_user=0, run_as_group=0, run_as_non_root=False, read_only_root_filesystem=False, privileged=False, allow_privilege_escalation=False, capabilities={}, se_linux_options={}, seccomp_profile={}, apparmor_profile={}, fs_group=0, fs_group_change_policy="", windows_options={})` | `KubeResource` | Pod or container security context |
 | `k8s.obj.volume(name, pvc=None, claim_name="", config_map=None, secret=None, empty_dir=None, ephemeral=None, host_path={}, nfs={}, csi={}, projected={}, downward_api={})` | `KubeResource` | Pod volume definition with ergonomic shortcuts for PVCs, ConfigMaps, Secrets, EmptyDir, and Ephemeral volumes |
 | `k8s.obj.volume_mount(name, mount_path, sub_path="", sub_path_expr="", read_only=False, mount_propagation="", recursive_read_only="")` | `KubeResource` | Container volume mount specification |
 
@@ -641,6 +659,38 @@ k8s.apply(workload, namespace="default")
 pvcs = k8s.pvcs(namespace="default")
 for p in pvcs:
     print(p.metadata.name, p.status.phase, p.spec.resources.requests.storage)
+```
+
+### Example — Hardened Pod Isolation and Resize Policy
+
+Starkite supports User Namespaces (rootless isolation) and in-place container resize policies:
+
+```python
+# 1. Define hardened Pod with rootless User Namespaces and security context
+pod = k8s.obj.pod(
+    name = "secure-worker",
+    host_users = False,  # Maps container root UID 0 to an unprivileged host UID (GA 1.36)
+    security_context = k8s.obj.security_context(
+        run_as_non_root = True,
+        apparmor_profile = {"type": "RuntimeDefault"},
+        seccomp_profile = {"type": "RuntimeDefault"},
+    ),
+    containers = [
+        k8s.obj.container(
+            name = "worker",
+            image = "alpine:latest",
+            command = ["sleep", "3600"],
+            resize_policy = [
+                {"resource_name": "cpu", "restart_policy": "NotRequired"},
+                {"resource_name": "memory", "restart_policy": "NotRequired"},
+            ],
+        ),
+    ],
+)
+k8s.apply(pod, namespace="default")
+
+# 2. Resize the running container in-place without pod restarts
+k8s.resize("secure-worker", container="worker", cpu="500m", memory="256Mi", namespace="default")
 ```
 
 ### Utilities

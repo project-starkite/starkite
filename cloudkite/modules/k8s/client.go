@@ -77,6 +77,7 @@ var allMethods = map[string]clientMethod{
 	"logs":         (*K8sClient).logs,
 	"logs_follow":  (*K8sClient).logsFollow,
 	"exec":         (*K8sClient).execCmd,
+	"debug":        (*K8sClient).debug,
 	"port_forward": (*K8sClient).portForward,
 
 	// Tier 1: Cluster info & Fleets
@@ -99,6 +100,7 @@ var allMethods = map[string]clientMethod{
 	"set_image":     (*K8sClient).setImage,
 	"set_env":       (*K8sClient).setEnv,
 	"set_resources": (*K8sClient).setResources,
+	"resize":        (*K8sClient).resize,
 
 	// Tier 2: Node ops
 	"drain":     (*K8sClient).drain,

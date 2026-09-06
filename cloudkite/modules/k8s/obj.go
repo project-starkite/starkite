@@ -160,6 +160,11 @@ func (r *KubeResource) buildResourceDict() *starlark.Dict {
 		if !ok {
 			continue
 		}
+		if fieldName == "security_context" {
+			if _, isKR := val.(*KubeResource); !isKR {
+				val = normalizeSecurityContext(val)
+			}
+		}
 		sv, err := goToStarlark(val, fieldSpec.Typ)
 		if err != nil {
 			continue
@@ -317,6 +322,20 @@ func (r *KubeResource) buildSubObjectDict() *starlark.Dict {
 		// Special handling: container claims go under resources.claims
 		if r.schema.Kind == "Container" && fieldName == "claims" {
 			continue
+		}
+		// Special handling: normalize container resize_policy
+		if r.schema.Kind == "Container" && fieldName == "resize_policy" {
+			sv, err := goToStarlark(normalizeResizePolicy(val), fieldSpec.Typ)
+			if err == nil {
+				result.SetKey(starlark.String(fieldSpec.JSONKey), sv)
+			}
+			continue
+		}
+		// Special handling: normalize security_context dicts
+		if fieldName == "security_context" {
+			if _, isKR := val.(*KubeResource); !isKR {
+				val = normalizeSecurityContext(val)
+			}
 		}
 		// Special handling: volume shortcuts handled below
 		if r.schema.Kind == "Volume" {
@@ -550,6 +569,72 @@ var podFieldNames = []string{
 	"containers", "init_containers", "volumes", "restart_policy",
 	"node_selector", "tolerations", "affinity", "service_account",
 	"host_network", "dns_policy", "security_context", "resource_claims",
+	"host_users",
+}
+
+// normalizeResizePolicy converts user-friendly snake_case keys in container resize_policy
+// (resource_name, restart_policy) to Kubernetes camelCase JSONKeys (resourceName, restartPolicy).
+func normalizeResizePolicy(val any) any {
+	items, ok := val.([]any)
+	if !ok {
+		return val
+	}
+	normalized := make([]any, len(items))
+	for i, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			normalized[i] = item
+			continue
+		}
+		entry := make(map[string]any, len(m))
+		for k, v := range m {
+			switch k {
+			case "resource_name":
+				entry["resourceName"] = v
+			case "restart_policy":
+				entry["restartPolicy"] = v
+			default:
+				entry[k] = v
+			}
+		}
+		normalized[i] = entry
+	}
+	return normalized
+}
+
+// normalizeSecurityContext converts user-friendly snake_case keys in security_context dicts
+// to Kubernetes camelCase JSONKeys.
+func normalizeSecurityContext(val any) any {
+	m, ok := val.(map[string]any)
+	if !ok {
+		return val
+	}
+	entry := make(map[string]any, len(m))
+	for k, v := range m {
+		switch k {
+		case "apparmor_profile":
+			entry["appArmorProfile"] = v
+		case "seccomp_profile":
+			entry["seccompProfile"] = v
+		case "run_as_non_root":
+			entry["runAsNonRoot"] = v
+		case "read_only_root", "read_only_root_filesystem":
+			entry["readOnlyRootFilesystem"] = v
+		case "run_as_user":
+			entry["runAsUser"] = v
+		case "run_as_group":
+			entry["runAsGroup"] = v
+		case "windows_options":
+			entry["windowsOptions"] = v
+		case "fs_group":
+			entry["fsGroup"] = v
+		case "fs_group_change_policy":
+			entry["fsGroupChangePolicy"] = v
+		default:
+			entry[k] = v
+		}
+	}
+	return entry
 }
 
 // normalizeResourceClaims converts user-friendly snake_case keys in resource claim
@@ -613,6 +698,12 @@ func autoTemplate(schema *ResourceSchema, data map[string]any) error {
 			spec := podTemplateFields[field]
 			if field == "resource_claims" {
 				podSpec[spec.JSONKey] = normalizeResourceClaims(v)
+			} else if field == "security_context" {
+				if _, isKR := v.(*KubeResource); !isKR {
+					podSpec[spec.JSONKey] = normalizeSecurityContext(v)
+				} else {
+					podSpec[spec.JSONKey] = v
+				}
 			} else {
 				podSpec[spec.JSONKey] = v
 			}

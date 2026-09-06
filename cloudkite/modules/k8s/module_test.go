@@ -87,7 +87,7 @@ func TestModuleTryAttr(t *testing.T) {
 	tryMethods := []string{
 		"try_get", "try_apply", "try_deploy", "try_list",
 		"try_delete", "try_scale", "try_logs", "try_exec",
-		"try_config", "try_yaml",
+		"try_config", "try_yaml", "try_resize", "try_debug",
 	}
 
 	for _, name := range tryMethods {

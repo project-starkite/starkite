@@ -148,6 +148,35 @@ pod = k8s.obj.pod(
 k8s.apply(pod, namespace="production")
 ```
 
+### Example: Hardened Pod Isolation and Container Resize Policies
+
+Starkite provides declarative configuration for user namespaces (rootless isolation) and in-place container resize policies:
+
+```python
+# Construct a hardened pod with rootless User Namespaces and resize policy
+pod = k8s.obj.pod(
+    name = "hardened-worker",
+    host_users = False,  # Maps container root UID 0 to an unprivileged host UID (GA 1.36)
+    security_context = k8s.obj.security_context(
+        run_as_non_root = True,
+        apparmor_profile = {"type": "RuntimeDefault"},
+        seccomp_profile = {"type": "RuntimeDefault"},
+    ),
+    containers = [
+        k8s.obj.container(
+            name = "worker",
+            image = "alpine:latest",
+            command = ["sleep", "3600"],
+            resize_policy = [
+                {"resource_name": "cpu", "restart_policy": "NotRequired"},
+                {"resource_name": "memory", "restart_policy": "NotRequired"},
+            ],
+        ),
+    ],
+)
+k8s.apply(pod, namespace="production")
+```
+
 ---
 
 ## Runtime Representation & Dot Notation

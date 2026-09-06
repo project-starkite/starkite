@@ -67,6 +67,43 @@ def configure_autoscaling():
     print("Horizontal Pod Autoscaler configured.")
 ```
 
+## In-Place Pod Vertical Scaling
+
+To modify CPU or memory allocations on running containers without restarting pods or triggering rolling updates, use `client.resize()`. This targets the Pod resize subresource (Kubernetes 1.27+, GA 1.35).
+
+```python
+def resize_container():
+    client = k8s.config(namespace="staging")
+    
+    # Resize CPU and memory allocations for a running container
+    result = client.resize(
+        name = "alice-web-76b9f47b-x8q2z",
+        container = "alice-web",
+        cpu = "2",
+        memory = "4Gi",
+    )
+    print("Resize request submitted for pod:", result.metadata.name)
+```
+
+## Zero-Shell Diagnostics with Ephemeral Containers
+
+For secure or distroless container images that lack shells and debugging utilities, use `client.debug()`. This injects an ephemeral container via the `/ephemeralcontainers` API subresource to attach diagnostic tools and inspect the running environment.
+
+```python
+def debug_container():
+    client = k8s.config(namespace="staging")
+    
+    # Run network diagnostics against a target container using netshoot
+    result = client.debug(
+        name = "alice-web-76b9f47b-x8q2z",
+        image = "nicolaka/netshoot",
+        target_container = "alice-web",
+        command = ["tcpdump", "-i", "any", "-c", "5", "port", "80"],
+    )
+    print("Debug output (exit code %d):" % result.code)
+    print(result.stdout)
+```
+
 ## Inspecting Workload Metrics
 
 To monitor the performance of your running workloads, use the `client.top_pods()` function. It retrieves real-time CPU and memory utilization details from the cluster's Metric Server.

@@ -232,6 +232,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"logs":         m.withDefault("logs", (*K8sClient).logs),
 			"logs_follow":  m.withDefault("logs_follow", (*K8sClient).logsFollow),
 			"exec":         m.withDefault("exec", (*K8sClient).execCmd),
+			"debug":        m.withDefault("debug", (*K8sClient).debug),
 			"port_forward": m.withDefault("port_forward", (*K8sClient).portForward),
 
 			// Tier 1: Cluster info
@@ -250,6 +251,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"set_image":     m.withDefault("set_image", (*K8sClient).setImage),
 			"set_env":       m.withDefault("set_env", (*K8sClient).setEnv),
 			"set_resources": m.withDefault("set_resources", (*K8sClient).setResources),
+			"resize":        m.withDefault("resize", (*K8sClient).resize),
 
 			// Tier 2: Node ops
 			"drain":     m.withDefault("drain", (*K8sClient).drain),

@@ -530,6 +530,9 @@ func (c *controller) watchLoop() {
 }
 
 func (c *controller) doWatch() error {
+	if c.client == nil || c.client.dynClient == nil {
+		return fmt.Errorf("dynamic client not initialized")
+	}
 	opts := metav1.ListOptions{}
 	if c.labels != "" {
 		opts.LabelSelector = c.labels
@@ -759,7 +762,9 @@ func (c *controller) AutoWatch(gvr schema.GroupVersionResource) {
 	watchCtx, cancel := context.WithCancel(c.ctx)
 	c.watchedGVRs[gvr] = cancel
 
-	go c.runDynamicChildWatch(watchCtx, gvr)
+	if c.client != nil && c.client.dynClient != nil {
+		go c.runDynamicChildWatch(watchCtx, gvr)
+	}
 }
 
 // RecordSelfEcho records the UID and resourceVersion from a status update performed by this controller.
@@ -816,6 +821,9 @@ func (c *controller) runDynamicChildWatch(ctx context.Context, gvr schema.GroupV
 }
 
 func (c *controller) doWatchDynamicChild(ctx context.Context, gvr schema.GroupVersionResource) error {
+	if c.client == nil || c.client.dynClient == nil {
+		return fmt.Errorf("dynamic client not initialized")
+	}
 	opts := metav1.ListOptions{}
 
 	var watcher watch.Interface
@@ -904,6 +912,9 @@ func (c *controller) watchRelatedLoop(r relatedWatcher) {
 }
 
 func (c *controller) doWatchRelated(r relatedWatcher) error {
+	if c.client == nil || c.client.dynClient == nil {
+		return fmt.Errorf("dynamic client not initialized")
+	}
 	opts := metav1.ListOptions{}
 
 	var watcher watch.Interface
