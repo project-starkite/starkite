@@ -3,15 +3,20 @@ package k8s
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"go.starlark.net/starlark"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/watch"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+	"k8s.io/client-go/kubernetes/fake"
 	clienttesting "k8s.io/client-go/testing"
 	"k8s.io/client-go/util/workqueue"
 )
@@ -804,5 +809,395 @@ def reconcile(cr):
 	cond3 := conds3[0].(map[string]any)
 	if cond3["status"] != "False" || cond3["reason"] != "ReconcileError" {
 		t.Fatalf("expected Ready=False/ReconcileError, got: %+v", cond3)
+	}
+}
+
+func TestControlLifecycleEventEmission(t *testing.T) {
+	ctx := t.Context()
+
+	parentGVR := schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: "testapps"}
+	scheme := runtime.NewScheme()
+
+	parentObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "example.io/v1",
+			"kind":       "TestApp",
+			"metadata": map[string]any{
+				"name":            "test-app",
+				"namespace":       "default",
+				"uid":             "app-12345",
+				"resourceVersion": "1",
+				"generation":      int64(1),
+			},
+			"spec": map[string]any{
+				"replicas": int64(1),
+			},
+		},
+	}
+
+	fakeDynClient := dynamicfake.NewSimpleDynamicClient(scheme, parentObj)
+	fakeClientset := fake.NewSimpleClientset()
+
+	var shouldFail bool
+	thread := &starlark.Thread{Name: "test-thread"}
+	predeclared := starlark.StringDict{
+		"should_fail": starlark.NewBuiltin("should_fail", func(t *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			return starlark.Bool(shouldFail), nil
+		}),
+	}
+	starSrc := `
+def reconcile(cr):
+    if should_fail():
+        fail("simulated reconcile failure")
+    return None
+
+def finalize(cr):
+    if should_fail():
+        fail("simulated finalize failure")
+    return None
+`
+	globals, err := starlark.ExecFile(thread, "test_events.star", starSrc, predeclared)
+	if err != nil {
+		t.Fatalf("ExecFile: %v", err)
+	}
+
+	c := &controller{
+		kind:          "TestApp",
+		gvr:           parentGVR,
+		namespaced:    true,
+		namespace:     "default",
+		finalizerName: "example.io/finalizer",
+		finalizeFn:    globals["finalize"].(starlark.Callable),
+		reconcileFn:   globals["reconcile"].(starlark.Callable),
+		client: &K8sClient{
+			dynClient: fakeDynClient,
+			clientset: fakeClientset,
+			namespace: "default",
+		},
+		ctx:      ctx,
+		cache:    map[string]*unstructured.Unstructured{"default/test-app": parentObj.DeepCopy()},
+		echoKeys: make(map[string]time.Time),
+	}
+
+	// 1. Normal reconcile success -> Event: Normal Reconciled
+	err = c.dispatch(queueItem{key: "default/test-app", eventType: "ADDED"})
+	if err != nil {
+		t.Fatalf("dispatch error: %v", err)
+	}
+
+	events, err := fakeClientset.CoreV1().Events("default").List(ctx, metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("List events error: %v", err)
+	}
+	if len(events.Items) == 0 {
+		t.Fatal("expected at least 1 event to be emitted")
+	}
+	lastEvt := events.Items[len(events.Items)-1]
+	if lastEvt.Reason != "Reconciled" || lastEvt.Type != corev1.EventTypeNormal {
+		t.Fatalf("expected Normal/Reconciled, got %s/%s", lastEvt.Type, lastEvt.Reason)
+	}
+	if lastEvt.InvolvedObject.Name != "test-app" || lastEvt.InvolvedObject.Kind != "TestApp" {
+		t.Fatalf("unexpected involvedObject: %+v", lastEvt.InvolvedObject)
+	}
+
+	// 2. Reconcile failure -> Event: Warning ReconcileError
+	shouldFail = true
+	err = c.dispatch(queueItem{key: "default/test-app", eventType: "MODIFIED"})
+	if err == nil {
+		t.Fatal("expected error on failed reconcile")
+	}
+	events, _ = fakeClientset.CoreV1().Events("default").List(ctx, metav1.ListOptions{})
+	lastEvt = events.Items[len(events.Items)-1]
+	if lastEvt.Reason != "ReconcileError" || lastEvt.Type != corev1.EventTypeWarning {
+		t.Fatalf("expected Warning/ReconcileError, got %s/%s", lastEvt.Type, lastEvt.Reason)
+	}
+
+	// 3. Teardown with finalizer: trigger teardown
+	shouldFail = false
+	deletingObj := parentObj.DeepCopy()
+	now := metav1.Now()
+	deletingObj.SetDeletionTimestamp(&now)
+	deletingObj.SetFinalizers([]string{"example.io/finalizer"})
+	c.cache["default/test-app"] = deletingObj
+	_, _ = fakeDynClient.Resource(parentGVR).Namespace("default").Update(ctx, deletingObj, metav1.UpdateOptions{})
+
+	err = c.dispatch(queueItem{key: "default/test-app", eventType: "MODIFIED"})
+	if err != nil {
+		t.Fatalf("dispatch teardown error: %v", err)
+	}
+	events, _ = fakeClientset.CoreV1().Events("default").List(ctx, metav1.ListOptions{})
+	var foundFinalizing, foundFinalized bool
+	for _, e := range events.Items {
+		if e.Reason == "Finalizing" && e.Type == corev1.EventTypeNormal {
+			foundFinalizing = true
+		}
+		if e.Reason == "Finalized" && e.Type == corev1.EventTypeNormal {
+			foundFinalized = true
+		}
+	}
+	if !foundFinalizing {
+		t.Fatal("expected Finalizing event")
+	}
+	if !foundFinalized {
+		t.Fatal("expected Finalized event")
+	}
+}
+
+func TestControlHealthServer(t *testing.T) {
+	c := &controller{
+		healthPort: 8081,
+	}
+	handler := c.healthHandler()
+
+	// 1. /healthz -> 200 OK
+	req := httptest.NewRequest("GET", "/healthz", nil)
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /healthz code = %d, want 200", rr.Code)
+	}
+	if rr.Body.String() != "ok\n" && rr.Body.String() != "ok" {
+		t.Fatalf("GET /healthz body = %q", rr.Body.String())
+	}
+
+	// 2. /readyz without leader election -> 200 OK
+	c.enableLeaderElection = false
+	req = httptest.NewRequest("GET", "/readyz", nil)
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /readyz (no leader election) code = %d, want 200", rr.Code)
+	}
+
+	// 3. /readyz with leader election enabled and not leading -> 503
+	c.enableLeaderElection = true
+	c.leading.Store(false)
+	req = httptest.NewRequest("GET", "/readyz", nil)
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("GET /readyz (standby) code = %d, want 503", rr.Code)
+	}
+
+	// 4. /readyz with leader election enabled and leading -> 200
+	c.leading.Store(true)
+	req = httptest.NewRequest("GET", "/readyz", nil)
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusOK {
+		t.Fatalf("GET /readyz (leading) code = %d, want 200", rr.Code)
+	}
+
+	// 5. unknown route -> 404
+	req = httptest.NewRequest("GET", "/unknown", nil)
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("GET /unknown code = %d, want 404", rr.Code)
+	}
+}
+
+func TestControlEnqueueMappedKeys(t *testing.T) {
+	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter())
+	defer queue.ShutDown()
+
+	c := &controller{
+		namespaced: true,
+		namespace:  "prod",
+		queue:      queue,
+	}
+
+	// 1. String key with namespace
+	c.enqueueMappedKeys(starlark.String("default/app-a"))
+	// 2. String key bare name (should prepend controller namespace)
+	c.enqueueMappedKeys(starlark.String("app-b"))
+	// 3. List of strings
+	c.enqueueMappedKeys(starlark.NewList([]starlark.Value{
+		starlark.String("staging/app-c"),
+		starlark.String("app-d"),
+	}))
+	// 4. Dict with name & namespace
+	d1 := starlark.NewDict(2)
+	_ = d1.SetKey(starlark.String("name"), starlark.String("app-e"))
+	_ = d1.SetKey(starlark.String("namespace"), starlark.String("infra"))
+	c.enqueueMappedKeys(d1)
+	// 5. Dict with name only
+	d2 := starlark.NewDict(1)
+	_ = d2.SetKey(starlark.String("name"), starlark.String("app-f"))
+	c.enqueueMappedKeys(d2)
+	// 6. AttrDict
+	ad := NewAttrDict(map[string]any{"name": "app-g", "namespace": "custom"})
+	c.enqueueMappedKeys(ad)
+	// 7. None -> should not enqueue
+	c.enqueueMappedKeys(starlark.None)
+
+	expectedKeys := []string{
+		"default/app-a",
+		"prod/app-b",
+		"staging/app-c",
+		"prod/app-d",
+		"infra/app-e",
+		"prod/app-f",
+		"custom/app-g",
+	}
+
+	for _, want := range expectedKeys {
+		if queue.Len() == 0 {
+			t.Fatalf("expected queue to contain %s, but queue is empty", want)
+		}
+		item, _ := queue.Get()
+		queue.Done(item)
+		qItem := item.(queueItem)
+		if qItem.key != want {
+			t.Fatalf("queue item key = %s, want %s", qItem.key, want)
+		}
+	}
+
+	if queue.Len() != 0 {
+		t.Fatalf("expected queue to be empty, got len %d", queue.Len())
+	}
+}
+
+func TestControlWatchRelatedMapping(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	secretGVR := schema.GroupVersionResource{Group: "", Version: "v1", Resource: "secrets"}
+	fakeWatcher := watch.NewFake()
+	scheme := runtime.NewScheme()
+	fakeDynClient := dynamicfake.NewSimpleDynamicClient(scheme)
+	fakeDynClient.PrependWatchReactor("secrets", func(action clienttesting.Action) (bool, watch.Interface, error) {
+		return true, fakeWatcher, nil
+	})
+
+	thread := &starlark.Thread{Name: "test-related-thread"}
+	starSrc := `
+def map_secret(secret):
+    name = secret.metadata.name
+    if name.startswith("app-config-"):
+        app_name = name[len("app-config-"):]
+        return "default/" + app_name
+    return None
+`
+	globals, err := starlark.ExecFile(thread, "test_related.star", starSrc, nil)
+	if err != nil {
+		t.Fatalf("ExecFile: %v", err)
+	}
+
+	queue := workqueue.NewRateLimitingQueue(workqueue.DefaultItemBasedRateLimiter())
+	defer queue.ShutDown()
+
+	c := &controller{
+		kind:       "TestApp",
+		namespaced: true,
+		namespace:  "default",
+		queue:      queue,
+		client: &K8sClient{
+			dynClient: fakeDynClient,
+			namespace: "default",
+		},
+		ctx:    ctx,
+		thread: thread,
+	}
+
+	relWatcher := relatedWatcher{
+		kind:       "secrets",
+		gvr:        secretGVR,
+		namespaced: true,
+		mapFn:      globals["map_secret"].(starlark.Callable),
+	}
+
+	// Run doWatchRelated in background
+	errCh := make(chan error, 1)
+	go func() {
+		errCh <- c.doWatchRelated(relWatcher)
+	}()
+
+	// Inject a secret event
+	secretObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "v1",
+			"kind":       "Secret",
+			"metadata": map[string]any{
+				"name":      "app-config-my-service",
+				"namespace": "default",
+			},
+		},
+	}
+	fakeWatcher.Modify(secretObj)
+
+	// Verify primary resource key "default/my-service" is enqueued
+	deadline := time.Now().Add(2 * time.Second)
+	for queue.Len() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if queue.Len() == 0 {
+		t.Fatal("timed out waiting for mapped key in queue")
+	}
+
+	item, _ := queue.Get()
+	queue.Done(item)
+	qItem := item.(queueItem)
+	if qItem.key != "default/my-service" {
+		t.Fatalf("enqueued key = %s, want default/my-service", qItem.key)
+	}
+
+	cancel()
+	fakeWatcher.Stop()
+	<-errCh
+}
+
+func TestK8sClientEvent(t *testing.T) {
+	fakeClientset := fake.NewSimpleClientset()
+	client := &K8sClient{
+		clientset: fakeClientset,
+		namespace: "default",
+	}
+
+	thread := &starlark.Thread{Name: "test-event"}
+	targetObj := NewAttrDict(map[string]any{
+		"apiVersion": "example.io/v1",
+		"kind":       "TestApp",
+		"metadata": map[string]any{
+			"name":      "my-app",
+			"namespace": "default",
+			"uid":       "12345",
+		},
+	})
+
+	args := starlark.Tuple{
+		targetObj,
+		starlark.String("Synced"),
+		starlark.String("Resource is in sync"),
+	}
+	kwargs := []starlark.Tuple{
+		{starlark.String("type"), starlark.String("Normal")},
+	}
+
+	val, err := client.event(thread, nil, args, kwargs)
+	if err != nil {
+		t.Fatalf("client.event failed: %v", err)
+	}
+	evtDict, ok := val.(*AttrDict)
+	if !ok {
+		t.Fatalf("expected *AttrDict, got %T", val)
+	}
+	if evtDict.ToMap()["kind"] != "Event" {
+		t.Fatalf("expected Event kind, got %v", evtDict.ToMap()["kind"])
+	}
+
+	events, err := fakeClientset.CoreV1().Events("default").List(context.Background(), metav1.ListOptions{})
+	if err != nil {
+		t.Fatalf("List events error: %v", err)
+	}
+	if len(events.Items) != 1 {
+		t.Fatalf("expected 1 event, got %d", len(events.Items))
+	}
+	e := events.Items[0]
+	if e.Reason != "Synced" || e.Message != "Resource is in sync" || e.Type != corev1.EventTypeNormal {
+		t.Fatalf("unexpected event: %+v", e)
+	}
+	if e.InvolvedObject.Name != "my-app" || e.InvolvedObject.Kind != "TestApp" {
+		t.Fatalf("unexpected involvedObject: %+v", e.InvolvedObject)
 	}
 }

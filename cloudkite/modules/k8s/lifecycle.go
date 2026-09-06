@@ -1,6 +1,7 @@
 package k8s
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -10,6 +11,7 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/types"
@@ -487,4 +489,94 @@ func toUnstructuredObj(val starlark.Value) (*unstructured.Unstructured, error) {
 	default:
 		return nil, fmt.Errorf("expected k8s object or dict, got %s", val.Type())
 	}
+}
+
+// event emits a Kubernetes Event for the given object.
+// Signature: k8s.event(obj, reason, message, type="Normal", namespace="")
+func (c *K8sClient) event(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+		return nil, err
+	}
+
+	var objVal starlark.Value
+	filtered := filterKwargValue(kwargs, "obj", &objVal)
+	remaining := args
+	if objVal == nil && len(remaining) > 0 {
+		objVal = remaining[0]
+		remaining = remaining[1:]
+	}
+
+	var p struct {
+		Reason    string `name:"reason" position:"0" required:"true"`
+		Message   string `name:"message" position:"1" required:"true"`
+		Type      string `name:"type"`
+		Namespace string `name:"namespace"`
+	}
+	p.Type = "Normal"
+	if err := startype.Args(remaining, filtered).Go(&p); err != nil {
+		return nil, fmt.Errorf("k8s.event: %w", err)
+	}
+	if objVal == nil {
+		return nil, fmt.Errorf("k8s.event: missing required argument: obj")
+	}
+
+	u, err := toUnstructuredObj(objVal)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.event: %w", err)
+	}
+
+	cs, err := c.getClientset()
+	if err != nil {
+		return nil, fmt.Errorf("k8s.event: %w", err)
+	}
+
+	ns := u.GetNamespace()
+	if p.Namespace != "" {
+		ns = p.Namespace
+	}
+	if ns == "" {
+		ns = c.namespace
+	}
+	if ns == "" {
+		ns = "default"
+	}
+
+	t := metav1.Now()
+	ev := &corev1.Event{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s.%x", u.GetName(), t.UnixNano()),
+			Namespace: ns,
+		},
+		InvolvedObject: corev1.ObjectReference{
+			APIVersion: u.GetAPIVersion(),
+			Kind:       u.GetKind(),
+			Name:       u.GetName(),
+			Namespace:  u.GetNamespace(),
+			UID:        u.GetUID(),
+		},
+		Reason:         p.Reason,
+		Message:        p.Message,
+		Type:           p.Type,
+		FirstTimestamp: t,
+		LastTimestamp:  t,
+		Count:          1,
+		Source: corev1.EventSource{
+			Component: "starkite",
+		},
+	}
+
+	ctx := context.Background()
+	created, err := cs.CoreV1().Events(ns).Create(ctx, ev, metav1.CreateOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("k8s.event: create event: %w", err)
+	}
+
+	return unstructuredToDict(&unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1",
+		"kind":       "Event",
+		"metadata": map[string]any{
+			"name":      created.Name,
+			"namespace": created.Namespace,
+		},
+	}})
 }

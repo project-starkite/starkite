@@ -3,16 +3,20 @@ package k8s
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"go.starlark.net/starlark"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -49,12 +53,14 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 	// Extract callable and complex kwargs before startype parsing
 	var reconcileFn, onCreateFn, onUpdateFn, onDeleteFn, finalizeFn starlark.Callable
 	var watchOwnedValue starlark.Value
+	var watchRelatedValue starlark.Value
 	filtered := filterKwargCallable(kwargs, "reconcile", &reconcileFn)
 	filtered = filterKwargCallable(filtered, "on_create", &onCreateFn)
 	filtered = filterKwargCallable(filtered, "on_update", &onUpdateFn)
 	filtered = filterKwargCallable(filtered, "on_delete", &onDeleteFn)
 	filtered = filterKwargCallable(filtered, "finalize", &finalizeFn)
 	filtered = filterKwargValue(filtered, "watch_owned", &watchOwnedValue)
+	filtered = filterKwargValue(filtered, "watch_related", &watchRelatedValue)
 	var predicateFn starlark.Callable
 	filtered = filterKwargCallable(filtered, "predicate", &predicateFn)
 
@@ -65,6 +71,7 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		Resync                  string `name:"resync"`
 		Poll                    string `name:"poll"`
 		Finalizer               string `name:"finalizer"`
+		HealthPort              int    `name:"health_port"`
 		Workers                 int    `name:"workers"`
 		MaxRetries              int    `name:"max_retries"`
 		Backoff                 string `name:"backoff"`
@@ -144,6 +151,101 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		}
 	}
 
+	// Parse watch_related list
+	var relatedWatchers []relatedWatcher
+	if watchRelatedValue != nil && watchRelatedValue != starlark.None {
+		var list []starlark.Value
+		switch v := watchRelatedValue.(type) {
+		case *starlark.List:
+			for i := 0; i < v.Len(); i++ {
+				list = append(list, v.Index(i))
+			}
+		case starlark.Tuple:
+			list = append(list, v...)
+		default:
+			return nil, fmt.Errorf("k8s.control: 'watch_related' must be a list or tuple, got %s", watchRelatedValue.Type())
+		}
+
+		for idx, item := range list {
+			var rw relatedWatcher
+			switch elem := item.(type) {
+			case *starlark.Dict:
+				kindVal, found, _ := elem.Get(starlark.String("kind"))
+				if !found {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] missing 'kind'", idx)
+				}
+				kindStr, ok := starlark.AsString(kindVal)
+				if !ok {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] 'kind' must be string", idx)
+				}
+				rw.kind = kindStr
+
+				mapVal, found, _ := elem.Get(starlark.String("map_func"))
+				if !found {
+					mapVal, found, _ = elem.Get(starlark.String("map"))
+				}
+				if !found {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] missing 'map_func'", idx)
+				}
+				mapCallable, ok := mapVal.(starlark.Callable)
+				if !ok {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] 'map_func' must be callable, got %s", idx, mapVal.Type())
+				}
+				rw.mapFn = mapCallable
+
+			case *AttrDict:
+				kVal, err := elem.Attr("kind")
+				if err != nil || kVal == nil {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] missing 'kind'", idx)
+				}
+				kindStr, ok := starlark.AsString(kVal)
+				if !ok {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] 'kind' must be string", idx)
+				}
+				rw.kind = kindStr
+
+				mapVal, err := elem.Attr("map_func")
+				if err != nil || mapVal == nil {
+					mapVal, _ = elem.Attr("map")
+				}
+				if mapVal == nil {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] missing 'map_func'", idx)
+				}
+				mapCallable, ok := mapVal.(starlark.Callable)
+				if !ok {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] 'map_func' must be callable", idx)
+				}
+				rw.mapFn = mapCallable
+
+			case starlark.Tuple:
+				if elem.Len() < 2 {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] tuple must have (kind, map_func)", idx)
+				}
+				kindStr, ok := starlark.AsString(elem.Index(0))
+				if !ok {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] kind must be string", idx)
+				}
+				mapCallable, ok := elem.Index(1).(starlark.Callable)
+				if !ok {
+					return nil, fmt.Errorf("k8s.control: watch_related[%d] map_func must be callable", idx)
+				}
+				rw.kind = kindStr
+				rw.mapFn = mapCallable
+
+			default:
+				return nil, fmt.Errorf("k8s.control: watch_related[%d] must be a dict or tuple, got %s", idx, item.Type())
+			}
+
+			rgvr, rnamespaced, err := client.resolver.Resolve(rw.kind)
+			if err != nil {
+				return nil, fmt.Errorf("k8s.control: watch_related[%d] resolve %q: %w", idx, rw.kind, err)
+			}
+			rw.gvr = rgvr
+			rw.namespaced = rnamespaced
+			relatedWatchers = append(relatedWatchers, rw)
+		}
+	}
+
 	// Leader election defaults
 	leaderID := p.LeaderElectionID
 	if leaderID == "" {
@@ -175,6 +277,8 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		onDeleteFn:           onDeleteFn,
 		finalizeFn:           finalizeFn,
 		finalizerName:        finalizerName,
+		healthPort:           p.HealthPort,
+		watchRelated:         relatedWatchers,
 		client:               client,
 		thread:               thread,
 		cache:                make(map[string]*unstructured.Unstructured),
@@ -189,6 +293,13 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 	}
 
 	return ctrl.run()
+}
+
+type relatedWatcher struct {
+	kind       string
+	gvr        schema.GroupVersionResource
+	namespaced bool
+	mapFn      starlark.Callable
 }
 
 type controller struct {
@@ -214,6 +325,10 @@ type controller struct {
 	finalizerName string
 	predicateFn   starlark.Callable // predicate: fn(event, obj) -> bool
 	watchOwned    []string          // owned resource kinds to watch (e.g., ["deployments", "services"])
+
+	healthPort   int
+	leading      atomic.Bool
+	watchRelated []relatedWatcher
 
 	enableLeaderElection bool
 	leaderElectionID     string
@@ -275,6 +390,21 @@ func (c *controller) run() (starlark.Value, error) {
 		}
 	}
 
+	// Start related resource watch goroutines
+	for _, rw := range c.watchRelated {
+		watcher := rw
+		wg.Go(func() {
+			c.watchRelatedLoop(watcher)
+		})
+	}
+
+	// Start health server if configured
+	if c.healthPort > 0 {
+		wg.Go(func() {
+			c.runHealthServer()
+		})
+	}
+
 	// Start worker goroutines (leader-only if leader election enabled)
 	if c.enableLeaderElection {
 		c.runWithLeaderElection(&wg)
@@ -292,6 +422,7 @@ func (c *controller) run() (starlark.Value, error) {
 
 // startWorkers launches worker goroutines that process the queue.
 func (c *controller) startWorkers(wg *sync.WaitGroup) {
+	c.leading.Store(true)
 	for i := 0; i < c.workers; i++ {
 		wg.Go(func() {
 			c.workerLoop()
@@ -334,10 +465,12 @@ func (c *controller) runWithLeaderElection(wg *sync.WaitGroup) {
 			ReleaseOnCancel: true,
 			Callbacks: leaderelection.LeaderCallbacks{
 				OnStartedLeading: func(ctx context.Context) {
+					c.leading.Store(true)
 					fmt.Fprintf(os.Stderr, "k8s.control: started leading (%s)\n", id)
 					c.startWorkers(wg)
 				},
 				OnStoppedLeading: func() {
+					c.leading.Store(false)
 					fmt.Fprintf(os.Stderr, "k8s.control: stopped leading\n")
 					c.cancel()
 				},
@@ -730,6 +863,248 @@ func (c *controller) matchesOwnerRef(ref metav1.OwnerReference) bool {
 	return false
 }
 
+func (c *controller) watchRelatedLoop(r relatedWatcher) {
+	backoff := time.Second
+	maxBackoff := 30 * time.Second
+
+	for {
+		if c.ctx.Err() != nil {
+			return
+		}
+
+		err := c.doWatchRelated(r)
+		if c.ctx.Err() != nil {
+			return
+		}
+
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "k8s.control: related watch %s error: %v, reconnecting in %v\n", r.kind, err, backoff)
+		}
+		select {
+		case <-c.ctx.Done():
+			return
+		case <-time.After(backoff):
+		}
+		backoff = min(backoff*2, maxBackoff)
+	}
+}
+
+func (c *controller) doWatchRelated(r relatedWatcher) error {
+	opts := metav1.ListOptions{}
+
+	var watcher watch.Interface
+	var err error
+	if r.namespaced && c.namespace != "" {
+		watcher, err = c.client.dynClient.Resource(r.gvr).Namespace(c.namespace).Watch(c.ctx, opts)
+	} else {
+		watcher, err = c.client.dynClient.Resource(r.gvr).Watch(c.ctx, opts)
+	}
+	if err != nil {
+		return fmt.Errorf("watch related %s: %w", r.kind, err)
+	}
+	defer watcher.Stop()
+
+	for {
+		select {
+		case <-c.ctx.Done():
+			return nil
+		case event, ok := <-watcher.ResultChan():
+			if !ok {
+				return fmt.Errorf("related watch channel closed")
+			}
+
+			obj, ok := event.Object.(*unstructuredObj)
+			if !ok {
+				continue
+			}
+
+			childThread := &starlark.Thread{Name: "related-mapper"}
+			if c.thread != nil {
+				childThread.Print = c.thread.Print
+			}
+			if perms := libkite.GetPermissions(c.thread); perms != nil {
+				libkite.SetPermissions(childThread, perms)
+			}
+			childThread.SetLocal(ActiveControllerKey, c)
+
+			attrDict := unstructuredToAttrDict(obj)
+			res, err := starlark.Call(childThread, r.mapFn, starlark.Tuple{attrDict}, nil)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "k8s.control: map_func error for %s on %s/%s: %v\n", r.kind, obj.GetNamespace(), obj.GetName(), err)
+				continue
+			}
+
+			c.enqueueMappedKeys(res)
+		}
+	}
+}
+
+func (c *controller) enqueueMappedKeys(res starlark.Value) {
+	if res == nil || res == starlark.None {
+		return
+	}
+
+	enqueueOne := func(v starlark.Value) {
+		switch item := v.(type) {
+		case starlark.String:
+			key := string(item)
+			if key != "" {
+				if !strings.Contains(key, "/") && c.namespaced && c.namespace != "" {
+					key = c.namespace + "/" + key
+				}
+				c.queue.Add(queueItem{
+					key:       key,
+					eventType: string(watch.Modified),
+				})
+			}
+		case *starlark.Dict:
+			var name, ns string
+			if nVal, found, _ := item.Get(starlark.String("name")); found {
+				if s, ok := starlark.AsString(nVal); ok {
+					name = s
+				}
+			}
+			if nsVal, found, _ := item.Get(starlark.String("namespace")); found {
+				if s, ok := starlark.AsString(nsVal); ok {
+					ns = s
+				}
+			}
+			if name != "" {
+				key := name
+				if ns != "" {
+					key = ns + "/" + name
+				} else if c.namespaced && c.namespace != "" {
+					key = c.namespace + "/" + name
+				}
+				c.queue.Add(queueItem{
+					key:       key,
+					eventType: string(watch.Modified),
+				})
+			}
+		case *AttrDict:
+			m := item.ToMap()
+			name, _ := m["name"].(string)
+			ns, _ := m["namespace"].(string)
+			if name != "" {
+				key := name
+				if ns != "" {
+					key = ns + "/" + name
+				} else if c.namespaced && c.namespace != "" {
+					key = c.namespace + "/" + name
+				}
+				c.queue.Add(queueItem{
+					key:       key,
+					eventType: string(watch.Modified),
+				})
+			}
+		}
+	}
+
+	switch v := res.(type) {
+	case *starlark.List:
+		for i := 0; i < v.Len(); i++ {
+			enqueueOne(v.Index(i))
+		}
+	case starlark.Tuple:
+		for _, elem := range v {
+			enqueueOne(elem)
+		}
+	default:
+		enqueueOne(v)
+	}
+}
+
+func (c *controller) healthHandler() http.Handler {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		if c.ctx != nil && c.ctx.Err() != nil {
+			http.Error(w, "shutting down", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		if c.ctx != nil && c.ctx.Err() != nil {
+			http.Error(w, "shutting down", http.StatusServiceUnavailable)
+			return
+		}
+		if c.enableLeaderElection && !c.leading.Load() {
+			http.Error(w, "standby (not leader)", http.StatusServiceUnavailable)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok\n"))
+	})
+	return mux
+}
+
+func (c *controller) runHealthServer() {
+	srv := &http.Server{
+		Addr:    fmt.Sprintf(":%d", c.healthPort),
+		Handler: c.healthHandler(),
+	}
+
+	go func() {
+		<-c.ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Shutdown(shutdownCtx)
+	}()
+
+	fmt.Fprintf(os.Stderr, "k8s.control: health server listening on :%d\n", c.healthPort)
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		fmt.Fprintf(os.Stderr, "k8s.control: health server error: %v\n", err)
+	}
+}
+
+func (c *controller) emitEvent(obj *unstructured.Unstructured, eventType, reason, message string) {
+	if c.client == nil {
+		return
+	}
+	cs, err := c.client.getClientset()
+	if err != nil || cs == nil {
+		return
+	}
+
+	ns := obj.GetNamespace()
+	if ns == "" {
+		ns = c.namespace
+	}
+	if ns == "" {
+		ns = "default"
+	}
+
+	t := metav1.Now()
+	ev := &corev1.Event{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      fmt.Sprintf("%s.%x", obj.GetName(), t.UnixNano()),
+			Namespace: ns,
+		},
+		InvolvedObject: corev1.ObjectReference{
+			APIVersion: obj.GetAPIVersion(),
+			Kind:       obj.GetKind(),
+			Name:       obj.GetName(),
+			Namespace:  obj.GetNamespace(),
+			UID:        obj.GetUID(),
+		},
+		Reason:         reason,
+		Message:        message,
+		Type:           eventType,
+		FirstTimestamp: t,
+		LastTimestamp:  t,
+		Count:          1,
+		Source: corev1.EventSource{
+			Component: "starkite-controller",
+		},
+	}
+
+	ctx, cancel := context.WithTimeout(c.ctx, 5*time.Second)
+	defer cancel()
+
+	_, _ = cs.CoreV1().Events(ns).Create(ctx, ev, metav1.CreateOptions{})
+}
+
 // ============================================================================
 // Worker loop — dequeue and dispatch to handlers
 // ============================================================================
@@ -818,15 +1193,18 @@ func (c *controller) dispatch(item queueItem) error {
 	if c.finalizeFn != nil {
 		if isDeleting {
 			if hasFinalizer(obj, c.finalizerName) {
+				c.emitEvent(obj, corev1.EventTypeNormal, "Finalizing", "Executing teardown hook")
 				if err := c.callFinalize(childThread, attrDict); err != nil {
 					fmt.Fprintf(os.Stderr, "k8s.control: finalize error on %s: %v\n", item.key, err)
 					c.updateReadyCondition(obj, false, "FinalizeError", err.Error())
+					c.emitEvent(obj, corev1.EventTypeWarning, "FinalizeError", err.Error())
 					return err
 				}
 				// Teardown succeeded cleanly. Strip finalizer to allow deletion.
 				if err := c.removeFinalizer(obj); err != nil {
 					return fmt.Errorf("strip finalizer %q on %s: %w", c.finalizerName, item.key, err)
 				}
+				c.emitEvent(obj, corev1.EventTypeNormal, "Finalized", "Teardown completed")
 				return nil
 			}
 			return nil
@@ -880,6 +1258,7 @@ func (c *controller) dispatch(item queueItem) error {
 	if err != nil {
 		if !isDeleting {
 			c.updateReadyCondition(obj, false, "ReconcileError", err.Error())
+			c.emitEvent(obj, corev1.EventTypeWarning, "ReconcileError", err.Error())
 		}
 		return err
 	}
@@ -889,6 +1268,7 @@ func (c *controller) dispatch(item queueItem) error {
 		if list, ok := ret.(*starlark.List); ok {
 			if err := c.reconcileDesiredChildren(obj, list); err != nil {
 				c.updateReadyCondition(obj, false, "ReconcileError", err.Error())
+				c.emitEvent(obj, corev1.EventTypeWarning, "ReconcileError", err.Error())
 				return err
 			}
 		} else if durStr, ok := starlark.AsString(ret); ok {
@@ -901,6 +1281,7 @@ func (c *controller) dispatch(item queueItem) error {
 	// Automatically infer Ready condition on successful reconciliation
 	if !isDeleting && (c.reconcileFn != nil || c.onCreateFn != nil || c.onUpdateFn != nil) {
 		c.updateReadyCondition(obj, true, "Reconciled", "Resource synchronized successfully")
+		c.emitEvent(obj, corev1.EventTypeNormal, "Reconciled", "Resource synchronized successfully")
 	}
 
 	// Controller-level periodic polling

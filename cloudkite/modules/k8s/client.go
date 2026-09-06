@@ -15,6 +15,7 @@ import (
 	"github.com/project-starkite/starkite/libkite/modules/ssh"
 	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/dynamic"
+	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -23,6 +24,7 @@ import (
 // operations as Starlark HasAttrs methods.
 type K8sClient struct {
 	dynClient dynamic.Interface
+	clientset kubernetes.Interface
 	disc      discovery.DiscoveryInterface
 	resolver  *Resolver
 	restCfg   *rest.Config
@@ -61,6 +63,7 @@ var allMethods = map[string]clientMethod{
 	"finalizer_add":    (*K8sClient).finalizerAdd,
 	"finalizer_remove": (*K8sClient).finalizerRemove,
 	"condition_set":    (*K8sClient).conditionSet,
+	"event":            (*K8sClient).event,
 
 	// Tier 1: Watch
 	"watch":    (*K8sClient).watch,
@@ -299,8 +302,11 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, opts cl
 		}
 	}
 
+	clientset, _ := kubernetes.NewForConfig(restCfg)
+
 	return &K8sClient{
 		dynClient: dynClient,
+		clientset: clientset,
 		disc:      disc,
 		resolver:  NewResolver(disc),
 		restCfg:   restCfg,
@@ -311,6 +317,22 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, opts cl
 		thread:    thread,
 		dialer:    tunnelDialer,
 	}, nil
+}
+
+// getClientset returns the kubernetes.Interface, creating it from restCfg if needed.
+func (c *K8sClient) getClientset() (kubernetes.Interface, error) {
+	if c.clientset != nil {
+		return c.clientset, nil
+	}
+	if c.restCfg != nil {
+		cs, err := kubernetes.NewForConfig(c.restCfg)
+		if err != nil {
+			return nil, err
+		}
+		c.clientset = cs
+		return cs, nil
+	}
+	return nil, fmt.Errorf("no kubernetes clientset or rest config available")
 }
 
 // filterKwarg extracts a *starlark.Dict kwarg by name (converting *AttrDict to *starlark.Dict if needed),
