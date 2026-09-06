@@ -44,6 +44,9 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | `k8s.status(obj, status, namespace="", timeout="")` | `AttrDict` | Update the status subresource of a resource. Pass the resource as `obj` and the new status dict as `status` |
 | `k8s.event(obj, reason, message, type="Normal", namespace="", timeout="")` | `AttrDict` | Emit a Kubernetes event attached to `obj`. `type` can be `"Normal"` or `"Warning"` |
 | `k8s.claims(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `resource.k8s.io/v1` `ResourceClaim` objects for Dynamic Resource Allocation (DRA) |
+| `k8s.pvcs(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `PersistentVolumeClaim` objects |
+| `k8s.pvs(labels="", timeout="")` | `list[AttrDict]` | List cluster-scoped `PersistentVolume` objects |
+| `k8s.storage_classes(labels="", timeout="")` | `list[AttrDict]` | List cluster-scoped `StorageClass` objects |
 
 ### Example — status subresource update
 
@@ -429,7 +432,9 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 | `k8s.obj.stateful_set(name, service_name="", replicas=1, containers=[], resource_claims=[], labels={}, annotations={})` | `KubeResource` | Construct a StatefulSet manifest |
 | `k8s.obj.daemon_set(name, containers=[], resource_claims=[], labels={}, annotations={})` | `KubeResource` | Construct a DaemonSet manifest |
 | `k8s.obj.ingress(name, rules=[], tls=[], ingress_class_name="", labels={}, annotations={})` | `KubeResource` | Construct an Ingress manifest |
-| `k8s.obj.persistent_volume_claim(name, access_modes=[], storage="", storage_class_name="", labels={})` | `KubeResource` | Construct a PersistentVolumeClaim |
+| `k8s.obj.persistent_volume(name, capacity={}, storage="", access_modes=[], storage_class_name="", reclaim_policy="", host_path={}, nfs={}, csi={}, labels={}, annotations={})` | `KubeResource` | Construct a PersistentVolume manifest (cluster-scoped) |
+| `k8s.obj.persistent_volume_claim(name, access_modes=[], storage="", storage_class_name="", volume_name="", selector={}, data_source={}, data_source_ref={}, labels={}, annotations={})` | `KubeResource` | Construct a PersistentVolumeClaim manifest |
+| `k8s.obj.storage_class(name, provisioner="", volume_binding_mode="", reclaim_policy="", allow_volume_expansion=False, parameters={}, mount_options=[], labels={}, annotations={})` | `KubeResource` | Construct a StorageClass manifest (cluster-scoped) |
 | `k8s.obj.namespace(name, labels={}, annotations={})` | `KubeResource` | Construct a Namespace manifest |
 | `k8s.obj.service_account(name, labels={}, annotations={})` | `KubeResource` | Construct a ServiceAccount manifest |
 | `k8s.obj.device_class(name, selectors=[], config=[], suitable_nodes={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `DeviceClass` (cluster-scoped) |
@@ -449,8 +454,8 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 | `k8s.obj.env_from(config_map_ref={}, secret_ref={}, prefix="")` | `KubeResource` | Environment variable source from ConfigMap or Secret |
 | `k8s.obj.resource_requirements(requests={}, limits={}, claims=[])` | `KubeResource` | Resource requests, limits, and claim bindings |
 | `k8s.obj.probe(http_get={}, tcp_socket={}, exec={}, initial_delay_seconds=0, period_seconds=10, timeout_seconds=1, failure_threshold=3)` | `KubeResource` | Health probe configuration |
-| `k8s.obj.volume(name, config_map={}, secret={}, pvc={}, host_path={}, empty_dir={})` | `KubeResource` | Pod volume definition |
-| `k8s.obj.volume_mount(name, mount_path, sub_path="", read_only=False)` | `KubeResource` | Container volume mount |
+| `k8s.obj.volume(name, pvc=None, claim_name="", config_map=None, secret=None, empty_dir=None, ephemeral=None, host_path={}, nfs={}, csi={}, projected={}, downward_api={})` | `KubeResource` | Pod volume definition with ergonomic shortcuts for PVCs, ConfigMaps, Secrets, EmptyDir, and Ephemeral volumes |
+| `k8s.obj.volume_mount(name, mount_path, sub_path="", sub_path_expr="", read_only=False, mount_propagation="", recursive_read_only="")` | `KubeResource` | Container volume mount specification |
 
 ### Example — construct and apply workload
 
@@ -586,6 +591,56 @@ k8s.apply(workload)
 claims = k8s.claims(namespace="default")
 for c in claims:
     print(c.metadata.name, c.status.get("allocation"))
+```
+
+### Example — Persistent Volumes and Workload Storage
+
+Starkite supports typed constructors and ergonomic workload binding for Kubernetes storage primitives:
+
+```python
+# 1. Define cluster-level StorageClass
+sc = k8s.obj.storage_class(
+    name = "fast-ssd",
+    provisioner = "kubernetes.io/no-provisioner",
+    volume_binding_mode = "WaitForFirstConsumer",
+    allow_volume_expansion = True,
+)
+k8s.apply(sc)
+
+# 2. Define PersistentVolumeClaim
+pvc = k8s.obj.persistent_volume_claim(
+    name = "db-data",
+    storage = "20Gi",
+    storage_class_name = "fast-ssd",
+    access_modes = ["ReadWriteOnce"],
+)
+k8s.apply(pvc, namespace="default")
+
+# 3. Mount volume in a Deployment using object shortcut
+workload = k8s.obj.deployment(
+    name = "postgres",
+    replicas = 1,
+    volumes = [
+        k8s.obj.volume(name="data", pvc=pvc),  # direct KubeResource reference
+        k8s.obj.volume(name="scratch", empty_dir=True),  # bool shortcut
+    ],
+    containers = [
+        k8s.obj.container(
+            name = "db",
+            image = "postgres:16",
+            volume_mounts = [
+                k8s.obj.volume_mount(name="data", mount_path="/var/lib/postgresql/data"),
+                k8s.obj.volume_mount(name="scratch", mount_path="/tmp"),
+            ],
+        ),
+    ],
+)
+k8s.apply(workload, namespace="default")
+
+# 4. Inspect storage resources
+pvcs = k8s.pvcs(namespace="default")
+for p in pvcs:
+    print(p.metadata.name, p.status.phase, p.spec.resources.requests.storage)
 ```
 
 ### Utilities

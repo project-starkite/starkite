@@ -944,3 +944,158 @@ func (c *K8sClient) claims(thread *starlark.Thread, fn *starlark.Builtin, args s
 
 	return starlark.NewList(items), nil
 }
+
+// pvcs retrieves a list of PersistentVolumeClaims.
+// Signature: k8s.pvcs(namespace="", labels="", timeout="")
+func (c *K8sClient) pvcs(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
+		return nil, err
+	}
+
+	var p struct {
+		Namespace string `name:"namespace"`
+		Labels    string `name:"labels"`
+		Timeout   string `name:"timeout"`
+	}
+	if err := startype.Args(args, kwargs).Go(&p); err != nil {
+		return nil, err
+	}
+
+	gvr, _, err := c.resolver.Resolve("persistentvolumeclaims")
+	if err != nil {
+		return nil, fmt.Errorf("k8s.pvcs: %w", err)
+	}
+
+	ns := p.Namespace
+	if ns == "" {
+		ns = c.namespace
+	}
+
+	opts := metav1.ListOptions{}
+	if p.Labels != "" {
+		opts.LabelSelector = p.Labels
+	}
+
+	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.pvcs: %w", err)
+	}
+	defer cancel()
+
+	var list *unstructuredList
+	if ns != "" {
+		list, err = c.dynClient.Resource(gvr).Namespace(ns).List(ctx, opts)
+	} else {
+		list, err = c.dynClient.Resource(gvr).List(ctx, opts)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("k8s.pvcs: %w", err)
+	}
+
+	items := make([]starlark.Value, 0, len(list.Items))
+	for i := range list.Items {
+		dict, err := unstructuredToDict(&list.Items[i])
+		if err != nil {
+			return nil, fmt.Errorf("k8s.pvcs: item %d: %w", i, err)
+		}
+		items = append(items, dict)
+	}
+
+	return starlark.NewList(items), nil
+}
+
+// pvs retrieves a list of PersistentVolumes (cluster-scoped).
+// Signature: k8s.pvs(labels="", timeout="")
+func (c *K8sClient) pvs(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
+		return nil, err
+	}
+
+	var p struct {
+		Labels  string `name:"labels"`
+		Timeout string `name:"timeout"`
+	}
+	if err := startype.Args(args, kwargs).Go(&p); err != nil {
+		return nil, err
+	}
+
+	gvr, _, err := c.resolver.Resolve("persistentvolumes")
+	if err != nil {
+		return nil, fmt.Errorf("k8s.pvs: %w", err)
+	}
+
+	opts := metav1.ListOptions{}
+	if p.Labels != "" {
+		opts.LabelSelector = p.Labels
+	}
+
+	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.pvs: %w", err)
+	}
+	defer cancel()
+
+	list, err := c.dynClient.Resource(gvr).List(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.pvs: %w", err)
+	}
+
+	items := make([]starlark.Value, 0, len(list.Items))
+	for i := range list.Items {
+		dict, err := unstructuredToDict(&list.Items[i])
+		if err != nil {
+			return nil, fmt.Errorf("k8s.pvs: item %d: %w", i, err)
+		}
+		items = append(items, dict)
+	}
+
+	return starlark.NewList(items), nil
+}
+
+// storageClasses retrieves a list of StorageClasses (cluster-scoped).
+// Signature: k8s.storage_classes(labels="", timeout="")
+func (c *K8sClient) storageClasses(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
+		return nil, err
+	}
+
+	var p struct {
+		Labels  string `name:"labels"`
+		Timeout string `name:"timeout"`
+	}
+	if err := startype.Args(args, kwargs).Go(&p); err != nil {
+		return nil, err
+	}
+
+	gvr, _, err := c.resolver.Resolve("storageclasses")
+	if err != nil {
+		return nil, fmt.Errorf("k8s.storage_classes: %w", err)
+	}
+
+	opts := metav1.ListOptions{}
+	if p.Labels != "" {
+		opts.LabelSelector = p.Labels
+	}
+
+	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.storage_classes: %w", err)
+	}
+	defer cancel()
+
+	list, err := c.dynClient.Resource(gvr).List(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.storage_classes: %w", err)
+	}
+
+	items := make([]starlark.Value, 0, len(list.Items))
+	for i := range list.Items {
+		dict, err := unstructuredToDict(&list.Items[i])
+		if err != nil {
+			return nil, fmt.Errorf("k8s.storage_classes: item %d: %w", i, err)
+		}
+		items = append(items, dict)
+	}
+
+	return starlark.NewList(items), nil
+}

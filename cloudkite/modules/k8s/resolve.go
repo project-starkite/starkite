@@ -43,6 +43,9 @@ var builtinKinds = map[string]resolvedGVR{
 	"persistentvolumeclaim":  {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"}, namespaced: true},
 	"persistentvolumeclaims": {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"}, namespaced: true},
 	"pvc":                    {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumeclaims"}, namespaced: true},
+	"persistentvolume":       {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"}, namespaced: false},
+	"persistentvolumes":      {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"}, namespaced: false},
+	"pv":                     {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "persistentvolumes"}, namespaced: false},
 	"serviceaccount":         {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"}, namespaced: true},
 	"serviceaccounts":        {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"}, namespaced: true},
 	"sa":                     {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"}, namespaced: true},
@@ -99,6 +102,17 @@ var builtinKinds = map[string]resolvedGVR{
 	"resourceclaimtemplates": {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaimtemplates"}, namespaced: true},
 	"resourceslice":          {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "resourceslices"}, namespaced: false},
 	"resourceslices":         {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "resourceslices"}, namespaced: false},
+
+	// storage.k8s.io/v1
+	"storageclass":      {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"}, namespaced: false},
+	"storageclasses":    {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"}, namespaced: false},
+	"sc":                {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"}, namespaced: false},
+	"volumeattachment":  {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "volumeattachments"}, namespaced: false},
+	"volumeattachments": {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "volumeattachments"}, namespaced: false},
+	"csidriver":         {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "csidrivers"}, namespaced: false},
+	"csidrivers":        {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "csidrivers"}, namespaced: false},
+	"csinode":           {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "csinodes"}, namespaced: false},
+	"csinodes":          {gvr: schema.GroupVersionResource{Group: "storage.k8s.io", Version: "v1", Resource: "csinodes"}, namespaced: false},
 }
 
 // NewResolver creates a new Resolver with the given discovery client.

@@ -165,11 +165,52 @@ var pvcSchema = &ResourceSchema{
 	Kind:       "PersistentVolumeClaim",
 	APIVersion: "v1",
 	Fields: mergeFields(map[string]*FieldSpec{
-		"access_modes":  {JSONKey: "accessModes", Typ: FieldList, SpecKey: true},
-		"resources":     {JSONKey: "resources", Typ: FieldDict, SpecKey: true},
-		"storage":       {JSONKey: "storage", Typ: FieldString}, // convenience, expanded to spec.resources.requests.storage
-		"storage_class": {JSONKey: "storageClassName", Typ: FieldString, SpecKey: true},
-		"volume_mode":   {JSONKey: "volumeMode", Typ: FieldString, SpecKey: true},
+		"access_modes":       {JSONKey: "accessModes", Typ: FieldList, SpecKey: true},
+		"resources":          {JSONKey: "resources", Typ: FieldDict, SpecKey: true},
+		"storage":            {JSONKey: "storage", Typ: FieldString}, // convenience, expanded to spec.resources.requests.storage
+		"storage_class":      {JSONKey: "storageClassName", Typ: FieldString, SpecKey: true},
+		"storage_class_name": {JSONKey: "storageClassName", Typ: FieldString, SpecKey: true},
+		"volume_mode":        {JSONKey: "volumeMode", Typ: FieldString, SpecKey: true},
+		"volume_name":        {JSONKey: "volumeName", Typ: FieldString, SpecKey: true},
+		"selector":           {JSONKey: "selector", Typ: FieldDict, SpecKey: true},
+		"data_source":        {JSONKey: "dataSource", Typ: FieldDict, SpecKey: true},
+		"data_source_ref":    {JSONKey: "dataSourceRef", Typ: FieldDict, SpecKey: true},
+	}),
+}
+
+var persistentVolumeSchema = &ResourceSchema{
+	Kind:       "PersistentVolume",
+	APIVersion: "v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"capacity":                         {JSONKey: "capacity", Typ: FieldDict, SpecKey: true},
+		"storage":                          {JSONKey: "storage", Typ: FieldString}, // convenience, expanded to spec.capacity.storage
+		"access_modes":                     {JSONKey: "accessModes", Typ: FieldList, SpecKey: true},
+		"reclaim_policy":                   {JSONKey: "persistentVolumeReclaimPolicy", Typ: FieldString, SpecKey: true, DefaultVal: "Retain"},
+		"persistent_volume_reclaim_policy": {JSONKey: "persistentVolumeReclaimPolicy", Typ: FieldString, SpecKey: true},
+		"storage_class":                    {JSONKey: "storageClassName", Typ: FieldString, SpecKey: true},
+		"storage_class_name":               {JSONKey: "storageClassName", Typ: FieldString, SpecKey: true},
+		"volume_mode":                      {JSONKey: "volumeMode", Typ: FieldString, SpecKey: true},
+		"claim_ref":                        {JSONKey: "claimRef", Typ: FieldDict, SpecKey: true},
+		"mount_options":                    {JSONKey: "mountOptions", Typ: FieldList, SpecKey: true},
+		"node_affinity":                    {JSONKey: "nodeAffinity", Typ: FieldDict, SpecKey: true},
+		"csi":                              {JSONKey: "csi", Typ: FieldDict, SpecKey: true},
+		"host_path":                        {JSONKey: "hostPath", Typ: FieldDict, SpecKey: true},
+		"nfs":                              {JSONKey: "nfs", Typ: FieldDict, SpecKey: true},
+		"local":                            {JSONKey: "local", Typ: FieldDict, SpecKey: true},
+	}),
+}
+
+var storageClassSchema = &ResourceSchema{
+	Kind:       "StorageClass",
+	APIVersion: "storage.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"provisioner":            {JSONKey: "provisioner", Typ: FieldString, Required: true},
+		"parameters":             {JSONKey: "parameters", Typ: FieldDict},
+		"reclaim_policy":         {JSONKey: "reclaimPolicy", Typ: FieldString, DefaultVal: "Delete"},
+		"volume_binding_mode":    {JSONKey: "volumeBindingMode", Typ: FieldString},
+		"allow_volume_expansion": {JSONKey: "allowVolumeExpansion", Typ: FieldBool},
+		"mount_options":          {JSONKey: "mountOptions", Typ: FieldList},
+		"allowed_topologies":     {JSONKey: "allowedTopologies", Typ: FieldList},
 	}),
 }
 
@@ -396,12 +437,18 @@ var volumeSchema = &ResourceSchema{
 	Kind:        "Volume",
 	IsSubObject: true,
 	Fields: map[string]*FieldSpec{
-		"name":       {JSONKey: "name", Typ: FieldString, Required: true},
-		"empty_dir":  {JSONKey: "emptyDir", Typ: FieldDict},
-		"config_map": {JSONKey: "configMap", Typ: FieldDict},
-		"secret":     {JSONKey: "secret", Typ: FieldDict},
-		"pvc":        {JSONKey: "persistentVolumeClaim", Typ: FieldDict},
-		"host_path":  {JSONKey: "hostPath", Typ: FieldDict},
+		"name":         {JSONKey: "name", Typ: FieldString, Required: true},
+		"empty_dir":    {JSONKey: "emptyDir", Typ: FieldAny},
+		"config_map":   {JSONKey: "configMap", Typ: FieldAny},
+		"secret":       {JSONKey: "secret", Typ: FieldAny},
+		"pvc":          {JSONKey: "persistentVolumeClaim", Typ: FieldAny},
+		"claim_name":   {JSONKey: "claimName", Typ: FieldString},
+		"host_path":    {JSONKey: "hostPath", Typ: FieldDict},
+		"csi":          {JSONKey: "csi", Typ: FieldDict},
+		"nfs":          {JSONKey: "nfs", Typ: FieldDict},
+		"projected":    {JSONKey: "projected", Typ: FieldDict},
+		"downward_api": {JSONKey: "downwardAPI", Typ: FieldDict},
+		"ephemeral":    {JSONKey: "ephemeral", Typ: FieldAny},
 	},
 }
 
@@ -409,10 +456,13 @@ var volumeMountSchema = &ResourceSchema{
 	Kind:        "VolumeMount",
 	IsSubObject: true,
 	Fields: map[string]*FieldSpec{
-		"name":       {JSONKey: "name", Typ: FieldString, Required: true},
-		"mount_path": {JSONKey: "mountPath", Typ: FieldString, Required: true},
-		"sub_path":   {JSONKey: "subPath", Typ: FieldString},
-		"read_only":  {JSONKey: "readOnly", Typ: FieldBool},
+		"name":                {JSONKey: "name", Typ: FieldString, Required: true},
+		"mount_path":          {JSONKey: "mountPath", Typ: FieldString, Required: true},
+		"sub_path":            {JSONKey: "subPath", Typ: FieldString},
+		"sub_path_expr":       {JSONKey: "subPathExpr", Typ: FieldString},
+		"read_only":           {JSONKey: "readOnly", Typ: FieldBool},
+		"mount_propagation":   {JSONKey: "mountPropagation", Typ: FieldString},
+		"recursive_read_only": {JSONKey: "recursiveReadOnly", Typ: FieldString},
 	},
 }
 
@@ -592,6 +642,8 @@ var allSchemas = map[string]*ResourceSchema{
 	"resource_claim":            resourceClaimSchema,
 	"resource_claim_template":   resourceClaimTemplateSchema,
 	"resource_slice":            resourceSliceSchema,
+	"persistent_volume":         persistentVolumeSchema,
+	"storage_class":             storageClassSchema,
 }
 
 // makeObjConstructor creates a Starlark builtin for a k8s.obj constructor.

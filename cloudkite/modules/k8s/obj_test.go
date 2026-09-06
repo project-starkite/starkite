@@ -278,8 +278,7 @@ func TestObjConstructors(t *testing.T) {
 		t.Fatal("ObjConstructors() returned empty")
 	}
 
-	// Check a few expected constructors
-	expected := []string{"pod", "deployment", "service", "container", "config_map", "secret"}
+	expected := []string{"pod", "deployment", "service", "container", "config_map", "secret", "persistent_volume", "storage_class", "persistent_volume_claim", "volume", "volume_mount"}
 	for _, name := range expected {
 		if _, ok := constructors[name]; !ok {
 			t.Errorf("missing constructor %q", name)
@@ -1169,5 +1168,333 @@ func TestDRA_EndToEndYAML(t *testing.T) {
 	}
 	if !strings.Contains(deployYAML, "claims:") {
 		t.Errorf("deploy YAML missing container claims: %s", deployYAML)
+	}
+}
+
+func TestVolume_Constructors(t *testing.T) {
+	m := New()
+	loaded, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	k8sMod := loaded["k8s"].(starlark.HasAttrs)
+	yamlFnVal, err := k8sMod.Attr("yaml")
+	if err != nil || yamlFnVal == nil {
+		t.Fatalf("k8s.yaml not found: %v", err)
+	}
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+	thread := &starlark.Thread{Name: "test"}
+
+	// 1. PersistentVolume
+	pvKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("pv-nfs")},
+		{starlark.String("storage"), starlark.String("100Gi")},
+		{starlark.String("access_modes"), starlark.NewList([]starlark.Value{starlark.String("ReadWriteMany")})},
+		{starlark.String("storage_class_name"), starlark.String("nfs-storage")},
+		{starlark.String("reclaim_policy"), starlark.String("Retain")},
+	}
+	pv, err := newKubeResource(persistentVolumeSchema, nil, pvKwargs)
+	if err != nil {
+		t.Fatalf("persistent_volume error: %v", err)
+	}
+	pvYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{pv}, nil)
+	if err != nil {
+		t.Fatalf("yaml(pv) error: %v", err)
+	}
+	pvYAML := string(pvYAMLVal.(starlark.String))
+	if !strings.Contains(pvYAML, "kind: PersistentVolume") {
+		t.Errorf("pv YAML missing kind: %s", pvYAML)
+	}
+	if !strings.Contains(pvYAML, "storage: 100Gi") {
+		t.Errorf("pv YAML missing capacity.storage: %s", pvYAML)
+	}
+	if !strings.Contains(pvYAML, "storageClassName: nfs-storage") {
+		t.Errorf("pv YAML missing storageClassName: %s", pvYAML)
+	}
+	if !strings.Contains(pvYAML, "persistentVolumeReclaimPolicy: Retain") {
+		t.Errorf("pv YAML missing persistentVolumeReclaimPolicy: %s", pvYAML)
+	}
+
+	// 2. StorageClass
+	scKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("fast-ssd")},
+		{starlark.String("provisioner"), starlark.String("kubernetes.io/no-provisioner")},
+		{starlark.String("volume_binding_mode"), starlark.String("WaitForFirstConsumer")},
+		{starlark.String("reclaim_policy"), starlark.String("Delete")},
+		{starlark.String("allow_volume_expansion"), starlark.Bool(true)},
+	}
+	sc, err := newKubeResource(storageClassSchema, nil, scKwargs)
+	if err != nil {
+		t.Fatalf("storage_class error: %v", err)
+	}
+	scYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{sc}, nil)
+	if err != nil {
+		t.Fatalf("yaml(sc) error: %v", err)
+	}
+	scYAML := string(scYAMLVal.(starlark.String))
+	if !strings.Contains(scYAML, "kind: StorageClass") {
+		t.Errorf("sc YAML missing kind: %s", scYAML)
+	}
+	if !strings.Contains(scYAML, "provisioner: kubernetes.io/no-provisioner") {
+		t.Errorf("sc YAML missing provisioner: %s", scYAML)
+	}
+	if !strings.Contains(scYAML, "volumeBindingMode: WaitForFirstConsumer") {
+		t.Errorf("sc YAML missing volumeBindingMode: %s", scYAML)
+	}
+	if !strings.Contains(scYAML, "allowVolumeExpansion: true") {
+		t.Errorf("sc YAML missing allowVolumeExpansion: %s", scYAML)
+	}
+	if strings.Contains(scYAML, "spec:") {
+		t.Errorf("sc YAML should not have spec: %s", scYAML)
+	}
+
+	// 3. PersistentVolumeClaim
+	pvcKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("data-pvc")},
+		{starlark.String("storage"), starlark.String("20Gi")},
+		{starlark.String("storage_class_name"), starlark.String("fast-ssd")},
+		{starlark.String("access_modes"), starlark.NewList([]starlark.Value{starlark.String("ReadWriteOnce")})},
+		{starlark.String("volume_name"), starlark.String("pv-local")},
+	}
+	pvc, err := newKubeResource(pvcSchema, nil, pvcKwargs)
+	if err != nil {
+		t.Fatalf("pvc error: %v", err)
+	}
+	pvcYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{pvc}, nil)
+	if err != nil {
+		t.Fatalf("yaml(pvc) error: %v", err)
+	}
+	pvcYAML := string(pvcYAMLVal.(starlark.String))
+	if !strings.Contains(pvcYAML, "kind: PersistentVolumeClaim") {
+		t.Errorf("pvc YAML missing kind: %s", pvcYAML)
+	}
+	if !strings.Contains(pvcYAML, "storage: 20Gi") {
+		t.Errorf("pvc YAML missing storage: %s", pvcYAML)
+	}
+	if !strings.Contains(pvcYAML, "storageClassName: fast-ssd") {
+		t.Errorf("pvc YAML missing storageClassName: %s", pvcYAML)
+	}
+	if !strings.Contains(pvcYAML, "volumeName: pv-local") {
+		t.Errorf("pvc YAML missing volumeName: %s", pvcYAML)
+	}
+}
+
+func TestVolume_SubObjectShortcuts(t *testing.T) {
+	// 1. PVC as string
+	v1, err := newKubeResource(volumeSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("vol-1")},
+		{starlark.String("pvc"), starlark.String("my-pvc")},
+	})
+	if err != nil {
+		t.Fatalf("v1 error: %v", err)
+	}
+	d1 := v1.ToDict()
+	pvcVal1, found, _ := d1.Get(starlark.String("persistentVolumeClaim"))
+	if !found {
+		t.Fatal("v1 missing persistentVolumeClaim")
+	}
+	cn1, _, _ := pvcVal1.(*starlark.Dict).Get(starlark.String("claimName"))
+	if cn1 == nil || cn1.String() != `"my-pvc"` {
+		t.Errorf("v1 claimName = %v, want my-pvc", cn1)
+	}
+
+	// 2. PVC as KubeResource
+	pvcRes, _ := newKubeResource(pvcSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("obj-pvc")},
+		{starlark.String("storage"), starlark.String("5Gi")},
+	})
+	v2, err := newKubeResource(volumeSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("vol-2")},
+		{starlark.String("pvc"), pvcRes},
+	})
+	if err != nil {
+		t.Fatalf("v2 error: %v", err)
+	}
+	d2 := v2.ToDict()
+	pvcVal2, found, _ := d2.Get(starlark.String("persistentVolumeClaim"))
+	if !found {
+		t.Fatal("v2 missing persistentVolumeClaim")
+	}
+	cn2, _, _ := pvcVal2.(*starlark.Dict).Get(starlark.String("claimName"))
+	if cn2 == nil || cn2.String() != `"obj-pvc"` {
+		t.Errorf("v2 claimName = %v, want obj-pvc", cn2)
+	}
+
+	// 3. claim_name shortcut
+	v3, err := newKubeResource(volumeSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("vol-3")},
+		{starlark.String("claim_name"), starlark.String("my-direct-claim")},
+	})
+	if err != nil {
+		t.Fatalf("v3 error: %v", err)
+	}
+	d3 := v3.ToDict()
+	pvcVal3, found, _ := d3.Get(starlark.String("persistentVolumeClaim"))
+	if !found {
+		t.Fatal("v3 missing persistentVolumeClaim")
+	}
+	cn3, _, _ := pvcVal3.(*starlark.Dict).Get(starlark.String("claimName"))
+	if cn3 == nil || cn3.String() != `"my-direct-claim"` {
+		t.Errorf("v3 claimName = %v, want my-direct-claim", cn3)
+	}
+
+	// 4. ConfigMap as string & KubeResource
+	cmRes, _ := newKubeResource(configMapSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("cm-obj")},
+	})
+	v4, err := newKubeResource(volumeSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("vol-4")},
+		{starlark.String("config_map"), cmRes},
+	})
+	if err != nil {
+		t.Fatalf("v4 error: %v", err)
+	}
+	d4 := v4.ToDict()
+	cmVal, found, _ := d4.Get(starlark.String("configMap"))
+	if !found {
+		t.Fatal("v4 missing configMap")
+	}
+	cmName, _, _ := cmVal.(*starlark.Dict).Get(starlark.String("name"))
+	if cmName == nil || cmName.String() != `"cm-obj"` {
+		t.Errorf("v4 cm name = %v, want cm-obj", cmName)
+	}
+
+	// 5. Secret as string & KubeResource
+	secRes, _ := newKubeResource(secretSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("sec-obj")},
+	})
+	v5, err := newKubeResource(volumeSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("vol-5")},
+		{starlark.String("secret"), secRes},
+	})
+	if err != nil {
+		t.Fatalf("v5 error: %v", err)
+	}
+	d5 := v5.ToDict()
+	secVal, found, _ := d5.Get(starlark.String("secret"))
+	if !found {
+		t.Fatal("v5 missing secret")
+	}
+	secName, _, _ := secVal.(*starlark.Dict).Get(starlark.String("secretName"))
+	if secName == nil || secName.String() != `"sec-obj"` {
+		t.Errorf("v5 secret name = %v, want sec-obj", secName)
+	}
+
+	// 6. empty_dir=True
+	v6, err := newKubeResource(volumeSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("vol-6")},
+		{starlark.String("empty_dir"), starlark.Bool(true)},
+	})
+	if err != nil {
+		t.Fatalf("v6 error: %v", err)
+	}
+	d6 := v6.ToDict()
+	edVal, found, _ := d6.Get(starlark.String("emptyDir"))
+	if !found {
+		t.Fatal("v6 missing emptyDir")
+	}
+	if edVal.(*starlark.Dict).Len() != 0 {
+		t.Errorf("v6 emptyDir should be empty dict, got: %v", edVal)
+	}
+
+	// 7. ephemeral with KubeResource
+	v7, err := newKubeResource(volumeSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("vol-7")},
+		{starlark.String("ephemeral"), pvcRes},
+	})
+	if err != nil {
+		t.Fatalf("v7 error: %v", err)
+	}
+	d7 := v7.ToDict()
+	ephVal, found, _ := d7.Get(starlark.String("ephemeral"))
+	if !found {
+		t.Fatal("v7 missing ephemeral")
+	}
+	vctVal, found, _ := ephVal.(*starlark.Dict).Get(starlark.String("volumeClaimTemplate"))
+	if !found {
+		t.Fatal("v7 missing volumeClaimTemplate")
+	}
+	vctSpec, found, _ := vctVal.(*starlark.Dict).Get(starlark.String("spec"))
+	if !found {
+		t.Fatal("v7 missing volumeClaimTemplate.spec")
+	}
+	if !strings.Contains(vctSpec.String(), "resources") {
+		t.Errorf("v7 vctSpec missing resources: %v", vctSpec)
+	}
+}
+
+func TestVolume_WorkloadIntegration(t *testing.T) {
+	m := New()
+	loaded, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	k8sMod := loaded["k8s"].(starlark.HasAttrs)
+	yamlFnVal, _ := k8sMod.Attr("yaml")
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+	thread := &starlark.Thread{Name: "test"}
+
+	// VolumeMount
+	vmKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("data-vol")},
+		{starlark.String("mount_path"), starlark.String("/data")},
+		{starlark.String("read_only"), starlark.Bool(true)},
+		{starlark.String("sub_path_expr"), starlark.String("$(POD_NAME)")},
+		{starlark.String("mount_propagation"), starlark.String("HostToContainer")},
+	}
+	vm, err := newKubeResource(volumeMountSchema, nil, vmKwargs)
+	if err != nil {
+		t.Fatalf("volume_mount error: %v", err)
+	}
+
+	containerKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("app")},
+		{starlark.String("image"), starlark.String("app:v1")},
+		{starlark.String("volume_mounts"), starlark.NewList([]starlark.Value{vm})},
+	}
+	c, err := newKubeResource(containerSchema, nil, containerKwargs)
+	if err != nil {
+		t.Fatalf("container error: %v", err)
+	}
+
+	volKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("data-vol")},
+		{starlark.String("pvc"), starlark.String("shared-data")},
+	}
+	vol, err := newKubeResource(volumeSchema, nil, volKwargs)
+	if err != nil {
+		t.Fatalf("volume error: %v", err)
+	}
+
+	podKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("storage-pod")},
+		{starlark.String("containers"), starlark.NewList([]starlark.Value{c})},
+		{starlark.String("volumes"), starlark.NewList([]starlark.Value{vol})},
+	}
+	pod, err := newKubeResource(podSchema, nil, podKwargs)
+	if err != nil {
+		t.Fatalf("pod error: %v", err)
+	}
+
+	podYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{pod}, nil)
+	if err != nil {
+		t.Fatalf("yaml(pod) error: %v", err)
+	}
+	podYAML := string(podYAMLVal.(starlark.String))
+
+	if !strings.Contains(podYAML, "persistentVolumeClaim:") {
+		t.Errorf("pod YAML missing persistentVolumeClaim: %s", podYAML)
+	}
+	if !strings.Contains(podYAML, "claimName: shared-data") {
+		t.Errorf("pod YAML missing claimName: %s", podYAML)
+	}
+	if !strings.Contains(podYAML, "subPathExpr: $(POD_NAME)") {
+		t.Errorf("pod YAML missing subPathExpr: %s", podYAML)
+	}
+	if !strings.Contains(podYAML, "mountPropagation: HostToContainer") {
+		t.Errorf("pod YAML missing mountPropagation: %s", podYAML)
+	}
+	if !strings.Contains(podYAML, "readOnly: true") {
+		t.Errorf("pod YAML missing readOnly: %s", podYAML)
 	}
 }

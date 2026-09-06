@@ -65,6 +65,9 @@ var allMethods = map[string]clientMethod{
 	"condition_set":    (*K8sClient).conditionSet,
 	"event":            (*K8sClient).event,
 	"claims":           (*K8sClient).claims,
+	"pvcs":             (*K8sClient).pvcs,
+	"pvs":              (*K8sClient).pvs,
+	"storage_classes":  (*K8sClient).storageClasses,
 
 	// Tier 1: Watch
 	"watch":    (*K8sClient).watch,

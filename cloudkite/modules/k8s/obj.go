@@ -180,6 +180,18 @@ func (r *KubeResource) buildResourceDict() *starlark.Dict {
 		}
 	}
 
+	// PersistentVolume convenience: expand "storage" shorthand into spec.capacity.storage
+	if r.schema.Kind == "PersistentVolume" {
+		if storageVal, ok := r.data["storage"]; ok {
+			if _, hasCapacity := r.data["capacity"]; !hasCapacity {
+				capDict := starlark.NewDict(1)
+				sv, _ := goToStarlark(storageVal, FieldString)
+				capDict.SetKey(starlark.String("storage"), sv)
+				spec.SetKey(starlark.String("capacity"), capDict)
+			}
+		}
+	}
+
 	// ResourceClaim convenience: synthesize spec.devices.requests from shortcuts
 	if r.schema.Kind == "ResourceClaim" {
 		if _, hasDevices := r.data["devices"]; !hasDevices {
@@ -306,6 +318,13 @@ func (r *KubeResource) buildSubObjectDict() *starlark.Dict {
 		if r.schema.Kind == "Container" && fieldName == "claims" {
 			continue
 		}
+		// Special handling: volume shortcuts handled below
+		if r.schema.Kind == "Volume" {
+			switch fieldName {
+			case "pvc", "claim_name", "config_map", "secret", "empty_dir", "ephemeral":
+				continue
+			}
+		}
 		sv, err := goToStarlark(val, fieldSpec.Typ)
 		if err != nil {
 			continue
@@ -330,6 +349,155 @@ func (r *KubeResource) buildSubObjectDict() *starlark.Dict {
 					result.SetKey(starlark.String("resources"), resDict)
 				}
 				resDict.SetKey(starlark.String("claims"), claimsSV)
+			}
+		}
+	}
+
+	// Volume convenience: expand shortcuts for pvc, claim_name, config_map, secret, empty_dir, ephemeral
+	if r.schema.Kind == "Volume" {
+		// Handle PVC / claim_name
+		var pvcVal any
+		if cn, ok := r.data["claim_name"]; ok && cn != nil {
+			if s, ok := cn.(string); ok && s != "" {
+				pvcVal = map[string]any{"claimName": s}
+			}
+		}
+		if pvcRaw, ok := r.data["pvc"]; ok && pvcRaw != nil {
+			switch p := pvcRaw.(type) {
+			case string:
+				if p != "" {
+					pvcVal = map[string]any{"claimName": p}
+				}
+			case *KubeResource:
+				if name, ok := p.data["name"].(string); ok {
+					pvcVal = map[string]any{"claimName": name}
+				}
+			case map[string]any:
+				if cn, ok := p["claim_name"]; ok {
+					p["claimName"] = cn
+					delete(p, "claim_name")
+				}
+				pvcVal = p
+			case *starlark.Dict:
+				m, _ := startype.Dict(p).ToMap()
+				if cn, ok := m["claim_name"]; ok {
+					m["claimName"] = cn
+					delete(m, "claim_name")
+				}
+				pvcVal = m
+			}
+		}
+		if pvcVal != nil {
+			sv, _ := goToStarlark(pvcVal, FieldDict)
+			result.SetKey(starlark.String("persistentVolumeClaim"), sv)
+		}
+
+		// Handle config_map
+		if cmRaw, ok := r.data["config_map"]; ok && cmRaw != nil {
+			var cmVal any
+			switch c := cmRaw.(type) {
+			case string:
+				if c != "" {
+					cmVal = map[string]any{"name": c}
+				}
+			case *KubeResource:
+				if name, ok := c.data["name"].(string); ok {
+					cmVal = map[string]any{"name": name}
+				}
+			case map[string]any:
+				cmVal = c
+			case *starlark.Dict:
+				m, _ := startype.Dict(c).ToMap()
+				cmVal = m
+			}
+			if cmVal != nil {
+				sv, _ := goToStarlark(cmVal, FieldDict)
+				result.SetKey(starlark.String("configMap"), sv)
+			}
+		}
+
+		// Handle secret
+		if secRaw, ok := r.data["secret"]; ok && secRaw != nil {
+			var secVal any
+			switch s := secRaw.(type) {
+			case string:
+				if s != "" {
+					secVal = map[string]any{"secretName": s}
+				}
+			case *KubeResource:
+				if name, ok := s.data["name"].(string); ok {
+					secVal = map[string]any{"secretName": name}
+				}
+			case map[string]any:
+				if sn, ok := s["name"]; ok && s["secretName"] == nil {
+					s["secretName"] = sn
+				}
+				secVal = s
+			case *starlark.Dict:
+				m, _ := startype.Dict(s).ToMap()
+				if sn, ok := m["name"]; ok && m["secretName"] == nil {
+					m["secretName"] = sn
+				}
+				secVal = m
+			}
+			if secVal != nil {
+				sv, _ := goToStarlark(secVal, FieldDict)
+				result.SetKey(starlark.String("secret"), sv)
+			}
+		}
+
+		// Handle empty_dir
+		if edRaw, ok := r.data["empty_dir"]; ok && edRaw != nil {
+			var edVal any
+			switch e := edRaw.(type) {
+			case bool:
+				if e {
+					edVal = map[string]any{}
+				}
+			case map[string]any:
+				edVal = e
+			case *starlark.Dict:
+				m, _ := startype.Dict(e).ToMap()
+				edVal = m
+			}
+			if edVal != nil {
+				sv, _ := goToStarlark(edVal, FieldDict)
+				result.SetKey(starlark.String("emptyDir"), sv)
+			}
+		}
+
+		// Handle ephemeral (Generic Ephemeral Volume)
+		if ephRaw, ok := r.data["ephemeral"]; ok && ephRaw != nil {
+			var ephVal any
+			switch ep := ephRaw.(type) {
+			case *KubeResource:
+				pvcDict := ep.ToDict()
+				if innerSpec, found, _ := pvcDict.Get(starlark.String("spec")); found {
+					ephVal = map[string]any{"volumeClaimTemplate": map[string]any{"spec": innerSpec}}
+				} else {
+					ephVal = map[string]any{"volumeClaimTemplate": map[string]any{"spec": ep.data}}
+				}
+			case map[string]any:
+				if _, hasVct := ep["volumeClaimTemplate"]; hasVct {
+					ephVal = ep
+				} else if spec, hasSpec := ep["spec"]; hasSpec {
+					ephVal = map[string]any{"volumeClaimTemplate": map[string]any{"spec": spec}}
+				} else {
+					ephVal = map[string]any{"volumeClaimTemplate": map[string]any{"spec": ep}}
+				}
+			case *starlark.Dict:
+				m, _ := startype.Dict(ep).ToMap()
+				if _, hasVct := m["volumeClaimTemplate"]; hasVct {
+					ephVal = m
+				} else if spec, hasSpec := m["spec"]; hasSpec {
+					ephVal = map[string]any{"volumeClaimTemplate": map[string]any{"spec": spec}}
+				} else {
+					ephVal = map[string]any{"volumeClaimTemplate": map[string]any{"spec": m}}
+				}
+			}
+			if ephVal != nil {
+				sv, _ := goToStarlark(ephVal, FieldDict)
+				result.SetKey(starlark.String("ephemeral"), sv)
 			}
 		}
 	}
@@ -670,6 +838,13 @@ func goToStarlark(val any, typ FieldType) (starlark.Value, error) {
 		if m, ok := val.(map[string]any); ok {
 			return goToStarlarkDeep(m)
 		}
+	case FieldAny:
+		if kr, ok := val.(*KubeResource); ok {
+			return kr.ToDict(), nil
+		}
+		if m, ok := val.(map[string]any); ok {
+			return goToStarlarkDeep(m)
+		}
 	}
 
 	return startype.Go(val).ToStarlarkValue()
@@ -766,6 +941,16 @@ func starlarkToGo(val starlark.Value, typ FieldType) (any, error) {
 			return startype.Dict(resolved).ToMap()
 		}
 		return nil, fmt.Errorf("expected dict, got %s", val.Type())
+
+	case FieldAny:
+		if kr, ok := val.(*KubeResource); ok {
+			return kr, nil
+		}
+		if d, ok := val.(*starlark.Dict); ok {
+			resolved := resolveStarlarkValue(d).(*starlark.Dict)
+			return startype.Dict(resolved).ToMap()
+		}
+		return startype.Starlark(val).ToGoValue()
 
 	default:
 		return startype.Starlark(val).ToGoValue()
