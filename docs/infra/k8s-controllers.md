@@ -48,55 +48,48 @@ k8s.control(
 
 ## Advanced Example: Enforcing Maximum Replicas
 
-Real-world controllers do more than log events—they actively correct configuration drift. The following controller watches deployments labeled with `enforce-max-replicas=true`. If a deployment's replica count exceeds a configured maximum, the controller automatically scales it back down to the allowed limit using Server-Side Apply.
+## Advanced Example: Enforcing Maximum Replicas
+
+Controllers actively correct configuration drift. The following controller watches deployments labeled with `enforce-max-replicas=true`. If a deployment's replica count exceeds a configured maximum, the controller scales it back down via merge patch and emits a Kubernetes event. Built-in self-echo suppression ensures the controller's patch does not trigger a feedback loop.
 
 ```python
 # max-replicas-controller.star
 # Enforces a maximum replica limit on labeled deployments
 
-# Read maximum replica limit from runtime variable
 max_replicas = var_int("max_replicas", 3)
 
-def reconcile(event, obj):
-    # Handle resource deletions
-    if event == "DELETED":
-        log.info("Resource deleted", {"namespace": obj.metadata.namespace, "name": obj.metadata.name})
-        return
+def reconcile(deploy):
+    name = deploy.metadata.name
+    ns = deploy.metadata.namespace
+    replicas = deploy.spec.get("replicas", 1)
 
-    # Read current replicas, defaulting to 1 if not set
-    replicas = obj.spec.replicas
-    if replicas == None:
-        replicas = 1
-
-    # Check if replicas exceed the allowed maximum
     if replicas > max_replicas:
-        log.info("Scaling down resource", {
-            "namespace": obj.metadata.namespace,
-            "name": obj.metadata.name,
-            "current": replicas,
-            "max": max_replicas,
-        })
+        print("[DRIFT DETECTED] %s/%s replicas=%d exceeds max=%d" % (ns, name, replicas, max_replicas))
         
-        # Apply the correction using Server-Side Apply
-        k8s.apply({
-            "apiVersion": "apps/v1",
-            "kind": "Deployment",
-            "metadata": {
-                "name": obj.metadata.name,
-                "namespace": obj.metadata.namespace,
-            },
-            "spec": {"replicas": max_replicas},
-        })
-    else:
-        print("Resource within limits:", obj.metadata.name, "replicas:", replicas)
+        # Patch replicas to allowed maximum
+        k8s.patch("deployment", name, {
+            "spec": {"replicas": max_replicas}
+        }, namespace=ns)
 
-# Register the reconcile loop
+        # Emit an event attached to the deployment
+        k8s.event(
+            deploy,
+            reason = "DriftCorrected",
+            message = "Scaled down replicas from %d to %d" % (replicas, max_replicas),
+            type = "Normal",
+            namespace = ns,
+        )
+    else:
+        print("[IN POLICY] %s/%s replicas=%d within limit (<= %d)" % (ns, name, replicas, max_replicas))
+
 print("Starting max-replicas controller. Max allowed:", max_replicas)
 k8s.control(
-    kind = "deployments",
+    "deployments",
     reconcile = reconcile,
     labels = "enforce-max-replicas=true",
-    resync = "1m",
+    poll = "30s",
+    health_port = 8081,
+    workers = 2,
 )
 ```
 
@@ -106,47 +99,106 @@ Start the controller by passing the script to `kite run`:
 
 ```bash
 # Start with default max_replicas=3
-kite run ./max-replicas-controller.star --permissions=allow-local
+kite run ./max-replicas-controller.star --allow-all
 
 # Override variables at startup
-kite run ./max-replicas-controller.star --permissions=allow-local --var max_replicas=5
+kite run ./max-replicas-controller.star --allow-all --var max_replicas=5
 ```
 
-In a separate terminal, trigger a violation to test the controller:
+Test drift correction and health probes in another terminal:
 
 ```bash
-# Create a deployment with 10 replicas
-kubectl create deployment alice-web --image=nginx --replicas=10
-
-# Label the deployment to bring it under controller scope
+# Create a deployment with 10 replicas and label it
+kubectl create deployment alice-web --image=nginx:alpine --replicas=10
 kubectl label deployment alice-web enforce-max-replicas=true
 
-# The controller will detect the drift and scale it down to the maximum allowed limit
+# Inspect the auto-corrected replica count and emitted event
+kubectl get deployment alice-web
+kubectl get events --field-selector involvedObject.name=alice-web
+
+# Probe the embedded health server
+curl -i http://localhost:8081/healthz
 ```
 
 ---
 
 ## Handler Signatures
 
-`k8s.control()` allows you to register specific event handlers or a single catch-all reconcile function:
+`k8s.control()` supports functional child reconciliation, declarative finalization, or specific lifecycle hooks:
 
-| Handler | Signature | Trigger Event |
+| Handler | Signature | Trigger Event / Lifecycle Role |
 |:---|:---|:---|
+| `reconcile` | `fn(obj)` or `fn(event, obj)` | Main reconciliation loop. Can return `None`, requeue duration string (e.g., `"10s"`), or `list[KubeResource]` of desired child resources |
+| `finalize` | `fn(obj)` | Declarative teardown hook executed when `metadata.deletionTimestamp` is set before the finalizer is removed |
 | `on_create` | `fn(obj)` | Triggered on `ADDED` events when resources are created |
 | `on_update` | `fn(old, new)` | Triggered on `MODIFIED` events when resources are changed |
 | `on_delete` | `fn(obj)` | Triggered on `DELETED` events when resources are removed |
-| `reconcile` | `fn(event, obj)` | Catch-all handler triggered on any event type (passed as a string) |
 
 ---
 
 ## Configuration Parameters
 
-You can customize the loop execution using the following optional arguments in `k8s.control()`:
+You can customize controller execution using keyword arguments in `k8s.control()`:
 
-* **`labels`**: Filters watched resources using a standard label selector (e.g., `labels = "app=web"`).
-* **`resync`**: A duration string (e.g., `"1m"`, `"5m"`) that forces the controller to re-run handlers on all known resources periodically, ensuring eventual consistency.
-* **`workers`**: An integer defining the maximum number of concurrent executions allowed for your handlers.
-* **`namespace`**: Pins the watch loop to a single namespace instead of watching all namespaces cluster-wide.
+* **`labels`**: Filters watched resources using a standard label selector (e.g., `labels="app=web"`).
+* **`field_selector`**: Filters watched resources using field expressions (e.g., `field_selector="metadata.name=web"`).
+* **`poll`**: A duration string (e.g., `"30s"`) that periodically requeues all resources for background reconciliation.
+* **`resync`**: Informer full cache resync interval (e.g., `"10m"`).
+* **`health_port`**: An integer port number (e.g., `8081`) running an embedded HTTP server exposing `/healthz` and `/readyz`.
+* **`finalizer`**: Custom finalizer name. Automatically added to active resources and removed once `finalize()` returns cleanly.
+* **`generation_changed`**: Boolean (default `True`). Suppresses reconciliation when updates only modify status or metadata without changing `.metadata.generation`.
+* **`watch_owned`**: A list of child resource kinds (e.g., `["deployments", "services"]`) whose `ownerReferences` point to the primary resource.
+* **`watch_related`**: A list of secondary resource mappings: `[{"kind": "secrets", "map_func": map_fn}]` or `[("secrets", map_fn)]`.
+* **`workers`**: Integer count of concurrent workqueue workers.
+* **`leader_election`**: Boolean enabling distributed `coordination.k8s.io/v1` `Lease` locking. Standby replicas maintain passive informers; `/readyz` returns 200 on the leader and 503 on standbys.
+* **`identity`**: Identifier string for the replica (defaults to `<hostname>_<pid>`).
+
+---
+
+## Operator Pattern: Child Reconciliation & Finalizers
+
+When writing Custom Resource Definition (CRD) operators, `reconcile(obj)` can return a list of desired child resources. The runtime automates child ownership, Server-Side Apply, and orphan pruning:
+
+```python
+def reconcile(site):
+    name = site.metadata.name
+    ns = site.metadata.namespace
+    replicas = site.spec.get("replicas", 1)
+
+    child_dep = k8s.obj.deployment(
+        name = name,
+        namespace = ns,
+        replicas = replicas,
+        containers = [k8s.obj.container(name="web", image="nginx:alpine")],
+    )
+    child_svc = k8s.obj.service(
+        name = name,
+        namespace = ns,
+        ports = [k8s.obj.service_port(port=80, target_port=80)],
+    )
+
+    # Returning desired child resources triggers:
+    # 1. Automatic ownerReference injection pointing to site
+    # 2. Dynamic auto-watching on deployment and service kinds
+    # 3. Server-Side Apply with fieldManager="starkite"
+    # 4. Orphan pruning when items are removed from this list
+    # 5. Inferred Ready condition in status.conditions
+    return [child_dep, child_svc]
+
+def finalize(site):
+    # Runs before finalizer is stripped and resource is removed
+    print("Performing pre-deletion cleanup for", site.metadata.name)
+    return None
+
+k8s.control(
+    "staticsites",
+    reconcile = reconcile,
+    finalize = finalize,
+    finalizer = "tutorial.starkite.io/finalizer",
+    health_port = 8081,
+    workers = 2,
+)
+```
 
 ---
 

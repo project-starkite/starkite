@@ -815,7 +815,7 @@ def main():
               <!-- Slide 0: Query & Inspect -->
               <div class="hero-slide active" data-filename="list_pods.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-k8s-0" class="language-python"># Easily query Kubernetes cluster resources
+                  <pre><code id="code-k8s-0" class="language-python"># Query Kubernetes cluster resources
 
 def main():
     pods = k8s.list("pods", namespace="staging")
@@ -835,18 +835,17 @@ def main():
                 </div>
               </div>
               <!-- Slide 2: Reconcile Controller -->
-              <div class="hero-slide" data-filename="pod_controller.star">
+              <div class="hero-slide" data-filename="controller.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-k8s-2" class="language-python"># Easily create Kubernetes controllers and admission webhooks
+                  <pre><code id="code-k8s-2" class="language-python"># Reconcile cluster state and correct configuration drift
 
-def reconcile(event, pod):
-    if pod.status.phase in ["Failed", "CrashLoopBackOff"]:
-        http.url("https://alerts.internal/k8s").post(
-            {"pod": pod.metadata.name, "phase": pod.status.phase},
-        )
+def reconcile(deploy):
+    if deploy.spec.replicas > 3:
+        k8s.patch("deployment", deploy.metadata.name, {"spec": {"replicas": 3}})
+        k8s.event(deploy, "DriftCorrected", "Scaled down to policy limit")
 
 def main():
-    k8s.control("pods", reconcile=reconcile, namespace="default")</code></pre>
+    k8s.control("deployments", reconcile=reconcile, health_port=8081)</code></pre>
                 </div>
               </div>
             </div>

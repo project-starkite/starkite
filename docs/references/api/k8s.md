@@ -16,7 +16,8 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 
 | Category | Functions |
 |----------|-----------|
-| [CRUD](#crud) | `get`, `list`, `create`, `apply`, `delete`, `patch`, `label`, `annotate`, `status` |
+| [CRUD](#crud) | `get`, `list`, `create`, `apply`, `delete`, `patch`, `label`, `annotate`, `status`, `event` |
+| [Conditions & Finalizers](#conditions-and-finalizers) | `k8s.condition.*`, `k8s.finalizer.*`, `k8s.is_deleting` |
 | [Watch & wait](#watch-and-wait) | `watch`, `wait_for` |
 | [High-level workloads](#high-level-workloads) | `deploy`, `run`, `expose`, `scale`, `autoscale`, `rollout`, `set_image`, `set_env`, `set_resources` |
 | [Logs, exec, port-forward, copy](#logs-exec-port-forward-copy) | `logs`, `logs_follow`, `exec`, `port_forward`, `cp` |
@@ -41,6 +42,7 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | `k8s.label(kind, name, labels, namespace="", timeout="")` | `AttrDict` | Set labels on a resource |
 | `k8s.annotate(kind, name, annotations, namespace="", timeout="")` | `AttrDict` | Set annotations on a resource |
 | `k8s.status(obj, status, namespace="", timeout="")` | `AttrDict` | Update the status subresource of a resource. Pass the resource as `obj` and the new status dict as `status` |
+| `k8s.event(obj, reason, message, type="Normal", namespace="", timeout="")` | `AttrDict` | Emit a Kubernetes event attached to `obj`. `type` can be `"Normal"` or `"Warning"` |
 
 ### Example — status subresource update
 
@@ -49,6 +51,25 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 obj = k8s.get("myapp", "demo", namespace="default")
 k8s.status(obj, {"ready": True, "message": "initialized"}, namespace="default")
 ```
+
+### Example — emitting a Kubernetes event
+
+```python
+deploy = k8s.get("deployment", "web", namespace="default")
+k8s.event(deploy, reason="DriftCorrected", message="Replicas scaled down to policy limit", type="Normal")
+```
+
+## Conditions and Finalizers
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `k8s.condition.get(obj, type)` | `AttrDict` or `None` | Query a condition by `type` (e.g., `"Ready"`) from `obj.status.conditions` |
+| `k8s.condition.set(obj, type, status, reason="", message="", timeout="")` | `AttrDict` | Set or update a condition in `obj.status.conditions` and persist it via status subresource |
+| `k8s.finalizer.has(obj, name)` | `bool` | Check if `name` is present in `obj.metadata.finalizers` |
+| `k8s.finalizer.add(obj, name, timeout="")` | `AttrDict` | Add a finalizer string to `obj.metadata.finalizers` via merge patch |
+| `k8s.finalizer.remove(obj, name, timeout="")` | `AttrDict` | Remove a finalizer string from `obj.metadata.finalizers` via merge patch |
+| `k8s.is_deleting(obj)` | `bool` | Check if `obj.metadata.deletionTimestamp` is set |
+
 
 ## Watch and wait
 
@@ -199,48 +220,106 @@ print("server version:", k8s.version().git_version)
 
 ## Controllers
 
-`k8s.control()` runs a reconciliation loop over a resource kind. It's the starkite equivalent of writing a controller in `controller-runtime` — you supply handlers, the module owns the informer, work queue, retry policy, and optional leader election.
+`k8s.control()` runs an active reconciliation loop over a resource kind. It is the Starkite equivalent of writing a controller in `controller-runtime` — you supply handlers, while the runtime manages the informers, workqueue, self-echo loop suppression, status conditions, event emission, child resource lifecycle, health endpoints, and distributed leader election.
 
 ```python
-k8s.control(kind, reconcile=..., on_create=..., on_update=..., on_delete=...,
-            namespace="", labels="", field_selector="",
-            resync="10m", workers=1, max_retries=5, backoff="5s",
-            watch_owned=[], predicate=None,
-            leader_election=False, leader_election_id="", leader_election_namespace="")
+k8s.control(
+    kind,
+    reconcile = None,
+    finalize = None,
+    on_create = None,
+    on_update = None,
+    on_delete = None,
+    namespace = "",
+    labels = "",
+    field_selector = "",
+    resync = "",
+    poll = "",
+    finalizer = "",
+    health_port = 0,
+    workers = 1,
+    max_retries = 5,
+    backoff = "5s",
+    generation_changed = True,
+    watch_owned = [],
+    watch_related = [],
+    predicate = None,
+    leader_election = False,
+    leader_election_id = "",
+    leader_election_namespace = "",
+    identity = "",
+)
 ```
 
 | Kwarg | Type | Default | Description |
 |-------|------|---------|-------------|
 | `kind` | string | **required** (positional) | Resource kind to watch |
-| `reconcile` | callable | — | `fn(event, obj) -> dict` — full reconcile handler. Receives the event kind (`"ADDED"`, `"MODIFIED"`, `"DELETED"`) and the live `AttrDict` object |
-| `on_create` / `on_update` / `on_delete` | callable | — | Per-event handlers. At least one of `reconcile`/`on_create`/`on_update`/`on_delete` is required |
-| `namespace` | string | cluster-wide | Scope the controller to a namespace |
+| `reconcile` | callable | — | Primary reconcile handler: `fn(obj)` or `fn(event, obj)`. Can return `None`, a requeue duration string (e.g., `"10s"`), or a `list[KubeResource]` of desired child resources |
+| `finalize` | callable | — | Declarative teardown handler: `fn(obj)`. Executed when `metadata.deletionTimestamp` is set before the finalizer is stripped |
+| `finalizer` | string | auto | Custom finalizer string. Injected on creation and removed after `finalize()` completes cleanly |
+| `on_create` / `on_update` / `on_delete` | callable | — | Granular per-event handlers (optional alternative to `reconcile`) |
+| `namespace` | string | default | Scope the controller to a namespace (or cluster-wide for cluster-scoped resources) |
 | `labels` | string | — | Label selector (e.g., `"app=web"`) |
-| `field_selector` | string | — | Field selector |
-| `resync` | duration string | `"10m"` | Full-resync interval |
-| `workers` | int | `1` | Number of concurrent work-queue workers |
-| `max_retries` | int | `5` | Retry cap per event |
+| `field_selector` | string | — | Field selector (e.g., `"metadata.name=my-resource"`) |
+| `resync` | duration string | — | Informer resync interval (e.g., `"10m"`) |
+| `poll` | duration string | — | Periodic background reconciliation interval (e.g., `"30s"`) |
+| `health_port` | int | `0` | Port for embedded HTTP health server exposing `/healthz` and `/readyz` |
+| `generation_changed` | bool | `True` | Filter out metadata/status-only updates that did not change `.metadata.generation` |
+| `workers` | int | `1` | Number of concurrent workqueue workers |
+| `max_retries` | int | `5` | Retry cap per item on error before dropping |
 | `backoff` | duration string | `"5s"` | Base retry backoff |
-| `watch_owned` | list[string] | — | Additional kinds to watch whose `ownerReferences` point at the primary kind; events trigger reconcile of the owner |
+| `watch_owned` | list[string] | — | Owned resource kinds to watch whose `ownerReferences` point to the primary kind |
+| `watch_related` | list | — | Secondary resource mappings: `[{"kind": "secrets", "map_func": fn(sec) -> ["ns/name"]}]` or `[("secrets", fn)]` |
 | `predicate` | callable | — | `fn(obj) -> bool` filter applied before enqueueing |
-| `leader_election` | bool | `False` | Run as a leader-elected controller (only the elected replica processes events) |
-| `leader_election_id` | string | — | Lease name for leader election |
-| `leader_election_namespace` | string | — | Namespace for the leader-election Lease |
+| `leader_election` | bool | `False` | Run under distributed `coordination.k8s.io/v1` `Lease` locking |
+| `leader_election_id` | string | `<kind>-controller` | Name of the `Lease` resource |
+| `leader_election_namespace` | string | controller ns | Namespace for the `Lease` resource |
+| `identity` | string | `<host>_<pid>` | Replica identity string for the lease lock candidate |
 
 Blocks until interrupted (SIGINT/SIGTERM).
 
-### Example — minimal reconciler
+### Substrate Automation Features
+
+When using `reconcile = reconcile_fn`:
+* **Functional Child Returns**: When `reconcile(obj)` returns a list of child resources (e.g., `return [child_dep, child_svc]`), the runtime automatically:
+  1. Injects `ownerReferences` pointing to the parent resource.
+  2. Spawns informers (auto-watch) on child kinds so child modifications trigger parent re-reconciliation.
+  3. Applies child resources via Server-Side Apply (`fieldManager="starkite"`).
+  4. Prunes orphaned child resources when removed from the returned list.
+* **Status Conditions & Events**: The runtime automatically updates `.status.conditions` (`Type="Ready", Status="True", Reason="Reconciled"`) and emits a `Normal Reconciled` Kubernetes event upon successful reconciliation.
+* **Loop Immunity**: Built-in self-echo suppression prevents updates or patches made by the controller from triggering infinite reconciliation loops.
+* **Dynamic Readiness Probes**: Under leader election, `/readyz` responds with `200 OK` on the active leader and `503 Service Unavailable` on standby replicas until failover occurs.
+
+### Example — Operator with Child Reconciliation and Finalizer
 
 ```python
-def reconcile(event, obj):
-    printf("reconcile %s %s: phase=%s\n",
-           event, obj.metadata.name, obj.status.get("phase", "-"))
-    return {"requeue": False}
+def reconcile(site):
+    name = site.metadata.name
+    ns = site.metadata.namespace
+    replicas = site.spec.get("replicas", 1)
 
-k8s.control("myapp", reconcile=reconcile,
-            namespace="myapp-system", workers=2, leader_election=True,
-            leader_election_id="myapp-lock",
-            leader_election_namespace="myapp-system")
+    # Return desired child workloads; substrate manages ownership, SSA apply, and pruning
+    child_dep = k8s.obj.deployment(
+        name = name,
+        namespace = ns,
+        replicas = replicas,
+        containers = [k8s.obj.container(name="web", image="nginx:alpine")],
+    )
+    return [child_dep]
+
+def finalize(site):
+    print("Executing teardown for %s" % site.metadata.name)
+    return None
+
+k8s.control(
+    "staticsites",
+    reconcile = reconcile,
+    finalize = finalize,
+    finalizer = "tutorial.starkite.io/finalizer",
+    health_port = 8081,
+    poll = "30s",
+    workers = 2,
+)
 ```
 
 ## Admission Webhooks
