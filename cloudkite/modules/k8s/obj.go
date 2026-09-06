@@ -180,6 +180,78 @@ func (r *KubeResource) buildResourceDict() *starlark.Dict {
 		}
 	}
 
+	// ResourceClaim convenience: synthesize spec.devices.requests from shortcuts
+	if r.schema.Kind == "ResourceClaim" {
+		if _, hasDevices := r.data["devices"]; !hasDevices {
+			if devClass, ok := r.data["device_class"]; ok {
+				req := starlark.NewDict(4)
+				reqName := "req-1"
+				if rn, ok := r.data["request_name"].(string); ok && rn != "" {
+					reqName = rn
+				}
+				req.SetKey(starlark.String("name"), starlark.String(reqName))
+				devClassVal, _ := goToStarlark(devClass, FieldString)
+				req.SetKey(starlark.String("deviceClassName"), devClassVal)
+
+				if countVal, ok := r.data["count"]; ok {
+					sv, _ := goToStarlark(countVal, FieldInt)
+					req.SetKey(starlark.String("count"), sv)
+				}
+				if allocMode, ok := r.data["allocation_mode"]; ok {
+					sv, _ := goToStarlark(allocMode, FieldString)
+					req.SetKey(starlark.String("allocationMode"), sv)
+				}
+				if selectors, ok := r.data["selectors"]; ok {
+					sv, _ := goToStarlark(selectors, FieldList)
+					req.SetKey(starlark.String("selectors"), sv)
+				}
+				if tolerations, ok := r.data["device_tolerations"]; ok {
+					sv, _ := goToStarlark(tolerations, FieldList)
+					req.SetKey(starlark.String("tolerations"), sv)
+				}
+				requestsList := starlark.NewList([]starlark.Value{req})
+				devicesDict := starlark.NewDict(1)
+				devicesDict.SetKey(starlark.String("requests"), requestsList)
+				spec.SetKey(starlark.String("devices"), devicesDict)
+			}
+		}
+	}
+
+	// ResourceClaimTemplate convenience: unwrap spec.spec
+	if r.schema.Kind == "ResourceClaimTemplate" {
+		var claimSpec starlark.Value
+		if rawSpec, ok := r.data["spec"]; ok {
+			switch s := rawSpec.(type) {
+			case *KubeResource:
+				claimDict := s.ToDict()
+				if innerSpec, found, _ := claimDict.Get(starlark.String("spec")); found {
+					claimSpec = innerSpec
+				} else {
+					claimSpec = claimDict
+				}
+			case *starlark.Dict:
+				if innerSpec, found, _ := s.Get(starlark.String("spec")); found {
+					claimSpec = innerSpec
+				} else {
+					claimSpec = s
+				}
+			case map[string]any:
+				if innerSpec, found := s["spec"]; found {
+					claimSpec, _ = goToStarlarkDeep(innerSpec)
+				} else {
+					claimSpec, _ = goToStarlarkDeep(s)
+				}
+			}
+		}
+		if claimSpec != nil {
+			spec.SetKey(starlark.String("spec"), claimSpec)
+		}
+		if claimMeta, ok := r.data["claim_metadata"]; ok {
+			sv, _ := goToStarlark(claimMeta, FieldDict)
+			spec.SetKey(starlark.String("metadata"), sv)
+		}
+	}
+
 	if spec.Len() > 0 {
 		result.SetKey(starlark.String("spec"), spec)
 	}
@@ -198,8 +270,13 @@ func (r *KubeResource) buildResourceDict() *starlark.Dict {
 		if _, isMeta := metadataFields[fieldName]; isMeta {
 			continue // already in metadata
 		}
-		if fieldName == "data" || fieldName == "storage" {
+		switch fieldName {
+		case "data", "storage", "device_class", "count", "allocation_mode", "request_name", "device_tolerations", "claim_metadata":
 			continue // handled specially
+		case "selectors":
+			if r.schema.Kind == "ResourceClaim" {
+				continue // shortcut for spec.devices.requests[0].selectors
+			}
 		}
 		val, ok := r.data[fieldName]
 		if !ok {
@@ -225,12 +302,38 @@ func (r *KubeResource) buildSubObjectDict() *starlark.Dict {
 		if !ok {
 			continue
 		}
+		// Special handling: container claims go under resources.claims
+		if r.schema.Kind == "Container" && fieldName == "claims" {
+			continue
+		}
 		sv, err := goToStarlark(val, fieldSpec.Typ)
 		if err != nil {
 			continue
 		}
 		result.SetKey(starlark.String(fieldSpec.JSONKey), sv)
 	}
+
+	// Container convenience: nest claims under resources.claims
+	if r.schema.Kind == "Container" {
+		if claimsVal, ok := r.data["claims"]; ok {
+			claimsSV, err := goToStarlark(claimsVal, FieldList)
+			if err == nil {
+				resVal, found, _ := result.Get(starlark.String("resources"))
+				var resDict *starlark.Dict
+				if found {
+					if d, ok := resVal.(*starlark.Dict); ok {
+						resDict = d
+					}
+				}
+				if resDict == nil {
+					resDict = starlark.NewDict(1)
+					result.SetKey(starlark.String("resources"), resDict)
+				}
+				resDict.SetKey(starlark.String("claims"), claimsSV)
+			}
+		}
+	}
+
 	return result
 }
 
@@ -278,7 +381,38 @@ var workloadKinds = map[string]bool{
 var podFieldNames = []string{
 	"containers", "init_containers", "volumes", "restart_policy",
 	"node_selector", "tolerations", "affinity", "service_account",
-	"host_network", "dns_policy", "security_context",
+	"host_network", "dns_policy", "security_context", "resource_claims",
+}
+
+// normalizeResourceClaims converts user-friendly snake_case keys in resource claim
+// references (e.g. claim_name, template_name) to Kubernetes camelCase JSONKeys
+// (resourceClaimName, resourceClaimTemplateName).
+func normalizeResourceClaims(val any) any {
+	items, ok := val.([]any)
+	if !ok {
+		return val
+	}
+	normalized := make([]any, len(items))
+	for i, item := range items {
+		m, ok := item.(map[string]any)
+		if !ok {
+			normalized[i] = item
+			continue
+		}
+		entry := make(map[string]any, len(m))
+		for k, v := range m {
+			switch k {
+			case "claim_name", "resource_claim_name":
+				entry["resourceClaimName"] = v
+			case "template_name", "resource_claim_template_name":
+				entry["resourceClaimTemplateName"] = v
+			default:
+				entry[k] = v
+			}
+		}
+		normalized[i] = entry
+	}
+	return normalized
 }
 
 // autoTemplate builds spec.template (and spec.selector) automatically when
@@ -309,7 +443,11 @@ func autoTemplate(schema *ResourceSchema, data map[string]any) error {
 	for _, field := range podFieldNames {
 		if v, ok := data[field]; ok {
 			spec := podTemplateFields[field]
-			podSpec[spec.JSONKey] = v
+			if field == "resource_claims" {
+				podSpec[spec.JSONKey] = normalizeResourceClaims(v)
+			} else {
+				podSpec[spec.JSONKey] = v
+			}
 			delete(data, field)
 		}
 	}
@@ -399,6 +537,9 @@ func newKubeResource(schema *ResourceSchema, args starlark.Tuple, kwargs []starl
 		if err != nil {
 			return nil, fmt.Errorf("k8s.obj.%s: field %q: %w", strings.ToLower(schema.Kind), key, err)
 		}
+		if key == "resource_claims" {
+			goVal = normalizeResourceClaims(goVal)
+		}
 		data[key] = goVal
 	}
 
@@ -434,7 +575,19 @@ func extractFieldsFromMap(schema *ResourceSchema, m map[string]any, data map[str
 		// Sub-objects: fields are at top level
 		for fieldName, spec := range schema.Fields {
 			if v, ok := m[spec.JSONKey]; ok {
+				if fieldName == "resource_claims" {
+					v = normalizeResourceClaims(v)
+				}
 				data[fieldName] = v
+			}
+		}
+		if schema.Kind == "Container" {
+			if res, ok := m["resources"].(map[string]any); ok {
+				if cl, ok := res["claims"]; ok {
+					if _, hasClaims := data["claims"]; !hasClaims {
+						data["claims"] = cl
+					}
+				}
 			}
 		}
 		return
@@ -462,6 +615,9 @@ func extractFieldsFromMap(schema *ResourceSchema, m map[string]any, data map[str
 				continue
 			}
 			if v, ok := spec[fieldSpec.JSONKey]; ok {
+				if fieldName == "resource_claims" {
+					v = normalizeResourceClaims(v)
+				}
 				data[fieldName] = v
 			}
 		}

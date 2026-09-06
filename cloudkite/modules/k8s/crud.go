@@ -885,3 +885,62 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 
 	return unstructuredToDict(updated)
 }
+
+// claims retrieves a list of ResourceClaims (Dynamic Resource Allocation).
+// Signature: k8s.claims(namespace="", labels="", timeout="")
+func (c *K8sClient) claims(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
+		return nil, err
+	}
+
+	var p struct {
+		Namespace string `name:"namespace"`
+		Labels    string `name:"labels"`
+		Timeout   string `name:"timeout"`
+	}
+	if err := startype.Args(args, kwargs).Go(&p); err != nil {
+		return nil, err
+	}
+
+	gvr, _, err := c.resolver.Resolve("resourceclaims")
+	if err != nil {
+		return nil, fmt.Errorf("k8s.claims: %w", err)
+	}
+
+	ns := p.Namespace
+	if ns == "" {
+		ns = c.namespace
+	}
+
+	opts := metav1.ListOptions{}
+	if p.Labels != "" {
+		opts.LabelSelector = p.Labels
+	}
+
+	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.claims: %w", err)
+	}
+	defer cancel()
+
+	var list *unstructuredList
+	if ns != "" {
+		list, err = c.dynClient.Resource(gvr).Namespace(ns).List(ctx, opts)
+	} else {
+		list, err = c.dynClient.Resource(gvr).List(ctx, opts)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("k8s.claims: %w", err)
+	}
+
+	items := make([]starlark.Value, 0, len(list.Items))
+	for i := range list.Items {
+		dict, err := unstructuredToDict(&list.Items[i])
+		if err != nil {
+			return nil, fmt.Errorf("k8s.claims: item %d: %w", i, err)
+		}
+		items = append(items, dict)
+	}
+
+	return starlark.NewList(items), nil
+}

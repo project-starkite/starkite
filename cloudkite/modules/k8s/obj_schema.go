@@ -39,6 +39,7 @@ var podSchema = &ResourceSchema{
 		"host_network":     {JSONKey: "hostNetwork", Typ: FieldBool, SpecKey: true},
 		"dns_policy":       {JSONKey: "dnsPolicy", Typ: FieldString, SpecKey: true},
 		"security_context": {JSONKey: "securityContext", Typ: FieldKubeObject, SpecKey: true},
+		"resource_claims":  {JSONKey: "resourceClaims", Typ: FieldList, SpecKey: true},
 	}),
 }
 
@@ -239,6 +240,52 @@ var networkPolicySchema = &ResourceSchema{
 	}),
 }
 
+// --- resource.k8s.io/v1 schemas (Dynamic Resource Allocation) ---
+
+var deviceClassSchema = &ResourceSchema{
+	Kind:       "DeviceClass",
+	APIVersion: "resource.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"selectors":      {JSONKey: "selectors", Typ: FieldList, SpecKey: true},
+		"config":         {JSONKey: "config", Typ: FieldList, SpecKey: true},
+		"suitable_nodes": {JSONKey: "suitableNodes", Typ: FieldDict, SpecKey: true},
+	}),
+}
+
+var resourceClaimSchema = &ResourceSchema{
+	Kind:       "ResourceClaim",
+	APIVersion: "resource.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"devices":            {JSONKey: "devices", Typ: FieldDict, SpecKey: true},
+		"device_class":       {JSONKey: "deviceClassName", Typ: FieldString},
+		"count":              {JSONKey: "count", Typ: FieldInt},
+		"allocation_mode":    {JSONKey: "allocationMode", Typ: FieldString},
+		"request_name":       {JSONKey: "requestName", Typ: FieldString},
+		"selectors":          {JSONKey: "selectors", Typ: FieldList},
+		"device_tolerations": {JSONKey: "deviceTolerations", Typ: FieldList},
+	}),
+}
+
+var resourceClaimTemplateSchema = &ResourceSchema{
+	Kind:       "ResourceClaimTemplate",
+	APIVersion: "resource.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"spec":           {JSONKey: "spec", Typ: FieldKubeObject, SpecKey: true},
+		"claim_metadata": {JSONKey: "metadata", Typ: FieldDict},
+	}),
+}
+
+var resourceSliceSchema = &ResourceSchema{
+	Kind:       "ResourceSlice",
+	APIVersion: "resource.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"node_name": {JSONKey: "nodeName", Typ: FieldString, SpecKey: true},
+		"driver":    {JSONKey: "driver", Typ: FieldString, SpecKey: true},
+		"pool":      {JSONKey: "pool", Typ: FieldDict, SpecKey: true},
+		"devices":   {JSONKey: "devices", Typ: FieldList, SpecKey: true},
+	}),
+}
+
 // --- Pod fields for workload flattening ---
 // These fields are accepted by workload constructors (Deployment, StatefulSet, etc.)
 // and consumed by autoTemplate() to build the pod template automatically.
@@ -256,6 +303,7 @@ var podTemplateFields = map[string]*FieldSpec{
 	"host_network":         {JSONKey: "hostNetwork", Typ: FieldBool},
 	"dns_policy":           {JSONKey: "dnsPolicy", Typ: FieldString},
 	"security_context":     {JSONKey: "securityContext", Typ: FieldKubeObject},
+	"resource_claims":      {JSONKey: "resourceClaims", Typ: FieldList},
 	"template_labels":      {JSONKey: "templateLabels", Typ: FieldDict},
 	"template_annotations": {JSONKey: "templateAnnotations", Typ: FieldDict},
 }
@@ -284,6 +332,7 @@ var podSpecSchema = &ResourceSchema{
 		"host_network":     {JSONKey: "hostNetwork", Typ: FieldBool},
 		"dns_policy":       {JSONKey: "dnsPolicy", Typ: FieldString},
 		"security_context": {JSONKey: "securityContext", Typ: FieldKubeObject},
+		"resource_claims":  {JSONKey: "resourceClaims", Typ: FieldList},
 	},
 }
 
@@ -305,6 +354,7 @@ var podTemplateSchema = &ResourceSchema{
 		"host_network":     {JSONKey: "hostNetwork", Typ: FieldBool},
 		"dns_policy":       {JSONKey: "dnsPolicy", Typ: FieldString},
 		"security_context": {JSONKey: "securityContext", Typ: FieldKubeObject},
+		"resource_claims":  {JSONKey: "resourceClaims", Typ: FieldList},
 	},
 }
 
@@ -327,6 +377,7 @@ var containerSchema = &ResourceSchema{
 		"working_dir":       {JSONKey: "workingDir", Typ: FieldString},
 		"image_pull_policy": {JSONKey: "imagePullPolicy", Typ: FieldString},
 		"security_context":  {JSONKey: "securityContext", Typ: FieldKubeObject},
+		"claims":            {JSONKey: "claims", Typ: FieldList},
 	},
 }
 
@@ -391,6 +442,7 @@ var resourceRequirementsSchema = &ResourceSchema{
 	Fields: map[string]*FieldSpec{
 		"requests": {JSONKey: "requests", Typ: FieldDict},
 		"limits":   {JSONKey: "limits", Typ: FieldDict},
+		"claims":   {JSONKey: "claims", Typ: FieldList},
 	},
 }
 
@@ -536,6 +588,10 @@ var allSchemas = map[string]*ResourceSchema{
 	"policy_rule":               policyRuleSchema,
 	"subject":                   subjectSchema,
 	"security_context":          securityContextSchema,
+	"device_class":              deviceClassSchema,
+	"resource_claim":            resourceClaimSchema,
+	"resource_claim_template":   resourceClaimTemplateSchema,
+	"resource_slice":            resourceSliceSchema,
 }
 
 // makeObjConstructor creates a Starlark builtin for a k8s.obj constructor.

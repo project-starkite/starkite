@@ -38,6 +38,14 @@ func TestResolveBuiltinKinds(t *testing.T) {
 		{"clusterrole", "rbac.authorization.k8s.io", "clusterroles", false},
 		{"pvc", "", "persistentvolumeclaims", true},
 		{"sa", "", "serviceaccounts", true},
+		{"deviceclass", "resource.k8s.io", "deviceclasses", false},
+		{"deviceclasses", "resource.k8s.io", "deviceclasses", false},
+		{"resourceclaim", "resource.k8s.io", "resourceclaims", true},
+		{"resourceclaims", "resource.k8s.io", "resourceclaims", true},
+		{"resourceclaimtemplate", "resource.k8s.io", "resourceclaimtemplates", true},
+		{"resourceclaimtemplates", "resource.k8s.io", "resourceclaimtemplates", true},
+		{"resourceslice", "resource.k8s.io", "resourceslices", false},
+		{"resourceslices", "resource.k8s.io", "resourceslices", false},
 	}
 
 	for _, tt := range tests {

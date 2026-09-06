@@ -89,6 +89,16 @@ var builtinKinds = map[string]resolvedGVR{
 	"rolebindings":        {gvr: schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"}, namespaced: true},
 	"clusterrolebinding":  {gvr: schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"}, namespaced: false},
 	"clusterrolebindings": {gvr: schema.GroupVersionResource{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"}, namespaced: false},
+
+	// resource.k8s.io/v1 (Dynamic Resource Allocation)
+	"deviceclass":            {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "deviceclasses"}, namespaced: false},
+	"deviceclasses":          {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "deviceclasses"}, namespaced: false},
+	"resourceclaim":          {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaims"}, namespaced: true},
+	"resourceclaims":         {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaims"}, namespaced: true},
+	"resourceclaimtemplate":  {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaimtemplates"}, namespaced: true},
+	"resourceclaimtemplates": {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "resourceclaimtemplates"}, namespaced: true},
+	"resourceslice":          {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "resourceslices"}, namespaced: false},
+	"resourceslices":         {gvr: schema.GroupVersionResource{Group: "resource.k8s.io", Version: "v1", Resource: "resourceslices"}, namespaced: false},
 }
 
 // NewResolver creates a new Resolver with the given discovery client.

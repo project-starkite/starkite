@@ -43,6 +43,7 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | `k8s.annotate(kind, name, annotations, namespace="", timeout="")` | `AttrDict` | Set annotations on a resource |
 | `k8s.status(obj, status, namespace="", timeout="")` | `AttrDict` | Update the status subresource of a resource. Pass the resource as `obj` and the new status dict as `status` |
 | `k8s.event(obj, reason, message, type="Normal", namespace="", timeout="")` | `AttrDict` | Emit a Kubernetes event attached to `obj`. `type` can be `"Normal"` or `"Warning"` |
+| `k8s.claims(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `resource.k8s.io/v1` `ResourceClaim` objects for Dynamic Resource Allocation (DRA) |
 
 ### Example — status subresource update
 
@@ -418,30 +419,35 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 
 | Constructor | Returns | Description |
 |-------------|---------|-------------|
-| `k8s.obj.deployment(name, replicas=1, containers=[], labels={}, annotations={}, selector={}, template=None)` | `KubeResource` | Construct a Deployment manifest |
+| `k8s.obj.deployment(name, replicas=1, containers=[], resource_claims=[], labels={}, annotations={}, selector={}, template=None)` | `KubeResource` | Construct a Deployment manifest |
 | `k8s.obj.service(name, ports=[], selector={}, type="ClusterIP", labels={}, annotations={})` | `KubeResource` | Construct a Service manifest |
 | `k8s.obj.config_map(name, data={}, binary_data={}, labels={}, annotations={})` | `KubeResource` | Construct a ConfigMap manifest |
 | `k8s.obj.secret(name, data={}, string_data={}, type="Opaque", labels={}, annotations={})` | `KubeResource` | Construct a Secret manifest |
-| `k8s.obj.pod(name, containers=[], restart_policy="Always", labels={}, annotations={})` | `KubeResource` | Construct a Pod manifest |
-| `k8s.obj.job(name, containers=[], completions=1, parallelism=1, labels={}, annotations={})` | `KubeResource` | Construct a Job manifest |
-| `k8s.obj.cron_job(name, schedule, job_template=None, containers=[], labels={}, annotations={})` | `KubeResource` | Construct a CronJob manifest |
-| `k8s.obj.stateful_set(name, service_name="", replicas=1, containers=[], labels={}, annotations={})` | `KubeResource` | Construct a StatefulSet manifest |
-| `k8s.obj.daemon_set(name, containers=[], labels={}, annotations={})` | `KubeResource` | Construct a DaemonSet manifest |
+| `k8s.obj.pod(name, containers=[], resource_claims=[], restart_policy="Always", labels={}, annotations={})` | `KubeResource` | Construct a Pod manifest |
+| `k8s.obj.job(name, containers=[], resource_claims=[], completions=1, parallelism=1, labels={}, annotations={})` | `KubeResource` | Construct a Job manifest |
+| `k8s.obj.cron_job(name, schedule, job_template=None, containers=[], resource_claims=[], labels={}, annotations={})` | `KubeResource` | Construct a CronJob manifest |
+| `k8s.obj.stateful_set(name, service_name="", replicas=1, containers=[], resource_claims=[], labels={}, annotations={})` | `KubeResource` | Construct a StatefulSet manifest |
+| `k8s.obj.daemon_set(name, containers=[], resource_claims=[], labels={}, annotations={})` | `KubeResource` | Construct a DaemonSet manifest |
 | `k8s.obj.ingress(name, rules=[], tls=[], ingress_class_name="", labels={}, annotations={})` | `KubeResource` | Construct an Ingress manifest |
 | `k8s.obj.persistent_volume_claim(name, access_modes=[], storage="", storage_class_name="", labels={})` | `KubeResource` | Construct a PersistentVolumeClaim |
 | `k8s.obj.namespace(name, labels={}, annotations={})` | `KubeResource` | Construct a Namespace manifest |
 | `k8s.obj.service_account(name, labels={}, annotations={})` | `KubeResource` | Construct a ServiceAccount manifest |
+| `k8s.obj.device_class(name, selectors=[], config=[], suitable_nodes={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `DeviceClass` (cluster-scoped) |
+| `k8s.obj.resource_claim(name, device_class="", count=1, allocation_mode="", device_tolerations=[], selectors=[], devices={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `ResourceClaim` |
+| `k8s.obj.resource_claim_template(name, spec=None, claim_metadata={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `ResourceClaimTemplate` |
+| `k8s.obj.resource_slice(name, node_name="", driver="", pool={}, devices={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `ResourceSlice` |
 | `k8s.obj.crd(group, version, kind, plural, scope="Namespaced", spec={}, status={})` | `CRDResource` | Construct a CustomResourceDefinition manifest |
 
 ### Sub-object constructors
 
 | Constructor | Returns | Description |
 |-------------|---------|-------------|
-| `k8s.obj.container(name, image, ports=[], env=[], command=[], args=[], volume_mounts=[], resources=None, liveness_probe=None, readiness_probe=None)` | `KubeResource` | Container specification |
+| `k8s.obj.container(name, image, ports=[], env=[], command=[], args=[], volume_mounts=[], resources=None, claims=[], liveness_probe=None, readiness_probe=None)` | `KubeResource` | Container specification |
 | `k8s.obj.container_port(container_port, name="", protocol="TCP", host_port=0)` | `KubeResource` | Container port definition |
 | `k8s.obj.service_port(port, target_port=0, name="", protocol="TCP", node_port=0)` | `KubeResource` | Service port definition |
 | `k8s.obj.env_var(name, value="", value_from={})` | `KubeResource` | Environment variable definition |
 | `k8s.obj.env_from(config_map_ref={}, secret_ref={}, prefix="")` | `KubeResource` | Environment variable source from ConfigMap or Secret |
+| `k8s.obj.resource_requirements(requests={}, limits={}, claims=[])` | `KubeResource` | Resource requests, limits, and claim bindings |
 | `k8s.obj.probe(http_get={}, tcp_socket={}, exec={}, initial_delay_seconds=0, period_seconds=10, timeout_seconds=1, failure_threshold=3)` | `KubeResource` | Health probe configuration |
 | `k8s.obj.volume(name, config_map={}, secret={}, pvc={}, host_path={}, empty_dir={})` | `KubeResource` | Pod volume definition |
 | `k8s.obj.volume_mount(name, mount_path, sub_path="", read_only=False)` | `KubeResource` | Container volume mount |
@@ -534,6 +540,52 @@ k8s.apply(crd)
 
 # Print the generated YAML for review
 print(k8s.yaml(crd))
+```
+
+### Example — Dynamic Resource Allocation (DRA)
+
+Dynamic Resource Allocation (`resource.k8s.io/v1`) allocates accelerators, GPUs, and hardware devices dynamically via scheduler-evaluated claims:
+
+```python
+# 1. Define cluster-level device class
+gpu_class = k8s.obj.device_class(
+    name = "gpu.nvidia.com",
+    selectors = [
+        {"cel": {"expression": "device.capacity.memory >= 40Gi"}}
+    ],
+)
+k8s.apply(gpu_class)
+
+# 2. Define resource claim requesting hardware allocation
+claim = k8s.obj.resource_claim(
+    name = "ml-gpu-claim",
+    device_class = "gpu.nvidia.com",
+    count = 1,
+    device_tolerations = [
+        {"key": "gpu.nvidia.com/mig", "operator": "Exists"}
+    ],
+)
+k8s.apply(claim)
+
+# 3. Attach claim to deployment and container
+workload = k8s.obj.deployment(
+    name = "llm-inference",
+    replicas = 2,
+    resource_claims = [{"name": "gpu", "claim_name": "ml-gpu-claim"}],
+    containers = [
+        k8s.obj.container(
+            name = "engine",
+            image = "vllm/vllm-openai:latest",
+            claims = [{"name": "gpu"}],
+        )
+    ],
+)
+k8s.apply(workload)
+
+# 4. Inspect claim allocation status
+claims = k8s.claims(namespace="default")
+for c in claims:
+    print(c.metadata.name, c.status.get("allocation"))
 ```
 
 ### Utilities

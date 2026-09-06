@@ -219,6 +219,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"annotate": m.withDefault("annotate", (*K8sClient).annotate),
 			"status":   m.withDefault("status", (*K8sClient).updateStatus),
 			"event":    m.withDefault("event", (*K8sClient).event),
+			"claims":   m.withDefault("claims", (*K8sClient).claims),
 
 			// Tier 1: Watch
 			"watch":    m.withDefault("watch", (*K8sClient).watch),

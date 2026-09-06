@@ -2,8 +2,10 @@ package k8s
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
+	"github.com/project-starkite/starkite/libkite"
 	"go.starlark.net/starlark"
 )
 
@@ -779,5 +781,393 @@ func TestPodTemplate_SubObject(t *testing.T) {
 	c, _, _ := sp.Get(starlark.String("containers"))
 	if c == nil {
 		t.Error("spec.containers is nil")
+	}
+}
+
+func TestDRA_DeviceClass(t *testing.T) {
+	selectors := starlark.NewList([]starlark.Value{
+		starlark.NewDict(1),
+	})
+	kwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("gpu.nvidia.com")},
+		{starlark.String("selectors"), selectors},
+	}
+
+	kr, err := newKubeResource(deviceClassSchema, nil, kwargs)
+	if err != nil {
+		t.Fatalf("device_class error: %v", err)
+	}
+
+	if kr.Kind() != "DeviceClass" {
+		t.Errorf("Kind() = %q, want DeviceClass", kr.Kind())
+	}
+
+	dict := kr.ToDict()
+	av, _, _ := dict.Get(starlark.String("apiVersion"))
+	if s, ok := av.(starlark.String); !ok || string(s) != "resource.k8s.io/v1" {
+		t.Errorf("apiVersion = %v, want resource.k8s.io/v1", av)
+	}
+
+	spec, found, _ := dict.Get(starlark.String("spec"))
+	if !found {
+		t.Fatal("spec not found")
+	}
+	sp := spec.(*starlark.Dict)
+	sel, found, _ := sp.Get(starlark.String("selectors"))
+	if !found || sel == nil {
+		t.Error("selectors not found in spec")
+	}
+}
+
+func TestDRA_ResourceClaim_Shortcuts(t *testing.T) {
+	toleration := starlark.NewDict(2)
+	toleration.SetKey(starlark.String("key"), starlark.String("gpu.nvidia.com/mig"))
+	toleration.SetKey(starlark.String("operator"), starlark.String("Exists"))
+	tolerations := starlark.NewList([]starlark.Value{toleration})
+
+	kwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("ml-gpu-claim")},
+		{starlark.String("device_class"), starlark.String("gpu.nvidia.com")},
+		{starlark.String("count"), starlark.MakeInt(2)},
+		{starlark.String("device_tolerations"), tolerations},
+	}
+
+	kr, err := newKubeResource(resourceClaimSchema, nil, kwargs)
+	if err != nil {
+		t.Fatalf("resource_claim error: %v", err)
+	}
+
+	dict := kr.ToDict()
+	specVal, found, _ := dict.Get(starlark.String("spec"))
+	if !found {
+		t.Fatal("spec not found")
+	}
+	spec := specVal.(*starlark.Dict)
+
+	devicesVal, found, _ := spec.Get(starlark.String("devices"))
+	if !found {
+		t.Fatal("spec.devices not found")
+	}
+	devices := devicesVal.(*starlark.Dict)
+
+	reqsVal, found, _ := devices.Get(starlark.String("requests"))
+	if !found {
+		t.Fatal("devices.requests not found")
+	}
+	reqs := reqsVal.(*starlark.List)
+	if reqs.Len() != 1 {
+		t.Fatalf("requests len = %d, want 1", reqs.Len())
+	}
+
+	firstReq := reqs.Index(0).(*starlark.Dict)
+	dcName, _, _ := firstReq.Get(starlark.String("deviceClassName"))
+	if s, ok := dcName.(starlark.String); !ok || string(s) != "gpu.nvidia.com" {
+		t.Errorf("deviceClassName = %v, want gpu.nvidia.com", dcName)
+	}
+
+	countVal, _, _ := firstReq.Get(starlark.String("count"))
+	if countVal == nil || countVal.String() != "2" {
+		t.Errorf("count = %v, want 2", countVal)
+	}
+
+	reqName, _, _ := firstReq.Get(starlark.String("name"))
+	if s, ok := reqName.(starlark.String); !ok || string(s) != "req-1" {
+		t.Errorf("request name = %v, want req-1", reqName)
+	}
+
+	// Ensure shortcut fields are NOT leaked at root
+	if _, leaked, _ := dict.Get(starlark.String("device_class")); leaked {
+		t.Error("device_class leaked at root")
+	}
+	if _, leaked, _ := dict.Get(starlark.String("deviceClassName")); leaked {
+		t.Error("deviceClassName leaked at root")
+	}
+	if _, leaked, _ := dict.Get(starlark.String("count")); leaked {
+		t.Error("count leaked at root")
+	}
+}
+
+func TestDRA_ResourceClaimTemplate_UnwrapClaim(t *testing.T) {
+	// Create a claim
+	claimKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("my-claim")},
+		{starlark.String("device_class"), starlark.String("gpu.nvidia.com")},
+		{starlark.String("count"), starlark.MakeInt(1)},
+	}
+	claim, err := newKubeResource(resourceClaimSchema, nil, claimKwargs)
+	if err != nil {
+		t.Fatalf("claim error: %v", err)
+	}
+
+	// Create claim template with spec = claim
+	tmplKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("worker-gpu-template")},
+		{starlark.String("spec"), claim},
+	}
+	tmpl, err := newKubeResource(resourceClaimTemplateSchema, nil, tmplKwargs)
+	if err != nil {
+		t.Fatalf("resource_claim_template error: %v", err)
+	}
+
+	dict := tmpl.ToDict()
+	specVal, found, _ := dict.Get(starlark.String("spec"))
+	if !found {
+		t.Fatal("template spec not found")
+	}
+	spec := specVal.(*starlark.Dict)
+
+	// In ResourceClaimTemplate, spec.spec must be the ResourceClaimSpec
+	innerSpecVal, found, _ := spec.Get(starlark.String("spec"))
+	if !found {
+		t.Fatal("spec.spec not found in ResourceClaimTemplate")
+	}
+	innerSpec := innerSpecVal.(*starlark.Dict)
+
+	devicesVal, found, _ := innerSpec.Get(starlark.String("devices"))
+	if !found {
+		t.Fatal("devices not found in spec.spec")
+	}
+	devices := devicesVal.(*starlark.Dict)
+	_, foundReqs, _ := devices.Get(starlark.String("requests"))
+	if !foundReqs {
+		t.Error("requests not found in inner spec.devices")
+	}
+
+	// Inner spec should NOT have apiVersion or kind
+	if _, hasKind, _ := innerSpec.Get(starlark.String("kind")); hasKind {
+		t.Error("inner spec.spec should not have 'kind'")
+	}
+}
+
+func TestDRA_ContainerClaims(t *testing.T) {
+	claimRef := starlark.NewDict(1)
+	claimRef.SetKey(starlark.String("name"), starlark.String("gpu"))
+	claimsList := starlark.NewList([]starlark.Value{claimRef})
+
+	kwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("engine")},
+		{starlark.String("image"), starlark.String("vllm/vllm:latest")},
+		{starlark.String("claims"), claimsList},
+	}
+
+	c, err := newKubeResource(containerSchema, nil, kwargs)
+	if err != nil {
+		t.Fatalf("container error: %v", err)
+	}
+
+	dict := c.ToDict()
+
+	// Container should NOT have top-level claims
+	if _, hasClaims, _ := dict.Get(starlark.String("claims")); hasClaims {
+		t.Error("container should not have top-level 'claims'")
+	}
+
+	// Container should have resources.claims
+	resVal, found, _ := dict.Get(starlark.String("resources"))
+	if !found {
+		t.Fatal("resources not found on container")
+	}
+	res := resVal.(*starlark.Dict)
+
+	resClaimsVal, found, _ := res.Get(starlark.String("claims"))
+	if !found {
+		t.Fatal("claims not found in container.resources")
+	}
+	resClaims := resClaimsVal.(*starlark.List)
+	if resClaims.Len() != 1 {
+		t.Fatalf("resClaims len = %d, want 1", resClaims.Len())
+	}
+}
+
+func TestDRA_WorkloadFlatteningDeployment(t *testing.T) {
+	containerKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("engine")},
+		{starlark.String("image"), starlark.String("vllm:latest")},
+	}
+	c, _ := newKubeResource(containerSchema, nil, containerKwargs)
+	containers := starlark.NewList([]starlark.Value{c})
+
+	claimRef := starlark.NewDict(2)
+	claimRef.SetKey(starlark.String("name"), starlark.String("gpu"))
+	claimRef.SetKey(starlark.String("claim_name"), starlark.String("ml-gpu-claim"))
+	tmplClaimRef := starlark.NewDict(2)
+	tmplClaimRef.SetKey(starlark.String("name"), starlark.String("worker-gpu"))
+	tmplClaimRef.SetKey(starlark.String("template_name"), starlark.String("worker-gpu-tmpl"))
+	resourceClaims := starlark.NewList([]starlark.Value{claimRef, tmplClaimRef})
+
+	kwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("llm-service")},
+		{starlark.String("containers"), containers},
+		{starlark.String("resource_claims"), resourceClaims},
+	}
+
+	deploy, err := newKubeResource(deploymentSchema, nil, kwargs)
+	if err != nil {
+		t.Fatalf("deployment error: %v", err)
+	}
+
+	dict := deploy.ToDict()
+	specVal, _, _ := dict.Get(starlark.String("spec"))
+	spec := specVal.(*starlark.Dict)
+
+	tmplVal, _, _ := spec.Get(starlark.String("template"))
+	tmpl := tmplVal.(*starlark.Dict)
+
+	podSpecVal, _, _ := tmpl.Get(starlark.String("spec"))
+	podSpec := podSpecVal.(*starlark.Dict)
+
+	rcVal, found, _ := podSpec.Get(starlark.String("resourceClaims"))
+	if !found {
+		t.Fatal("resourceClaims not found in pod spec")
+	}
+	rcList := rcVal.(*starlark.List)
+	if rcList.Len() != 2 {
+		t.Fatalf("resourceClaims len = %d, want 2", rcList.Len())
+	}
+
+	first := rcList.Index(0).(*starlark.Dict)
+	claimNameVal, found, _ := first.Get(starlark.String("resourceClaimName"))
+	if !found {
+		t.Errorf("expected resourceClaimName key, got keys: %v", first.Keys())
+	}
+	if s, ok := claimNameVal.(starlark.String); !ok || string(s) != "ml-gpu-claim" {
+		t.Errorf("resourceClaimName = %v, want ml-gpu-claim", claimNameVal)
+	}
+
+	second := rcList.Index(1).(*starlark.Dict)
+	tmplNameVal, found, _ := second.Get(starlark.String("resourceClaimTemplateName"))
+	if !found {
+		t.Errorf("expected resourceClaimTemplateName key, got keys: %v", second.Keys())
+	}
+	if s, ok := tmplNameVal.(starlark.String); !ok || string(s) != "worker-gpu-tmpl" {
+		t.Errorf("resourceClaimTemplateName = %v, want worker-gpu-tmpl", tmplNameVal)
+	}
+}
+
+func TestDRA_PodResourceClaims(t *testing.T) {
+	containerKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("c")},
+		{starlark.String("image"), starlark.String("app:1.0")},
+	}
+	c, _ := newKubeResource(containerSchema, nil, containerKwargs)
+	containers := starlark.NewList([]starlark.Value{c})
+
+	claimRef := starlark.NewDict(2)
+	claimRef.SetKey(starlark.String("name"), starlark.String("gpu"))
+	claimRef.SetKey(starlark.String("claim_name"), starlark.String("my-claim"))
+	resourceClaims := starlark.NewList([]starlark.Value{claimRef})
+
+	kwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("test-pod")},
+		{starlark.String("containers"), containers},
+		{starlark.String("resource_claims"), resourceClaims},
+	}
+
+	pod, err := newKubeResource(podSchema, nil, kwargs)
+	if err != nil {
+		t.Fatalf("pod error: %v", err)
+	}
+
+	dict := pod.ToDict()
+	specVal, _, _ := dict.Get(starlark.String("spec"))
+	spec := specVal.(*starlark.Dict)
+
+	rcVal, found, _ := spec.Get(starlark.String("resourceClaims"))
+	if !found {
+		t.Fatal("resourceClaims not found in pod spec")
+	}
+	rcList := rcVal.(*starlark.List)
+	if rcList.Len() != 1 {
+		t.Fatalf("resourceClaims len = %d, want 1", rcList.Len())
+	}
+	first := rcList.Index(0).(*starlark.Dict)
+	claimName, found, _ := first.Get(starlark.String("resourceClaimName"))
+	if !found || claimName.String() != `"my-claim"` {
+		t.Errorf("resourceClaimName = %v, want my-claim", claimName)
+	}
+}
+
+func TestDRA_EndToEndYAML(t *testing.T) {
+	m := New()
+	loaded, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load error: %v", err)
+	}
+	k8sMod := loaded["k8s"].(starlark.HasAttrs)
+	yamlFnVal, err := k8sMod.Attr("yaml")
+	if err != nil || yamlFnVal == nil {
+		t.Fatalf("k8s.yaml not found: %v", err)
+	}
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+
+	thread := &starlark.Thread{Name: "test"}
+
+	// 1. ResourceClaim
+	claimKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("llm-accelerator")},
+		{starlark.String("device_class"), starlark.String("gpu.nvidia.com")},
+		{starlark.String("count"), starlark.MakeInt(1)},
+	}
+	claim, err := newKubeResource(resourceClaimSchema, nil, claimKwargs)
+	if err != nil {
+		t.Fatalf("resource_claim error: %v", err)
+	}
+
+	claimYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{claim}, nil)
+	if err != nil {
+		t.Fatalf("yaml(claim) error: %v", err)
+	}
+	claimYAML := string(claimYAMLVal.(starlark.String))
+	if !strings.Contains(claimYAML, "apiVersion: resource.k8s.io/v1") {
+		t.Errorf("claim YAML missing apiVersion: %s", claimYAML)
+	}
+	if !strings.Contains(claimYAML, "deviceClassName: gpu.nvidia.com") {
+		t.Errorf("claim YAML missing deviceClassName: %s", claimYAML)
+	}
+
+	// 2. Deployment with claim attachment
+	claimRefContainer := starlark.NewDict(1)
+	claimRefContainer.SetKey(starlark.String("name"), starlark.String("gpu"))
+	containerKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("vllm")},
+		{starlark.String("image"), starlark.String("vllm/vllm-openai:latest")},
+		{starlark.String("claims"), starlark.NewList([]starlark.Value{claimRefContainer})},
+	}
+
+	container, err := newKubeResource(containerSchema, nil, containerKwargs)
+	if err != nil {
+		t.Fatalf("container error: %v", err)
+	}
+
+	claimRef := starlark.NewDict(2)
+	claimRef.SetKey(starlark.String("name"), starlark.String("gpu"))
+	claimRef.SetKey(starlark.String("claim_name"), starlark.String("llm-accelerator"))
+
+	deployKwargs := []starlark.Tuple{
+		{starlark.String("name"), starlark.String("llm-inference")},
+		{starlark.String("replicas"), starlark.MakeInt(2)},
+		{starlark.String("resource_claims"), starlark.NewList([]starlark.Value{claimRef})},
+		{starlark.String("containers"), starlark.NewList([]starlark.Value{container})},
+	}
+
+	deploy, err := newKubeResource(deploymentSchema, nil, deployKwargs)
+	if err != nil {
+		t.Fatalf("deployment error: %v", err)
+	}
+
+	deployYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{deploy}, nil)
+	if err != nil {
+		t.Fatalf("yaml(deploy) error: %v", err)
+	}
+	deployYAML := string(deployYAMLVal.(starlark.String))
+
+	if !strings.Contains(deployYAML, "resourceClaims:") {
+		t.Errorf("deploy YAML missing resourceClaims: %s", deployYAML)
+	}
+	if !strings.Contains(deployYAML, "resourceClaimName: llm-accelerator") {
+		t.Errorf("deploy YAML missing resourceClaimName: %s", deployYAML)
+	}
+	if !strings.Contains(deployYAML, "claims:") {
+		t.Errorf("deploy YAML missing container claims: %s", deployYAML)
 	}
 }
