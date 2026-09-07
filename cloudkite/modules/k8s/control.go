@@ -1103,7 +1103,7 @@ func (c *controller) emitEvent(obj *unstructured.Unstructured, eventType, reason
 	t := metav1.Now()
 	ev := &corev1.Event{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s.%x", obj.GetName(), t.UnixNano()),
+			Name:      newEventName(obj.GetName(), t),
 			Namespace: ns,
 		},
 		InvolvedObject: corev1.ObjectReference{

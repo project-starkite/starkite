@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/project-starkite/starkite/libkite"
@@ -491,6 +492,12 @@ func toUnstructuredObj(val starlark.Value) (*unstructured.Unstructured, error) {
 	}
 }
 
+var eventSeq atomic.Uint64
+
+func newEventName(objName string, t metav1.Time) string {
+	return fmt.Sprintf("%s.%x.%x", objName, t.UnixNano(), eventSeq.Add(1))
+}
+
 // event emits a Kubernetes Event for the given object.
 // Signature: k8s.event(obj, reason, message, type="Normal", namespace="")
 func (c *K8sClient) event(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -544,7 +551,7 @@ func (c *K8sClient) event(thread *starlark.Thread, fn *starlark.Builtin, args st
 	t := metav1.Now()
 	ev := &corev1.Event{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      fmt.Sprintf("%s.%x", u.GetName(), t.UnixNano()),
+			Name:      newEventName(u.GetName(), t),
 			Namespace: ns,
 		},
 		InvolvedObject: corev1.ObjectReference{

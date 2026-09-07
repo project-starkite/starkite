@@ -911,15 +911,18 @@ def finalize(cr):
 	if err != nil {
 		t.Fatalf("List events error: %v", err)
 	}
-	if len(events.Items) == 0 {
-		t.Fatal("expected at least 1 event to be emitted")
+	var foundReconciled bool
+	for _, e := range events.Items {
+		if e.Reason == "Reconciled" && e.Type == corev1.EventTypeNormal {
+			foundReconciled = true
+			if e.InvolvedObject.Name != "test-app" || e.InvolvedObject.Kind != "TestApp" {
+				t.Fatalf("unexpected involvedObject: %+v", e.InvolvedObject)
+			}
+			break
+		}
 	}
-	lastEvt := events.Items[len(events.Items)-1]
-	if lastEvt.Reason != "Reconciled" || lastEvt.Type != corev1.EventTypeNormal {
-		t.Fatalf("expected Normal/Reconciled, got %s/%s", lastEvt.Type, lastEvt.Reason)
-	}
-	if lastEvt.InvolvedObject.Name != "test-app" || lastEvt.InvolvedObject.Kind != "TestApp" {
-		t.Fatalf("unexpected involvedObject: %+v", lastEvt.InvolvedObject)
+	if !foundReconciled {
+		t.Fatalf("expected Normal/Reconciled event to be emitted; events found: %+v", events.Items)
 	}
 
 	// 2. Reconcile failure -> Event: Warning ReconcileError
@@ -929,9 +932,18 @@ def finalize(cr):
 		t.Fatal("expected error on failed reconcile")
 	}
 	events, _ = fakeClientset.CoreV1().Events("default").List(ctx, metav1.ListOptions{})
-	lastEvt = events.Items[len(events.Items)-1]
-	if lastEvt.Reason != "ReconcileError" || lastEvt.Type != corev1.EventTypeWarning {
-		t.Fatalf("expected Warning/ReconcileError, got %s/%s", lastEvt.Type, lastEvt.Reason)
+	var foundReconcileError bool
+	for _, e := range events.Items {
+		if e.Reason == "ReconcileError" && e.Type == corev1.EventTypeWarning {
+			foundReconcileError = true
+			if e.InvolvedObject.Name != "test-app" || e.InvolvedObject.Kind != "TestApp" {
+				t.Fatalf("unexpected involvedObject: %+v", e.InvolvedObject)
+			}
+			break
+		}
+	}
+	if !foundReconcileError {
+		t.Fatalf("expected Warning/ReconcileError event to be emitted; events found: %+v", events.Items)
 	}
 
 	// 3. Teardown with finalizer: trigger teardown
