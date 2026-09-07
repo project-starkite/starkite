@@ -220,6 +220,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"annotate":        m.withDefault("annotate", (*K8sClient).annotate),
 			"status":          m.withDefault("status", (*K8sClient).updateStatus),
 			"event":           m.withDefault("event", (*K8sClient).event),
+			"events":          m.withDefault("events", (*K8sClient).events),
 			"claims":          m.withDefault("claims", (*K8sClient).claims),
 			"pvcs":            m.withDefault("pvcs", (*K8sClient).pvcs),
 			"pvs":             m.withDefault("pvs", (*K8sClient).pvs),

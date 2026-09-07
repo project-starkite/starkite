@@ -16,7 +16,7 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 
 | Category | Functions |
 |----------|-----------|
-| [CRUD & Inspection](#crud) | `get`, `list`, `create`, `apply`, `delete`, `patch`, `label`, `annotate`, `status`, `event`, `validate`, `claims`, `pvcs`, `pvs`, `storage_classes` |
+| [CRUD & Inspection](#crud) | `get`, `list`, `create`, `apply`, `delete`, `patch`, `label`, `annotate`, `status`, `event`, `events`, `validate`, `claims`, `pvcs`, `pvs`, `storage_classes` |
 | [Conditions & Finalizers](#conditions-and-finalizers) | `k8s.condition.*`, `k8s.finalizer.*`, `k8s.is_deleting` |
 | [Watch & wait](#watch-and-wait) | `watch`, `wait_for` |
 | [High-level workloads](#high-level-workloads) | `deploy`, `run`, `expose`, `route`, `scale`, `autoscale`, `rollout`, `resize`, `set_image`, `set_env`, `set_resources` |
@@ -45,6 +45,7 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | `k8s.annotate(kind, name, annotations, namespace="", timeout="")` | `AttrDict` | Set annotations on a resource |
 | `k8s.status(obj, status, namespace="", timeout="")` | `AttrDict` | Update the status subresource of a resource. Pass the resource as `obj` and the new status dict as `status` |
 | `k8s.event(obj, reason, message, type="Normal", namespace="", timeout="")` | `AttrDict` | Emit a Kubernetes event attached to `obj`. `type` can be `"Normal"` or `"Warning"` |
+| `k8s.events(target=None, kind="", name="", namespace="", type="", reason="", since="", limit=0, timeout="")` | `list[AttrDict]` | Query diagnostic event streams with dual-API normalization (`events.k8s.io/v1` and `core/v1`). Filter by target object, kind, name, type (`"Warning"`/`"Normal"`), reason substring, or relative duration (`since="30m"`). Returns items sorted newest first with relative `age` |
 | `k8s.validate(manifest, policy=None, expression="", strict=False)` | `AttrDict` | Evaluate CEL validation policies or expressions against a manifest client-side prior to cluster submission. Returns `{"valid": bool, "violations": list[str], "policy": str}` |
 | `k8s.claims(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `resource.k8s.io/v1` `ResourceClaim` objects for Dynamic Resource Allocation (DRA) |
 | `k8s.pvcs(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `PersistentVolumeClaim` objects |
@@ -64,6 +65,27 @@ k8s.status(obj, {"ready": True, "message": "initialized"}, namespace="default")
 ```python
 deploy = k8s.get("deployment", "web", namespace="default")
 k8s.event(deploy, reason="DriftCorrected", message="Replicas scaled down to policy limit", type="Normal")
+```
+
+### Example — querying diagnostic events
+
+```python
+# Query recent Warning events for a pod within the past 30 minutes
+events = k8s.events(
+    kind = "Pod",
+    name = "llm-inference-76b9f47b-x8q2z",
+    namespace = "production",
+    type = "Warning",
+    since = "30m",
+)
+
+for ev in events:
+    print(ev.age, ev.type, ev.reason, ev.message, ev.count)
+
+# Query events by binding directly to an object
+pod = k8s.get("pod", "llm-inference-76b9f47b-x8q2z", namespace="production")
+for ev in k8s.events(pod, since="1h"):
+    print(ev.last_time, ev.reason, ev.regarding.name)
 ```
 
 ### Example — client-side admission validation via CEL

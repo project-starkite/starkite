@@ -400,6 +400,32 @@ def mutate_admission_payload(obj):
 
 ---
 
+## Event Observability & Traversal (`k8s.events`)
+
+Event streams returned by `k8s.events()` represent cluster events normalized across `events.k8s.io/v1` and `core/v1`. Each event item is an `AttrDict` enabling dot-notation inspection and dictionary traversal:
+
+```python
+# Query Warning events for a pod in the past 15 minutes
+events = k8s.events(kind="Pod", name="api-server-xyz", namespace="prod", type="Warning", since="15m")
+
+for ev in events:
+    # Normalized top-level diagnostic attributes
+    print("Age:", ev.age)                     # e.g., "45s", "2m", "3h"
+    print("Type:", ev.type)                   # "Warning" or "Normal"
+    print("Reason:", ev.reason)               # e.g., "BackOff", "FailedScheduling"
+    print("Message:", ev.message)             # Human-readable diagnostic note
+    print("Count:", ev.count)                 # Event repetition count
+    print("Last Time:", ev.last_timestamp)    # RFC 3339 timestamp
+
+    # Target object reference
+    print("Target:", ev.regarding.kind, ev.regarding.name)
+
+    # Underlying raw object access if needed
+    print("Raw Kind:", ev.raw.kind)
+```
+
+---
+
 ## Summary of Operations
 
 | Operation | Syntax | Returns / Behavior | Common Use Cases |
@@ -410,5 +436,6 @@ def mutate_admission_payload(obj):
 | **Safe Fetch** | `pod.get("spec", {})` | Value or default | Reading optional or conditional fields |
 | **Item Iteration** | `for k, v in pod.metadata.labels.items():` | Key-value tuples | Label inspection, auditing, filtering |
 | **In-Place Mutation** | `pod["metadata"]["labels"]["env"] = "prod"` | Mutates in-place | Mutating webhooks, controller drift corrections |
+| **Event Stream** | `k8s.events(pod, since="30m")` | `list[AttrDict]` | Workload debugging, root cause analysis, event filtering |
 | **Serialization** | `json.encode(pod)`, `k8s.apply(pod)` | Encoded string / API call | Direct API apply, manifest export |
 | **Native Dict** | `pod.to_dict()` | Standard Starlark `dict` | Conversion to plain dictionary |

@@ -89,6 +89,7 @@ func TestModuleTryAttr(t *testing.T) {
 		"try_delete", "try_scale", "try_logs", "try_exec",
 		"try_config", "try_yaml", "try_resize", "try_debug",
 		"try_route", "try_validate", "try_diff", "try_evict",
+		"try_events",
 	}
 
 	for _, name := range tryMethods {

@@ -66,6 +66,7 @@ var allMethods = map[string]clientMethod{
 	"finalizer_remove": (*K8sClient).finalizerRemove,
 	"condition_set":    (*K8sClient).conditionSet,
 	"event":            (*K8sClient).event,
+	"events":           (*K8sClient).events,
 	"claims":           (*K8sClient).claims,
 	"pvcs":             (*K8sClient).pvcs,
 	"pvs":              (*K8sClient).pvs,
