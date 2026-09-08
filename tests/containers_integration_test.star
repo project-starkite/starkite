@@ -3,7 +3,10 @@
 
 def _get_client():
     """Initializes container client, skipping if neither Docker nor Podman is reachable."""
-    client = containers.config()
+    res_cfg = containers.try_config()
+    if not res_cfg.ok:
+        skip("container engine is not configured: " + str(res_cfg.error))
+    client = res_cfg.value
     res = client.try_ping()
     if not res.ok or not res.value:
         skip("container engine (Docker or Podman) is not running or reachable")
