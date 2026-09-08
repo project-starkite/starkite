@@ -35,7 +35,6 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 		cfgBuiltin := starlark.NewBuiltin("containers.config", m.configConstructor)
 		m.module = libkite.NewTryModule(string(ModuleName), starlark.StringDict{
 			"config": cfgBuiltin,
-			"client": cfgBuiltin, // alias for backwards compatibility
 		})
 	})
 	return starlark.StringDict{string(ModuleName): m.module}, nil

@@ -238,15 +238,12 @@ def _create_mock_engine():
 # Unit Tests
 # ============================================================================
 
-def test_config_and_alias():
-    """Verify containers.config and containers.client constructor semantics."""
+def test_config():
+    """Verify containers.config constructor semantics."""
     c1 = containers.config(host="http://localhost:9999")
     assert(type(c1) == "containers.Client", "containers.config should return containers.Client")
     assert(c1.endpoint == "http://localhost:9999", "endpoint attribute should match")
-
-    c2 = containers.client(host="http://localhost:9999")
-    assert(type(c2) == "containers.Client", "containers.client alias should return containers.Client")
-    assert(c2.endpoint == "http://localhost:9999", "endpoint attribute should match")
+    assert(hasattr(containers, "client") == False, "containers.client should not exist")
 
 def test_ping_and_version():
     """Verify client.ping() and client.version() against mock server."""

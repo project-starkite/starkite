@@ -95,6 +95,11 @@ nav:
               - Servers: core-modules/http/servers.md
       - Infrastructure:
           - Overview: infra/index.md
+          - Container Automation:
+              - Connecting to a daemon: infra/containers-connect.md
+              - Container management:   infra/containers-management.md
+              - Executing commands:     infra/containers-exec.md
+              - Image management:       infra/containers-images.md
           - Kubernetes Automation:
               - Connecting to a cluster: infra/k8s-connect.md
               - Object representation:   infra/k8s-objects.md

@@ -6,9 +6,27 @@ weight: 1
 
 # Infrastructure Automation
 
-Starkite is built for local systems automation, but it also includes dedicated modules for orchestrating larger, cloud-native and node-level infrastructure. To automate these environments, the runtime integrates directly with the Kubernetes API for container orchestration and provides native remote host management over SSH without requiring target-side daemon installation. This allows you to scale local automation scripts across Kubernetes clusters and multi-node fleets using Starkite's sandboxed Starlark environment.
+Starkite is built for local systems automation, but it also includes dedicated modules for orchestrating cloud-native, containerized, and node-level infrastructure. To automate these environments, the runtime provides direct container automation against Docker and Podman daemons, integrates with the Kubernetes API for cluster orchestration, and enables remote host management over SSH without requiring target-side agent installation. This allows you to scale local automation scripts across individual containers, Kubernetes clusters, and multi-node fleets using Starkite's sandboxed Starlark environment.
 
 By combining a sandboxed Starlark runtime with native, high-level modules, Starkite allows SREs, platform engineers, and SRE AI agents to run secure, isolated automation scripts locally, inside pipelines, or as background controllers in a cluster.
+
+---
+
+## Container Automation
+
+Starkite provides direct container automation through the `containers` module, communicating directly with local or remote Docker and Podman daemons over Unix domain sockets, Windows named pipes, and TCP endpoints without external CLI dependencies.
+
+### How Container Automation Works
+1. **Zero-Config Discovery**: Auto-detects active Docker and Podman daemon sockets across Linux, macOS, and Windows or connects to explicit endpoints via `containers.config(host=...)`.
+2. **Lifecycle Management**: Creates, runs, starts, stops, restarts, and removes containers using structured Starlark parameters.
+3. **In-Container Execution**: Dispatches processes inside running containers via `c.exec()`, returning process exit codes with captured stdout and stderr.
+4. **Stream Demultiplexing**: Streams container logs via `c.logs()` using `io.reader`, decoding Docker and Podman 8-byte binary frame protocols.
+5. **Image Management & Housekeeping**: Pulls images from OCI registries with registry authentication (`client.pull()`), lists local cache entries (`client.images()`), and prunes stopped containers and dangling images (`client.prune()`).
+
+### Key Features
+* **No CLI Toolchain Required**: Interacts directly with daemon REST APIs (v1.45) over native transport sockets without requiring `docker` or `podman` CLI binaries in `$PATH`.
+* **Dynamic Port Allocation**: Resolves dynamically assigned host ports with `c.port("8080/tcp")` for ephemeral databases and local integration testing.
+* **Security & Capability Control**: Gates socket access, container inspection, and mutating operations through Starkite's capability ladder (`containers.connect`, `containers.read`, `containers.write`, `containers.manage`).
 
 ---
 
@@ -58,6 +76,10 @@ Because infrastructure operations run with elevated privileges, Starkite enforce
 
 To begin automating your infrastructure, explore these guides:
 
+* [Connecting to a daemon](containers-connect.md) — Configure daemon discovery, endpoint connections, and socket resolution.
+* [Container management](containers-management.md) — Create, run, inspect, stop, wait, remove, and stream logs from containers with dynamic port allocation.
+* [Executing commands](containers-exec.md) — Run commands inside containers and process exit codes, stdout, and stderr with ExecResult.
+* [Image management](containers-images.md) — Pull registry images, inspect local caches, and prune unreferenced resources.
 * [Connecting to a cluster](k8s-connect.md) — Configure cluster access, manage kubeconfig contexts, and resolve namespaces.
 * [Object representation](k8s-objects.md) — Understand how Starkite represents Kubernetes resources and handles access semantics.
 * [Managing workloads](k8s-workloads.md) — Deploy, scale, autoscale, and monitor container workloads.

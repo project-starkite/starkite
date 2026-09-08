@@ -276,13 +276,8 @@ def main():
     if client.socket != %q:
         fail("expected socket " + %q + ", got " + client.socket)
 
-    # Alias constructor: containers.client()
-    alias_client = containers.client(host=%q)
-    if not alias_client.ping():
-        fail("expected alias_client.ping() to return True")
-
 main()
-`, host, ep.String(), ep.String(), ep.Address, ep.Address, host)
+`, host, ep.String(), ep.String(), ep.Address, ep.Address)
 
 	rt, err := libkite.New(&libkite.Config{
 		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
@@ -302,7 +297,6 @@ func TestContainersPermissions(t *testing.T) {
 	starScript := `
 load("containers", "containers")
 client = containers.config(host="unix:///tmp/fake.sock")
-alias = containers.client(host="unix:///tmp/fake.sock")
 `
 	// 1. deny-all blocks containers.config()
 	rtDeny, err := libkite.New(&libkite.Config{
