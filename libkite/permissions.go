@@ -475,6 +475,7 @@ var allowLocalRules = append(append([]string{}, allowNetRules...),
 	"ai.generate",
 	"k8s.read", "k8s.write", "k8s.config",
 	"mcp.client", "mcp.server",
+	"containers.connect", "containers.read", "containers.write", "containers.manage",
 )
 
 // AllowFSPermissions returns the allow-fs profile.

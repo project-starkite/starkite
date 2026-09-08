@@ -7,6 +7,7 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/modules/base64"
 	"github.com/project-starkite/starkite/libkite/modules/concur"
+	"github.com/project-starkite/starkite/libkite/modules/containers"
 	"github.com/project-starkite/starkite/libkite/modules/csv"
 	fleetmod "github.com/project-starkite/starkite/libkite/modules/fleet"
 	fmtmod "github.com/project-starkite/starkite/libkite/modules/fmt"
@@ -72,6 +73,7 @@ func RegisterAll(r *libkite.Registry) {
 	r.Register(http.New())
 	r.Register(fleetmod.New())
 	r.Register(inventory.New())
+	r.Register(containers.New())
 }
 
 // NewDefaultRegistry creates a new registry with all built-in modules registered.
