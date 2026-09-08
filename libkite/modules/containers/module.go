@@ -14,9 +14,11 @@ const ModuleName libkite.ModuleName = "containers"
 
 // Module implements the containers standard library module.
 type Module struct {
-	once   sync.Once
-	module starlark.Value
-	config *libkite.ModuleConfig
+	once         sync.Once
+	module       starlark.Value
+	config       *libkite.ModuleConfig
+	mu           sync.Mutex
+	cachedClient *Client
 }
 
 func New() *Module {
@@ -32,16 +34,81 @@ func (m *Module) Description() string {
 func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error) {
 	m.once.Do(func() {
 		m.config = config
-		cfgBuiltin := starlark.NewBuiltin("containers.config", m.configConstructor)
-		m.module = libkite.NewTryModule(string(ModuleName), starlark.StringDict{
-			"config": cfgBuiltin,
-		})
+		members := starlark.StringDict{
+			"config": starlark.NewBuiltin("containers.config", m.configConstructor),
+			"run":    starlark.NewBuiltin("containers.run", m.shortcutRun),
+			"exec":   starlark.NewBuiltin("containers.exec", m.shortcutExec),
+			"stop":   starlark.NewBuiltin("containers.stop", m.shortcutStop),
+			"delete": starlark.NewBuiltin("containers.delete", m.shortcutDelete),
+			"remove": starlark.NewBuiltin("containers.remove", m.shortcutDelete),
+		}
+		m.module = libkite.NewTryModule(string(ModuleName), members)
 	})
 	return starlark.StringDict{string(ModuleName): m.module}, nil
 }
 
 func (m *Module) Aliases() starlark.StringDict { return nil }
 func (m *Module) FactoryMethod() string        { return "config" }
+
+func (m *Module) ensureDefaultClient(thread *starlark.Thread) (*Client, error) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.cachedClient != nil {
+		return m.cachedClient, nil
+	}
+
+	ep, err := DiscoverEndpoint("")
+	if err != nil {
+		return nil, fmt.Errorf("containers: %w", err)
+	}
+
+	if err := libkite.Check(thread, "containers", "connect", "default", ep.Address); err != nil {
+		return nil, err
+	}
+
+	eng, err := NewEngineClient(ep, 30*time.Second)
+	if err != nil {
+		return nil, fmt.Errorf("containers: %w", err)
+	}
+
+	m.cachedClient = &Client{
+		engine:     eng,
+		socketPath: ep.Address,
+	}
+	return m.cachedClient, nil
+}
+
+func (m *Module) shortcutRun(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.runFn(thread, fn, args, kwargs)
+}
+
+func (m *Module) shortcutExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.execFn(thread, fn, args, kwargs)
+}
+
+func (m *Module) shortcutStop(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.stopFn(thread, fn, args, kwargs)
+}
+
+func (m *Module) shortcutDelete(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.deleteFn(thread, fn, args, kwargs)
+}
 
 // configConstructor creates a new containers.Client instance.
 // Signature: containers.config(host=None, timeout="30s")

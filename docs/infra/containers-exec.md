@@ -10,27 +10,42 @@ Starkite allows executing commands directly inside running containers without SS
 
 ## In-Container Execution (`exec`)
 
-Use `container.exec()` to dispatch a process inside an already running container:
+Use `client.exec()` to dispatch a process inside an already running container. The first argument accepts either a container `AttrDict` or a string container ID/name:
 
 ```python
 def main():
     client = containers.config()
     c = client.run("alpine:latest", command=["sleep", "300"], detach=True)
-    defer(lambda: c.remove(force=True))
+    defer(lambda: client.delete(c, force=True))
 
-    # Run command inside container
-    res = c.exec(["echo", "Hello from Starkite"])
+    # Run command inside container passing AttrDict
+    res = client.exec(c, ["echo", "Hello from Starkite"])
     print("Exit code:", res.exit_code)
     print("Stdout:", res.stdout.strip())
     print("Success:", res.ok)
+
+    # Or pass container name/ID string directly
+    client.exec("alpine", ["uptime"])
+```
+
+### Module-Scope Shortcut (`containers.exec`)
+
+For quick single-command execution using the ambient default daemon without instantiating `containers.config()`, use the module-scope shortcut:
+
+```python
+def main():
+    # Dispatch directly using ambient socket discovery
+    res = containers.exec("app-db", ["uptime"])
+    print(res.stdout)
 ```
 
 ### Execution Parameters
 
-`container.exec(command, env=None, user=None, workdir=None)`:
+`client.exec(target, command, env=None, user=None, workdir=None)`:
 
 | Parameter | Type | Default | Description |
 |:---|:---|:---|:---|
+| `target` | `AttrDict` \| `dict` \| `str` | *Required* | Target container instance or string name/ID. |
 | `command` | `str` \| `list[str]` | *Required* | Command and arguments to execute. |
 | `env` | `dict[str, str]` | `None` | Environment variables for the process execution (`{"KEY": "VAL"}`). |
 | `user` | `str` | `""` | User or UID to run as (e.g., `"root"`, `"1000"`). |
@@ -40,7 +55,7 @@ def main():
 
 ## Processing Execution Results (`ExecResult`)
 
-The `container.exec()` method returns an `ExecResult` object exposing the following attributes:
+The `exec()` method returns an `ExecResult` object exposing the following attributes:
 
 * **`.exit_code`** (*int*): The process termination exit code (`0` for clean exit).
 * **`.stdout`** (*str*): The standard output text captured from the process.
@@ -50,8 +65,8 @@ The `container.exec()` method returns an `ExecResult` object exposing the follow
 `ExecResult` evaluates directly to truthy in conditional checks when `ok` is `True`:
 
 ```python
-def check_service(c):
-    res = c.exec(["pg_isready", "-U", "postgres"])
+def check_service(client, c):
+    res = client.exec(c, ["pg_isready", "-U", "postgres"])
     if res:
         print("Database service is ready")
     else:
@@ -65,9 +80,10 @@ def check_service(c):
 You can customize process execution settings without modifying container configurations:
 
 ```python
-def run_build(c):
+def run_build(client, c):
     # Execute build script in a custom directory with specific environment variables
-    res = c.exec(
+    res = client.exec(
+        c,
         command = ["make", "build"],
         workdir = "/workspace/app",
         env = {
@@ -87,7 +103,7 @@ def run_build(c):
 
 ## Practical Recipe: Database Readiness and Schema Migration
 
-This recipe starts a database container and uses `c.exec()` to poll for readiness, initialize a table schema, and verify data directly inside the container:
+This recipe starts a database container and uses `client.exec()` to poll for readiness, initialize a table schema, and verify data directly inside the container:
 
 ```python
 def main():
@@ -97,29 +113,29 @@ def main():
         env = {"POSTGRES_PASSWORD": "secretpassword", "POSTGRES_DB": "appdb"},
         detach = True,
     )
-    defer(lambda: pg.remove(force=True))
+    defer(lambda: client.delete(pg, force=True))
 
     # Poll until postgres process inside container is accepting connections
     print("Waiting for PostgreSQL ready status...")
     retry.with_backoff(
-        lambda: pg.exec(["pg_isready", "-U", "postgres", "-d", "appdb"]),
+        lambda: client.exec(pg, ["pg_isready", "-U", "postgres", "-d", "appdb"]),
         attempts = 10,
         initial = "500ms",
     )
 
     # Execute schema creation inside container using psql
     create_sql = "CREATE TABLE users (id SERIAL PRIMARY KEY, username VARCHAR(50));"
-    init_res = pg.exec(["psql", "-U", "postgres", "-d", "appdb", "-c", create_sql])
+    init_res = client.exec(pg, ["psql", "-U", "postgres", "-d", "appdb", "-c", create_sql])
     if not init_res:
         fail("Schema creation failed: " + init_res.stderr)
     print("Schema initialized successfully.")
 
     # Insert test record
     insert_sql = "INSERT INTO users (username) VALUES ('alice');"
-    pg.exec(["psql", "-U", "postgres", "-d", "appdb", "-c", insert_sql])
+    client.exec(pg, ["psql", "-U", "postgres", "-d", "appdb", "-c", insert_sql])
 
     # Query verification
-    query_res = pg.exec(["psql", "-U", "postgres", "-d", "appdb", "-t", "-c", "SELECT count(*) FROM users;"])
+    query_res = client.exec(pg, ["psql", "-U", "postgres", "-d", "appdb", "-t", "-c", "SELECT count(*) FROM users;"])
     print("User count verified:", query_res.stdout.strip())
 ```
 

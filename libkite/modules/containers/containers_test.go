@@ -373,8 +373,8 @@ load("containers", "containers")
 def main():
     c = containers.config(host=%q)
     box = c.create(image="alpine")
-    box.start()
-    box.remove(force=True)
+    c.start(box)
+    c.delete(box, force=True)
 
 main()
 `, host)
@@ -669,34 +669,34 @@ def main():
     if box.status != "created":
         fail("expected created, got " + box.status)
 
-    # 2. box.start()
-    box.start()
+    # 2. client.start()
+    client.start(box)
     if box.status != "running":
         fail("expected running, got " + box.status)
 
-    # 3. box.port()
-    port = box.port("5432/tcp")
+    # 3. client.port()
+    port = client.port(box, "5432/tcp")
     if port != 32769:
         fail("expected port 32769, got " + str(port))
 
-    # 4. box.inspect()
-    info = box.inspect()
+    # 4. client.inspect()
+    info = client.inspect(box)
     if info["Id"] != %q:
         fail("inspect returned wrong id")
 
-    # 5. box.restart()
-    box.restart(timeout=5)
+    # 5. client.restart()
+    client.restart(box, timeout=5)
 
-    # 6. box.stop()
-    box.stop(timeout=5)
+    # 6. client.stop()
+    client.stop(box, timeout=5)
 
-    # 7. box.wait()
-    exit_code = box.wait()
+    # 7. client.wait()
+    exit_code = client.wait(box)
     if exit_code != 0:
         fail("expected exit_code 0, got " + str(exit_code))
 
-    # 8. box.remove()
-    box.remove(force=True)
+    # 8. client.delete() / client.remove()
+    client.delete(box, force=True)
 
     # 9. client.run()
     runner = client.run(image="postgres:16-alpine", name="starlark-test", detach=True)
@@ -897,7 +897,7 @@ def main():
     box = client.get(%q)
 
     # 1. Exec
-    res = box.exec(["echo", "hello"], env={"MY_VAR": "test"})
+    res = client.exec(box, ["echo", "hello"], env={"MY_VAR": "test"})
     if not res.ok:
         fail("expected res.ok == True")
     if res.exit_code != 0:
@@ -908,7 +908,7 @@ def main():
         fail("expected stderr, got " + res.stderr)
 
     # 2. Logs
-    logs = box.logs()
+    logs = client.logs(box)
     content = logs.text()
     if content != "log line 1\nlog err 2\n":
         fail("expected logs text, got " + content)
@@ -1352,5 +1352,197 @@ func TestEngineClient_TCP(t *testing.T) {
 	v, err := client.Version(context.Background())
 	if err != nil || v["Version"] != "27.1.1" {
 		t.Fatalf("Version over TCP = %v, %v; want 27.1.1", v, err)
+	}
+}
+
+func TestStarlark_ModuleBasedHybrid_AttrDictSerialization(t *testing.T) {
+	mux := http.NewServeMux()
+	containerID := "c_attrdict_1234567890ab"
+
+	mux.HandleFunc("/_ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	})
+	mux.HandleFunc("/v1.45/containers/create", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"Id": containerID})
+	})
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/start", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/stop", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/v1.45/containers/"+containerID, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/json", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"Id":   containerID,
+			"Name": "/app-db",
+			"Config": map[string]any{
+				"Image": "postgres:16-alpine",
+			},
+			"State": map[string]any{
+				"Status":  "running",
+				"Running": true,
+			},
+			"NetworkSettings": map[string]any{
+				"Ports": map[string]any{
+					"5432/tcp": []map[string]any{
+						{"HostIp": "0.0.0.0", "HostPort": "32768"},
+					},
+				},
+			},
+		})
+	})
+
+	host, cleanup := setupMockDaemon(t, mux)
+	defer cleanup()
+
+	starScript := fmt.Sprintf(`
+load("containers", "containers")
+load("json", "json")
+load("yaml", "yaml")
+
+def main():
+    dockr = containers.config(host=%q)
+
+    # 1. dockr.run() returns AttrDict
+    box = dockr.run(
+        image = "postgres:16-alpine",
+        name = "app-db",
+        ports = {"5432/tcp": 0},
+        detach = True,
+    )
+    if type(box) != "AttrDict":
+        fail("expected AttrDict, got " + type(box))
+    if box.id != %q:
+        fail("expected id " + %q + ", got " + box.id)
+    if box.name != "app-db":
+        fail("expected name app-db, got " + box.name)
+    if box.status != "running":
+        fail("expected status running, got " + box.status)
+
+    # 2. Native serialization without method errors
+    json_str = json.encode(box)
+    decoded = json.decode(json_str)
+    if decoded["id"] != %q:
+        fail("json decode failed to preserve id")
+    if decoded["name"] != "app-db":
+        fail("json decode failed to preserve name")
+
+    yaml_str = yaml.encode(box)
+    if "app-db" not in yaml_str:
+        fail("yaml encode missing app-db")
+
+    # 3. Verbs accept AttrDict directly
+    dockr.stop(box, timeout=5)
+    if box.status != "exited":
+        fail("expected status exited after stop")
+
+    # 4. Verbs accept string identifier
+    dockr.start(%q)
+    dockr.stop(%q, timeout=2)
+    dockr.delete(%q, force=True)
+
+main()
+`, host, containerID, containerID, containerID, containerID, containerID, containerID)
+
+	rt, err := libkite.New(&libkite.Config{
+		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: libkite.AllowAllPermissions(),
+	})
+	if err != nil {
+		t.Fatalf("libkite.New: %v", err)
+	}
+	defer rt.Close()
+
+	if err := rt.Execute(context.Background(), starScript); err != nil {
+		t.Fatalf("Starlark execution failed: %v", err)
+	}
+}
+
+func TestStarlark_ModuleShortcuts(t *testing.T) {
+	mux := http.NewServeMux()
+	containerID := "c_shortcut_9876543210ab"
+	execID := "exec_shortcut_123"
+
+	mux.HandleFunc("/_ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	})
+	mux.HandleFunc("/v1.45/containers/create", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"Id": containerID})
+	})
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/start", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/stop", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/v1.45/containers/"+containerID, func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/exec", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(map[string]any{"Id": execID})
+	})
+	mux.HandleFunc("/v1.45/exec/"+execID+"/start", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(makeDockerFrame(1, []byte("shortcut output\n")))
+	})
+	mux.HandleFunc("/v1.45/exec/"+execID+"/json", func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"Running":  false,
+			"ExitCode": 0,
+		})
+	})
+
+	host, cleanup := setupMockDaemon(t, mux)
+	defer cleanup()
+
+	t.Setenv("DOCKER_HOST", host)
+
+	starScript := fmt.Sprintf(`
+load("containers", "containers")
+
+def main():
+    # 1. containers.run() module shortcut
+    box = containers.run("alpine:latest", name="shortcut-app", detach=True)
+    if type(box) != "AttrDict":
+        fail("expected AttrDict from containers.run, got " + type(box))
+    if box.id != %q:
+        fail("expected id " + %q + ", got " + box.id)
+
+    # 2. containers.exec() module shortcut
+    res = containers.exec(box, ["echo", "hello"])
+    if not res.ok:
+        fail("expected res.ok == True")
+    if "shortcut output" not in res.stdout:
+        fail("expected stdout with shortcut output")
+
+    # 3. containers.stop() module shortcut with string target
+    containers.stop(%q, timeout=2)
+
+    # 4. containers.delete() module shortcut with AttrDict target
+    containers.delete(box, force=True)
+
+main()
+`, containerID, containerID, containerID)
+
+	rt, err := libkite.New(&libkite.Config{
+		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: libkite.AllowAllPermissions(),
+	})
+	if err != nil {
+		t.Fatalf("libkite.New: %v", err)
+	}
+	defer rt.Close()
+
+	if err := rt.Execute(context.Background(), starScript); err != nil {
+		t.Fatalf("Starlark execution failed: %v", err)
 	}
 }

@@ -1,26 +1,26 @@
 ---
 title: "Container management"
-description: "Create, run, inspect, stop, restart, wait, remove, and stream logs from containers with dynamic port allocation"
+description: "Create, run, inspect, stop, restart, wait, delete, and stream logs from containers using AttrDict representations and client dispatchers"
 weight: 3
 ---
 
 # Container management
 
-Once connected to a container daemon, the `containers` module provides Starlark APIs to manage container lifecycles, configure resource constraints, inspect state, and stream logs.
+Once connected to a container daemon, the `containers` module provides Starlark APIs to manage container lifecycles, configure resource constraints, inspect state, and stream logs using a module-based hybrid pattern aligned with `k8s` and `ssh`.
 
 ## Creating and Running Containers
 
-The `Client` object provides two methods for container provisioning:
+All container provisioning methods anchor on a configured client instance (`containers.config()`) and return a pure-data dictionary with attribute dot-access (`AttrDict`):
 
-* `client.run(...)`: Atomically creates and starts the container.
-* `client.create(...)`: Allocates container resources without starting it, returning a `Container` handle ready for `.start()`.
+* `client.run(...)`: Atomically creates and starts the container, returning its `AttrDict`.
+* `client.create(...)`: Allocates container resources without starting it, returning its `AttrDict` in `"created"` status.
 
 ```python
 def main():
-    client = containers.config()
+    dockr = containers.config()
 
     # Create and start a Redis container
-    redis = client.run(
+    box = dockr.run(
         image = "redis:7-alpine",
         name = "app-cache",
         ports = {"6379/tcp": 0},      # Allocate dynamic ephemeral host port
@@ -28,9 +28,11 @@ def main():
         detach = True,                # Run in background
     )
 
-    print("Container ID:", redis.id[:12])
-    print("Container Name:", redis.name)
-    print("Container Status:", redis.status)
+    # Dot-access or dictionary indexing
+    print("Container ID:", box.id[:12])
+    print("Container Name:", box.name)
+    print("Container Status:", box.status)
+    print("Container Ports:", box.ports)
 ```
 
 ### Provisioning Parameters
@@ -53,33 +55,75 @@ def main():
 
 ## State Control Operations
 
-The `Container` handle returned by `run()`, `create()`, or `get()` provides control methods:
+All lifecycle verbs are methods on the configured client `dockr`. Each verb accepts **either** the container `AttrDict` directly or a string container name/ID:
 
 ```python
-def manage_state(c):
+def manage_state(dockr, box):
     # Stop container (sends SIGTERM, then SIGKILL after timeout seconds)
-    c.stop(timeout = 10)
+    dockr.stop(box, timeout = 10)
 
     # Start stopped container
-    c.start()
+    dockr.start(box)
 
     # Restart container
-    c.restart(timeout = 5)
+    dockr.restart(box, timeout = 5)
 
     # Block until container stops and retrieve exit code
-    exit_code = c.wait(condition = "not-running")
+    exit_code = dockr.wait(box, condition = "not-running")
     print("Process exited with code:", exit_code)
 
-    # Remove container from daemon
-    c.remove(force = True, volumes = True)
+    # Delete container from daemon (alias: dockr.remove)
+    dockr.delete(box, force = True, volumes = True)
+
+    # String identifiers are supported interchangeably:
+    dockr.start("app-cache")
+    dockr.stop("app-cache", timeout = 5)
+    dockr.delete("app-cache", force = True)
 ```
 
-### Container Properties
+### Container `AttrDict` Properties
 
 * `.id` (*str*): Unique 64-character container SHA ID.
 * `.name` (*str*): Assigned container name (without leading `/`).
 * `.image` (*str*): Image reference used to run the container.
-* `.status` (*str*): Current status string (`"running"`, `"created"`, `"exited"`, etc.).
+* `.status` (*str*): Current status string (`"running"`, `"created"`, `"exited"`, `"removed"`).
+* `.ports` (*dict*): Dictionary of port bindings.
+
+### Zero-Friction Serialization
+
+Because `box` is a pure dictionary with **zero attached Go methods or network transports**, it serializes directly to JSON and YAML:
+
+```python
+# Export container description to disk
+json_manifest = json.encode(box)
+yaml_manifest = yaml.encode(box)
+fs.path("container.json").write(json_manifest)
+```
+
+---
+
+## Selective Module-Scope Shortcuts
+
+For quick one-liners using the ambient default daemon without calling `containers.config()`, the `containers` module exports selective shortcuts:
+
+* `containers.run(image, ...)`: Creates and starts a container using default daemon socket discovery.
+* `containers.exec(target, command, ...)`: Dispatches a command inside a running container.
+* `containers.stop(target, timeout=10)`: Stops a container.
+* `containers.delete(target, force=False)` / `containers.remove(...)`: Deletes a container.
+
+```python
+def main():
+    # Quick one-liner run
+    box = containers.run("alpine:latest", command=["sleep", "60"], detach=True)
+
+    # Command execution
+    res = containers.exec(box, ["echo", "hello"])
+    print(res.stdout)
+
+    # Quick shutdown and cleanup
+    containers.stop(box, timeout=2)
+    containers.delete(box, force=True)
+```
 
 ---
 
@@ -89,27 +133,27 @@ When running integration test fixtures or parallel CI runners, hardcoding host p
 
 ```python
 def main():
-    client = containers.config()
+    dockr = containers.config()
 
-    pg = client.run(
+    pg = dockr.run(
         image = "postgres:16-alpine",
         env = {"POSTGRES_PASSWORD": "secretpassword"},
         ports = {"5432/tcp": 0},  # Request ephemeral host port
         detach = True,
     )
 
-    # Resolve dynamic host port
-    host_port = pg.port("5432/tcp")
+    # Resolve dynamic host port via client
+    host_port = dockr.port(pg, "5432/tcp")
     print("PostgreSQL allocated host port:", host_port)
 
     # Connect to database using resolved port
     dsn = "postgres://postgres:secretpassword@localhost:%d/postgres?sslmode=disable" % host_port
     print("DSN:", dsn)
 
-    pg.remove(force = True)
+    dockr.delete(pg, force = True)
 ```
 
-`container.port(port_spec)` accepts `"5432/tcp"` or `"5432"` and returns the resolved host port as an integer.
+`dockr.port(target, port_spec)` accepts `"5432/tcp"`, `"5432"`, or `5432` and returns the resolved host port as an integer.
 
 ---
 
@@ -117,36 +161,36 @@ def main():
 
 ### Listing Containers
 
-* `client.list(all=False)`: Returns a list of `Container` handles for running containers. Pass `all=True` to include stopped and created containers.
+* `dockr.list(all=False)`: Returns a list of `AttrDict` objects for running containers. Pass `all=True` to include stopped and created containers.
 
 ```python
 def main():
-    client = containers.config()
+    dockr = containers.config()
 
-    for c in client.list(all=True):
+    for c in dockr.list(all=True):
         print("Container:", c.id[:12], c.name, c.status)
 ```
 
 ### Retrieving and Inspecting
 
-* `client.get(id_or_name)`: Retrieves an existing container handle by ID or name.
-* `container.inspect()`: Returns the complete raw daemon inspection dictionary, including `State`, `Config`, `NetworkSettings`, and `HostConfig`.
+* `dockr.get(id_or_name)`: Retrieves an existing container `AttrDict` by ID or name.
+* `dockr.inspect(target)`: Returns the complete raw daemon inspection `AttrDict`, including `State`, `Config`, `NetworkSettings`, and `HostConfig`.
 
 ```python
 def main():
-    client = containers.config()
-    c = client.get("app-cache")
+    dockr = containers.config()
+    c = dockr.get("app-cache")
 
-    info = c.inspect()
-    print("Running:", info["State"]["Running"])
-    print("IP Address:", info["NetworkSettings"]["IPAddress"])
+    info = dockr.inspect(c)
+    print("Running:", info.State.Running)
+    print("IP Address:", info.NetworkSettings.IPAddress)
 ```
 
 ---
 
 ## Streaming Container Logs
 
-The `container.logs()` method streams log output from a container, returning an `io.reader` compatible with Starkite's `io` standard library module.
+The `dockr.logs()` method streams log output from a container, returning an `io.reader` compatible with Starkite's `io` standard library module.
 
 ### Automatic Multiplexing Demux
 
@@ -156,25 +200,26 @@ Docker and Podman multiplex stdout and stderr streams over a single connection u
 [ STREAM_TYPE (1 byte) ] [ 0x00 0x00 0x00 (3 bytes) ] [ FRAME_SIZE (4 bytes uint32) ]
 ```
 
-Starkite's socket transport automatically decodes and strips these binary headers in real time, delivering a clean, readable text stream to your script without raw binary frame corruption.
+Starkite's socket transport automatically decodes and strips these binary headers in real time, delivering a clean, readable text stream without binary header corruption.
 
 ```python
 def main():
-    client = containers.config()
-    c = client.run("alpine:latest", command=["sh", "-c", "echo 'starting'; sleep 1; echo 'done'"])
-    defer(lambda: c.remove(force=True))
+    dockr = containers.config()
+    c = dockr.run("alpine:latest", command=["sh", "-c", "echo 'starting'; sleep 1; echo 'done'"])
+    defer(lambda: dockr.delete(c, force=True))
 
     # Read container log stream
-    reader = c.logs(stdout=True, stderr=True, tail="50")
+    reader = dockr.logs(c, stdout=True, stderr=True, tail="50")
     print(reader.read_all())
 ```
 
 ### Log Stream Parameters
 
-`container.logs(follow=False, tail="all", stdout=True, stderr=True)`:
+`dockr.logs(target, follow=False, tail="all", stdout=True, stderr=True)`:
 
 | Parameter | Type | Default | Description |
 |:---|:---|:---|:---|
+| `target` | `AttrDict` \| `dict` \| `str` | *Required* | Target container instance or string name/ID. |
 | `follow` | `bool` | `False` | Stream logs continuously as they arrive. |
 | `tail` | `str` | `"all"` | Number of log lines to retrieve from the end (e.g., `"100"`, `"all"`). |
 | `stdout` | `bool` | `True` | Include standard output in stream. |
@@ -189,15 +234,15 @@ def main():
 This recipe starts an ephemeral PostgreSQL container on a dynamic host port, waits for readiness using `retry.with_backoff`, executes database queries, and guarantees cleanup with `defer()`:
 
 ```python
-def setup_test_db(client):
-    pg = client.run(
+def setup_test_db(dockr):
+    pg = dockr.run(
         image = "postgres:16-alpine",
         env = {"POSTGRES_PASSWORD": "secretpassword", "POSTGRES_DB": "testdb"},
         ports = {"5432/tcp": 0},
         detach = True,
     )
 
-    host_port = pg.port("5432/tcp")
+    host_port = dockr.port(pg, "5432/tcp")
     dsn = "postgres://postgres:secretpassword@localhost:%d/testdb?sslmode=disable" % host_port
 
     # Wait for database readiness
@@ -210,9 +255,9 @@ def setup_test_db(client):
     return pg, dsn
 
 def main():
-    client = containers.config()
-    pg, dsn = setup_test_db(client)
-    defer(lambda: pg.remove(force=True))
+    dockr = containers.config()
+    pg, dsn = setup_test_db(dockr)
+    defer(lambda: dockr.delete(pg, force=True))
 
     db = sql.open("postgres", dsn)
     db.exec("CREATE TABLE health_check (id SERIAL PRIMARY KEY, service TEXT)")
@@ -233,13 +278,13 @@ This recipe iterates over all containers on the host, identifies containers that
 
 ```python
 def main():
-    client = containers.config()
+    dockr = containers.config()
 
-    containers_list = client.list(all=True)
+    containers_list = dockr.list(all=True)
     print("Inspecting", len(containers_list), "containers...")
 
     for c in containers_list:
-        data = c.inspect()
+        data = dockr.inspect(c)
         state = data.get("State", {})
         status = state.get("Status", "unknown")
         exit_code = state.get("ExitCode", 0)
@@ -247,7 +292,7 @@ def main():
         if status == "exited" and exit_code != 0:
             print("Container '%s' failed with exit code %d" % (c.name, exit_code))
             print("--- Last 20 log lines ---")
-            log_reader = c.logs(tail="20", stdout=True, stderr=True)
+            log_reader = dockr.logs(c, tail="20", stdout=True, stderr=True)
             print(log_reader.read_all())
             print("-------------------------")
 ```
@@ -265,7 +310,7 @@ Container management operations require the following capabilities:
 
 * `containers.read`: `list()`, `get()`, `inspect()`, `port()`, `logs()`.
 * `containers.write`: `create()`, `run()`, `start()`, `stop()`, `restart()`, `wait()`.
-* `containers.manage`: `remove()`.
+* `containers.manage`: `delete()` / `remove()`.
 
 All of these capabilities are included in the `allow-local` profile:
 

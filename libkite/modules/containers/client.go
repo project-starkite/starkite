@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/project-starkite/starkite/libkite"
+	iomods "github.com/project-starkite/starkite/libkite/modules/io"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 )
@@ -31,7 +32,11 @@ func (c *Client) Truth() starlark.Bool  { return true }
 func (c *Client) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: containers.Client") }
 
 func (c *Client) AttrNames() []string {
-	return []string{"create", "endpoint", "get", "images", "list", "ping", "prune", "pull", "run", "socket", "version"}
+	return []string{
+		"create", "delete", "endpoint", "exec", "get", "images", "inspect",
+		"list", "logs", "ping", "port", "prune", "pull", "remove", "restart",
+		"run", "socket", "start", "stop", "version", "wait",
+	}
 }
 
 func (c *Client) Attr(name string) (starlark.Value, error) {
@@ -63,6 +68,26 @@ func (c *Client) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin("Client.get", c.getFn), nil
 	case "list":
 		return starlark.NewBuiltin("Client.list", c.listFn), nil
+	case "start":
+		return starlark.NewBuiltin("Client.start", c.startFn), nil
+	case "stop":
+		return starlark.NewBuiltin("Client.stop", c.stopFn), nil
+	case "restart":
+		return starlark.NewBuiltin("Client.restart", c.restartFn), nil
+	case "delete":
+		return starlark.NewBuiltin("Client.delete", c.deleteFn), nil
+	case "remove":
+		return starlark.NewBuiltin("Client.remove", c.deleteFn), nil
+	case "wait":
+		return starlark.NewBuiltin("Client.wait", c.waitFn), nil
+	case "inspect":
+		return starlark.NewBuiltin("Client.inspect", c.inspectFn), nil
+	case "port":
+		return starlark.NewBuiltin("Client.port", c.portFn), nil
+	case "exec":
+		return starlark.NewBuiltin("Client.exec", c.execFn), nil
+	case "logs":
+		return starlark.NewBuiltin("Client.logs", c.logsFn), nil
 	case "images":
 		return starlark.NewBuiltin("Client.images", c.imagesFn), nil
 	case "pull":
@@ -111,7 +136,7 @@ func (c *Client) versionFn(thread *starlark.Thread, fn *starlark.Builtin, args s
 	return startype.Go[any](vData).ToStarlarkValue()
 }
 
-// createFn implements client.create(image, name="", command=None, ports=None, volumes=None, env=None, network=None, cpu=None, memory=None, auto_remove=False) -> Container
+// createFn implements client.create(image, name="", command=None, ports=None, volumes=None, env=None, network=None, cpu=None, memory=None, auto_remove=False) -> AttrDict
 func (c *Client) createFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
 		image      string
@@ -156,10 +181,10 @@ func (c *Client) createFn(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, err
 	}
 
-	return NewContainer(c.engine, resp.ID, name, image, "created"), nil
+	return newContainerAttrDict(resp.ID, name, image, "created", nil), nil
 }
 
-// runFn implements client.run(image, name="", command=None, ports=None, volumes=None, env=None, detach=True, network=None, cpu=None, memory=None, auto_remove=False) -> Container
+// runFn implements client.run(image, name="", command=None, ports=None, volumes=None, env=None, detach=True, network=None, cpu=None, memory=None, auto_remove=False) -> AttrDict
 func (c *Client) runFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
 		image      string
@@ -206,29 +231,43 @@ func (c *Client) runFn(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		return nil, err
 	}
 
-	container := NewContainer(c.engine, resp.ID, name, image, "created")
-
 	if err := c.engine.StartContainer(ctx, resp.ID); err != nil {
 		return nil, fmt.Errorf("containers: failed to start container %s: %w", resp.ID, err)
 	}
-	container.status = "running"
+	status := "running"
 
 	if !detach {
 		exitCode, err := c.engine.WaitContainer(ctx, resp.ID, "not-running")
 		if err != nil {
-			return container, err
+			return nil, err
 		}
 		if exitCode == 0 {
-			container.status = "exited"
+			status = "exited"
 		} else {
-			container.status = fmt.Sprintf("exited (%d)", exitCode)
+			status = fmt.Sprintf("exited (%d)", exitCode)
 		}
 	}
 
-	return container, nil
+	var ports map[string]any
+	inspectData, err := c.engine.InspectContainer(ctx, resp.ID)
+	if err == nil {
+		if netSettings, ok := inspectData["NetworkSettings"].(map[string]any); ok {
+			ports, _ = netSettings["Ports"].(map[string]any)
+		}
+		if state, ok := inspectData["State"].(map[string]any); ok {
+			if st, ok := state["Status"].(string); ok && st != "" {
+				status = st
+			}
+		}
+		if n, ok := inspectData["Name"].(string); ok && n != "" {
+			name = strings.TrimPrefix(n, "/")
+		}
+	}
+
+	return newContainerAttrDict(resp.ID, name, image, status, ports), nil
 }
 
-// getFn implements client.get(id) -> Container
+// getFn implements client.get(id) -> AttrDict
 func (c *Client) getFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var idOrName string
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "id", &idOrName); err != nil {
@@ -255,11 +294,15 @@ func (c *Client) getFn(thread *starlark.Thread, fn *starlark.Builtin, args starl
 	if state, ok := inspectData["State"].(map[string]any); ok {
 		status, _ = state["Status"].(string)
 	}
+	var ports map[string]any
+	if netSettings, ok := inspectData["NetworkSettings"].(map[string]any); ok {
+		ports, _ = netSettings["Ports"].(map[string]any)
+	}
 
-	return NewContainer(c.engine, id, name, image, status), nil
+	return newContainerAttrDict(id, name, image, status, ports), nil
 }
 
-// listFn implements client.list(all=False) -> list[Container]
+// listFn implements client.list(all=False) -> list[AttrDict]
 func (c *Client) listFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var all bool
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "all?", &all); err != nil {
@@ -282,10 +325,395 @@ func (c *Client) listFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 		if len(s.Names) > 0 {
 			name = s.Names[0]
 		}
-		containersList = append(containersList, NewContainer(c.engine, s.ID, name, s.Image, s.State))
+		containersList = append(containersList, newContainerAttrDict(s.ID, name, s.Image, s.State, nil))
 	}
 
 	return starlark.NewList(containersList), nil
+}
+
+// startFn implements client.start(target) -> None
+func (c *Client) startFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var target starlark.Value
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "target", &target); err != nil {
+		return nil, err
+	}
+
+	id, err := extractTargetID(target)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "write", "start", id); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	if err := c.engine.StartContainer(ctx, id); err != nil {
+		return nil, err
+	}
+
+	if ad, ok := target.(*AttrDict); ok {
+		ad.mu.Lock()
+		ad.data["status"] = "running"
+		ad.data["Status"] = "running"
+		ad.mu.Unlock()
+	}
+
+	return starlark.None, nil
+}
+
+// stopFn implements client.stop(target, timeout=10) -> None
+func (c *Client) stopFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var target starlark.Value
+	var timeout = 10
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "target", &target, "timeout?", &timeout); err != nil {
+		return nil, err
+	}
+
+	id, err := extractTargetID(target)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "write", "stop", id); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	if err := c.engine.StopContainer(ctx, id, timeout); err != nil {
+		return nil, err
+	}
+
+	if ad, ok := target.(*AttrDict); ok {
+		ad.mu.Lock()
+		ad.data["status"] = "exited"
+		ad.data["Status"] = "exited"
+		ad.mu.Unlock()
+	}
+
+	return starlark.None, nil
+}
+
+// restartFn implements client.restart(target, timeout=10) -> None
+func (c *Client) restartFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var target starlark.Value
+	var timeout = 10
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "target", &target, "timeout?", &timeout); err != nil {
+		return nil, err
+	}
+
+	id, err := extractTargetID(target)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "write", "restart", id); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	if err := c.engine.RestartContainer(ctx, id, timeout); err != nil {
+		return nil, err
+	}
+
+	if ad, ok := target.(*AttrDict); ok {
+		ad.mu.Lock()
+		ad.data["status"] = "running"
+		ad.data["Status"] = "running"
+		ad.mu.Unlock()
+	}
+
+	return starlark.None, nil
+}
+
+// deleteFn implements client.delete(target, force=False, volumes=False) -> None
+// Also aliased as client.remove(...)
+func (c *Client) deleteFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var target starlark.Value
+	var force bool
+	var volumes bool
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "target", &target, "force?", &force, "volumes?", &volumes); err != nil {
+		return nil, err
+	}
+
+	id, err := extractTargetID(target)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "manage", "remove", id); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	if err := c.engine.RemoveContainer(ctx, id, force, volumes); err != nil {
+		return nil, err
+	}
+
+	if ad, ok := target.(*AttrDict); ok {
+		ad.mu.Lock()
+		ad.data["status"] = "removed"
+		ad.data["Status"] = "removed"
+		ad.mu.Unlock()
+	}
+
+	return starlark.None, nil
+}
+
+// waitFn implements client.wait(target, condition="not-running") -> int
+func (c *Client) waitFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var target starlark.Value
+	var condition = "not-running"
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "target", &target, "condition?", &condition); err != nil {
+		return nil, err
+	}
+
+	id, err := extractTargetID(target)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "read", "wait", id); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	code, err := c.engine.WaitContainer(ctx, id, condition)
+	if err != nil {
+		return starlark.MakeInt(code), err
+	}
+	return starlark.MakeInt(code), nil
+}
+
+// inspectFn implements client.inspect(target) -> AttrDict
+func (c *Client) inspectFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var target starlark.Value
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "target", &target); err != nil {
+		return nil, err
+	}
+
+	id, err := extractTargetID(target)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "read", "inspect", id); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	inspectData, err := c.engine.InspectContainer(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	if ad, ok := target.(*AttrDict); ok {
+		if state, ok := inspectData["State"].(map[string]any); ok {
+			if status, ok := state["Status"].(string); ok {
+				ad.mu.Lock()
+				ad.data["status"] = status
+				ad.data["Status"] = status
+				ad.mu.Unlock()
+			}
+		}
+	}
+
+	return NewAttrDict(inspectData), nil
+}
+
+// portFn implements client.port(target, port) -> int
+func (c *Client) portFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var target starlark.Value
+	var portVal starlark.Value
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "target", &target, "port", &portVal); err != nil {
+		return nil, err
+	}
+
+	id, err := extractTargetID(target)
+	if err != nil {
+		return nil, err
+	}
+
+	var portSpec string
+	switch pv := portVal.(type) {
+	case starlark.Int:
+		portSpec = pv.String()
+	case starlark.String:
+		portSpec = string(pv)
+	default:
+		return nil, fmt.Errorf("containers: port must be an int or string, got %s", portVal.Type())
+	}
+
+	if err := libkite.Check(thread, "containers", "read", "port", id); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	inspectData, err := c.engine.InspectContainer(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+
+	normKey := NormalizePortKey(portSpec)
+	netSettings, _ := inspectData["NetworkSettings"].(map[string]any)
+	if netSettings == nil {
+		return nil, fmt.Errorf("containers: no NetworkSettings found for container %s", id)
+	}
+	ports, _ := netSettings["Ports"].(map[string]any)
+	if ports == nil {
+		return nil, fmt.Errorf("containers: no Ports found for container %s", id)
+	}
+
+	rawBindings, ok := ports[normKey]
+	if !ok || rawBindings == nil {
+		return nil, fmt.Errorf("containers: port %q not exposed or bound on container %s", portSpec, id)
+	}
+
+	bindings, ok := rawBindings.([]any)
+	if !ok || len(bindings) == 0 {
+		return nil, fmt.Errorf("containers: port %q not bound on container %s", portSpec, id)
+	}
+
+	bindingMap, ok := bindings[0].(map[string]any)
+	if !ok {
+		return nil, fmt.Errorf("containers: unexpected binding format for port %q", portSpec)
+	}
+
+	hostPortStr, _ := bindingMap["HostPort"].(string)
+	hostPort, err := strconv.Atoi(hostPortStr)
+	if err != nil {
+		return nil, fmt.Errorf("containers: invalid host port %q: %w", hostPortStr, err)
+	}
+
+	return starlark.MakeInt(hostPort), nil
+}
+
+// execFn implements client.exec(target, command, env=None, user=None, workdir=None) -> ExecResult
+func (c *Client) execFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		target     starlark.Value
+		cmdVal     starlark.Value
+		envVal     starlark.Value
+		user       string
+		workingDir string
+	)
+
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+		"target", &target,
+		"command", &cmdVal,
+		"env?", &envVal,
+		"user?", &user,
+		"workdir?", &workingDir,
+	); err != nil {
+		return nil, err
+	}
+
+	id, err := extractTargetID(target)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "write", "exec", id); err != nil {
+		return nil, err
+	}
+
+	var cmd []string
+	switch v := cmdVal.(type) {
+	case starlark.String:
+		cmd = []string{string(v)}
+	case starlark.Indexable:
+		cmd = make([]string, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			s, ok := starlark.AsString(v.Index(i))
+			if !ok {
+				return nil, fmt.Errorf("containers: exec command element %d must be string, got %s", i, v.Index(i).Type())
+			}
+			cmd[i] = s
+		}
+	default:
+		return nil, fmt.Errorf("containers: exec command must be a string or list of strings, got %s", cmdVal.Type())
+	}
+
+	var env []string
+	if envVal != nil && envVal != starlark.None {
+		if envDict, ok := envVal.(*starlark.Dict); ok {
+			for _, item := range envDict.Items() {
+				k, ok1 := starlark.AsString(item[0])
+				v, ok2 := starlark.AsString(item[1])
+				if !ok1 || !ok2 {
+					return nil, fmt.Errorf("containers: exec env keys and values must be strings")
+				}
+				env = append(env, fmt.Sprintf("%s=%s", k, v))
+			}
+		} else if envAttr, ok := envVal.(*AttrDict); ok {
+			envAttr.mu.RLock()
+			for k, v := range envAttr.data {
+				env = append(env, fmt.Sprintf("%s=%v", k, v))
+			}
+			envAttr.mu.RUnlock()
+		} else {
+			return nil, fmt.Errorf("containers: exec env must be a dictionary, got %s", envVal.Type())
+		}
+	}
+
+	cfg := ExecConfig{
+		AttachStdout: true,
+		AttachStderr: true,
+		Cmd:          cmd,
+		Env:          env,
+		User:         user,
+		WorkingDir:   workingDir,
+	}
+
+	ctx := c.getContext(thread)
+	return c.engine.Exec(ctx, id, cfg)
+}
+
+// logsFn implements client.logs(target, follow=False, tail="all", stdout=True, stderr=True) -> io.reader
+func (c *Client) logsFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		target starlark.Value
+		follow bool
+		tail   = "all"
+		stdout = true
+		stderr = true
+	)
+
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+		"target", &target,
+		"follow?", &follow,
+		"tail?", &tail,
+		"stdout?", &stdout,
+		"stderr?", &stderr,
+	); err != nil {
+		return nil, err
+	}
+
+	id, err := extractTargetID(target)
+	if err != nil {
+		return nil, err
+	}
+
+	name := extractTargetName(target, id)
+
+	if err := libkite.Check(thread, "containers", "read", "logs", id); err != nil {
+		return nil, err
+	}
+
+	opts := LogsOptions{
+		Follow: follow,
+		Tail:   tail,
+		Stdout: stdout,
+		Stderr: stderr,
+	}
+
+	ctx := c.getContext(thread)
+	rc, err := c.engine.Logs(ctx, id, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return iomods.NewReaderWithCloser(rc, rc, fmt.Sprintf("%s.logs", name)), nil
 }
 
 // imagesFn implements client.images(all=False) -> list[dict]

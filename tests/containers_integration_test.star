@@ -17,7 +17,7 @@ def _safe_cleanup(client, name):
     containers_list = client.list(all=True)
     for cnt in containers_list:
         if cnt.name == name or cnt.name == "/" + name:
-            cnt.remove(force=True)
+            client.delete(cnt, force=True)
 
 # ============================================================================
 # Integration Tests
@@ -46,30 +46,30 @@ def test_integration_container_lifecycle():
         command = ["sleep", "30"],
         env = {"TEST_ENV": "active"},
     )
-    assert(type(cnt) == "containers.Container", "create should return containers.Container")
+    assert(type(cnt) == "AttrDict", "create should return AttrDict")
     assert(cnt.id != "", "container id should be populated")
     assert(cnt.name == name, "container name should match")
     assert(cnt.status == "created", "initial status should be created")
 
     # 2. Start
-    cnt.start()
+    client.start(cnt)
     assert(cnt.status == "running", "status should transition to running")
 
     # 3. Inspect
-    info = cnt.inspect()
-    assert(type(info) == "dict", "inspect should return a dict")
-    assert(info["State"]["Running"] == True, "container state should report running")
+    info = client.inspect(cnt)
+    assert(type(info) == "AttrDict", "inspect should return AttrDict")
+    assert(info.State.Running == True, "container state should report running")
 
     # 4. Stop
-    cnt.stop(timeout=2)
+    client.stop(cnt, timeout=2)
     assert(cnt.status == "exited", "status should transition to exited")
 
     # 5. Wait
-    exit_code = cnt.wait()
+    exit_code = client.wait(cnt)
     assert(type(exit_code) == "int", "wait should return integer exit code")
 
     # 6. Remove
-    cnt.remove(force=True)
+    client.delete(cnt, force=True)
     assert(cnt.status == "removed", "status should transition to removed")
 
 def test_integration_run_detached():
@@ -88,8 +88,8 @@ def test_integration_run_detached():
     assert(cnt.status == "running", "detached run should leave container running")
 
     # Clean up
-    cnt.stop(timeout=2)
-    cnt.remove(force=True)
+    client.stop(cnt, timeout=2)
+    client.delete(cnt, force=True)
 
 def test_integration_run_synchronous():
     """Verify client.run(..., detach=False) runs container to completion and waits."""
@@ -106,7 +106,7 @@ def test_integration_run_synchronous():
     assert(cnt.id != "", "container id should be populated")
 
     # Clean up
-    cnt.remove(force=True)
+    client.delete(cnt, force=True)
 
 def test_integration_list_and_get():
     """Verify container discovery via client.list() and direct lookup via client.get()."""
@@ -131,14 +131,14 @@ def test_integration_list_and_get():
 
     # 2. Get
     retrieved = client.get(cnt.id)
-    assert(type(retrieved) == "containers.Container", "get should return containers.Container")
+    assert(type(retrieved) == "AttrDict", "get should return AttrDict")
     assert(retrieved.id == cnt.id, "retrieved container id must match")
 
     # Clean up
-    cnt.remove(force=True)
+    client.delete(cnt, force=True)
 
 def test_integration_port_mapping():
-    """Verify dynamic port allocation and lookup via container.port()."""
+    """Verify dynamic port allocation and lookup via client.port()."""
     client = _get_client()
     name = "starkite-test-port-mapping"
     _safe_cleanup(client, name)
@@ -149,15 +149,15 @@ def test_integration_port_mapping():
         command = ["sleep", "20"],
         ports = {"8080/tcp": 0},
     )
-    cnt.start()
+    client.start(cnt)
 
-    host_port = cnt.port("8080/tcp")
+    host_port = client.port(cnt, "8080/tcp")
     assert(type(host_port) == "int", "host port should be an integer")
     assert(host_port > 0, "host port should be non-zero allocated port")
 
     # Clean up
-    cnt.stop(timeout=2)
-    cnt.remove(force=True)
+    client.stop(cnt, timeout=2)
+    client.delete(cnt, force=True)
 
 def test_integration_exec():
     """Verify live command execution, environment passing, and exit code capture inside running container."""
@@ -173,25 +173,25 @@ def test_integration_exec():
     )
 
     # 1. Successful execution
-    res = cnt.exec(["echo", "hello-from-exec"])
+    res = client.exec(cnt, ["echo", "hello-from-exec"])
     assert(type(res) == "containers.ExecResult", "exec should return ExecResult")
     assert(res.ok == True, "exec should succeed")
     assert(res.exit_code == 0, "exit code should be 0")
     assert("hello-from-exec" in res.stdout, "stdout should contain echo output")
 
     # 2. Non-zero exit code
-    res_fail = cnt.exec(["sh", "-c", "exit 42"])
+    res_fail = client.exec(cnt, ["sh", "-c", "exit 42"])
     assert(res_fail.ok == False, "res.ok should be False for non-zero exit")
     assert(res_fail.exit_code == 42, "exit code should be 42")
 
     # 3. Environment variables
-    res_env = cnt.exec(["sh", "-c", "echo $GREETING"], env={"GREETING": "starkite-rocks"})
+    res_env = client.exec(cnt, ["sh", "-c", "echo $GREETING"], env={"GREETING": "starkite-rocks"})
     assert(res_env.ok == True, "env exec should succeed")
     assert("starkite-rocks" in res_env.stdout, "stdout should reflect passed env var")
 
     # Clean up
-    cnt.stop(timeout=2)
-    cnt.remove(force=True)
+    client.stop(cnt, timeout=2)
+    client.delete(cnt, force=True)
 
 def test_integration_logs():
     """Verify stdout and stderr log capture from container via io.reader stream handle."""
@@ -206,14 +206,14 @@ def test_integration_logs():
         detach = False,
     )
 
-    reader = cnt.logs()
+    reader = client.logs(cnt)
     assert(type(reader) == "io.reader", "logs should return io.reader")
     text = reader.text()
     assert("hello-stdout" in text, "logs should contain stdout line")
     assert("hello-stderr" in text, "logs should contain stderr line")
 
     # Clean up
-    cnt.remove(force=True)
+    client.delete(cnt, force=True)
 
 def test_integration_images():
     """Verify client.images() returns list of local images from live daemon."""

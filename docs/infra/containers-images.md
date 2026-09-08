@@ -129,8 +129,8 @@ def main():
     for c in client.list(all=True):
         if c.name == "app-cache":
             print("Stopping existing container instance...")
-            c.stop(timeout = 5)
-            c.remove(force = True)
+            client.stop(c, timeout = 5)
+            client.delete(c, force = True)
             break
 
     # Deploy new container instance

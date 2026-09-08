@@ -272,7 +272,7 @@ def test_container_create():
         auto_remove = True,
     )
 
-    assert(type(c) == "containers.Container", "create should return container object")
+    assert(type(c) == "AttrDict", "create should return AttrDict")
     assert(c.id == "cnt-1", "container id should match mock response")
     assert(c.name == "db-server", "container name should match")
     assert(c.image == "postgres:16-alpine", "container image should match")
@@ -291,12 +291,12 @@ def test_container_create():
     srv.shutdown()
 
 def test_container_start():
-    """Verify container.start() updates status and issues engine POST."""
+    """Verify client.start(target) updates status and issues engine POST."""
     srv, client, state = _create_mock_engine()
     c = client.create(image="alpine:latest", name="app")
     assert(c.status == "created", "should be created")
 
-    c.start()
+    client.start(c)
     assert(c.status == "running", "status should transition to running")
     assert(len(state["started"]) == 1, "started should be recorded")
     assert(state["started"][0] == c.id, "started id should match")
@@ -304,19 +304,19 @@ def test_container_start():
     srv.shutdown()
 
 def test_container_stop_and_restart():
-    """Verify container.stop() and container.restart() methods and status transitions."""
+    """Verify client.stop() and client.restart() methods and status transitions."""
     srv, client, state = _create_mock_engine()
     c = client.create(image="alpine:latest")
-    c.start()
+    client.start(c)
     assert(c.status == "running")
 
-    c.stop(timeout=15)
+    client.stop(c, timeout=15)
     assert(c.status == "exited", "status should transition to exited")
     assert(len(state["stopped"]) == 1, "stop recorded")
     assert(state["stopped"][0]["id"] == c.id)
     assert(state["stopped"][0]["timeout"] == "15", "custom timeout passed in query param")
 
-    c.restart(timeout=5)
+    client.restart(c, timeout=5)
     assert(c.status == "running", "status should transition back to running")
     assert(len(state["restarted"]) == 1, "restart recorded")
     assert(state["restarted"][0]["id"] == c.id)
@@ -325,23 +325,23 @@ def test_container_stop_and_restart():
     srv.shutdown()
 
 def test_container_wait():
-    """Verify container.wait() returns engine exit code."""
+    """Verify client.wait(target) returns engine exit code."""
     srv, client, state = _create_mock_engine()
     state["wait_code"] = 137
 
     c = client.create(image="alpine:latest")
-    c.start()
-    exit_code = c.wait()
+    client.start(c)
+    exit_code = client.wait(c)
     assert(exit_code == 137, "exit code should match wait StatusCode")
 
     srv.shutdown()
 
 def test_container_remove():
-    """Verify container.remove() query params and status transition."""
+    """Verify client.delete() / client.remove() query params and status transition."""
     srv, client, state = _create_mock_engine()
     c = client.create(image="alpine:latest")
 
-    c.remove(force=True, volumes=True)
+    client.delete(c, force=True, volumes=True)
     assert(c.status == "removed", "status should transition to removed")
     assert(len(state["removed"]) == 1, "remove recorded")
     assert(state["removed"][0]["id"] == c.id)
@@ -351,31 +351,31 @@ def test_container_remove():
     srv.shutdown()
 
 def test_container_inspect():
-    """Verify container.inspect() returns complete nested state dictionary."""
+    """Verify client.inspect(target) returns complete nested state AttrDict."""
     srv, client, state = _create_mock_engine()
     c = client.create(image="alpine:latest")
 
-    info = c.inspect()
-    assert(type(info) == "dict", "inspect should return a dict")
-    assert(info["Id"] == c.id, "inspect Id should match container id")
-    assert(info["Name"] == "/test-app", "inspect Name should match")
-    assert(info["State"]["Running"] == True, "State.Running should be True")
-    assert(info["Config"]["Image"] == "alpine:latest", "Config.Image should match")
+    info = client.inspect(c)
+    assert(type(info) == "AttrDict", "inspect should return an AttrDict")
+    assert(info.Id == c.id, "inspect Id should match container id")
+    assert(info.Name == "/test-app", "inspect Name should match")
+    assert(info.State.Running == True, "State.Running should be True")
+    assert(info.Config.Image == "alpine:latest", "Config.Image should match")
 
     srv.shutdown()
 
 def test_container_port():
-    """Verify container.port() extracts host port mapping."""
+    """Verify client.port(target, port) extracts host port mapping."""
     srv, client, state = _create_mock_engine()
     c = client.create(image="alpine:latest")
 
-    port80 = c.port("80/tcp")
+    port80 = client.port(c, "80/tcp")
     assert(port80 == 8080, "mapped port for 80/tcp should be 8080")
 
-    port80_norm = c.port("80")
-    assert(port80_norm == 8080, "c.port('80') should normalize to 80/tcp and return 8080")
+    port80_norm = client.port(c, "80")
+    assert(port80_norm == 8080, "client.port('80') should normalize to 80/tcp and return 8080")
 
-    port5432 = c.port("5432/tcp")
+    port5432 = client.port(c, "5432/tcp")
     assert(port5432 == 54321, "mapped port for 5432/tcp should be 54321")
 
     srv.shutdown()
@@ -385,6 +385,7 @@ def test_client_run_detached():
     srv, client, state = _create_mock_engine()
 
     c = client.run("redis:7-alpine", name="my-redis", detach=True)
+    assert(type(c) == "AttrDict", "run should return AttrDict")
     assert(c.status == "running", "detached run should leave container in running status")
     assert(len(state["created"]) == 1, "created recorded")
     assert(len(state["started"]) == 1, "started recorded")
@@ -398,6 +399,7 @@ def test_client_run_synchronous():
     state["wait_code"] = 0
 
     c = client.run("alpine:latest", command=["echo", "done"], detach=False)
+    assert(type(c) == "AttrDict", "run should return AttrDict")
     assert(len(state["created"]) == 1, "created recorded")
     assert(len(state["started"]) == 1, "started recorded")
 
@@ -408,12 +410,13 @@ def test_client_get_and_list():
     srv, client, state = _create_mock_engine()
 
     c = client.get("cnt-target")
-    assert(type(c) == "containers.Container", "get should return container handle")
+    assert(type(c) == "AttrDict", "get should return AttrDict")
     assert(c.id == "cnt-target", "get container id should match")
     assert(c.name == "test-app", "name should be populated from inspect")
 
     containers_list = client.list(all=True)
     assert(len(containers_list) == 2, "should list 2 containers")
+    assert(type(containers_list[0]) == "AttrDict", "list item should be AttrDict")
     assert(containers_list[0].id == "c1001", "first container id matches")
     assert(containers_list[0].name == "web", "first container name stripped of leading slash")
     assert(containers_list[0].image == "nginx:alpine", "first container image matches")
@@ -427,11 +430,11 @@ def test_client_get_and_list():
     srv.shutdown()
 
 def test_container_exec():
-    """Verify container.exec() runs command and captures exit code and output."""
+    """Verify client.exec(target, command) runs command and captures exit code and output."""
     srv, client, state = _create_mock_engine()
     c = client.create(image="alpine:latest")
 
-    res = c.exec(["echo", "hello"], env={"MY_VAR": "val"})
+    res = client.exec(c, ["echo", "hello"], env={"MY_VAR": "val"})
     assert(type(res) == "containers.ExecResult", "exec should return ExecResult")
     assert(res.ok == True, "res.ok should be True")
     assert(res.exit_code == 0, "res.exit_code should be 0")
@@ -440,11 +443,11 @@ def test_container_exec():
     srv.shutdown()
 
 def test_container_logs():
-    """Verify container.logs() returns io.reader with stream content."""
+    """Verify client.logs(target) returns io.reader with stream content."""
     srv, client, state = _create_mock_engine()
     c = client.create(image="alpine:latest")
 
-    logs = c.logs(tail="50")
+    logs = client.logs(c, tail="50")
     assert(type(logs) == "io.reader", "logs should return io.reader")
     text = logs.text()
     assert("app started" in text, "logs text should contain expected log line")
@@ -505,5 +508,68 @@ def test_client_prune():
     assert(rep2["space_reclaimed"] == 4096 + 8192 + 16384, "combined space_reclaimed matches")
 
     srv.shutdown()
+
+def test_attrdict_serialization():
+    """Verify AttrDict serialization via json.encode() and yaml.encode()."""
+    srv, client, state = _create_mock_engine()
+    c = client.create(
+        image = "postgres:16-alpine",
+        name = "serialized-box",
+        ports = {"5432/tcp": 5432},
+    )
+    assert(type(c) == "AttrDict", "c should be AttrDict")
+
+    # JSON serialization
+    j_str = json.encode(c)
+    decoded = json.decode(j_str)
+    assert(decoded["id"] == "cnt-1", "json decode preserves id")
+    assert(decoded["name"] == "serialized-box", "json decode preserves name")
+    assert(decoded["status"] == "created", "json decode preserves status")
+
+    # YAML serialization
+    y_str = yaml.encode(c)
+    assert("serialized-box" in y_str, "yaml string contains container name")
+    assert("postgres:16-alpine" in y_str, "yaml string contains image name")
+
+    srv.shutdown()
+
+def test_verbs_with_string_identifiers():
+    """Verify client verbs accept plain string IDs/names in addition to AttrDict."""
+    srv, client, state = _create_mock_engine()
+
+    # 1. start with string ID
+    client.start("cnt-1")
+    assert(len(state["started"]) == 1, "start recorded")
+    assert(state["started"][0] == "cnt-1", "started ID matches")
+
+    # 2. stop with string ID
+    client.stop("cnt-1", timeout=5)
+    assert(len(state["stopped"]) == 1, "stop recorded")
+    assert(state["stopped"][0]["id"] == "cnt-1", "stopped ID matches")
+
+    # 3. restart with string ID
+    client.restart("cnt-1", timeout=3)
+    assert(len(state["restarted"]) == 1, "restart recorded")
+    assert(state["restarted"][0]["id"] == "cnt-1", "restarted ID matches")
+
+    # 4. delete with string ID
+    client.delete("cnt-1", force=True)
+    assert(len(state["removed"]) == 1, "remove recorded")
+    assert(state["removed"][0]["id"] == "cnt-1", "removed ID matches")
+
+    srv.shutdown()
+
+def test_module_shortcuts():
+    """Verify selective module root shortcuts are exposed on containers module."""
+    assert(hasattr(containers, "run") == True, "containers.run should be exposed")
+    assert(hasattr(containers, "exec") == True, "containers.exec should be exposed")
+    assert(hasattr(containers, "stop") == True, "containers.stop should be exposed")
+    assert(hasattr(containers, "delete") == True, "containers.delete should be exposed")
+    assert(hasattr(containers, "remove") == True, "containers.remove should be exposed")
+    assert(hasattr(containers, "try_run") == True, "containers.try_run should be exposed")
+    assert(hasattr(containers, "try_exec") == True, "containers.try_exec should be exposed")
+    assert(hasattr(containers, "try_stop") == True, "containers.try_stop should be exposed")
+    assert(hasattr(containers, "try_delete") == True, "containers.try_delete should be exposed")
+
 
 
