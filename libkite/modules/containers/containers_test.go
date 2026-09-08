@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -19,15 +20,22 @@ import (
 	"github.com/project-starkite/starkite/libkite/modules/containers"
 )
 
-// setupMockDaemon spins up a local Unix domain socket HTTP server for testing.
+// setupMockDaemon spins up a local HTTP server for testing.
+// On Windows (or systems where AF_UNIX is unavailable), it uses a TCP listener (127.0.0.1:0).
+// On Unix, it creates a temporary Unix domain socket.
 func setupMockDaemon(t *testing.T, handler http.Handler) (string, func()) {
 	t.Helper()
+
+	if runtime.GOOS == "windows" {
+		return setupMockDaemonTCP(t, handler)
+	}
+
 	sockPath := fmt.Sprintf("/tmp/dk-%d.sock", time.Now().UnixNano()%10000000)
 	_ = os.Remove(sockPath)
 
 	listener, err := net.Listen("unix", sockPath)
 	if err != nil {
-		t.Fatalf("net.Listen(unix, %s): %v", sockPath, err)
+		return setupMockDaemonTCP(t, handler)
 	}
 
 	server := &http.Server{Handler: handler}
@@ -41,7 +49,24 @@ func setupMockDaemon(t *testing.T, handler http.Handler) (string, func()) {
 		_ = os.Remove(sockPath)
 	}
 
-	return sockPath, cleanup
+	return "unix://" + sockPath, cleanup
+}
+
+func setupMockDaemonTCP(t *testing.T, handler http.Handler) (string, func()) {
+	t.Helper()
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("net.Listen(tcp, 127.0.0.1:0): %v", err)
+	}
+	server := &http.Server{Handler: handler}
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	cleanup := func() {
+		_ = server.Close()
+		_ = listener.Close()
+	}
+	return "tcp://" + listener.Addr().String(), cleanup
 }
 
 func TestParseEndpoint(t *testing.T) {
@@ -167,13 +192,12 @@ func TestEngineClient_PingAndVersion(t *testing.T) {
 		})
 	})
 
-	sockPath, cleanup := setupMockDaemon(t, mux)
+	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
 
-	ep := containers.Endpoint{
-		Scheme:  "unix",
-		Address: sockPath,
-		URL:     "http://localhost",
+	ep, err := containers.ParseEndpoint(host)
+	if err != nil {
+		t.Fatalf("ParseEndpoint: %v", err)
 	}
 
 	client, err := containers.NewEngineClient(ep, 5*time.Second)
@@ -223,8 +247,13 @@ func TestStarlarkClient_PingAndVersion(t *testing.T) {
 		})
 	})
 
-	sockPath, cleanup := setupMockDaemon(t, mux)
+	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
+
+	ep, err := containers.ParseEndpoint(host)
+	if err != nil {
+		t.Fatalf("ParseEndpoint: %v", err)
+	}
 
 	starScript := fmt.Sprintf(`
 load("containers", "containers")
@@ -253,7 +282,7 @@ def main():
         fail("expected alias_client.ping() to return True")
 
 main()
-`, "unix://"+sockPath, "unix://"+sockPath, "unix://"+sockPath, sockPath, sockPath, "unix://"+sockPath)
+`, host, ep.String(), ep.String(), ep.Address, ep.Address, host)
 
 	rt, err := libkite.New(&libkite.Config{
 		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
@@ -332,7 +361,7 @@ func TestLifecyclePermissions(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	sockPath, cleanup := setupMockDaemon(t, mux)
+	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
 
 	// 1. allow-local permits create, start, remove
@@ -354,7 +383,7 @@ def main():
     box.remove(force=True)
 
 main()
-`, "unix://"+sockPath)
+`, host)
 
 	if err := rtLocal.Execute(context.Background(), script); err != nil {
 		t.Fatalf("expected lifecycle to succeed under allow-local, got: %v", err)
@@ -502,13 +531,12 @@ func TestEngineClient_Lifecycle(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	sockPath, cleanup := setupMockDaemon(t, mux)
+	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
 
-	ep := containers.Endpoint{
-		Scheme:  "unix",
-		Address: sockPath,
-		URL:     "http://localhost",
+	ep, err := containers.ParseEndpoint(host)
+	if err != nil {
+		t.Fatalf("ParseEndpoint: %v", err)
 	}
 
 	client, err := containers.NewEngineClient(ep, 5*time.Second)
@@ -623,7 +651,7 @@ func TestStarlark_ContainerLifecycle(t *testing.T) {
 		w.WriteHeader(http.StatusNoContent)
 	})
 
-	sockPath, cleanup := setupMockDaemon(t, mux)
+	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
 
 	starScript := fmt.Sprintf(`
@@ -692,7 +720,7 @@ def main():
         fail("expected 1 container in list, got " + str(len(all_boxes)))
 
 main()
-`, "unix://"+sockPath, containerID, containerID, containerID, containerID, containerID, containerID)
+`, host, containerID, containerID, containerID, containerID, containerID, containerID)
 
 	rt, err := libkite.New(&libkite.Config{
 		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
@@ -776,10 +804,10 @@ func TestEngineClient_ExecAndLogs(t *testing.T) {
 		_, _ = w.Write(makeDockerFrame(2, []byte("log err 2\n")))
 	})
 
-	sockPath, cleanup := setupMockDaemon(t, mux)
+	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
 
-	ep, err := containers.ParseEndpoint("unix://" + sockPath)
+	ep, err := containers.ParseEndpoint(host)
 	if err != nil {
 		t.Fatalf("ParseEndpoint: %v", err)
 	}
@@ -866,7 +894,7 @@ func TestStarlark_ExecAndLogs(t *testing.T) {
 		_, _ = w.Write(makeDockerFrame(2, []byte("log err 2\n")))
 	})
 
-	sockPath, cleanup := setupMockDaemon(t, mux)
+	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
 
 	starScript := fmt.Sprintf(`
@@ -892,7 +920,7 @@ def main():
         fail("expected logs text, got " + content)
 
 main()
-`, "unix://"+sockPath, containerID)
+`, host, containerID)
 
 	rt, err := libkite.New(&libkite.Config{
 		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
@@ -923,7 +951,7 @@ func TestExecAndLogsPermissions(t *testing.T) {
 		})
 	})
 
-	sockPath, cleanup := setupMockDaemon(t, mux)
+	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
 
 	// 1. Denying containers.write blocks exec
@@ -947,7 +975,7 @@ def main():
     box = c.get(%q)
     box.exec(["echo", "blocked"])
 main()
-`, "unix://"+sockPath, containerID)
+`, host, containerID)
 
 	if err := rtDenyWrite.Execute(context.Background(), scriptExec); err == nil {
 		t.Fatal("expected box.exec() to fail when containers.write is denied")
@@ -974,9 +1002,361 @@ def main():
     box = c.get(%q)
     box.logs()
 main()
-`, "unix://"+sockPath, containerID)
+`, host, containerID)
 
 	if err := rtDenyRead.Execute(context.Background(), scriptLogs); err == nil {
 		t.Fatal("expected box.logs() to fail when containers.read is denied")
+	}
+}
+
+func TestEngineClient_ImageAndPrune(t *testing.T) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/v1.45/images/json", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode([]containers.ImageSummary{
+			{
+				ID:          "sha256:112233445566",
+				RepoTags:    []string{"alpine:latest", "alpine:3.19"},
+				RepoDigests: []string{"alpine@sha256:1234"},
+				Created:     1700000000,
+				Size:        7340032,
+				Labels:      map[string]string{"env": "test"},
+			},
+		})
+	})
+
+	mux.HandleFunc("/v1.45/images/create", func(w http.ResponseWriter, r *http.Request) {
+		img := r.URL.Query().Get("fromImage")
+		if img == "error:bad" {
+			w.WriteHeader(http.StatusOK)
+			_, _ = w.Write([]byte(`{"status":"Pulling fs layer"}` + "\n"))
+			_, _ = w.Write([]byte(`{"errorDetail":{"message":"manifest unknown"},"error":"manifest unknown"}` + "\n"))
+			return
+		}
+		authHeader := r.Header.Get("X-Registry-Auth")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"Pulling from library/alpine","id":"latest"}` + "\n"))
+		if authHeader != "" {
+			_, _ = w.Write([]byte(`{"status":"Authenticated with registry"}` + "\n"))
+		}
+		_, _ = w.Write([]byte(`{"status":"Download complete","id":"layer1"}` + "\n"))
+	})
+
+	mux.HandleFunc("/v1.45/images/alpine:3.19", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodDelete {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mux.HandleFunc("/v1.45/containers/prune", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(containers.ContainersPruneReport{
+			ContainersDeleted: []string{"c_old1", "c_old2"},
+			SpaceReclaimed:    2048,
+		})
+	})
+
+	mux.HandleFunc("/v1.45/volumes/prune", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(containers.VolumesPruneReport{
+			VolumesDeleted: []string{"vol_old1"},
+			SpaceReclaimed: 4096,
+		})
+	})
+
+	mux.HandleFunc("/v1.45/images/prune", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(containers.ImagesPruneReport{
+			ImagesDeleted: []containers.ImageDeletedItem{
+				{Deleted: "sha256:oldimage1"},
+			},
+			SpaceReclaimed: 8192,
+		})
+	})
+
+	host, cleanup := setupMockDaemon(t, mux)
+	defer cleanup()
+
+	ep, err := containers.ParseEndpoint(host)
+	if err != nil {
+		t.Fatalf("ParseEndpoint: %v", err)
+	}
+
+	client, err := containers.NewEngineClient(ep, 5*time.Second)
+	if err != nil {
+		t.Fatalf("NewEngineClient: %v", err)
+	}
+	ctx := context.Background()
+
+	// 1. ListImages
+	images, err := client.ListImages(ctx, true)
+	if err != nil || len(images) != 1 {
+		t.Fatalf("ListImages failed: %v, len=%d", err, len(images))
+	}
+	if images[0].ID != "sha256:112233445566" || len(images[0].RepoTags) != 2 {
+		t.Errorf("unexpected image: %+v", images[0])
+	}
+
+	// 2. PullImage success
+	if err := client.PullImage(ctx, "alpine:latest", "base64auth"); err != nil {
+		t.Fatalf("PullImage failed: %v", err)
+	}
+
+	// 3. PullImage failure via stream error
+	if err := client.PullImage(ctx, "error:bad", ""); err == nil {
+		t.Fatal("expected PullImage with error:bad to fail")
+	}
+
+	// 4. RemoveImage
+	if err := client.RemoveImage(ctx, "alpine:3.19", true); err != nil {
+		t.Fatalf("RemoveImage failed: %v", err)
+	}
+
+	// 5. Prune
+	pruneRes, err := client.Prune(ctx, true, true, true)
+	if err != nil {
+		t.Fatalf("Prune failed: %v", err)
+	}
+	if len(pruneRes.ContainersDeleted) != 2 {
+		t.Errorf("unexpected ContainersDeleted: %v", pruneRes.ContainersDeleted)
+	}
+	if len(pruneRes.VolumesDeleted) != 1 {
+		t.Errorf("unexpected VolumesDeleted: %v", pruneRes.VolumesDeleted)
+	}
+	if len(pruneRes.ImagesDeleted) != 1 {
+		t.Errorf("unexpected ImagesDeleted: %v", pruneRes.ImagesDeleted)
+	}
+	expectedReclaimed := int64(2048 + 4096 + 8192)
+	if pruneRes.SpaceReclaimed != expectedReclaimed {
+		t.Errorf("SpaceReclaimed = %d; want %d", pruneRes.SpaceReclaimed, expectedReclaimed)
+	}
+}
+
+func TestStarlark_ImageAndPrune(t *testing.T) {
+	mux := http.NewServeMux()
+
+	mux.HandleFunc("/v1.45/images/json", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode([]containers.ImageSummary{
+			{
+				ID:          "sha256:abcdef123456",
+				RepoTags:    []string{"alpine:latest"},
+				RepoDigests: []string{"alpine@sha256:abc"},
+				Created:     1700000000,
+				Size:        5242880,
+				Labels:      map[string]string{"type": "base"},
+			},
+		})
+	})
+
+	mux.HandleFunc("/v1.45/images/create", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"Pull complete"}` + "\n"))
+	})
+
+	mux.HandleFunc("/v1.45/containers/prune", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(containers.ContainersPruneReport{
+			ContainersDeleted: []string{"dead_box"},
+			SpaceReclaimed:    1024,
+		})
+	})
+
+	mux.HandleFunc("/v1.45/volumes/prune", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(containers.VolumesPruneReport{
+			VolumesDeleted: []string{"dead_vol"},
+			SpaceReclaimed: 2048,
+		})
+	})
+
+	mux.HandleFunc("/v1.45/images/prune", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(containers.ImagesPruneReport{
+			ImagesDeleted: []containers.ImageDeletedItem{
+				{Deleted: "sha256:dead_img"},
+			},
+			SpaceReclaimed: 4096,
+		})
+	})
+
+	host, cleanup := setupMockDaemon(t, mux)
+	defer cleanup()
+
+	starScript := fmt.Sprintf(`
+load("containers", "containers")
+
+def main():
+    c = containers.config(host=%q)
+
+    # 1. client.images()
+    imgs = c.images()
+    if len(imgs) != 1:
+        fail("expected 1 image, got %%d" %% len(imgs))
+    img = imgs[0]
+    if img["id"] != "sha256:abcdef123456":
+        fail("unexpected image id: %%s" %% img["id"])
+    if img["Id"] != "sha256:abcdef123456":
+        fail("unexpected image Id: %%s" %% img["Id"])
+    if img["repo_tags"] != ["alpine:latest"]:
+        fail("unexpected repo_tags: %%s" %% str(img["repo_tags"]))
+    if img["size"] != 5242880:
+        fail("unexpected size: %%d" %% img["size"])
+    if img["labels"]["type"] != "base":
+        fail("unexpected label: %%s" %% img["labels"]["type"])
+
+    # 2. client.pull()
+    c.pull("alpine:latest", auth={"username": "user", "password": "pw"})
+
+    # 3. client.prune()
+    rep = c.prune(containers=True, volumes=True, images=True)
+    if rep["containers_deleted"] != ["dead_box"]:
+        fail("unexpected containers_deleted: %%s" %% str(rep["containers_deleted"]))
+    if rep["volumes_deleted"] != ["dead_vol"]:
+        fail("unexpected volumes_deleted: %%s" %% str(rep["volumes_deleted"]))
+    if rep["images_deleted"] != ["sha256:dead_img"]:
+        fail("unexpected images_deleted: %%s" %% str(rep["images_deleted"]))
+    if rep["space_reclaimed"] != 7168:
+        fail("unexpected space_reclaimed: %%d" %% rep["space_reclaimed"])
+
+main()
+`, host)
+
+	rt, err := libkite.New(&libkite.Config{
+		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: libkite.AllowAllPermissions(),
+	})
+	if err != nil {
+		t.Fatalf("libkite.New: %v", err)
+	}
+	defer rt.Close()
+
+	if err := rt.Execute(context.Background(), starScript); err != nil {
+		t.Fatalf("Starlark execution failed: %v", err)
+	}
+}
+
+func TestImageAndPrunePermissions(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1.45/images/json", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode([]containers.ImageSummary{})
+	})
+	mux.HandleFunc("/v1.45/images/create", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"complete"}` + "\n"))
+	})
+	mux.HandleFunc("/v1.45/containers/prune", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(containers.ContainersPruneReport{})
+	})
+
+	host, cleanup := setupMockDaemon(t, mux)
+	defer cleanup()
+
+	// 1. Deny containers.read -> c.images() fails
+	rtDenyRead, err := libkite.New(&libkite.Config{
+		Registry: loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: &libkite.PermissionConfig{
+			Allow:   []string{"containers.connect", "containers.write"},
+			Deny:    []string{"containers.read"},
+			Default: libkite.DefaultDeny,
+		},
+	})
+	if err != nil {
+		t.Fatalf("libkite.New: %v", err)
+	}
+	defer rtDenyRead.Close()
+
+	scriptImages := fmt.Sprintf(`
+load("containers", "containers")
+def main():
+    c = containers.config(host=%q)
+    c.images()
+main()
+`, host)
+
+	if err := rtDenyRead.Execute(context.Background(), scriptImages); err == nil {
+		t.Fatal("expected c.images() to fail when containers.read is denied")
+	}
+
+	// 2. Deny containers.write -> c.pull() fails
+	rtDenyWrite, err := libkite.New(&libkite.Config{
+		Registry: loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: &libkite.PermissionConfig{
+			Allow:   []string{"containers.connect", "containers.read"},
+			Deny:    []string{"containers.write"},
+			Default: libkite.DefaultDeny,
+		},
+	})
+	if err != nil {
+		t.Fatalf("libkite.New: %v", err)
+	}
+	defer rtDenyWrite.Close()
+
+	scriptPull := fmt.Sprintf(`
+load("containers", "containers")
+def main():
+    c = containers.config(host=%q)
+    c.pull("alpine:latest")
+main()
+`, host)
+
+	if err := rtDenyWrite.Execute(context.Background(), scriptPull); err == nil {
+		t.Fatal("expected c.pull() to fail when containers.write is denied")
+	}
+
+	// 3. Deny containers.write -> c.prune() fails
+	scriptPrune := fmt.Sprintf(`
+load("containers", "containers")
+def main():
+    c = containers.config(host=%q)
+    c.prune()
+main()
+`, host)
+
+	if err := rtDenyWrite.Execute(context.Background(), scriptPrune); err == nil {
+		t.Fatal("expected c.prune() to fail when containers.write is denied")
+	}
+}
+
+func TestEngineClient_TCP(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/_ping", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("OK"))
+	})
+	mux.HandleFunc("/v1.45/version", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"Version":    "27.1.1",
+			"ApiVersion": "1.45",
+		})
+	})
+
+	host, cleanup := setupMockDaemonTCP(t, mux)
+	defer cleanup()
+
+	ep, err := containers.ParseEndpoint(host)
+	if err != nil {
+		t.Fatalf("ParseEndpoint(%q): %v", host, err)
+	}
+
+	client, err := containers.NewEngineClient(ep, 5*time.Second)
+	if err != nil {
+		t.Fatalf("NewEngineClient: %v", err)
+	}
+
+	ok, err := client.Ping(context.Background())
+	if err != nil || !ok {
+		t.Fatalf("Ping over TCP = %v, %v; want true, nil", ok, err)
+	}
+
+	v, err := client.Version(context.Background())
+	if err != nil || v["Version"] != "27.1.1" {
+		t.Fatalf("Version over TCP = %v, %v; want 27.1.1", v, err)
 	}
 }

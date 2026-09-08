@@ -197,3 +197,49 @@ type LogsOptions struct {
 	Tail       string
 	Timestamps bool
 }
+
+// ImageSummary represents an image item from GET /images/json.
+type ImageSummary struct {
+	ID          string            `json:"Id"`
+	ParentID    string            `json:"ParentId,omitempty"`
+	RepoTags    []string          `json:"RepoTags"`
+	RepoDigests []string          `json:"RepoDigests"`
+	Created     int64             `json:"Created"`
+	Size        int64             `json:"Size"`
+	SharedSize  int64             `json:"SharedSize,omitempty"`
+	VirtualSize int64             `json:"VirtualSize,omitempty"`
+	Labels      map[string]string `json:"Labels,omitempty"`
+	Containers  int               `json:"Containers,omitempty"`
+}
+
+// ContainersPruneReport represents the response from POST /containers/prune.
+type ContainersPruneReport struct {
+	ContainersDeleted []string `json:"ContainersDeleted"`
+	SpaceReclaimed    int64    `json:"SpaceReclaimed"`
+}
+
+// VolumesPruneReport represents the response from POST /volumes/prune.
+type VolumesPruneReport struct {
+	VolumesDeleted []string `json:"VolumesDeleted"`
+	SpaceReclaimed int64    `json:"SpaceReclaimed"`
+}
+
+// ImageDeletedItem represents a deleted or untagged image item in image prune.
+type ImageDeletedItem struct {
+	Untagged string `json:"Untagged,omitempty"`
+	Deleted  string `json:"Deleted,omitempty"`
+}
+
+// ImagesPruneReport represents the response from POST /images/prune.
+type ImagesPruneReport struct {
+	ImagesDeleted  []ImageDeletedItem `json:"ImagesDeleted"`
+	SpaceReclaimed int64              `json:"SpaceReclaimed"`
+}
+
+// PruneResult provides a consolidated report across pruned resources.
+type PruneResult struct {
+	ContainersDeleted []string `json:"containers_deleted"`
+	VolumesDeleted    []string `json:"volumes_deleted"`
+	ImagesDeleted     []string `json:"images_deleted"`
+	SpaceReclaimed    int64    `json:"space_reclaimed"`
+}

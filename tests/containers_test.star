@@ -9,6 +9,8 @@ def _create_mock_engine():
         "stopped": [],
         "restarted": [],
         "removed": [],
+        "pulled": [],
+        "pruned": [],
         "wait_code": 0,
     }
 
@@ -150,6 +152,64 @@ def _create_mock_engine():
             "body": "app started\nlistening on 8080\n",
         }
 
+    def images_h(req):
+        return {
+            "status": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.encode([
+                {
+                    "Id": "sha256:img123456",
+                    "RepoTags": ["alpine:latest", "alpine:3.19"],
+                    "RepoDigests": ["alpine@sha256:digest1"],
+                    "Created": 1700000000,
+                    "Size": 7340032,
+                    "Labels": {"maintainer": "kite"},
+                },
+            ]),
+        }
+
+    def pull_h(req):
+        img = req.query.get("fromImage", "")
+        auth = req.headers.get("X-Registry-Auth", "")
+        state["pulled"].append({"image": img, "auth": auth})
+        return {
+            "status": 200,
+            "body": json.encode({"status": "Pulling from library/alpine"}) + "\n" + json.encode({"status": "Download complete"}) + "\n",
+        }
+
+    def containers_prune_h(req):
+        state["pruned"].append("containers")
+        return {
+            "status": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.encode({
+                "ContainersDeleted": ["c_dead1", "c_dead2"],
+                "SpaceReclaimed": 4096,
+            }),
+        }
+
+    def volumes_prune_h(req):
+        state["pruned"].append("volumes")
+        return {
+            "status": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.encode({
+                "VolumesDeleted": ["vol_unused1"],
+                "SpaceReclaimed": 8192,
+            }),
+        }
+
+    def images_prune_h(req):
+        state["pruned"].append("images")
+        return {
+            "status": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.encode({
+                "ImagesDeleted": [{"Deleted": "sha256:dangling1"}],
+                "SpaceReclaimed": 16384,
+            }),
+        }
+
     srv.handle("GET /_ping", ping_h)
     srv.handle("GET /v1.45/version", version_h)
     srv.handle("POST /v1.45/containers/create", create_h)
@@ -164,6 +224,11 @@ def _create_mock_engine():
     srv.handle("POST /v1.45/exec/{id}/start", exec_start_h)
     srv.handle("GET /v1.45/exec/{id}/json", exec_inspect_h)
     srv.handle("GET /v1.45/containers/{id}/logs", logs_h)
+    srv.handle("GET /v1.45/images/json", images_h)
+    srv.handle("POST /v1.45/images/create", pull_h)
+    srv.handle("POST /v1.45/containers/prune", containers_prune_h)
+    srv.handle("POST /v1.45/volumes/prune", volumes_prune_h)
+    srv.handle("POST /v1.45/images/prune", images_prune_h)
 
     srv.start(port=0)
     client = containers.config(host="http://localhost:%d" % srv.port())
@@ -389,4 +454,59 @@ def test_container_logs():
     assert("listening on 8080" in text, "logs text should contain second log line")
 
     srv.shutdown()
+
+def test_client_images():
+    """Verify client.images() lists local images with normalized dict keys."""
+    srv, client, state = _create_mock_engine()
+    imgs = client.images()
+    assert(len(imgs) == 1, "should return 1 image")
+    img = imgs[0]
+    assert(img["id"] == "sha256:img123456", "id should match")
+    assert(img["Id"] == "sha256:img123456", "Id should match")
+    assert(img["repo_tags"] == ["alpine:latest", "alpine:3.19"], "repo_tags should match")
+    assert(img["RepoTags"] == ["alpine:latest", "alpine:3.19"], "RepoTags should match")
+    assert(img["size"] == 7340032, "size should match")
+    assert(img["created"] == 1700000000, "created should match")
+    assert(img["labels"]["maintainer"] == "kite", "labels should match")
+
+    srv.shutdown()
+
+def test_client_pull():
+    """Verify client.pull() pulls images and encodes auth headers."""
+    srv, client, state = _create_mock_engine()
+
+    # 1. Plain pull
+    client.pull("alpine:latest")
+    assert(len(state["pulled"]) == 1, "1 pull recorded")
+    assert(state["pulled"][0]["image"] == "alpine:latest", "pulled image matches")
+    assert(state["pulled"][0]["auth"] == "", "auth should be empty")
+
+    # 2. Pull with auth dict
+    client.pull("myreg.io/private/app:v1", auth={"username": "user", "password": "pw"})
+    assert(len(state["pulled"]) == 2, "2 pulls recorded")
+    assert(state["pulled"][1]["image"] == "myreg.io/private/app:v1", "pulled image matches")
+    assert(state["pulled"][1]["auth"] != "", "auth header should be non-empty base64")
+
+    srv.shutdown()
+
+def test_client_prune():
+    """Verify client.prune() removes containers, volumes, and images."""
+    srv, client, state = _create_mock_engine()
+
+    # 1. Default prune (containers only)
+    rep1 = client.prune()
+    assert(rep1["containers_deleted"] == ["c_dead1", "c_dead2"], "containers_deleted matches")
+    assert(rep1["volumes_deleted"] == [], "volumes_deleted should be empty")
+    assert(rep1["images_deleted"] == [], "images_deleted should be empty")
+    assert(rep1["space_reclaimed"] == 4096, "space_reclaimed matches")
+
+    # 2. Comprehensive prune (containers, volumes, images)
+    rep2 = client.prune(containers=True, volumes=True, images=True)
+    assert(rep2["containers_deleted"] == ["c_dead1", "c_dead2"], "containers_deleted matches")
+    assert(rep2["volumes_deleted"] == ["vol_unused1"], "volumes_deleted matches")
+    assert(rep2["images_deleted"] == ["sha256:dangling1"], "images_deleted matches")
+    assert(rep2["space_reclaimed"] == 4096 + 8192 + 16384, "combined space_reclaimed matches")
+
+    srv.shutdown()
+
 

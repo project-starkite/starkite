@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -436,6 +437,216 @@ func (c *EngineClient) Logs(ctx context.Context, containerID string, opts LogsOp
 	}()
 
 	return pr, nil
+}
+
+// ListImages returns the list of images available on the daemon.
+// Endpoint: GET /{version}/images/json?all={all}
+func (c *EngineClient) ListImages(ctx context.Context, all bool) ([]ImageSummary, error) {
+	query := url.Values{}
+	if all {
+		query.Set("all", "true")
+	}
+
+	resp, err := c.do(ctx, http.MethodGet, "/images/json", query, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("containers: list images request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return nil, fmt.Errorf("containers: list images: %w", err)
+	}
+
+	var images []ImageSummary
+	if err := json.NewDecoder(resp.Body).Decode(&images); err != nil {
+		return nil, fmt.Errorf("containers: decode images: %w", err)
+	}
+	return images, nil
+}
+
+// PullImage pulls an image from a registry.
+// Endpoint: POST /{version}/images/create?fromImage={image}
+func (c *EngineClient) PullImage(ctx context.Context, image string, authEncoded string) error {
+	query := url.Values{}
+	query.Set("fromImage", image)
+
+	reqURL := c.endpoint.URL + "/" + c.version + "/images/create?" + query.Encode()
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, nil)
+	if err != nil {
+		return fmt.Errorf("containers: pull request: %w", err)
+	}
+	req.Host = "localhost"
+	if authEncoded != "" {
+		req.Header.Set("X-Registry-Auth", authEncoded)
+	}
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("containers: pull: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return fmt.Errorf("containers: pull: %w", err)
+	}
+
+	// Stream decode JSON progress events and detect stream-level errors
+	dec := json.NewDecoder(resp.Body)
+	for {
+		var event struct {
+			Status      string `json:"status"`
+			Error       string `json:"error"`
+			ErrorDetail struct {
+				Message string `json:"message"`
+			} `json:"errorDetail"`
+		}
+		if err := dec.Decode(&event); err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return fmt.Errorf("containers: decode pull progress: %w", err)
+		}
+		if event.ErrorDetail.Message != "" {
+			return fmt.Errorf("containers: pull failed: %s", event.ErrorDetail.Message)
+		}
+		if event.Error != "" {
+			return fmt.Errorf("containers: pull failed: %s", event.Error)
+		}
+	}
+
+	return nil
+}
+
+// RemoveImage deletes an image from the daemon.
+// Endpoint: DELETE /{version}/images/{image}?force={force}
+func (c *EngineClient) RemoveImage(ctx context.Context, image string, force bool) error {
+	path := fmt.Sprintf("/images/%s", url.PathEscape(image))
+	query := url.Values{}
+	if force {
+		query.Set("force", "true")
+	}
+
+	resp, err := c.do(ctx, http.MethodDelete, path, query, nil, "")
+	if err != nil {
+		return fmt.Errorf("containers: remove image request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return fmt.Errorf("containers: remove image: %w", err)
+	}
+	return nil
+}
+
+// PruneContainers deletes stopped containers.
+// Endpoint: POST /{version}/containers/prune
+func (c *EngineClient) PruneContainers(ctx context.Context) (*ContainersPruneReport, error) {
+	resp, err := c.do(ctx, http.MethodPost, "/containers/prune", nil, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("containers: prune containers request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return nil, fmt.Errorf("containers: prune containers: %w", err)
+	}
+
+	var report ContainersPruneReport
+	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
+		return nil, fmt.Errorf("containers: decode containers prune report: %w", err)
+	}
+	return &report, nil
+}
+
+// PruneVolumes deletes unused volumes.
+// Endpoint: POST /{version}/volumes/prune
+func (c *EngineClient) PruneVolumes(ctx context.Context) (*VolumesPruneReport, error) {
+	resp, err := c.do(ctx, http.MethodPost, "/volumes/prune", nil, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("containers: prune volumes request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return nil, fmt.Errorf("containers: prune volumes: %w", err)
+	}
+
+	var report VolumesPruneReport
+	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
+		return nil, fmt.Errorf("containers: decode volumes prune report: %w", err)
+	}
+	return &report, nil
+}
+
+// PruneImages deletes unused dangling images.
+// Endpoint: POST /{version}/images/prune?filters={"dangling":["true"]}
+func (c *EngineClient) PruneImages(ctx context.Context) (*ImagesPruneReport, error) {
+	query := url.Values{}
+	query.Set("filters", `{"dangling":["true"]}`)
+
+	resp, err := c.do(ctx, http.MethodPost, "/images/prune", query, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("containers: prune images request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return nil, fmt.Errorf("containers: prune images: %w", err)
+	}
+
+	var report ImagesPruneReport
+	if err := json.NewDecoder(resp.Body).Decode(&report); err != nil {
+		return nil, fmt.Errorf("containers: decode images prune report: %w", err)
+	}
+	return &report, nil
+}
+
+// Prune runs cleanup for containers, volumes, and/or images based on flags.
+func (c *EngineClient) Prune(ctx context.Context, pruneContainers, pruneVolumes, pruneImages bool) (*PruneResult, error) {
+	result := &PruneResult{
+		ContainersDeleted: []string{},
+		VolumesDeleted:    []string{},
+		ImagesDeleted:     []string{},
+	}
+
+	if pruneContainers {
+		rep, err := c.PruneContainers(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if rep.ContainersDeleted != nil {
+			result.ContainersDeleted = rep.ContainersDeleted
+		}
+		result.SpaceReclaimed += rep.SpaceReclaimed
+	}
+
+	if pruneVolumes {
+		rep, err := c.PruneVolumes(ctx)
+		if err != nil {
+			return nil, err
+		}
+		if rep.VolumesDeleted != nil {
+			result.VolumesDeleted = rep.VolumesDeleted
+		}
+		result.SpaceReclaimed += rep.SpaceReclaimed
+	}
+
+	if pruneImages {
+		rep, err := c.PruneImages(ctx)
+		if err != nil {
+			return nil, err
+		}
+		for _, item := range rep.ImagesDeleted {
+			if item.Deleted != "" {
+				result.ImagesDeleted = append(result.ImagesDeleted, item.Deleted)
+			} else if item.Untagged != "" {
+				result.ImagesDeleted = append(result.ImagesDeleted, item.Untagged)
+			}
+		}
+		result.SpaceReclaimed += rep.SpaceReclaimed
+	}
+
+	return result, nil
 }
 
 // do executes an HTTP request against the engine API.

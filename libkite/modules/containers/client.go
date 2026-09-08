@@ -2,6 +2,8 @@ package containers
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -29,7 +31,7 @@ func (c *Client) Truth() starlark.Bool  { return true }
 func (c *Client) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: containers.Client") }
 
 func (c *Client) AttrNames() []string {
-	return []string{"create", "endpoint", "get", "list", "ping", "run", "socket", "version"}
+	return []string{"create", "endpoint", "get", "images", "list", "ping", "prune", "pull", "run", "socket", "version"}
 }
 
 func (c *Client) Attr(name string) (starlark.Value, error) {
@@ -61,6 +63,12 @@ func (c *Client) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin("Client.get", c.getFn), nil
 	case "list":
 		return starlark.NewBuiltin("Client.list", c.listFn), nil
+	case "images":
+		return starlark.NewBuiltin("Client.images", c.imagesFn), nil
+	case "pull":
+		return starlark.NewBuiltin("Client.pull", c.pullFn), nil
+	case "prune":
+		return starlark.NewBuiltin("Client.prune", c.pruneFn), nil
 	default:
 		return nil, nil
 	}
@@ -278,6 +286,162 @@ func (c *Client) listFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 	}
 
 	return starlark.NewList(containersList), nil
+}
+
+// imagesFn implements client.images(all=False) -> list[dict]
+func (c *Client) imagesFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var all bool
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "all?", &all); err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "read", "images", ""); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	images, err := c.engine.ListImages(ctx, all)
+	if err != nil {
+		return nil, err
+	}
+
+	items := make([]starlark.Value, 0, len(images))
+	for _, img := range images {
+		d := starlark.NewDict(8)
+		d.SetKey(starlark.String("id"), starlark.String(img.ID))
+		d.SetKey(starlark.String("Id"), starlark.String(img.ID))
+		d.SetKey(starlark.String("size"), starlark.MakeInt64(img.Size))
+		d.SetKey(starlark.String("Size"), starlark.MakeInt64(img.Size))
+		d.SetKey(starlark.String("created"), starlark.MakeInt64(img.Created))
+		d.SetKey(starlark.String("Created"), starlark.MakeInt64(img.Created))
+
+		tags := make([]starlark.Value, len(img.RepoTags))
+		for i, t := range img.RepoTags {
+			tags[i] = starlark.String(t)
+		}
+		tagsList := starlark.NewList(tags)
+		d.SetKey(starlark.String("repo_tags"), tagsList)
+		d.SetKey(starlark.String("RepoTags"), tagsList)
+
+		digests := make([]starlark.Value, len(img.RepoDigests))
+		for i, dg := range img.RepoDigests {
+			digests[i] = starlark.String(dg)
+		}
+		digestsList := starlark.NewList(digests)
+		d.SetKey(starlark.String("repo_digests"), digestsList)
+		d.SetKey(starlark.String("RepoDigests"), digestsList)
+
+		labelsDict := starlark.NewDict(len(img.Labels))
+		for k, v := range img.Labels {
+			labelsDict.SetKey(starlark.String(k), starlark.String(v))
+		}
+		d.SetKey(starlark.String("labels"), labelsDict)
+		d.SetKey(starlark.String("Labels"), labelsDict)
+
+		items = append(items, d)
+	}
+
+	return starlark.NewList(items), nil
+}
+
+// pullFn implements client.pull(image, auth=None) -> None
+func (c *Client) pullFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		image   string
+		authVal starlark.Value
+	)
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+		"image", &image,
+		"auth?", &authVal,
+	); err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(image) == "" {
+		return nil, fmt.Errorf("containers: image cannot be empty")
+	}
+
+	if err := libkite.Check(thread, "containers", "write", "pull", image); err != nil {
+		return nil, err
+	}
+
+	var authEncoded string
+	if authVal != nil && authVal != starlark.None {
+		switch a := authVal.(type) {
+		case starlark.String:
+			authEncoded = a.GoString()
+		case *starlark.Dict:
+			m := make(map[string]any)
+			for _, item := range a.Items() {
+				k, _ := starlark.AsString(item[0])
+				v, _ := starlark.AsString(item[1])
+				m[k] = v
+			}
+			data, err := json.Marshal(m)
+			if err != nil {
+				return nil, fmt.Errorf("containers: marshal auth: %w", err)
+			}
+			authEncoded = base64.StdEncoding.EncodeToString(data)
+		default:
+			return nil, fmt.Errorf("containers: auth must be dict or string, got %s", authVal.Type())
+		}
+	}
+
+	ctx := c.getContext(thread)
+	if err := c.engine.PullImage(ctx, image, authEncoded); err != nil {
+		return nil, err
+	}
+
+	return starlark.None, nil
+}
+
+// pruneFn implements client.prune(containers=True, volumes=False, images=False) -> dict
+func (c *Client) pruneFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	pruneContainers := true
+	pruneVolumes := false
+	pruneImages := false
+
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+		"containers?", &pruneContainers,
+		"volumes?", &pruneVolumes,
+		"images?", &pruneImages,
+	); err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "write", "prune", ""); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	rep, err := c.engine.Prune(ctx, pruneContainers, pruneVolumes, pruneImages)
+	if err != nil {
+		return nil, err
+	}
+
+	d := starlark.NewDict(4)
+
+	cDeleted := make([]starlark.Value, len(rep.ContainersDeleted))
+	for i, id := range rep.ContainersDeleted {
+		cDeleted[i] = starlark.String(id)
+	}
+	d.SetKey(starlark.String("containers_deleted"), starlark.NewList(cDeleted))
+
+	vDeleted := make([]starlark.Value, len(rep.VolumesDeleted))
+	for i, v := range rep.VolumesDeleted {
+		vDeleted[i] = starlark.String(v)
+	}
+	d.SetKey(starlark.String("volumes_deleted"), starlark.NewList(vDeleted))
+
+	iDeleted := make([]starlark.Value, len(rep.ImagesDeleted))
+	for i, im := range rep.ImagesDeleted {
+		iDeleted[i] = starlark.String(im)
+	}
+	d.SetKey(starlark.String("images_deleted"), starlark.NewList(iDeleted))
+
+	d.SetKey(starlark.String("space_reclaimed"), starlark.MakeInt64(rep.SpaceReclaimed))
+
+	return d, nil
 }
 
 func (c *Client) buildContainerConfig(
