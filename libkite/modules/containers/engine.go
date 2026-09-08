@@ -1,12 +1,14 @@
 package containers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -80,6 +82,202 @@ func (c *EngineClient) Version(ctx context.Context) (map[string]any, error) {
 		return nil, fmt.Errorf("containers: decode version: %w", err)
 	}
 	return data, nil
+}
+
+// CreateContainer creates a container on the daemon.
+// Endpoint: POST /{version}/containers/create?name={name}
+func (c *EngineClient) CreateContainer(ctx context.Context, name string, config *ContainerConfig) (*CreateContainerResponse, error) {
+	bodyBytes, err := json.Marshal(config)
+	if err != nil {
+		return nil, fmt.Errorf("containers: marshal create config: %w", err)
+	}
+
+	query := url.Values{}
+	if name != "" {
+		query.Set("name", name)
+	}
+
+	resp, err := c.do(ctx, http.MethodPost, "/containers/create", query, bytes.NewReader(bodyBytes), "application/json")
+	if err != nil {
+		return nil, fmt.Errorf("containers: create request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return nil, fmt.Errorf("containers: create: %w", err)
+	}
+
+	var createResp CreateContainerResponse
+	if err := json.NewDecoder(resp.Body).Decode(&createResp); err != nil {
+		return nil, fmt.Errorf("containers: decode create response: %w", err)
+	}
+	return &createResp, nil
+}
+
+// StartContainer starts an existing container.
+// Endpoint: POST /{version}/containers/{id}/start
+func (c *EngineClient) StartContainer(ctx context.Context, id string) error {
+	path := fmt.Sprintf("/containers/%s/start", url.PathEscape(id))
+	resp, err := c.do(ctx, http.MethodPost, path, nil, nil, "")
+	if err != nil {
+		return fmt.Errorf("containers: start request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 204 No Content = OK, 304 Not Modified = already started
+	if resp.StatusCode == http.StatusNotModified {
+		return nil
+	}
+	if err := c.checkError(resp); err != nil {
+		return fmt.Errorf("containers: start: %w", err)
+	}
+	return nil
+}
+
+// StopContainer stops a running container.
+// Endpoint: POST /{version}/containers/{id}/stop?t={timeout}
+func (c *EngineClient) StopContainer(ctx context.Context, id string, timeoutSeconds int) error {
+	path := fmt.Sprintf("/containers/%s/stop", url.PathEscape(id))
+	query := url.Values{}
+	if timeoutSeconds > 0 {
+		query.Set("t", strconv.Itoa(timeoutSeconds))
+	}
+
+	resp, err := c.do(ctx, http.MethodPost, path, query, nil, "")
+	if err != nil {
+		return fmt.Errorf("containers: stop request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// 204 No Content = OK, 304 Not Modified = already stopped
+	if resp.StatusCode == http.StatusNotModified {
+		return nil
+	}
+	if err := c.checkError(resp); err != nil {
+		return fmt.Errorf("containers: stop: %w", err)
+	}
+	return nil
+}
+
+// RestartContainer restarts a container.
+// Endpoint: POST /{version}/containers/{id}/restart?t={timeout}
+func (c *EngineClient) RestartContainer(ctx context.Context, id string, timeoutSeconds int) error {
+	path := fmt.Sprintf("/containers/%s/restart", url.PathEscape(id))
+	query := url.Values{}
+	if timeoutSeconds > 0 {
+		query.Set("t", strconv.Itoa(timeoutSeconds))
+	}
+
+	resp, err := c.do(ctx, http.MethodPost, path, query, nil, "")
+	if err != nil {
+		return fmt.Errorf("containers: restart request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return fmt.Errorf("containers: restart: %w", err)
+	}
+	return nil
+}
+
+// WaitContainer blocks until a container stops or reaches a condition.
+// Endpoint: POST /{version}/containers/{id}/wait?condition={condition}
+func (c *EngineClient) WaitContainer(ctx context.Context, id string, condition string) (int, error) {
+	path := fmt.Sprintf("/containers/%s/wait", url.PathEscape(id))
+	query := url.Values{}
+	if condition != "" {
+		query.Set("condition", condition)
+	}
+
+	resp, err := c.do(ctx, http.MethodPost, path, query, nil, "")
+	if err != nil {
+		return -1, fmt.Errorf("containers: wait request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return -1, fmt.Errorf("containers: wait: %w", err)
+	}
+
+	var waitResp ContainerWaitResponse
+	if err := json.NewDecoder(resp.Body).Decode(&waitResp); err != nil {
+		return -1, fmt.Errorf("containers: decode wait response: %w", err)
+	}
+
+	if waitResp.Error != nil && waitResp.Error.Message != "" {
+		return waitResp.StatusCode, fmt.Errorf("containers: wait container error: %s", waitResp.Error.Message)
+	}
+	return waitResp.StatusCode, nil
+}
+
+// RemoveContainer removes a container from the daemon.
+// Endpoint: DELETE /{version}/containers/{id}?force={force}&v={volumes}
+func (c *EngineClient) RemoveContainer(ctx context.Context, id string, force, volumes bool) error {
+	path := fmt.Sprintf("/containers/%s", url.PathEscape(id))
+	query := url.Values{}
+	if force {
+		query.Set("force", "true")
+	}
+	if volumes {
+		query.Set("v", "true")
+	}
+
+	resp, err := c.do(ctx, http.MethodDelete, path, query, nil, "")
+	if err != nil {
+		return fmt.Errorf("containers: remove request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return fmt.Errorf("containers: remove: %w", err)
+	}
+	return nil
+}
+
+// InspectContainer retrieves detailed state and config of a container.
+// Endpoint: GET /{version}/containers/{id}/json
+func (c *EngineClient) InspectContainer(ctx context.Context, id string) (map[string]any, error) {
+	path := fmt.Sprintf("/containers/%s/json", url.PathEscape(id))
+	resp, err := c.do(ctx, http.MethodGet, path, nil, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("containers: inspect request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return nil, fmt.Errorf("containers: inspect: %w", err)
+	}
+
+	var inspectResp map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&inspectResp); err != nil {
+		return nil, fmt.Errorf("containers: decode inspect response: %w", err)
+	}
+	return inspectResp, nil
+}
+
+// ListContainers queries containers on the daemon.
+// Endpoint: GET /{version}/containers/json?all={all}
+func (c *EngineClient) ListContainers(ctx context.Context, all bool) ([]ContainerSummary, error) {
+	query := url.Values{}
+	if all {
+		query.Set("all", "true")
+	}
+
+	resp, err := c.do(ctx, http.MethodGet, "/containers/json", query, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("containers: list request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return nil, fmt.Errorf("containers: list: %w", err)
+	}
+
+	var summaries []ContainerSummary
+	if err := json.NewDecoder(resp.Body).Decode(&summaries); err != nil {
+		return nil, fmt.Errorf("containers: decode list response: %w", err)
+	}
+	return summaries, nil
 }
 
 // do executes an HTTP request against the engine API.

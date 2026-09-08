@@ -154,6 +154,15 @@ func candidateSockets() []string {
 				filepath.Join(home, ".local/share/containers/podman/machine/podman.sock"),
 			)
 		}
+		// Podman machine on macOS exposes its API socket in TMPDIR/podman/
+		podmanTmpDir := filepath.Join(os.TempDir(), "podman")
+		if matches, err := filepath.Glob(filepath.Join(podmanTmpDir, "*api.sock")); err == nil {
+			candidates = append(candidates, matches...)
+		}
+		candidates = append(candidates,
+			filepath.Join(podmanTmpDir, "podman-machine-default-api.sock"),
+			filepath.Join(podmanTmpDir, "podman.sock"),
+		)
 	}
 
 	return candidates
