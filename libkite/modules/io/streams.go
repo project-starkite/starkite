@@ -77,6 +77,8 @@ func (r *starlarkReader) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin("io.reader.read", r.readCmd), nil
 	case "bytes":
 		return starlark.NewBuiltin("io.reader.bytes", r.bytesCmd), nil
+	case "text", "get_text":
+		return starlark.NewBuiltin("io.reader.text", r.textCmd), nil
 	case "lines":
 		return starlark.NewBuiltin("io.reader.lines", r.linesCmd), nil
 	case "close":
@@ -86,7 +88,7 @@ func (r *starlarkReader) Attr(name string) (starlark.Value, error) {
 }
 
 func (r *starlarkReader) AttrNames() []string {
-	return []string{"read", "bytes", "lines", "close"}
+	return []string{"bytes", "close", "get_text", "lines", "read", "text"}
 }
 
 func (r *starlarkReader) readCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -141,6 +143,30 @@ func (r *starlarkReader) bytesCmd(thread *starlark.Thread, fn *starlark.Builtin,
 	}
 
 	return starlark.Bytes(data), nil
+}
+
+func (r *starlarkReader) textCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return nil, fmt.Errorf("io.reader.text: reader is closed")
+	}
+
+	data, err := io.ReadAll(r.reader)
+	if r.closer != nil {
+		r.closer.Close()
+	}
+	r.closed = true
+
+	if err != nil {
+		return nil, fmt.Errorf("io.reader.text: %w", err)
+	}
+
+	return starlark.String(string(data)), nil
 }
 
 func (r *starlarkReader) linesCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

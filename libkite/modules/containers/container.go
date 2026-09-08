@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/project-starkite/starkite/libkite"
+	iomods "github.com/project-starkite/starkite/libkite/modules/io"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 )
@@ -55,7 +56,7 @@ func (c *Container) Hash() (uint32, error) {
 }
 
 func (c *Container) AttrNames() []string {
-	return []string{"id", "image", "inspect", "name", "port", "restart", "remove", "start", "status", "stop", "wait"}
+	return []string{"exec", "id", "image", "inspect", "logs", "name", "port", "restart", "remove", "start", "status", "stop", "wait"}
 }
 
 func (c *Container) Attr(name string) (starlark.Value, error) {
@@ -93,6 +94,10 @@ func (c *Container) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin("Container.inspect", c.inspectFn), nil
 	case "port":
 		return starlark.NewBuiltin("Container.port", c.portFn), nil
+	case "exec":
+		return starlark.NewBuiltin("Container.exec", c.execFn), nil
+	case "logs":
+		return starlark.NewBuiltin("Container.logs", c.logsFn), nil
 	default:
 		return nil, nil
 	}
@@ -275,4 +280,110 @@ func (c *Container) portFn(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	return starlark.MakeInt(hostPort), nil
+}
+
+// execFn implements container.exec(command, env=None, user=None, workdir=None) -> ExecResult
+func (c *Container) execFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		cmdVal     starlark.Value
+		envVal     starlark.Value
+		user       string
+		workingDir string
+	)
+
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+		"command", &cmdVal,
+		"env?", &envVal,
+		"user?", &user,
+		"workdir?", &workingDir,
+	); err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "write", "exec", c.id); err != nil {
+		return nil, err
+	}
+
+	var cmd []string
+	switch v := cmdVal.(type) {
+	case starlark.String:
+		cmd = []string{string(v)}
+	case starlark.Indexable:
+		cmd = make([]string, v.Len())
+		for i := 0; i < v.Len(); i++ {
+			s, ok := starlark.AsString(v.Index(i))
+			if !ok {
+				return nil, fmt.Errorf("containers: exec command element %d must be string, got %s", i, v.Index(i).Type())
+			}
+			cmd[i] = s
+		}
+	default:
+		return nil, fmt.Errorf("containers: exec command must be a string or list of strings, got %s", cmdVal.Type())
+	}
+
+	var env []string
+	if envVal != nil && envVal != starlark.None {
+		if envDict, ok := envVal.(*starlark.Dict); ok {
+			for _, item := range envDict.Items() {
+				k, ok1 := starlark.AsString(item[0])
+				v, ok2 := starlark.AsString(item[1])
+				if !ok1 || !ok2 {
+					return nil, fmt.Errorf("containers: exec env keys and values must be strings")
+				}
+				env = append(env, fmt.Sprintf("%s=%s", k, v))
+			}
+		} else {
+			return nil, fmt.Errorf("containers: exec env must be a dictionary, got %s", envVal.Type())
+		}
+	}
+
+	cfg := ExecConfig{
+		AttachStdout: true,
+		AttachStderr: true,
+		Cmd:          cmd,
+		Env:          env,
+		User:         user,
+		WorkingDir:   workingDir,
+	}
+
+	ctx := c.getContext(thread)
+	return c.engine.Exec(ctx, c.id, cfg)
+}
+
+// logsFn implements container.logs(follow=False, tail="all", stdout=True, stderr=True) -> io.reader
+func (c *Container) logsFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		follow bool
+		tail   = "all"
+		stdout = true
+		stderr = true
+	)
+
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs,
+		"follow?", &follow,
+		"tail?", &tail,
+		"stdout?", &stdout,
+		"stderr?", &stderr,
+	); err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "read", "logs", c.id); err != nil {
+		return nil, err
+	}
+
+	opts := LogsOptions{
+		Follow: follow,
+		Tail:   tail,
+		Stdout: stdout,
+		Stderr: stderr,
+	}
+
+	ctx := c.getContext(thread)
+	rc, err := c.engine.Logs(ctx, c.id, opts)
+	if err != nil {
+		return nil, err
+	}
+
+	return iomods.NewReaderWithCloser(rc, rc, fmt.Sprintf("%s.logs", c.name)), nil
 }

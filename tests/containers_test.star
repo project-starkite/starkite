@@ -120,6 +120,36 @@ def _create_mock_engine():
             ]),
         }
 
+    def exec_create_h(req):
+        return {
+            "status": 201,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.encode({"Id": "exec-001"}),
+        }
+
+    def exec_start_h(req):
+        return {
+            "status": 200,
+            "body": "executed successfully\n",
+        }
+
+    def exec_inspect_h(req):
+        return {
+            "status": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.encode({
+                "ID": "exec-001",
+                "Running": False,
+                "ExitCode": 0,
+            }),
+        }
+
+    def logs_h(req):
+        return {
+            "status": 200,
+            "body": "app started\nlistening on 8080\n",
+        }
+
     srv.handle("GET /_ping", ping_h)
     srv.handle("GET /v1.45/version", version_h)
     srv.handle("POST /v1.45/containers/create", create_h)
@@ -130,6 +160,10 @@ def _create_mock_engine():
     srv.handle("DELETE /v1.45/containers/{id}", delete_h)
     srv.handle("GET /v1.45/containers/{id}/json", inspect_h)
     srv.handle("GET /v1.45/containers/json", list_h)
+    srv.handle("POST /v1.45/containers/{id}/exec", exec_create_h)
+    srv.handle("POST /v1.45/exec/{id}/start", exec_start_h)
+    srv.handle("GET /v1.45/exec/{id}/json", exec_inspect_h)
+    srv.handle("GET /v1.45/containers/{id}/logs", logs_h)
 
     srv.start(port=0)
     client = containers.config(host="http://localhost:%d" % srv.port())
@@ -329,3 +363,30 @@ def test_client_get_and_list():
     assert(containers_list[1].status == "exited", "second container status matches")
 
     srv.shutdown()
+
+def test_container_exec():
+    """Verify container.exec() runs command and captures exit code and output."""
+    srv, client, state = _create_mock_engine()
+    c = client.create(image="alpine:latest")
+
+    res = c.exec(["echo", "hello"], env={"MY_VAR": "val"})
+    assert(type(res) == "containers.ExecResult", "exec should return ExecResult")
+    assert(res.ok == True, "res.ok should be True")
+    assert(res.exit_code == 0, "res.exit_code should be 0")
+    assert("executed successfully" in res.stdout, "stdout should contain exec output")
+
+    srv.shutdown()
+
+def test_container_logs():
+    """Verify container.logs() returns io.reader with stream content."""
+    srv, client, state = _create_mock_engine()
+    c = client.create(image="alpine:latest")
+
+    logs = c.logs(tail="50")
+    assert(type(logs) == "io.reader", "logs should return io.reader")
+    text = logs.text()
+    assert("app started" in text, "logs text should contain expected log line")
+    assert("listening on 8080" in text, "logs text should contain second log line")
+
+    srv.shutdown()
+

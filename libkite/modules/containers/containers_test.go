@@ -1,9 +1,12 @@
 package containers_test
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
@@ -702,5 +705,278 @@ main()
 
 	if err := rt.Execute(context.Background(), starScript); err != nil {
 		t.Fatalf("Starlark execution failed: %v", err)
+	}
+}
+
+func makeDockerFrame(streamType byte, payload []byte) []byte {
+	header := make([]byte, 8)
+	header[0] = streamType
+	binary.BigEndian.PutUint32(header[4:8], uint32(len(payload)))
+	return append(header, payload...)
+}
+
+func TestDemuxStream(t *testing.T) {
+	var raw bytes.Buffer
+	raw.Write(makeDockerFrame(1, []byte("stdout line 1\n")))
+	raw.Write(makeDockerFrame(2, []byte("stderr warning\n")))
+	raw.Write(makeDockerFrame(1, []byte("stdout line 2\n")))
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	if err := containers.DemuxStream(&raw, &stdoutBuf, &stderrBuf); err != nil {
+		t.Fatalf("DemuxStream failed: %v", err)
+	}
+
+	if got := stdoutBuf.String(); got != "stdout line 1\nstdout line 2\n" {
+		t.Errorf("stdout = %q, want %q", got, "stdout line 1\nstdout line 2\n")
+	}
+	if got := stderrBuf.String(); got != "stderr warning\n" {
+		t.Errorf("stderr = %q, want %q", got, "stderr warning\n")
+	}
+
+	// Raw unmultiplexed stream test
+	rawUnmux := bytes.NewBufferString("plain text without framing")
+	stdoutBuf.Reset()
+	stderrBuf.Reset()
+	if err := containers.DemuxStream(rawUnmux, &stdoutBuf, &stderrBuf); err != nil {
+		t.Fatalf("DemuxStream raw failed: %v", err)
+	}
+	if got := stdoutBuf.String(); got != "plain text without framing" {
+		t.Errorf("stdout = %q, want %q", got, "plain text without framing")
+	}
+}
+
+func TestEngineClient_ExecAndLogs(t *testing.T) {
+	mux := http.NewServeMux()
+	const containerID = "c_exec_test"
+	const execID = "e_12345"
+
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/exec", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(containers.ExecCreateResponse{ID: execID})
+	})
+
+	mux.HandleFunc("/v1.45/exec/"+execID+"/start", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(makeDockerFrame(1, []byte("hello from exec\n")))
+		_, _ = w.Write(makeDockerFrame(2, []byte("some stderr log\n")))
+	})
+
+	mux.HandleFunc("/v1.45/exec/"+execID+"/json", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(containers.ExecInspectResponse{
+			ID:       execID,
+			Running:  false,
+			ExitCode: 0,
+		})
+	})
+
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/logs", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(makeDockerFrame(1, []byte("log line 1\n")))
+		_, _ = w.Write(makeDockerFrame(2, []byte("log err 2\n")))
+	})
+
+	sockPath, cleanup := setupMockDaemon(t, mux)
+	defer cleanup()
+
+	ep, err := containers.ParseEndpoint("unix://" + sockPath)
+	if err != nil {
+		t.Fatalf("ParseEndpoint: %v", err)
+	}
+	client, err := containers.NewEngineClient(ep, 10*time.Second)
+	if err != nil {
+		t.Fatalf("NewEngineClient: %v", err)
+	}
+
+	ctx := context.Background()
+	res, err := client.Exec(ctx, containerID, containers.ExecConfig{
+		Cmd: []string{"echo", "hi"},
+	})
+	if err != nil {
+		t.Fatalf("client.Exec: %v", err)
+	}
+	if res.ExitCode != 0 {
+		t.Errorf("ExitCode = %d, want 0", res.ExitCode)
+	}
+	if res.Stdout != "hello from exec\n" {
+		t.Errorf("Stdout = %q, want %q", res.Stdout, "hello from exec\n")
+	}
+	if res.Stderr != "some stderr log\n" {
+		t.Errorf("Stderr = %q, want %q", res.Stderr, "some stderr log\n")
+	}
+
+	// Logs
+	rc, err := client.Logs(ctx, containerID, containers.LogsOptions{
+		Stdout: true,
+		Stderr: true,
+	})
+	if err != nil {
+		t.Fatalf("client.Logs: %v", err)
+	}
+	defer rc.Close()
+	logData, _ := io.ReadAll(rc)
+	if string(logData) != "log line 1\nlog err 2\n" {
+		t.Errorf("Logs = %q, want %q", string(logData), "log line 1\nlog err 2\n")
+	}
+}
+
+func TestStarlark_ExecAndLogs(t *testing.T) {
+	mux := http.NewServeMux()
+	const containerID = "c_star_exec"
+	const execID = "e_star_123"
+
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/json", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"Id":   containerID,
+			"Name": "/test-app",
+			"Config": map[string]any{
+				"Image": "alpine:latest",
+			},
+			"State": map[string]any{
+				"Status":  "running",
+				"Running": true,
+			},
+		})
+	})
+
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/exec", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(w).Encode(containers.ExecCreateResponse{ID: execID})
+	})
+
+	mux.HandleFunc("/v1.45/exec/"+execID+"/start", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(makeDockerFrame(1, []byte("hello from exec\n")))
+		_, _ = w.Write(makeDockerFrame(2, []byte("some stderr log\n")))
+	})
+
+	mux.HandleFunc("/v1.45/exec/"+execID+"/json", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(containers.ExecInspectResponse{
+			ID:       execID,
+			Running:  false,
+			ExitCode: 0,
+		})
+	})
+
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/logs", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(makeDockerFrame(1, []byte("log line 1\n")))
+		_, _ = w.Write(makeDockerFrame(2, []byte("log err 2\n")))
+	})
+
+	sockPath, cleanup := setupMockDaemon(t, mux)
+	defer cleanup()
+
+	starScript := fmt.Sprintf(`
+def main():
+    client = containers.config(host=%q)
+    box = client.get(%q)
+
+    # 1. Exec
+    res = box.exec(["echo", "hello"], env={"MY_VAR": "test"})
+    if not res.ok:
+        fail("expected res.ok == True")
+    if res.exit_code != 0:
+        fail("expected exit_code 0")
+    if res.stdout != "hello from exec\n":
+        fail("expected stdout, got " + res.stdout)
+    if res.stderr != "some stderr log\n":
+        fail("expected stderr, got " + res.stderr)
+
+    # 2. Logs
+    logs = box.logs()
+    content = logs.text()
+    if content != "log line 1\nlog err 2\n":
+        fail("expected logs text, got " + content)
+
+main()
+`, "unix://"+sockPath, containerID)
+
+	rt, err := libkite.New(&libkite.Config{
+		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: libkite.AllowAllPermissions(),
+	})
+	if err != nil {
+		t.Fatalf("libkite.New: %v", err)
+	}
+	defer rt.Close()
+
+	if err := rt.Execute(context.Background(), starScript); err != nil {
+		t.Fatalf("Starlark execution failed: %v", err)
+	}
+}
+
+func TestExecAndLogsPermissions(t *testing.T) {
+	mux := http.NewServeMux()
+	const containerID = "c_perm_stream"
+
+	mux.HandleFunc("/v1.45/containers/"+containerID+"/json", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"Id":   containerID,
+			"Name": "/perm-box",
+			"State": map[string]any{
+				"Status": "running",
+			},
+		})
+	})
+
+	sockPath, cleanup := setupMockDaemon(t, mux)
+	defer cleanup()
+
+	// 1. Denying containers.write blocks exec
+	rtDenyWrite, err := libkite.New(&libkite.Config{
+		Registry: loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: &libkite.PermissionConfig{
+			Allow:   []string{"containers.connect", "containers.read"},
+			Deny:    []string{"containers.write"},
+			Default: libkite.DefaultDeny,
+		},
+	})
+	if err != nil {
+		t.Fatalf("libkite.New: %v", err)
+	}
+	defer rtDenyWrite.Close()
+
+	scriptExec := fmt.Sprintf(`
+load("containers", "containers")
+def main():
+    c = containers.config(host=%q)
+    box = c.get(%q)
+    box.exec(["echo", "blocked"])
+main()
+`, "unix://"+sockPath, containerID)
+
+	if err := rtDenyWrite.Execute(context.Background(), scriptExec); err == nil {
+		t.Fatal("expected box.exec() to fail when containers.write is denied")
+	}
+
+	// 2. Denying containers.read blocks logs
+	rtDenyRead, err := libkite.New(&libkite.Config{
+		Registry: loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: &libkite.PermissionConfig{
+			Allow:   []string{"containers.connect", "containers.write"},
+			Deny:    []string{"containers.read"},
+			Default: libkite.DefaultDeny,
+		},
+	})
+	if err != nil {
+		t.Fatalf("libkite.New: %v", err)
+	}
+	defer rtDenyRead.Close()
+
+	scriptLogs := fmt.Sprintf(`
+load("containers", "containers")
+def main():
+    c = containers.config(host=%q)
+    box = c.get(%q)
+    box.logs()
+main()
+`, "unix://"+sockPath, containerID)
+
+	if err := rtDenyRead.Execute(context.Background(), scriptLogs); err == nil {
+		t.Fatal("expected box.logs() to fail when containers.read is denied")
 	}
 }

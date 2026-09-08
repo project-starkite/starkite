@@ -155,3 +155,60 @@ def test_integration_port_mapping():
     # Clean up
     cnt.stop(timeout=2)
     cnt.remove(force=True)
+
+def test_integration_exec():
+    """Verify live command execution, environment passing, and exit code capture inside running container."""
+    client = _get_client()
+    name = "starkite-test-exec"
+    _safe_cleanup(client, name)
+
+    cnt = client.run(
+        image = "alpine:latest",
+        name = name,
+        command = ["sleep", "30"],
+        detach = True,
+    )
+
+    # 1. Successful execution
+    res = cnt.exec(["echo", "hello-from-exec"])
+    assert(type(res) == "containers.ExecResult", "exec should return ExecResult")
+    assert(res.ok == True, "exec should succeed")
+    assert(res.exit_code == 0, "exit code should be 0")
+    assert("hello-from-exec" in res.stdout, "stdout should contain echo output")
+
+    # 2. Non-zero exit code
+    res_fail = cnt.exec(["sh", "-c", "exit 42"])
+    assert(res_fail.ok == False, "res.ok should be False for non-zero exit")
+    assert(res_fail.exit_code == 42, "exit code should be 42")
+
+    # 3. Environment variables
+    res_env = cnt.exec(["sh", "-c", "echo $GREETING"], env={"GREETING": "starkite-rocks"})
+    assert(res_env.ok == True, "env exec should succeed")
+    assert("starkite-rocks" in res_env.stdout, "stdout should reflect passed env var")
+
+    # Clean up
+    cnt.stop(timeout=2)
+    cnt.remove(force=True)
+
+def test_integration_logs():
+    """Verify stdout and stderr log capture from container via io.reader stream handle."""
+    client = _get_client()
+    name = "starkite-test-logs"
+    _safe_cleanup(client, name)
+
+    cnt = client.run(
+        image = "alpine:latest",
+        name = name,
+        command = ["sh", "-c", "echo 'hello-stdout'; >&2 echo 'hello-stderr'"],
+        detach = False,
+    )
+
+    reader = cnt.logs()
+    assert(type(reader) == "io.reader", "logs should return io.reader")
+    text = reader.text()
+    assert("hello-stdout" in text, "logs should contain stdout line")
+    assert("hello-stderr" in text, "logs should contain stderr line")
+
+    # Clean up
+    cnt.remove(force=True)
+

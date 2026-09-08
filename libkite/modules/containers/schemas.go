@@ -164,3 +164,36 @@ func NormalizePortKey(port string) string {
 	}
 	return port + "/tcp"
 }
+
+// ExecConfig defines parameters for creating an exec instance.
+type ExecConfig struct {
+	AttachStdin  bool     `json:"AttachStdin,omitempty"`
+	AttachStdout bool     `json:"AttachStdout,omitempty"`
+	AttachStderr bool     `json:"AttachStderr,omitempty"`
+	Tty          bool     `json:"Tty,omitempty"`
+	Cmd          []string `json:"Cmd,omitempty"`
+	Env          []string `json:"Env,omitempty"`
+	User         string   `json:"User,omitempty"`
+	WorkingDir   string   `json:"WorkingDir,omitempty"`
+}
+
+// ExecCreateResponse represents the response from POST /containers/{id}/exec.
+type ExecCreateResponse struct {
+	ID string `json:"Id"`
+}
+
+// ExecInspectResponse represents the response from GET /exec/{id}/json.
+type ExecInspectResponse struct {
+	ID       string `json:"ID"`
+	Running  bool   `json:"Running"`
+	ExitCode int    `json:"ExitCode"`
+}
+
+// LogsOptions configures container log streaming.
+type LogsOptions struct {
+	Follow     bool
+	Stdout     bool
+	Stderr     bool
+	Tail       string
+	Timestamps bool
+}

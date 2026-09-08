@@ -280,6 +280,164 @@ func (c *EngineClient) ListContainers(ctx context.Context, all bool) ([]Containe
 	return summaries, nil
 }
 
+// CreateExec creates an exec instance inside a container.
+// Endpoint: POST /{version}/containers/{id}/exec
+func (c *EngineClient) CreateExec(ctx context.Context, id string, cfg ExecConfig) (string, error) {
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		return "", fmt.Errorf("containers: marshal exec config: %w", err)
+	}
+
+	path := fmt.Sprintf("/containers/%s/exec", url.PathEscape(id))
+	resp, err := c.do(ctx, http.MethodPost, path, nil, bytes.NewReader(data), "application/json")
+	if err != nil {
+		return "", fmt.Errorf("containers: create exec request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return "", fmt.Errorf("containers: create exec: %w", err)
+	}
+
+	var createResp ExecCreateResponse
+	if err := json.NewDecoder(resp.Body).Decode(&createResp); err != nil {
+		return "", fmt.Errorf("containers: decode create exec response: %w", err)
+	}
+	return createResp.ID, nil
+}
+
+// StartExec starts an exec instance, demultiplexing stdout and stderr.
+// Endpoint: POST /{version}/exec/{id}/start
+func (c *EngineClient) StartExec(ctx context.Context, execID string, stdout, stderr io.Writer) error {
+	body := strings.NewReader(`{"Detach":false,"Tty":false}`)
+	path := fmt.Sprintf("/exec/%s/start", url.PathEscape(execID))
+
+	resp, err := c.do(ctx, http.MethodPost, path, nil, body, "application/json")
+	if err != nil {
+		return fmt.Errorf("containers: start exec request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return fmt.Errorf("containers: start exec: %w", err)
+	}
+
+	return DemuxStream(resp.Body, stdout, stderr)
+}
+
+// InspectExec checks the status and exit code of an exec instance.
+// Endpoint: GET /{version}/exec/{id}/json
+func (c *EngineClient) InspectExec(ctx context.Context, execID string) (ExecInspectResponse, error) {
+	path := fmt.Sprintf("/exec/%s/json", url.PathEscape(execID))
+
+	resp, err := c.do(ctx, http.MethodGet, path, nil, nil, "")
+	if err != nil {
+		return ExecInspectResponse{}, fmt.Errorf("containers: inspect exec request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return ExecInspectResponse{}, fmt.Errorf("containers: inspect exec: %w", err)
+	}
+
+	var inspectResp ExecInspectResponse
+	if err := json.NewDecoder(resp.Body).Decode(&inspectResp); err != nil {
+		return ExecInspectResponse{}, fmt.Errorf("containers: decode inspect exec response: %w", err)
+	}
+	return inspectResp, nil
+}
+
+// Exec is a composite method that creates, runs, and inspects an exec command to completion.
+func (c *EngineClient) Exec(ctx context.Context, containerID string, cfg ExecConfig) (*ExecResult, error) {
+	execID, err := c.CreateExec(ctx, containerID, cfg)
+	if err != nil {
+		return nil, err
+	}
+
+	var stdoutBuf, stderrBuf bytes.Buffer
+	if err := c.StartExec(ctx, execID, &stdoutBuf, &stderrBuf); err != nil {
+		return nil, err
+	}
+
+	inspect, err := c.InspectExec(ctx, execID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &ExecResult{
+		ExitCode: inspect.ExitCode,
+		Stdout:   stdoutBuf.String(),
+		Stderr:   stderrBuf.String(),
+	}, nil
+}
+
+// Logs streams container logs via an io.ReadCloser.
+// Endpoint: GET /{version}/containers/{id}/logs
+func (c *EngineClient) Logs(ctx context.Context, containerID string, opts LogsOptions) (io.ReadCloser, error) {
+	path := fmt.Sprintf("/containers/%s/logs", url.PathEscape(containerID))
+	query := url.Values{}
+	if opts.Stdout {
+		query.Set("stdout", "true")
+	}
+	if opts.Stderr {
+		query.Set("stderr", "true")
+	}
+	if opts.Follow {
+		query.Set("follow", "true")
+	}
+	if opts.Tail != "" {
+		query.Set("tail", opts.Tail)
+	} else {
+		query.Set("tail", "all")
+	}
+	if opts.Timestamps {
+		query.Set("timestamps", "true")
+	}
+
+	resp, err := c.do(ctx, http.MethodGet, path, query, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("containers: logs request: %w", err)
+	}
+	if err := c.checkError(resp); err != nil {
+		resp.Body.Close()
+		return nil, fmt.Errorf("containers: logs: %w", err)
+	}
+
+	if !opts.Follow {
+		// Read and demux non-streaming logs completely
+		defer resp.Body.Close()
+		var buf bytes.Buffer
+		var stdoutDest, stderrDest io.Writer
+		if opts.Stdout {
+			stdoutDest = &buf
+		}
+		if opts.Stderr {
+			stderrDest = &buf
+		}
+		if err := DemuxStream(resp.Body, stdoutDest, stderrDest); err != nil {
+			return nil, fmt.Errorf("containers: demux logs: %w", err)
+		}
+		return io.NopCloser(bytes.NewReader(buf.Bytes())), nil
+	}
+
+	// For follow=true, demux asynchronously using an io.Pipe
+	pr, pw := io.Pipe()
+	go func() {
+		defer resp.Body.Close()
+		var stdoutDest, stderrDest io.Writer
+		if opts.Stdout {
+			stdoutDest = pw
+		}
+		if opts.Stderr {
+			stderrDest = pw
+		}
+		err := DemuxStream(resp.Body, stdoutDest, stderrDest)
+		_ = pw.CloseWithError(err)
+	}()
+
+	return pr, nil
+}
+
 // do executes an HTTP request against the engine API.
 func (c *EngineClient) do(ctx context.Context, method, path string, query url.Values, body io.Reader, contentType string) (*http.Response, error) {
 	fullPath := "/" + c.version + path
