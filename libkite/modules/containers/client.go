@@ -33,9 +33,10 @@ func (c *Client) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type:
 
 func (c *Client) AttrNames() []string {
 	return []string{
-		"create", "delete", "endpoint", "exec", "get", "images", "inspect",
-		"list", "logs", "ping", "port", "prune", "pull", "remove", "restart",
-		"run", "socket", "start", "stop", "version", "wait",
+		"build", "create", "delete", "endpoint", "exec", "get", "image_build",
+		"image_inspect", "image_list", "image_pull", "image_remove", "images",
+		"inspect", "list", "logs", "ping", "port", "prune", "pull", "remove",
+		"restart", "rmi", "run", "socket", "start", "stop", "version", "wait",
 	}
 }
 
@@ -88,10 +89,16 @@ func (c *Client) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin("Client.exec", c.execFn), nil
 	case "logs":
 		return starlark.NewBuiltin("Client.logs", c.logsFn), nil
-	case "images":
-		return starlark.NewBuiltin("Client.images", c.imagesFn), nil
-	case "pull":
-		return starlark.NewBuiltin("Client.pull", c.pullFn), nil
+	case "image_list", "images":
+		return starlark.NewBuiltin("Client."+name, c.imageListFn), nil
+	case "image_pull", "pull":
+		return starlark.NewBuiltin("Client."+name, c.imagePullFn), nil
+	case "image_inspect":
+		return starlark.NewBuiltin("Client.image_inspect", c.imageInspectFn), nil
+	case "image_remove", "rmi":
+		return starlark.NewBuiltin("Client."+name, c.imageRemoveFn), nil
+	case "image_build", "build":
+		return starlark.NewBuiltin("Client."+name, c.imageBuildFn), nil
 	case "prune":
 		return starlark.NewBuiltin("Client.prune", c.pruneFn), nil
 	default:
@@ -716,14 +723,14 @@ func (c *Client) logsFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 	return iomods.NewReaderWithCloser(rc, rc, fmt.Sprintf("%s.logs", name)), nil
 }
 
-// imagesFn implements client.images(all=False) -> list[dict]
-func (c *Client) imagesFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+// imageListFn implements client.image_list(all=False) -> list[AttrDict]
+func (c *Client) imageListFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var all bool
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "all?", &all); err != nil {
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "containers", "read", "images", ""); err != nil {
+	if err := libkite.Check(thread, "containers", "read", "image_list", ""); err != nil {
 		return nil, err
 	}
 
@@ -772,8 +779,8 @@ func (c *Client) imagesFn(thread *starlark.Thread, fn *starlark.Builtin, args st
 	return starlark.NewList(items), nil
 }
 
-// pullFn implements client.pull(image, auth=None) -> None
-func (c *Client) pullFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+// imagePullFn implements client.image_pull(image, auth=None) -> None
+func (c *Client) imagePullFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var (
 		image   string
 		authVal starlark.Value
@@ -789,7 +796,7 @@ func (c *Client) pullFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, fmt.Errorf("containers: image cannot be empty")
 	}
 
-	if err := libkite.Check(thread, "containers", "write", "pull", image); err != nil {
+	if err := libkite.Check(thread, "containers", "write", "image_pull", image); err != nil {
 		return nil, err
 	}
 
@@ -821,6 +828,106 @@ func (c *Client) pullFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 	}
 
 	return starlark.None, nil
+}
+
+// imageInspectFn implements client.image_inspect(image) -> AttrDict
+func (c *Client) imageInspectFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var image string
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "image", &image); err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(image) == "" {
+		return nil, fmt.Errorf("containers: image cannot be empty")
+	}
+
+	if err := libkite.Check(thread, "containers", "read", "image_inspect", image); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	data, err := c.engine.InspectImage(ctx, image)
+	if err != nil {
+		return nil, err
+	}
+
+	return NewAttrDict(data), nil
+}
+
+// imageRemoveFn implements client.image_remove(image, force=False) -> None
+func (c *Client) imageRemoveFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		image string
+		force bool
+	)
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "image", &image, "force?", &force); err != nil {
+		return nil, err
+	}
+
+	if strings.TrimSpace(image) == "" {
+		return nil, fmt.Errorf("containers: image cannot be empty")
+	}
+
+	if err := libkite.Check(thread, "containers", "delete", "image_remove", image); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	if err := c.engine.RemoveImage(ctx, image, force); err != nil {
+		return nil, err
+	}
+
+	return starlark.None, nil
+}
+
+func resolvePathString(val starlark.Value) (string, error) {
+	if s, ok := starlark.AsString(val); ok {
+		if strings.HasPrefix(s, "path(\"") && strings.HasSuffix(s, "\")") {
+			s = strings.TrimSuffix(strings.TrimPrefix(s, "path(\""), "\")")
+		}
+		return s, nil
+	}
+	if ha, ok := val.(starlark.HasAttrs); ok {
+		if attr, err := ha.Attr("string"); err == nil && attr != nil {
+			if s, ok := starlark.AsString(attr); ok {
+				return s, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("expected string or fs.path, got %s", val.Type())
+}
+
+// imageBuildFn implements client.image_build(path, tag=None, dockerfile="Dockerfile") -> str
+func (c *Client) imageBuildFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var (
+		pathVal    starlark.Value
+		tag        string
+		dockerfile = "Dockerfile"
+	)
+	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "path", &pathVal, "tag?", &tag, "dockerfile?", &dockerfile); err != nil {
+		return nil, err
+	}
+
+	dirPath, err := resolvePathString(pathVal)
+	if err != nil {
+		return nil, fmt.Errorf("containers: %w", err)
+	}
+
+	if strings.TrimSpace(dirPath) == "" {
+		return nil, fmt.Errorf("containers: build path cannot be empty")
+	}
+
+	if err := libkite.Check(thread, "containers", "write", "image_build", dirPath); err != nil {
+		return nil, err
+	}
+
+	ctx := c.getContext(thread)
+	logs, err := c.engine.BuildImage(ctx, dirPath, tag, dockerfile)
+	if err != nil {
+		return nil, err
+	}
+
+	return starlark.String(logs), nil
 }
 
 // pruneFn implements client.prune(containers=True, volumes=False, images=False) -> dict

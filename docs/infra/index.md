@@ -21,7 +21,7 @@ Starkite provides direct container automation through the `containers` module, c
 2. **Lifecycle Management**: Creates, runs, starts, stops, restarts, and removes containers using structured Starlark parameters.
 3. **In-Container Execution**: Dispatches processes inside running containers via `c.exec()`, returning process exit codes with captured stdout and stderr.
 4. **Stream Demultiplexing**: Streams container logs via `c.logs()` using `io.reader`, decoding Docker and Podman 8-byte binary frame protocols.
-5. **Image Management & Housekeeping**: Pulls images from OCI registries with registry authentication (`client.pull()`), lists local cache entries (`client.images()`), and prunes stopped containers and dangling images (`client.prune()`).
+5. **Image Management & Housekeeping**: Pulls images from OCI registries (`client.image_pull()`), builds images from local directory contexts (`client.image_build()`), inspects metadata (`client.image_inspect()`), lists local cache entries (`client.image_list()`), removes images (`client.image_remove()`), and prunes stopped containers and dangling images (`client.prune()`).
 
 ### Key Features
 * **No CLI Toolchain Required**: Interacts directly with daemon REST APIs (v1.45) over native transport sockets without requiring `docker` or `podman` CLI binaries in `$PATH`.

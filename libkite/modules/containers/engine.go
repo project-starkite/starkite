@@ -1,6 +1,7 @@
 package containers
 
 import (
+	"archive/tar"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -9,6 +10,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -536,6 +539,115 @@ func (c *EngineClient) RemoveImage(ctx context.Context, image string, force bool
 		return fmt.Errorf("containers: remove image: %w", err)
 	}
 	return nil
+}
+
+// InspectImage retrieves detailed metadata of an image.
+// Endpoint: GET /{version}/images/{image}/json
+func (c *EngineClient) InspectImage(ctx context.Context, image string) (map[string]any, error) {
+	path := fmt.Sprintf("/images/%s/json", url.PathEscape(image))
+	resp, err := c.do(ctx, http.MethodGet, path, nil, nil, "")
+	if err != nil {
+		return nil, fmt.Errorf("containers: inspect image request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return nil, fmt.Errorf("containers: inspect image: %w", err)
+	}
+
+	var data map[string]any
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return nil, fmt.Errorf("containers: decode inspect image response: %w", err)
+	}
+	return data, nil
+}
+
+// BuildImage builds a container image from a context directory using tar upload.
+// Endpoint: POST /{version}/build?t={tag}&dockerfile={dockerfile}
+func (c *EngineClient) BuildImage(ctx context.Context, contextDir, tag, dockerfile string) (string, error) {
+	buf := new(bytes.Buffer)
+	tw := tar.NewWriter(buf)
+
+	err := filepath.Walk(contextDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		relPath, err := filepath.Rel(contextDir, path)
+		if err != nil {
+			return err
+		}
+		if relPath == "." {
+			return nil
+		}
+		hdr, err := tar.FileInfoHeader(info, "")
+		if err != nil {
+			return err
+		}
+		hdr.Name = filepath.ToSlash(relPath)
+		if err := tw.WriteHeader(hdr); err != nil {
+			return err
+		}
+		if !info.IsDir() {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			if _, err := tw.Write(data); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		return "", fmt.Errorf("containers: package build context: %w", err)
+	}
+	if err := tw.Close(); err != nil {
+		return "", fmt.Errorf("containers: close build context tar: %w", err)
+	}
+
+	query := url.Values{}
+	if tag != "" {
+		query.Set("t", tag)
+	}
+	if dockerfile != "" {
+		query.Set("dockerfile", dockerfile)
+	}
+
+	resp, err := c.do(ctx, http.MethodPost, "/build", query, buf, "application/x-tar")
+	if err != nil {
+		return "", fmt.Errorf("containers: build request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if err := c.checkError(resp); err != nil {
+		return "", fmt.Errorf("containers: build: %w", err)
+	}
+
+	var out bytes.Buffer
+	decoder := json.NewDecoder(resp.Body)
+	for decoder.More() {
+		var msg struct {
+			Stream      string `json:"stream"`
+			Error       string `json:"error"`
+			ErrorDetail struct {
+				Message string `json:"message"`
+			} `json:"errorDetail"`
+		}
+		if err := decoder.Decode(&msg); err != nil {
+			raw, _ := io.ReadAll(resp.Body)
+			out.Write(raw)
+			break
+		}
+		if msg.Error != "" {
+			return out.String(), fmt.Errorf("containers: build failed: %s", msg.Error)
+		}
+		if msg.ErrorDetail.Message != "" {
+			return out.String(), fmt.Errorf("containers: build failed: %s", msg.ErrorDetail.Message)
+		}
+		out.WriteString(msg.Stream)
+	}
+
+	return out.String(), nil
 }
 
 // PruneContainers deletes stopped containers.

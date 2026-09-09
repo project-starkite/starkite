@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -1177,6 +1178,41 @@ func TestStarlark_ImageAndPrune(t *testing.T) {
 		})
 	})
 
+	mux.HandleFunc("/v1.45/images/alpine:latest/json", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"Id":           "sha256:abcdef123456",
+			"Architecture": "amd64",
+			"Os":           "linux",
+			"Config": map[string]any{
+				"Entrypoint": []string{"/bin/sh"},
+			},
+		})
+	})
+
+	mux.HandleFunc("/v1.45/images/alpine:latest", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodDelete {
+			w.WriteHeader(http.StatusOK)
+			_ = json.NewEncoder(w).Encode([]map[string]string{
+				{"Untagged": "alpine:latest"},
+				{"Deleted": "sha256:abcdef123456"},
+			})
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	mux.HandleFunc("/v1.45/build", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"stream":"Step 1/1 : FROM alpine\n"}` + "\n" + `{"stream":"Successfully tagged test:latest\n"}` + "\n"))
+	})
+
+	tmpDir := t.TempDir()
+	dockerfilePath := filepath.Join(tmpDir, "Dockerfile")
+	if err := os.WriteFile(dockerfilePath, []byte("FROM alpine\n"), 0644); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
 	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
 
@@ -1186,8 +1222,8 @@ load("containers", "containers")
 def main():
     c = containers.config(host=%q)
 
-    # 1. client.images()
-    imgs = c.images()
+    # 1. client.image_list() and alias client.images()
+    imgs = c.image_list()
     if len(imgs) != 1:
         fail("expected 1 image, got %%d" %% len(imgs))
     img = imgs[0]
@@ -1202,10 +1238,37 @@ def main():
     if img["labels"]["type"] != "base":
         fail("unexpected label: %%s" %% img["labels"]["type"])
 
-    # 2. client.pull()
-    c.pull("alpine:latest", auth={"username": "user", "password": "pw"})
+    # verify alias images() returns same count
+    if len(c.images()) != 1:
+        fail("alias c.images() failed")
 
-    # 3. client.prune()
+    # 2. client.image_pull() and alias client.pull()
+    c.image_pull("alpine:latest", auth={"username": "user", "password": "pw"})
+    c.pull("alpine:latest")
+
+    # 3. client.image_inspect()
+    info = c.image_inspect("alpine:latest")
+    if info.Architecture != "amd64":
+        fail("unexpected Architecture: %%s" %% info.Architecture)
+    if info.Os != "linux":
+        fail("unexpected Os: %%s" %% info.Os)
+    if info.Config.Entrypoint[0] != "/bin/sh":
+        fail("unexpected Entrypoint: %%s" %% str(info.Config.Entrypoint))
+
+    # 4. client.image_build() and alias client.build()
+    build_logs = c.image_build(%q, tag="test:latest")
+    if "Successfully tagged" not in build_logs:
+        fail("unexpected build_logs: %%s" %% build_logs)
+
+    build_logs_alias = c.build(%q, tag="test:latest")
+    if "Successfully tagged" not in build_logs_alias:
+        fail("unexpected build_logs_alias: %%s" %% build_logs_alias)
+
+    # 5. client.image_remove() and alias client.rmi()
+    c.image_remove("alpine:latest", force=True)
+    c.rmi("alpine:latest")
+
+    # 6. client.prune()
     rep = c.prune(containers=True, volumes=True, images=True)
     if rep["containers_deleted"] != ["dead_box"]:
         fail("unexpected containers_deleted: %%s" %% str(rep["containers_deleted"]))
@@ -1217,7 +1280,7 @@ def main():
         fail("unexpected space_reclaimed: %%d" %% rep["space_reclaimed"])
 
 main()
-`, host)
+`, host, tmpDir, tmpDir)
 
 	rt, err := libkite.New(&libkite.Config{
 		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
@@ -1500,6 +1563,14 @@ func TestStarlark_ModuleShortcuts(t *testing.T) {
 			"ExitCode": 0,
 		})
 	})
+	mux.HandleFunc("/v1.45/images/json", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode([]map[string]any{{"Id": "sha256:img123", "RepoTags": []string{"alpine:latest"}}})
+	})
+	mux.HandleFunc("/v1.45/images/create", func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"Pull complete"}` + "\n"))
+	})
 
 	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
@@ -1529,6 +1600,17 @@ def main():
 
     # 4. containers.delete() module shortcut with AttrDict target
     containers.delete(box, force=True)
+
+    # 5. Image module shortcuts
+    imgs = containers.image_list()
+    if len(imgs) != 1:
+        fail("expected 1 image from containers.image_list")
+    imgs_alias = containers.images()
+    if len(imgs_alias) != 1:
+        fail("expected 1 image from containers.images")
+
+    containers.image_pull("alpine:latest")
+    containers.pull("alpine:latest")
 
 main()
 `, containerID, containerID, containerID)

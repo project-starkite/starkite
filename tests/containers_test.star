@@ -11,6 +11,9 @@ def _create_mock_engine():
         "removed": [],
         "pulled": [],
         "pruned": [],
+        "inspected_images": [],
+        "removed_images": [],
+        "built": [],
         "wait_code": 0,
     }
 
@@ -210,6 +213,41 @@ def _create_mock_engine():
             }),
         }
 
+    def image_inspect_h(req):
+        name = req.params.get("id", "alpine:latest")
+        state["inspected_images"].append(name)
+        return {
+            "status": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.encode({
+                "Id": "sha256:img123456",
+                "RepoTags": ["alpine:latest"],
+                "Size": 7340032,
+                "Architecture": "amd64",
+                "Os": "linux",
+            }),
+        }
+
+    def image_delete_h(req):
+        name = req.params.get("id", "")
+        force = req.query.get("force", "false")
+        state["removed_images"].append({"image": name, "force": force})
+        return {
+            "status": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.encode([{"Untagged": name}, {"Deleted": "sha256:img123456"}]),
+        }
+
+    def build_h(req):
+        tag = req.query.get("t", "")
+        df = req.query.get("dockerfile", "Dockerfile")
+        state["built"].append({"tag": tag, "dockerfile": df})
+        return {
+            "status": 200,
+            "headers": {"Content-Type": "application/json"},
+            "body": json.encode({"stream": "Step 1/1 : FROM alpine\n"}) + "\n" + json.encode({"stream": "Successfully tagged " + tag + "\n"}),
+        }
+
     srv.handle("GET /_ping", ping_h)
     srv.handle("GET /v1.45/version", version_h)
     srv.handle("POST /v1.45/containers/create", create_h)
@@ -225,7 +263,10 @@ def _create_mock_engine():
     srv.handle("GET /v1.45/exec/{id}/json", exec_inspect_h)
     srv.handle("GET /v1.45/containers/{id}/logs", logs_h)
     srv.handle("GET /v1.45/images/json", images_h)
+    srv.handle("GET /v1.45/images/{id}/json", image_inspect_h)
+    srv.handle("DELETE /v1.45/images/{id}", image_delete_h)
     srv.handle("POST /v1.45/images/create", pull_h)
+    srv.handle("POST /v1.45/build", build_h)
     srv.handle("POST /v1.45/containers/prune", containers_prune_h)
     srv.handle("POST /v1.45/volumes/prune", volumes_prune_h)
     srv.handle("POST /v1.45/images/prune", images_prune_h)
@@ -456,9 +497,10 @@ def test_container_logs():
     srv.shutdown()
 
 def test_client_images():
-    """Verify client.images() lists local images with normalized dict keys."""
+    """Verify client.image_list() and alias client.images() list local images with normalized dict keys."""
     srv, client, state = _create_mock_engine()
-    imgs = client.images()
+    # Canonical image_list
+    imgs = client.image_list()
     assert(len(imgs) == 1, "should return 1 image")
     img = imgs[0]
     assert(img["id"] == "sha256:img123456", "id should match")
@@ -469,24 +511,83 @@ def test_client_images():
     assert(img["created"] == 1700000000, "created should match")
     assert(img["labels"]["maintainer"] == "kite", "labels should match")
 
+    # Alias images
+    imgs_alias = client.images()
+    assert(len(imgs_alias) == 1, "images alias returns same list")
+    assert(imgs_alias[0]["id"] == "sha256:img123456", "alias id matches")
+
     srv.shutdown()
 
 def test_client_pull():
-    """Verify client.pull() pulls images and encodes auth headers."""
+    """Verify client.image_pull() and alias client.pull() pull images and encode auth headers."""
     srv, client, state = _create_mock_engine()
 
-    # 1. Plain pull
-    client.pull("alpine:latest")
+    # 1. Canonical client.image_pull()
+    client.image_pull("alpine:latest")
     assert(len(state["pulled"]) == 1, "1 pull recorded")
     assert(state["pulled"][0]["image"] == "alpine:latest", "pulled image matches")
     assert(state["pulled"][0]["auth"] == "", "auth should be empty")
 
-    # 2. Pull with auth dict
+    # 2. Alias client.pull() with auth dict
     client.pull("myreg.io/private/app:v1", auth={"username": "user", "password": "pw"})
     assert(len(state["pulled"]) == 2, "2 pulls recorded")
     assert(state["pulled"][1]["image"] == "myreg.io/private/app:v1", "pulled image matches")
     assert(state["pulled"][1]["auth"] != "", "auth header should be non-empty base64")
 
+    srv.shutdown()
+
+def test_client_image_inspect():
+    """Verify client.image_inspect() returns detailed image metadata."""
+    srv, client, state = _create_mock_engine()
+    info = client.image_inspect("alpine:latest")
+    assert(info["Id"] == "sha256:img123456", "Id matches")
+    assert(info["RepoTags"] == ["alpine:latest"], "RepoTags matches")
+    assert(info["Architecture"] == "amd64", "Architecture matches")
+    assert(state["inspected_images"] == ["alpine:latest"], "inspected images recorded")
+    srv.shutdown()
+
+def test_client_image_remove():
+    """Verify client.image_remove() and alias client.rmi() remove images."""
+    srv, client, state = _create_mock_engine()
+    # Canonical image_remove
+    client.image_remove("alpine:latest", force=True)
+    assert(len(state["removed_images"]) == 1, "1 image removal recorded")
+    assert(state["removed_images"][0]["image"] == "alpine:latest", "removed image matches")
+    assert(state["removed_images"][0]["force"] == "true", "force matches")
+
+    # Alias rmi
+    client.rmi("alpine:3.19")
+    assert(len(state["removed_images"]) == 2, "2 image removals recorded")
+    assert(state["removed_images"][1]["image"] == "alpine:3.19", "removed image matches")
+    srv.shutdown()
+
+def test_client_image_build():
+    """Verify client.image_build() and alias client.build() stream build context."""
+    srv, client, state = _create_mock_engine()
+
+    d = fs.path(temp_dir()) / "test_build_context"
+    df = d / "Dockerfile"
+    if df.exists():
+        df.remove()
+    if d.exists():
+        d.remove()
+    d.mkdir()
+    df.write_text("FROM alpine:latest\nCMD [\"echo\", \"built\"]\n")
+
+    # 1. Canonical image_build
+    out1 = client.image_build(str(d.string), tag="mytest:latest", dockerfile="Dockerfile")
+    assert("Successfully tagged mytest:latest" in out1, "build output contains tag")
+    assert(len(state["built"]) == 1, "1 build recorded")
+    assert(state["built"][0]["tag"] == "mytest:latest", "tag matches")
+
+    # 2. Alias build
+    out2 = client.build(str(d.string), tag="mytest:v2")
+    assert("Successfully tagged mytest:v2" in out2, "alias build output contains tag")
+    assert(len(state["built"]) == 2, "2 builds recorded")
+    assert(state["built"][1]["tag"] == "mytest:v2", "tag matches")
+
+    df.remove()
+    d.remove()
     srv.shutdown()
 
 def test_client_prune():
@@ -570,6 +671,18 @@ def test_module_shortcuts():
     assert(hasattr(containers, "try_exec") == True, "containers.try_exec should be exposed")
     assert(hasattr(containers, "try_stop") == True, "containers.try_stop should be exposed")
     assert(hasattr(containers, "try_delete") == True, "containers.try_delete should be exposed")
+
+    # Image shortcuts & aliases
+    assert(hasattr(containers, "image_pull") == True, "containers.image_pull should be exposed")
+    assert(hasattr(containers, "pull") == True, "containers.pull should be exposed")
+    assert(hasattr(containers, "image_build") == True, "containers.image_build should be exposed")
+    assert(hasattr(containers, "build") == True, "containers.build should be exposed")
+    assert(hasattr(containers, "image_list") == True, "containers.image_list should be exposed")
+    assert(hasattr(containers, "images") == True, "containers.images should be exposed")
+    assert(hasattr(containers, "image_inspect") == True, "containers.image_inspect should be exposed")
+    assert(hasattr(containers, "image_remove") == True, "containers.image_remove should be exposed")
+    assert(hasattr(containers, "rmi") == True, "containers.rmi should be exposed")
+
 
 
 

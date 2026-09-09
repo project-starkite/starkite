@@ -35,12 +35,21 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 	m.once.Do(func() {
 		m.config = config
 		members := starlark.StringDict{
-			"config": starlark.NewBuiltin("containers.config", m.configConstructor),
-			"run":    starlark.NewBuiltin("containers.run", m.shortcutRun),
-			"exec":   starlark.NewBuiltin("containers.exec", m.shortcutExec),
-			"stop":   starlark.NewBuiltin("containers.stop", m.shortcutStop),
-			"delete": starlark.NewBuiltin("containers.delete", m.shortcutDelete),
-			"remove": starlark.NewBuiltin("containers.remove", m.shortcutDelete),
+			"config":        starlark.NewBuiltin("containers.config", m.configConstructor),
+			"run":           starlark.NewBuiltin("containers.run", m.shortcutRun),
+			"exec":          starlark.NewBuiltin("containers.exec", m.shortcutExec),
+			"stop":          starlark.NewBuiltin("containers.stop", m.shortcutStop),
+			"delete":        starlark.NewBuiltin("containers.delete", m.shortcutDelete),
+			"remove":        starlark.NewBuiltin("containers.remove", m.shortcutDelete),
+			"image_pull":    starlark.NewBuiltin("containers.image_pull", m.shortcutImagePull),
+			"pull":          starlark.NewBuiltin("containers.pull", m.shortcutImagePull),
+			"image_build":   starlark.NewBuiltin("containers.image_build", m.shortcutImageBuild),
+			"build":         starlark.NewBuiltin("containers.build", m.shortcutImageBuild),
+			"image_list":    starlark.NewBuiltin("containers.image_list", m.shortcutImageList),
+			"images":        starlark.NewBuiltin("containers.images", m.shortcutImageList),
+			"image_inspect": starlark.NewBuiltin("containers.image_inspect", m.shortcutImageInspect),
+			"image_remove":  starlark.NewBuiltin("containers.image_remove", m.shortcutImageRemove),
+			"rmi":           starlark.NewBuiltin("containers.rmi", m.shortcutImageRemove),
 		}
 		m.module = libkite.NewTryModule(string(ModuleName), members)
 	})
@@ -108,6 +117,46 @@ func (m *Module) shortcutDelete(thread *starlark.Thread, fn *starlark.Builtin, a
 		return nil, err
 	}
 	return client.deleteFn(thread, fn, args, kwargs)
+}
+
+func (m *Module) shortcutImagePull(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.imagePullFn(thread, fn, args, kwargs)
+}
+
+func (m *Module) shortcutImageBuild(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.imageBuildFn(thread, fn, args, kwargs)
+}
+
+func (m *Module) shortcutImageList(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.imageListFn(thread, fn, args, kwargs)
+}
+
+func (m *Module) shortcutImageInspect(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.imageInspectFn(thread, fn, args, kwargs)
+}
+
+func (m *Module) shortcutImageRemove(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.imageRemoveFn(thread, fn, args, kwargs)
 }
 
 // configConstructor creates a new containers.Client instance.
