@@ -63,6 +63,8 @@ jobs:
           done
 
       - name: Run all Starkite Starlark tests
+        env:
+          STARKITE_CONTAINER_INTEGRATION: "1"
         run: |
           echo "=== Running all tests/*_test.star files ==="
           for f in tests/*_test.star; do

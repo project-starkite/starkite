@@ -8,21 +8,49 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"golang.org/x/sys/windows"
 )
 
 type winPipeConn struct {
-	handle windows.Handle
+	handle       windows.Handle
+	mu           sync.Mutex
+	readTimer    *time.Timer
+	writeTimer   *time.Timer
+	readExpired  atomic.Bool
+	writeExpired atomic.Bool
+	closed       atomic.Bool
 }
 
 func (c *winPipeConn) Read(b []byte) (int, error) {
+	if c.closed.Load() {
+		return 0, net.ErrClosed
+	}
+	if c.readExpired.Load() {
+		return 0, os.ErrDeadlineExceeded
+	}
+
 	var done uint32
 	err := windows.ReadFile(c.handle, b, &done, nil)
 	if err != nil {
-		if err == windows.ERROR_BROKEN_PIPE {
+		if c.readExpired.Load() {
+			return int(done), os.ErrDeadlineExceeded
+		}
+		if c.closed.Load() {
+			return int(done), net.ErrClosed
+		}
+		if err == windows.ERROR_BROKEN_PIPE || err == windows.ERROR_PIPE_NOT_CONNECTED {
 			return int(done), io.EOF
+		}
+		if err == windows.ERROR_OPERATION_ABORTED {
+			if c.readExpired.Load() {
+				return int(done), os.ErrDeadlineExceeded
+			}
+			return int(done), net.ErrClosed
 		}
 		return int(done), err
 	}
@@ -30,20 +58,118 @@ func (c *winPipeConn) Read(b []byte) (int, error) {
 }
 
 func (c *winPipeConn) Write(b []byte) (int, error) {
+	if c.closed.Load() {
+		return 0, net.ErrClosed
+	}
+	if c.writeExpired.Load() {
+		return 0, os.ErrDeadlineExceeded
+	}
+
 	var done uint32
 	err := windows.WriteFile(c.handle, b, &done, nil)
+	if err != nil {
+		if c.writeExpired.Load() {
+			return int(done), os.ErrDeadlineExceeded
+		}
+		if c.closed.Load() {
+			return int(done), net.ErrClosed
+		}
+		if err == windows.ERROR_OPERATION_ABORTED {
+			if c.writeExpired.Load() {
+				return int(done), os.ErrDeadlineExceeded
+			}
+			return int(done), net.ErrClosed
+		}
+		return int(done), err
+	}
 	return int(done), err
 }
 
 func (c *winPipeConn) Close() error {
+	if c.closed.Swap(true) {
+		return nil
+	}
+
+	c.mu.Lock()
+	if c.readTimer != nil {
+		c.readTimer.Stop()
+		c.readTimer = nil
+	}
+	if c.writeTimer != nil {
+		c.writeTimer.Stop()
+		c.writeTimer = nil
+	}
+	c.mu.Unlock()
+
+	_ = windows.CancelIoEx(c.handle, nil)
 	return windows.CloseHandle(c.handle)
 }
 
-func (c *winPipeConn) LocalAddr() net.Addr                { return &pipeAddr{addr: "pipe"} }
-func (c *winPipeConn) RemoteAddr() net.Addr               { return &pipeAddr{addr: "pipe"} }
-func (c *winPipeConn) SetDeadline(t time.Time) error      { return nil }
-func (c *winPipeConn) SetReadDeadline(t time.Time) error  { return nil }
-func (c *winPipeConn) SetWriteDeadline(t time.Time) error { return nil }
+func (c *winPipeConn) LocalAddr() net.Addr  { return &pipeAddr{addr: "pipe"} }
+func (c *winPipeConn) RemoteAddr() net.Addr { return &pipeAddr{addr: "pipe"} }
+
+func (c *winPipeConn) SetDeadline(t time.Time) error {
+	_ = c.SetReadDeadline(t)
+	return c.SetWriteDeadline(t)
+}
+
+func (c *winPipeConn) SetReadDeadline(t time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.readTimer != nil {
+		c.readTimer.Stop()
+		c.readTimer = nil
+	}
+
+	if t.IsZero() {
+		c.readExpired.Store(false)
+		return nil
+	}
+
+	d := time.Until(t)
+	if d <= 0 {
+		c.readExpired.Store(true)
+		_ = windows.CancelIoEx(c.handle, nil)
+		return nil
+	}
+
+	c.readExpired.Store(false)
+	c.readTimer = time.AfterFunc(d, func() {
+		c.readExpired.Store(true)
+		_ = windows.CancelIoEx(c.handle, nil)
+	})
+	return nil
+}
+
+func (c *winPipeConn) SetWriteDeadline(t time.Time) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.writeTimer != nil {
+		c.writeTimer.Stop()
+		c.writeTimer = nil
+	}
+
+	if t.IsZero() {
+		c.writeExpired.Store(false)
+		return nil
+	}
+
+	d := time.Until(t)
+	if d <= 0 {
+		c.writeExpired.Store(true)
+		_ = windows.CancelIoEx(c.handle, nil)
+		return nil
+	}
+
+	c.writeExpired.Store(false)
+	c.writeTimer = time.AfterFunc(d, func() {
+		c.writeExpired.Store(true)
+		_ = windows.CancelIoEx(c.handle, nil)
+	})
+	return nil
+}
 
 type pipeAddr struct {
 	addr string
