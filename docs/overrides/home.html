@@ -276,10 +276,10 @@
     color: #ffffff;
     background: rgba(255, 255, 255, 0.06);
   }
-  #hero-tab-auto:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-auto"],
-  #hero-tab-k8s:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-k8s"],
-  #hero-tab-ai:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-ai"],
-  #hero-tab-sec:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-sec"] {
+  #hero-tab-systems:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-systems"],
+  #hero-tab-cloud:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-cloud"],
+  #hero-tab-agentic:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-agentic"],
+  #hero-tab-secure:checked ~ .hero-terminal__bar .hero-tab-nav label[for="hero-tab-secure"] {
     color: #89ddff;
     background: rgba(137, 221, 255, 0.14);
   }
@@ -310,10 +310,10 @@
   .hero-tab-pane {
     display: none;
   }
-  #hero-tab-auto:checked ~ .hero-tab-pane[data-tab="auto"],
-  #hero-tab-k8s:checked ~ .hero-tab-pane[data-tab="k8s"],
-  #hero-tab-ai:checked ~ .hero-tab-pane[data-tab="ai"],
-  #hero-tab-sec:checked ~ .hero-tab-pane[data-tab="sec"] {
+  #hero-tab-systems:checked ~ .hero-tab-pane[data-tab="systems"],
+  #hero-tab-cloud:checked ~ .hero-tab-pane[data-tab="cloud"],
+  #hero-tab-agentic:checked ~ .hero-tab-pane[data-tab="agentic"],
+  #hero-tab-secure:checked ~ .hero-tab-pane[data-tab="secure"] {
     display: block;
   }
 
@@ -711,20 +711,20 @@
     <div class="tx-hero">
       <div class="tx-hero__split">
         <div class="tx-hero__left">
-          <h1 class="tx-hero__headline">Secure Scripting Runtime for <span class="tx-hero__accent">Systems, Cloud, and Agent Automation</span></h1>
+          <h1 class="tx-hero__headline">Scripting Runtime for <span class="tx-hero__accent">Cloud-Native and Agentic</span> Workload Automation</h1>
           <p class="tx-hero__subhead">
-            Starkite combines the simplicity of the Starlark scripting language with a set of feature-rich modules backed by the Go standard libary.
-            Use it to replace brittle single-threaded operation scripts with high-performance automation for system, infrastructure, and agentic workloads.
+            Starkite is a single-binary, dependency-free runtime for high-performance, testable, and portable Starlark scripts. 
+            Use it to automate system operations, cloud-native workflows, and agentic tool loops in a secure, sandboxed execution environment.
           </p>
         </div>
 
         <div class="tx-hero__right">
           <div class="hero-terminal">
             <!-- Radio inputs for tabs -->
-            <input type="radio" id="hero-tab-auto" name="hero-tab" checked>
-            <input type="radio" id="hero-tab-k8s" name="hero-tab">
-            <input type="radio" id="hero-tab-ai" name="hero-tab">
-            <input type="radio" id="hero-tab-sec" name="hero-tab">
+            <input type="radio" id="hero-tab-systems" name="hero-tab" checked>
+            <input type="radio" id="hero-tab-cloud" name="hero-tab">
+            <input type="radio" id="hero-tab-agentic" name="hero-tab">
+            <input type="radio" id="hero-tab-secure" name="hero-tab">
 
             <div class="hero-terminal__bar">
               <div class="hero-terminal__dots">
@@ -734,10 +734,10 @@
               </div>
 
               <div class="hero-tab-nav">
-                <label for="hero-tab-auto">Automation</label>
-                <label for="hero-tab-k8s">Kubernetes</label>
-                <label for="hero-tab-ai">Agentic AI</label>
-                <label for="hero-tab-sec">Security</label>
+                <label for="hero-tab-systems">Operations</label>
+                <label for="hero-tab-cloud">Cloud Workflows</label>
+                <label for="hero-tab-agentic">Agentic AI</label>
+                <label for="hero-tab-secure">Script Security</label>
               </div>
 
               <button class="hero-terminal__copy" onclick="copyActiveSnippet(this)" aria-label="Copy active code" title="Copy code">
@@ -745,218 +745,169 @@
               </button>
             </div>
 
-            <!-- TAB 1: AUTOMATION -->
-            <div class="hero-tab-pane" data-tab="auto">
-              <!-- Slide 0: SSH Fleet Execution -->
-              <div class="hero-slide active" data-filename="ssh_fleet.star">
+            <!-- TAB 1: SYSTEMS -->
+            <div class="hero-tab-pane" data-tab="systems">
+              <!-- Slide 0: Process & Service Triage -->
+              <div class="hero-slide active" data-filename="sys_triage.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-auto-0" class="language-python"># Execute remote commands across fleet hosts via bastion
-
+                  <pre><code id="code-sys-0" class="language-python"># Access local file systems, processes, and host services
 def main():
-    client = ssh.config(
-        hosts   = ["node-1", "node-2", "node-3"],
-        auth    = {"user": "ops", "key": "~/.ssh/id_ed25519"},
-        jump    = {"host": "bastion.corp.net", "user": "admin"},
-        timeout = "10s",
+    print("Host:", os.hostname(), "| Load:", os.loadavg())
+
+    # Check service status without shell overhead
+    status = os.exec("systemctl is-active nginx").strip()
+    if status != "active":
+        print("Service down, restarting...")
+        os.exec("systemctl restart nginx")</code></pre>
+                </div>
+              </div>
+              <!-- Slide 1: Network & HTTP Probe -->
+              <div class="hero-slide" data-filename="health_probe.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-sys-1" class="language-python"># Contact HTTP web services and process JSON responses
+def main():
+    resp = http.get("http://127.0.0.1:8080/healthz", timeout="2s")
+    if resp.status_code == 200:
+        data = json.decode(resp.body)
+        print("Service OK. Version:", data.get("version"))
+    else:
+        fail("Endpoint probe failed:", resp.status_code)</code></pre>
+                </div>
+              </div>
+            </div>
+
+            <!-- TAB 2: CLOUD -->
+            <div class="hero-tab-pane" data-tab="cloud">
+              <!-- Slide 0: Containers -->
+              <div class="hero-slide active" data-filename="containers.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-cld-0" class="language-python"># Manage containers and their lifecycles
+def main():
+    dockr = containers.config()
+    c = dockr.run(
+        "redis:alpine",
+        name    = "cache",
+        ports   = {"6379/tcp": 6379},
+        detach  = True,
     )
-    for res in client.exec("uptime"):
+    print("Started container:", c.id[:12])</code></pre>
+                </div>
+              </div>
+              <!-- Slide 1: Kubernetes -->
+              <div class="hero-slide" data-filename="k8s_scale.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-cld-1" class="language-python"># Control Kubernetes cluster resources and workloads
+def main():
+    k8s.deploy("web-api", image="nginx:alpine", replicas=3)
+    k8s.scale("deployment", "web-api", replicas=5)
+
+    for pod in k8s.list("pods", labels="app=web-api"):
+        print(pod.metadata.name, "->", pod.status.phase)</code></pre>
+                </div>
+              </div>
+              <!-- Slide 2: SSH Fleet -->
+              <div class="hero-slide" data-filename="ssh_fleet.star">
+                <div class="hero-terminal__code">
+                  <pre><code id="code-cld-2" class="language-python"># Run SSH commands across fleet of remote hosts
+def main():
+    fleet = ssh.config(
+        hosts = ["node-1", "node-2", "node-3"],
+        auth  = {"user": "ops", "key": "~/.ssh/id_ed25519"},
+        jump  = {"host": "bastion.corp.net", "user": "admin"},
+    )
+    for res in fleet.exec("uptime"):
         print(res.host, "->", res.stdout.strip())</code></pre>
                 </div>
               </div>
-              <!-- Slide 1: SSH Key Discovery & Bootstrap -->
-              <div class="hero-slide" data-filename="ssh_bootstrap.star">
-                <div class="hero-terminal__code">
-                  <pre><code id="code-auto-1" class="language-python"># Scan host keys and distribute credentials safely
-
-def main():
-    # 1. Discover and save host keys to known_hosts
-    ssh.scan_host_keys(hosts=["node-1", "node-2", "node-3"], save=True)
-
-    # 2. Check and copy public key (skips already-authorized nodes)
-    client = ssh.config(hosts=["node-1", "node-2", "node-3"], auth={"user": "deploy"})
-    for r in client.copy_id("~/.ssh/id_ed25519.pub", check_first=True):
-        print(r.host, "->", r.stdout.strip())</code></pre>
-                </div>
-              </div>
-              <!-- Slide 2: API Server -->
-              <div class="hero-slide" data-filename="http_server.star">
-                <div class="hero-terminal__code">
-                  <pre><code id="code-auto-2" class="language-python"># Easily create HTTP servers and API endpoints
-
-def handle_webhook(req):
-    event = json.decode(req.body)
-    return {"status": 200, "body": event.get("type", "ping")}
-
-def main():
-    srv = http.server()
-    srv.handle("POST /webhook", handle_webhook)
-    srv.serve(port=8080)</code></pre>
-                </div>
-              </div>
-              <!-- Slide 3: HTTP Client -->
-              <div class="hero-slide" data-filename="http_client.star">
-                <div class="hero-terminal__code">
-                  <pre><code id="code-auto-3" class="language-python"># Create clients to handle remote HTTP services/APIs
-
-def main():
-    resp = http.url("https://httpbin.org/json").get(
-        headers = {"Accept": "application/json"},
-        timeout = "5s",
-    )
-    data = json.decode(resp.body)
-    print("Status Code:", resp.status_code)
-    print("Response Data:", data["slideshow"]["title"])</code></pre>
-                </div>
-              </div>
             </div>
 
-            <!-- TAB 2: KUBERNETES -->
-            <div class="hero-tab-pane" data-tab="k8s">
-              <!-- Slide 0: Query & Inspect -->
-              <div class="hero-slide active" data-filename="list_pods.star">
-                <div class="hero-terminal__code">
-                  <pre><code id="code-k8s-0" class="language-python"># Query Kubernetes cluster resources
-
-def main():
-    pods = k8s.list("pods", namespace="staging")
-    for pod in pods:
-        print(pod.metadata.name, pod.status.phase)</code></pre>
-                </div>
-              </div>
-              <!-- Slide 1: Workload Deploy & Scale -->
-              <div class="hero-slide" data-filename="deploy_workload.star">
-                <div class="hero-terminal__code">
-                  <pre><code id="code-k8s-1" class="language-python"># Deploy and manage Kubernetes cluster workloads
-
-def main():
-    res = k8s.deploy(name="web", image="nginx:1.27", replicas=3)
-    k8s.scale("deployment", name="web", replicas=5)
-    print("Deployment scaled:", res.deployment)</code></pre>
-                </div>
-              </div>
-              <!-- Slide 2: Reconcile Controller -->
-              <div class="hero-slide" data-filename="controller.star">
-                <div class="hero-terminal__code">
-                  <pre><code id="code-k8s-2" class="language-python"># Reconcile cluster state and correct configuration drift
-
-def reconcile(deploy):
-    if deploy.spec.replicas > 3:
-        k8s.patch("deployment", deploy.metadata.name, {"spec": {"replicas": 3}})
-        k8s.event(deploy, "DriftCorrected", "Scaled down to policy limit")
-
-def main():
-    k8s.control("deployments", reconcile=reconcile, health_port=8081)</code></pre>
-                </div>
-              </div>
-            </div>
-
-            <!-- TAB 3: AGENTIC AI -->
-            <div class="hero-tab-pane" data-tab="ai">
-              <!-- Slide 0: MCP Tool Definition (Starlark) -->
+            <!-- TAB 3: AGENTIC -->
+            <div class="hero-tab-pane" data-tab="agentic">
+              <!-- Slide 0: Starlark MCP Tool Provider -->
               <div class="hero-slide active" data-filename="mcp_server.star">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-ai-0" class="language-python"># Expose functions as MCP servers for your agentic tools
-
-def get_pod_health():
-    """Return status summary of running pods across staging."""
-    pods = k8s.list("pods", namespace="staging")
-    return [
-        {"pod": p.metadata.name, "phase": p.status.phase}
-        for p in pods
-    ]
+                  <pre><code id="code-ai-0" class="language-python"># Expose Starkite functions as MCP tools to LLMs
+def get_pod_health(namespace="default"):
+    """Return pod status summary for an AI agent."""
+    pods = k8s.list("pods", namespace=namespace)
+    return {p.metadata.name: p.status.phase for p in pods}
 
 def main():
+    # Register and serve function as MCP tools agent harnesses
     mcp.serve(tools=[get_pod_health])</code></pre>
                 </div>
               </div>
               <!-- Slide 1: Declarative MCP Config (JSON) -->
-              <div class="hero-slide" data-filename="mcp_config.json">
+              <div class="hero-slide" data-filename="mcp_client.json">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-ai-1" class="language-json">// Use Starkite MCP tools with Claude, Cursor, or any agent harness
-
+                  <pre><code id="code-ai-1" class="language-json">// Register Starkite scripts as secure, sandboxed 
+// tools in agent harness configurations
 {
   "mcpServers": {
-    "k8s-diagnostics": {
+    "cluster-ops": {
       "command": "kite",
-      "args": ["run", "./tools/k8s_mcp.star", "--permissions=k8s-read"]
+      "args": ["run", "./tools/k8s.star", "--allow-net"]
     }
   }
 }</code></pre>
                 </div>
               </div>
-              <!-- Slide 2: Programmatic Agent Harness (TypeScript) -->
-              <div class="hero-slide" data-filename="agent_harness.ts">
+              <!-- Slide 2: Agent Skill Definition (Markdown) -->
+              <div class="hero-slide" data-filename="SKILL.md">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-ai-2" class="language-typescript">// Use the Starkite runtime in your own harness code 
+                  <pre><code id="code-ai-2" class="language-markdown">&lt;!-- Use Starkite scripts in skills.md files --&gt;
+---
+name: k8s-triage
+description: Safely inspect cluster workloads via Starkite.
+---
 
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
-
-const client = new Client({ name: "sre-agent", version: "1.0.0" });
-await client.connect(new StdioClientTransport({
-  command: "kite",
-  args: ["run", "./tools/k8s_mcp.star", "--permissions=k8s-read"],
-}));
-
-const health = await client.callTool({ name: "get_pod_health" });</code></pre>
+## Agent Execution Rule
+Run operational scripts within strict capability bounds:
+$ kite run ./scripts/triage.star --permissions=allow-local</code></pre>
                 </div>
               </div>
             </div>
 
-            <!-- TAB 4: SECURITY -->
-            <div class="hero-tab-pane" data-tab="sec">
-              <!-- Slide 0: Declarative Capability Policy -->
+            <!-- TAB 4: SECURE -->
+            <div class="hero-tab-pane" data-tab="secure">
+              <!-- Slide 0: Capability Permissions -->
               <div class="hero-slide active" data-filename="config.yaml">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-sec-0" class="language-yaml"># Define granular permission and execution sanbox profiles
-
+                  <pre><code id="code-sec-0" class="language-yaml"># Use the Starkite configuration file to define 
+# capabilities and sandbox boundaries for scripts
 permissions:
-  safe-job:
+  agent-job:
     allow:
-      - "fs.read($CWD/data/*)"
-      - "fs.write($CWD/data/*)"
+      - "fs.read($CWD/**)"
+      - "net.connect(api.k8s.local)"
     deny:
-      - os.exec
-      - http.client</code></pre>
+      - os.exec</code></pre>
                 </div>
               </div>
-              <!-- Slide 1: Sandboxed Script Logic -->
-              <div class="hero-slide" data-filename="safe_job.star">
-                <div class="hero-terminal__code">
-                  <pre><code id="code-sec-1" class="language-python"># Code makes function calls and access to restricted resources
-
-def main():
-    data = path("data/input.json").read_text()
-    records = json.decode(data)
-    path("data/result.json").write_text(
-        json.encode({"count": len(records)}),
-    )
-    print("Job completed safely within policy bounds.")</code></pre>
-                </div>
-              </div>
-              <!-- Slide 2: Combined Kernel & Capability Execution -->
+              <!-- Slide 1: Kernel & Container Sandboxing CLI -->
               <div class="hero-slide" data-filename="sandbox_run.sh">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-sec-2" class="language-bash"># Run scripts with pre-defined or custom permissions
-$ kite run ./safe_job.star --permissions=safe-job
+                  <pre><code id="code-sec-1" class="language-bash"># Run with capability-based permission profile
+$ kite run ./agent_tool.star --permissions=agent-job
 
-# Or, place sandbox boundary around system calls
-$ kite run ./safe_job.star --sandbox-opaque --permissions=safe-job
+# Run with default script sandbox
+$ kite run ./untrusted.star --permissions=agent-job --sandbox-opaque
 
-                  </code></pre>
+# Use container isolation to sandbox running scripts
+$ kite run ./eval.star --sandbox-driver=podman</code></pre>
                 </div>
               </div>
             </div>
 
             <!-- Centered carousel navigation controls -->
             <div class="hero-carousel__nav">
-              <button class="hero-carousel__btn" onclick="prevSlide()" aria-label="Previous example" title="Previous example">
+              <button type="button" class="hero-carousel__btn" onclick="prevSlide()" aria-label="Previous example" title="Previous example">
                 <svg viewBox="0 0 24 24"><path d="M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z"/></svg>
               </button>
               <div class="hero-carousel__dots" id="hero-carousel-dots">
                 <!-- Dynamically populated per active tab in JS -->
               </div>
-              <button class="hero-carousel__btn" onclick="nextSlide()" aria-label="Next example" title="Next example">
+              <button type="button" class="hero-carousel__btn" onclick="nextSlide()" aria-label="Next example" title="Next example">
                 <svg viewBox="0 0 24 24"><path d="M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z"/></svg>
               </button>
             </div>
@@ -1068,7 +1019,7 @@ rolling out v1.0.0</code></pre>
 <section class="feature-section">
   <div class="feature-section__split">
     <div class="feature-section__text">
-      <p>Twenty-eight built-in modules cover everyday automation: files, processes, databases (SQL), HTTP client and server, SSH, JSON, YAML, CSV, gzip/zip, hashing, regex, templating, time, UUIDs, structured logging, retries, and concurrency. Every module is built directly into the runtime, eliminating the need for a Python venv, Node install, or external package manager.</p>
+      <p>Thirty built-in modules cover everyday automation: container runtimes (Docker/Podman), remote SSH fleets, files, processes, databases (SQL), HTTP client and server, JSON, YAML, CSV, gzip/zip, hashing, regex, templating, time, UUIDs, structured logging, retries, and concurrency. Every module is built directly into the runtime, eliminating the need for a Python venv, Node install, or external package manager.</p>
       <a href="references/api/" class="feature-section__cta">Browse modules</a>
     </div>
     <div class="feature-section__code">
@@ -1091,30 +1042,31 @@ http.serve({
 
 <h2 class="section-heading">
   <svg viewBox="0 0 24 24"><path d="M12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,5C10.31,5 8.77,5.61 7.59,6.61L9.5,8.5C10.21,8.04 11.07,7.78 12,7.78C12.93,7.78 13.79,8.04 14.5,8.5L16.41,6.61C15.23,5.61 13.69,5 12,5M5,12C5,13.69 5.61,15.23 6.61,16.41L8.5,14.5C8.04,13.79 7.78,12.93 7.78,12C7.78,11.07 8.04,10.21 8.5,9.5L6.61,7.59C5.61,8.77 5,10.31 5,12M12,19C13.69,19 15.23,18.39 16.41,17.39L14.5,15.5C13.79,15.96 12.93,16.22 12,16.22C11.07,16.22 10.21,15.96 9.5,15.5L7.59,17.39C8.77,18.39 10.31,19 12,19M19,12C19,10.31 18.39,8.77 17.39,7.59L15.5,9.5C15.96,10.21 16.22,11.07 16.22,12C16.22,12.93 15.96,13.79 15.5,14.5L17.39,16.41C18.39,15.23 19,13.69 19,12M12,10A2,2 0 0,0 10,12A2,2 0 0,0 12,14A2,2 0 0,0 14,12A2,2 0 0,0 12,10Z"/></svg>
-  Infrastructure
+  Cloud-Native
 </h2>
 <section class="feature-section">
   <div class="feature-section__split">
     <div class="feature-section__text">
-      <p>Starkite's infrastructure capabilities center on native Kubernetes operations, integrating the API directly into the runtime across three tiers: <code>k8s.list</code>/<code>apply</code>/<code>watch</code> for direct resource control, <code>k8s.deploy</code>/<code>expose</code>/<code>rollout</code> for kubectl-equivalent verbs, and typed constructors for programmatic manifest composition. Scripts run as long-lived controllers via <code>k8s.control</code> or as admission webhooks via <code>k8s.webhook</code>. The <code>kite kube</code> subcommand generates the corresponding deployment manifests for either.</p>
-      <a href="infra/kubernetes/" class="feature-section__cta">Explore Infrastructure</a>
+      <p>Starkite delivers unified infrastructure automation across three tiers without external CLI dependencies: direct container engine management over Docker and Podman daemon sockets (<code>containers</code>), agentless remote server fleet orchestration through SSH bastions (<code>ssh</code>, <code>fleet</code>), and cluster platform engineering with declarative controllers and admission webhooks (<code>k8s</code>).</p>
+      <a href="infra/" class="feature-section__cta">Explore Cloud-Native</a>
     </div>
     <div class="feature-section__code">
       <pre><code class="language-python">#!/usr/bin/env kite
 
-# Reject Deployments asking for too many replicas
-def validate(obj):
-    if obj.spec.replicas > 10:
-        return {"allowed": False,
-                "message": "max 10 replicas"}
-    return {"allowed": True}
+# Orchestrate multi-tier cloud-native infrastructure
+def main():
+    # 1. Start ephemeral container dependency
+    dockr = containers.config()
+    db = dockr.run("postgres:16-alpine", detach=True, ports={"5432/tcp": 0})
+    defer(lambda: (dockr.stop(db), dockr.delete(db)))
 
-k8s.webhook("/validate",
-    validate = validate,
-    port     = 9443,
-    tls_cert = "/certs/tls.crt",
-    tls_key  = "/certs/tls.key",
-)</code></pre>
+    # 2. Deploy matching Kubernetes service
+    k8s.deploy(name="app-backend", image="ghcr.io/org/app:v1", replicas=2)
+
+    # 3. Verify fleet node connectivity over SSH
+    nodes = ssh.config(hosts=["edge-1", "edge-2"], auth={"user": "deploy"})
+    for r in nodes.exec("systemctl status app-agent"):
+        print(r.host, "Agent status:", r.ok)</code></pre>
     </div>
   </div>
 </section>
@@ -1224,7 +1176,7 @@ Time:  9ms
   <h2 class="section-divider__title">Ready to Start? <em>Learn more.</em></h2>
   <div class="section-divider__ctas">
     <a href="getting-started/" class="md-button md-button--primary">Get Started</a>
-    <a href="infra/kubernetes/" class="md-button">Infrastructure</a>
+    <a href="infra/" class="md-button">Cloud-Native</a>
     <a href="ai/agents/" class="md-button">AI Agents</a>
   </div>
 </div>
@@ -1244,119 +1196,118 @@ Time:  9ms
     }
   });
 
-  // Carousel State per tab
-  const tabSlideIndices = {
-    'auto': 0,
-    'k8s': 0,
-    'ai': 0,
-    'sec': 0
-  };
-
-  function getActiveTab() {
-    const tabs = ['auto', 'k8s', 'ai', 'sec'];
-    for (const t of tabs) {
-      const radio = document.getElementById('hero-tab-' + t);
-      if (radio && radio.checked) return t;
-    }
-    return 'auto';
-  }
-
-  function updateCarouselUI() {
-    const tab = getActiveTab();
+  // Discovered slides across all categories in order
+  const tabs = ['systems', 'cloud', 'agentic', 'secure'];
+  const allSlides = [];
+  tabs.forEach(tab => {
     const pane = document.querySelector(`.hero-tab-pane[data-tab="${tab}"]`);
-    if (!pane) return;
-    const slides = pane.querySelectorAll('.hero-slide');
-    const currentIndex = tabSlideIndices[tab] || 0;
+    if (pane) {
+      const slides = pane.querySelectorAll('.hero-slide');
+      slides.forEach((slide, idx) => {
+        allSlides.push({ tab: tab, index: idx, el: slide });
+      });
+    }
+  });
 
-    slides.forEach((slide, idx) => {
-      if (idx === currentIndex) {
-        slide.classList.add('active');
-        const filename = slide.getAttribute('data-filename') || '';
-        const fileEl = document.getElementById('hero-current-file');
-        const stepEl = document.getElementById('hero-current-step');
-        if (fileEl) fileEl.textContent = filename;
-        if (stepEl) stepEl.textContent = (idx + 1) + ' / ' + slides.length;
-      } else {
-        slide.classList.remove('active');
+  let currentGlobalIndex = 0;
+  let isNavigating = false;
+
+  function renderSlide(globalIdx) {
+    if (globalIdx < 0 || globalIdx >= allSlides.length) return;
+    currentGlobalIndex = globalIdx;
+    const current = allSlides[currentGlobalIndex];
+
+    // 1. Highlight the matching tab radio and show its tab pane
+    tabs.forEach(t => {
+      const radio = document.getElementById('hero-tab-' + t);
+      if (radio) {
+        radio.checked = (t === current.tab);
       }
     });
 
-    const dotsContainer = document.getElementById('hero-carousel-dots');
-    if (dotsContainer) {
-      let dotsHTML = '';
-      for (let i = 0; i < slides.length; i++) {
-        dotsHTML += `<button class="hero-dot ${i === currentIndex ? 'active' : ''}" onclick="goToSlide(${i})" aria-label="Slide ${i + 1}"></button>`;
+    // 2. Activate the current slide and deactivate all others
+    allSlides.forEach((item, idx) => {
+      if (idx === currentGlobalIndex) {
+        item.el.classList.add('active');
+      } else {
+        item.el.classList.remove('active');
       }
-      dotsContainer.innerHTML = dotsHTML;
+    });
+
+    // 3. Render dots for the active category
+    const activePane = document.querySelector(`.hero-tab-pane[data-tab="${current.tab}"]`);
+    if (activePane) {
+      const tabSlides = activePane.querySelectorAll('.hero-slide');
+      const dotsContainer = document.getElementById('hero-carousel-dots');
+      if (dotsContainer) {
+        let dotsHTML = '';
+        for (let i = 0; i < tabSlides.length; i++) {
+          dotsHTML += `<button type="button" class="hero-dot ${i === current.index ? 'active' : ''}" onclick="goToTabSlide('${current.tab}', ${i})" aria-label="Slide ${i + 1}"></button>`;
+        }
+        dotsContainer.innerHTML = dotsHTML;
+      }
+    }
+  }
+
+  function nextSlide() {
+    if (isNavigating) return;
+    isNavigating = true;
+    setTimeout(() => { isNavigating = false; }, 200);
+
+    const nextIdx = (currentGlobalIndex + 1) % allSlides.length;
+    renderSlide(nextIdx);
+  }
+
+  function prevSlide() {
+    if (isNavigating) return;
+    isNavigating = true;
+    setTimeout(() => { isNavigating = false; }, 200);
+
+    const prevIdx = (currentGlobalIndex - 1 + allSlides.length) % allSlides.length;
+    renderSlide(prevIdx);
+  }
+
+  function goToTabSlide(tab, localIndex) {
+    if (isNavigating) return;
+    isNavigating = true;
+    setTimeout(() => { isNavigating = false; }, 200);
+
+    const targetIdx = allSlides.findIndex(s => s.tab === tab && s.index === localIndex);
+    if (targetIdx !== -1) {
+      renderSlide(targetIdx);
     }
   }
 
   function goToSlide(index) {
-    const tab = getActiveTab();
-    const pane = document.querySelector(`.hero-tab-pane[data-tab="${tab}"]`);
-    if (!pane) return;
-    const slides = pane.querySelectorAll('.hero-slide');
-    if (index >= 0 && index < slides.length) {
-      tabSlideIndices[tab] = index;
-      updateCarouselUI();
+    const current = allSlides[currentGlobalIndex];
+    if (current) {
+      goToTabSlide(current.tab, index);
     }
   }
 
-  const allTabs = ['auto', 'k8s', 'ai', 'sec'];
-
-  function nextSlide() {
-    const currentTab = getActiveTab();
-    const pane = document.querySelector(`.hero-tab-pane[data-tab="${currentTab}"]`);
-    if (!pane) return;
-    const slides = pane.querySelectorAll('.hero-slide');
-    const currentIdx = tabSlideIndices[currentTab] || 0;
-
-    if (currentIdx + 1 < slides.length) {
-      tabSlideIndices[currentTab] = currentIdx + 1;
-      updateCarouselUI();
-    } else {
-      const currentTabIdx = allTabs.indexOf(currentTab);
-      const nextTabIdx = (currentTabIdx + 1) % allTabs.length;
-      const nextTab = allTabs[nextTabIdx];
-      const radio = document.getElementById('hero-tab-' + nextTab);
-      if (radio) {
-        radio.checked = true;
-      }
-      tabSlideIndices[nextTab] = 0;
-      updateCarouselUI();
-    }
+  function getActiveTab() {
+    return allSlides[currentGlobalIndex] ? allSlides[currentGlobalIndex].tab : 'systems';
   }
 
-  function prevSlide() {
-    const currentTab = getActiveTab();
-    const pane = document.querySelector(`.hero-tab-pane[data-tab="${currentTab}"]`);
-    if (!pane) return;
-    const currentIdx = tabSlideIndices[currentTab] || 0;
-
-    if (currentIdx > 0) {
-      tabSlideIndices[currentTab] = currentIdx - 1;
-      updateCarouselUI();
-    } else {
-      const currentTabIdx = allTabs.indexOf(currentTab);
-      const prevTabIdx = (currentTabIdx - 1 + allTabs.length) % allTabs.length;
-      const prevTab = allTabs[prevTabIdx];
-      const radio = document.getElementById('hero-tab-' + prevTab);
-      if (radio) {
-        radio.checked = true;
-      }
-      const prevPane = document.querySelector(`.hero-tab-pane[data-tab="${prevTab}"]`);
-      const prevSlides = prevPane ? prevPane.querySelectorAll('.hero-slide') : [];
-      tabSlideIndices[prevTab] = prevSlides.length > 0 ? prevSlides.length - 1 : 0;
-      updateCarouselUI();
-    }
-  }
-
-  // Hook up radio button change listeners - always reset sub page to 1
+  // Hook up radio button change listeners & label click listeners
   document.querySelectorAll('.hero-terminal input[type="radio"]').forEach(radio => {
     radio.addEventListener('change', function () {
       const tab = this.id.replace('hero-tab-', '');
-      tabSlideIndices[tab] = 0;
-      updateCarouselUI();
+      const firstSlideIdx = allSlides.findIndex(s => s.tab === tab);
+      if (firstSlideIdx !== -1 && firstSlideIdx !== currentGlobalIndex) {
+        renderSlide(firstSlideIdx);
+      }
+    });
+  });
+
+  document.querySelectorAll('.hero-tab-nav label').forEach(label => {
+    label.addEventListener('click', function () {
+      const forId = this.getAttribute('for') || '';
+      const tab = forId.replace('hero-tab-', '');
+      const firstSlideIdx = allSlides.findIndex(s => s.tab === tab);
+      if (firstSlideIdx !== -1) {
+        renderSlide(firstSlideIdx);
+      }
     });
   });
 
@@ -1377,12 +1328,9 @@ Time:  9ms
   }
 
   function copyActiveSnippet(btn) {
-    const tab = getActiveTab();
-    const pane = document.querySelector(`.hero-tab-pane[data-tab="${tab}"]`);
-    if (!pane) return;
-    const activeSlide = pane.querySelector('.hero-slide.active') || pane.querySelector('.hero-slide');
-    if (!activeSlide) return;
-    const codeEl = activeSlide.querySelector('code');
+    const current = allSlides[currentGlobalIndex];
+    if (!current) return;
+    const codeEl = current.el.querySelector('code');
     if (!codeEl || !navigator.clipboard) return;
     navigator.clipboard.writeText(codeEl.innerText || codeEl.textContent).then(() => {
       showCopyFeedback(btn);
@@ -1398,7 +1346,7 @@ Time:  9ms
   }
 
   // Initial sync
-  updateCarouselUI();
+  renderSlide(0);
 </script>
 
 {% endblock %}

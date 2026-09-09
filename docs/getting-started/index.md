@@ -6,7 +6,7 @@ weight: 1
 
 # Welcome to Starkite
 
-Starkite is a runtime for automating systems and infrastructure with scripts written in [Starlark](https://github.com/bazelbuild/starlark) — a small, deterministic dialect of Python created for [Bazel](https://bazel.build). It targets the jobs that otherwise turn into fragile shell scripts or over-privileged Python: deploying to Kubernetes, running commands over SSH, calling HTTP APIs, or giving an AI agent a controlled set of actions.
+Starkite is a runtime for automating systems and infrastructure with scripts written in [Starlark](https://github.com/bazelbuild/starlark) — a small, predictable dialect of Python created for [Bazel](https://bazel.build). It targets the jobs that otherwise turn into fragile shell scripts or over-privileged Python: managing container lifecycles over daemon sockets, deploying to Kubernetes clusters, orchestrating server fleets over SSH, calling HTTP APIs, or giving an AI agent a controlled set of actions.
 
 ## Why Starlark?
 
@@ -52,13 +52,13 @@ Install the runtime and write your first script. When you want to understand how
 
     [:octicons-arrow-right-24: Core modules](../core-modules/system.md)
 
--   :material-kubernetes:{ .lg .middle } __Infrastructure__
+-   :material-server-network:{ .lg .middle } __Cloud-Native__
 
     ---
 
-    Automate Kubernetes clusters: deploy resources, write controllers, and handle admission webhooks.
+    Orchestrate local container engines (Docker/Podman), remote server fleets over SSH, and Kubernetes clusters through unified Starlark modules.
 
-    [:octicons-arrow-right-24: Infrastructure](../infra/k8s-connect.md)
+    [:octicons-arrow-right-24: Cloud-Native](../infra/index.md)
 
 -   :material-robot:{ .lg .middle } __AI Support__
 
