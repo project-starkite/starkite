@@ -1,0 +1,7 @@
+name = "starkite-installer"
+main = "worker.js"
+compatibility_date = "2024-09-01"
+
+routes = [
+  { pattern = "starkite.run/*", zone_name = "starkite.run" }
+]

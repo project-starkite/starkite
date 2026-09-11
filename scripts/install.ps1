@@ -1,11 +1,11 @@
 # starkite Windows PowerShell installer script
 # Safe, non-admin, and dry-run capable.
 # Usage:
-#   irm https://install.starkite.run/install.ps1 | iex
+#   irm https://starkite.run/install.ps1 | iex
 #   With custom directory:
-#   $env:PREFIX = "C:\Tools\starkite"; irm https://install.starkite.run/install.ps1 | iex
+#   $env:PREFIX = "C:\Tools\starkite"; irm https://starkite.run/install.ps1 | iex
 #   Dry-run mode:
-#   $env:INSTALL_DRY_RUN = "1"; irm https://install.starkite.run/install.ps1 | iex
+#   $env:INSTALL_DRY_RUN = "1"; irm https://starkite.run/install.ps1 | iex
 
 $ErrorActionPreference = 'Stop'
 

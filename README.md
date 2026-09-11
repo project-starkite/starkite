@@ -46,12 +46,12 @@ Install the all-in-one `kite` binary using your preferred method:
 
 * **Linux / macOS (POSIX Installer Script)**:
   ```bash
-  curl -fsSL https://install.starkite.run/install.sh | sh
+  curl -fsSL https://starkite.run/install.sh | sh
   ```
 
 * **Windows (PowerShell Installer Script)**:
   ```powershell
-  irm https://install.starkite.run/install.ps1 | iex
+  irm https://starkite.run/install.ps1 | iex
   ```
 
 * **Windows (Scoop)**:
