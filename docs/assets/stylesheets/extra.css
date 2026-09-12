@@ -4,6 +4,10 @@
   --md-primary-fg-color--light: #22d3ee;
   --md-primary-fg-color--dark: #0e7490;
   --md-accent-fg-color: #6366f1;
+  --code-border-accent: var(--md-accent-fg-color, #6366f1);
+  --code-card-shadow: 0 6px 18px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --code-fluid-font-size: clamp(0.70rem, 0.52rem + 0.45vw, 0.85rem);
+  --code-fluid-padding: clamp(0.65rem, 0.45rem + 0.4vw, 0.85rem) clamp(0.85rem, 0.55rem + 0.55vw, 1.15rem);
 }
 
 /* Adjust base font size for content to match home page text scale */
@@ -18,6 +22,7 @@
   --md-accent-fg-color: #818cf8;
   --md-default-bg-color: #0f172a;
   --md-default-bg-color--light: #1e293b;
+  --code-card-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 2px 4px rgba(0, 0, 0, 0.25);
 }
 
 /* Hero gradient for home page */
@@ -35,9 +40,106 @@
   box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
-/* Code block styling */
-.md-typeset pre > code {
-  font-size: 0.85em;
+/* =====================================================
+   REUSABLE CODE DISPLAY STYLE
+   Unified style for all documentation code blocks and examples:
+   - Left accent bar (indigo / var(--md-accent-fg-color))
+   - Elevated soft drop shadow
+   - Rounded corners
+   - Dynamic fluid font sizing relative to screen width
+   - Preserved formatting with clean horizontal scrolling
+   ===================================================== */
+
+/* Container styling for all code blocks and reusable classes */
+.code-example,
+.code-card,
+.md-typeset div.highlight,
+.md-typeset .highlighttable,
+.md-typeset pre:not(.hero-terminal__code pre):not(.highlight pre),
+.run-card pre,
+.feature-section pre,
+.install-content pre {
+  background-color: var(--md-code-bg-color);
+  border-radius: 0.35rem;
+  border-left: 3px solid var(--code-border-accent);
+  box-shadow: var(--code-card-shadow);
+  box-sizing: border-box;
+}
+
+/* Markdown doc page highlight containers */
+.md-typeset div.highlight {
+  margin: 1.25em 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.md-typeset div.highlight pre {
+  margin: 0;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  background: transparent;
+  position: relative;
+}
+
+/* Shared code formatting, font scaling, and horizontal scrolling */
+.md-typeset div.highlight pre > code,
+.md-typeset pre:not(.hero-terminal__code pre):not(.highlight pre) > code,
+.run-card pre > code,
+.feature-section pre > code,
+.install-content pre > code,
+.code-example pre > code,
+.code-card pre > code,
+.code-example code,
+.code-card code {
+  font-size: var(--code-fluid-font-size);
+  font-family: var(--md-code-font-family, monospace);
+  line-height: 1.55;
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+}
+
+.md-typeset div.highlight pre > code {
+  padding: var(--code-fluid-padding);
+}
+
+/* Standalone pre blocks (such as cards and sections on landing page) */
+.md-typeset pre:not(.hero-terminal__code pre):not(.highlight pre),
+.run-card pre,
+.feature-section pre,
+.install-content pre,
+.code-example pre,
+.code-card pre {
+  padding: var(--code-fluid-padding);
+  font-size: var(--code-fluid-font-size);
+  line-height: 1.55;
+  white-space: pre;
+  word-break: normal;
+  overflow-x: auto;
+  overflow-y: hidden;
+  position: relative;
+  scrollbar-width: thin;
+  scrollbar-color: var(--md-default-fg-color--lighter) transparent;
+}
+
+/* Standalone pre inside markdown body (not inside cards/grid) gets standard margin */
+.md-typeset > pre:not(.hero-terminal__code pre):not(.highlight pre) {
+  margin: 1.25em 0;
+}
+
+/* Responsive adjustments for mobile viewports */
+@media (max-width: 36em) {
+  :root {
+    --code-fluid-font-size: clamp(0.66rem, 0.46rem + 0.6vw, 0.78rem);
+    --code-fluid-padding: 0.65rem 0.75rem;
+  }
+}
+@media (max-width: 26em) {
+  :root {
+    --code-fluid-font-size: clamp(0.60rem, 0.40rem + 0.8vw, 0.72rem);
+    --code-fluid-padding: 0.55rem 0.65rem;
+  }
 }
 
 /* Top header bar: use the darker cyan for depth at the top of the page */

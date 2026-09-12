@@ -110,17 +110,22 @@
     align-items: center;
     background: rgba(14, 30, 54, 0.92);
     border: 1px solid rgba(103, 232, 249, 0.35);
-    border-radius: 0.35rem;
-    padding: 0.45rem 0.85rem;
+    border-radius: clamp(0.25rem, 0.15rem + 0.2vw, 0.35rem);
+    padding: clamp(0.30rem, 0.18rem + 0.35vw, 0.45rem) clamp(0.48rem, 0.25rem + 0.6vw, 0.85rem);
     margin: 0;
+    max-width: 100%;
+    box-sizing: border-box;
     box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35), 0 0 16px rgba(103, 232, 249, 0.12);
   }
   .hero-install-prompt {
     color: #67e8f9;
     font-weight: 700;
-    margin-right: 0.65rem;
+    margin-right: clamp(0.35rem, 0.18rem + 0.35vw, 0.65rem);
     user-select: none;
     font-family: var(--md-code-font-family, monospace);
+    font-size: 0.77rem;
+    font-size: clamp(0.56rem, 0.38rem + 0.5vw, 0.78rem);
+    flex-shrink: 0;
   }
   .md-typeset .hero-install-box code,
   .hero-install-box code,
@@ -134,9 +139,15 @@
     margin: 0 !important;
     font-family: var(--md-code-font-family, monospace);
     font-size: 0.77rem;
+    font-size: clamp(0.56rem, 0.36rem + 0.55vw, 0.78rem);
     flex: 1;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     white-space: nowrap;
+    scrollbar-width: none;
+  }
+  .hero-install-cmd::-webkit-scrollbar {
+    display: none;
   }
   .hero-install-cmd .cmd-bin {
     color: #79c0ff; /* VS Code / GitHub Dark function blue */
@@ -157,21 +168,22 @@
     border: none;
     color: rgba(255, 255, 255, 0.6);
     cursor: pointer;
-    padding: 0.25rem 0.45rem;
-    margin-left: 0.5rem;
+    padding: clamp(0.18rem, 0.10rem + 0.18vw, 0.25rem) clamp(0.22rem, 0.12rem + 0.3vw, 0.45rem);
+    margin-left: clamp(0.25rem, 0.12rem + 0.35vw, 0.5rem);
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 0.25rem;
     transition: color 0.15s, background 0.15s;
+    flex-shrink: 0;
   }
   .hero-copy-btn:hover {
     color: #ffffff;
     background: rgba(255, 255, 255, 0.12);
   }
   .hero-copy-btn svg {
-    width: 1.05rem;
-    height: 1.05rem;
+    width: clamp(0.85rem, 0.65rem + 0.35vw, 1.05rem);
+    height: clamp(0.85rem, 0.65rem + 0.35vw, 1.05rem);
     fill: currentColor;
   }
   .tx-hero__ctas {
@@ -220,6 +232,8 @@
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.45), 0 0 35px rgba(103, 232, 249, 0.22), 0 0 75px rgba(103, 232, 249, 0.10);
     width: 100%;
     text-align: left;
+    container-type: inline-size;
+    container-name: hero-terminal;
   }
   .hero-terminal input[type="radio"] {
     display: none;
@@ -255,17 +269,19 @@
     flex: 1;
     overflow-x: auto;
     scrollbar-width: none;
-    gap: 0.25rem;
+    gap: clamp(0.15rem, 0.05rem + 0.35cqw, 0.25rem);
     align-items: center;
   }
   .hero-tab-nav::-webkit-scrollbar {
     display: none;
   }
   .hero-tab-nav label {
-    padding: 0.35rem 0.65rem;
+    padding: clamp(0.22rem, 0.12rem + 0.4cqw, 0.35rem) clamp(0.35rem, 0.15rem + 0.9cqw, 0.65rem);
     cursor: pointer;
     font-weight: 600;
     font-size: 0.76rem;
+    font-size: clamp(0.62rem, 0.42rem + 0.8vw, 0.76rem);
+    font-size: clamp(0.60rem, 0.42rem + 0.75cqw, 0.76rem);
     letter-spacing: 0.01em;
     color: rgba(255, 255, 255, 0.55);
     border-radius: 0.3rem;
@@ -339,14 +355,17 @@
 
   .hero-terminal__code pre {
     margin: 0;
-    padding: 1.15rem 1.35rem;
+    padding: clamp(0.75rem, 0.45rem + 1.2cqw, 1.15rem) clamp(0.8rem, 0.45rem + 1.6cqw, 1.35rem);
     background: #0a182c;
     color: #eeffff;
     font-size: 0.94rem;
+    font-size: clamp(0.68rem, 0.38rem + 1.25vw, 0.94rem);
+    font-size: clamp(0.66rem, 0.38rem + 1.38cqw, 0.94rem);
     line-height: 1.54;
     height: 19rem;
     box-sizing: border-box;
-    overflow: hidden;
+    overflow-x: auto;
+    overflow-y: hidden;
     font-family: var(--md-code-font-family, monospace);
     scrollbar-width: thin;
     scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
@@ -447,6 +466,113 @@
     color: #c792ea !important; /* Lavender for attributes & keys */
   }
 
+  /* Container queries for hero code terminal and tab bar */
+  @container hero-terminal (max-width: 600px) {
+    .hero-terminal__code pre {
+      height: 17.5rem;
+    }
+    .hero-tab-nav label {
+      font-size: clamp(0.64rem, 0.36rem + 0.8cqw, 0.74rem);
+    }
+  }
+  @container hero-terminal (max-width: 480px) {
+    .hero-terminal__code pre {
+      height: 16.25rem;
+      line-height: 1.48;
+    }
+    .hero-terminal__bar {
+      height: 2.35rem;
+      padding: 0 0.65rem;
+      gap: 0.5rem;
+    }
+    .hero-tab-nav label {
+      padding: 0.22rem 0.42rem;
+      font-size: clamp(0.58rem, 0.32rem + 0.85cqw, 0.68rem);
+    }
+  }
+  @container hero-terminal (max-width: 360px) {
+    .hero-terminal__code pre {
+      font-size: clamp(0.60rem, 0.25rem + 1.5cqw, 0.70rem);
+      height: 15rem;
+      line-height: 1.42;
+      padding: 0.65rem 0.65rem;
+    }
+    .hero-terminal__bar {
+      height: 2.2rem;
+      padding: 0 0.5rem;
+      gap: 0.35rem;
+    }
+    .hero-tab-nav label {
+      padding: 0.18rem 0.32rem;
+      font-size: clamp(0.54rem, 0.26rem + 0.9cqw, 0.62rem);
+    }
+  }
+
+  /* Viewport media query fallbacks for hero code terminal and tab bar */
+  @media (max-width: 60em) {
+    .hero-terminal__code pre {
+      font-size: clamp(0.70rem, 0.40rem + 1.15vw, 0.92rem);
+    }
+    .hero-tab-nav label {
+      font-size: clamp(0.66rem, 0.40rem + 0.7vw, 0.74rem);
+    }
+  }
+  @media (max-width: 50em) {
+    .hero-terminal__code pre {
+      font-size: clamp(0.68rem, 0.38rem + 1.25vw, 0.90rem);
+      height: 17.5rem;
+    }
+    .hero-tab-nav label {
+      font-size: clamp(0.62rem, 0.36rem + 0.8vw, 0.72rem);
+    }
+    .tx-hero__ctas {
+      gap: 0.75rem;
+    }
+  }
+  @media (max-width: 36em) {
+    .hero-terminal__code pre {
+      font-size: clamp(0.64rem, 0.35rem + 1.35vw, 0.80rem);
+      padding: 0.75rem 0.8rem;
+      height: 16rem;
+    }
+    .hero-terminal__bar {
+      height: 2.35rem;
+      padding: 0 0.65rem;
+      gap: 0.45rem;
+    }
+    .hero-tab-nav label {
+      padding: 0.20rem 0.36rem;
+      font-size: clamp(0.56rem, 0.30rem + 0.85vw, 0.65rem);
+    }
+    .hero-install-box {
+      width: 100%;
+      max-width: 25rem;
+      justify-content: space-between;
+    }
+    .hero-install-cmd {
+      font-size: clamp(0.54rem, 0.32rem + 0.65vw, 0.70rem);
+    }
+    .hero-install-prompt {
+      font-size: clamp(0.54rem, 0.32rem + 0.65vw, 0.70rem);
+    }
+  }
+  @media (max-width: 26em) {
+    .hero-install-box {
+      padding: 0.25rem 0.4rem;
+    }
+    .hero-install-cmd {
+      font-size: clamp(0.48rem, 0.28rem + 0.8vw, 0.58rem);
+    }
+    .hero-install-prompt {
+      font-size: clamp(0.48rem, 0.28rem + 0.8vw, 0.58rem);
+      margin-right: 0.25rem;
+    }
+    .hero-copy-btn {
+      margin-left: 0.25rem;
+      padding: 0.15rem 0.25rem;
+    }
+  }
+
   /* =====================================================
      QUICK INSTALL — radio-driven tabbed install commands
      ===================================================== */
@@ -514,6 +640,7 @@
   .section-divider__ctas {
     display: flex;
     justify-content: center;
+    align-items: center;
     gap: 0.75rem;
     margin-top: 1.75rem;
     flex-wrap: wrap;
@@ -636,26 +763,12 @@
       margin: 0 0 0.85rem;
     }
   }
-  /* Plain <pre> needs explicit bg/padding since these aren't pymdownx-wrapped.
-     Shared between run-card, feature-section, and install code samples.
-     Accent left-border + shadow lift the block off the page.
-     Long lines wrap (pre-wrap + break-word) so a horizontal scrollbar
-     never appears — more reliable than ::-webkit-scrollbar { display: none },
-     which some browsers ignore when overflow-x: auto reserves bar space. */
+  /* Code samples inside run-cards, feature-sections, and install tabs
+     inherit the unified code card styling (left bar, shadow, fluid font, horizontal scrolling) from extra.css */
   .run-card pre,
   .feature-section pre,
   .install-content pre {
-    background-color: var(--md-code-bg-color);
-    border-radius: 0.25rem;
-    border-left: 3px solid var(--md-accent-fg-color);
-    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.06);
-    padding: 0.75rem 1rem;
     margin: 0;
-    overflow-x: hidden;
-    white-space: pre-wrap;
-    overflow-wrap: anywhere;
-    font-size: 0.85rem;
-    line-height: 1.55;
   }
   /* Light-theme hljs token colors — override github-dark on light bg */
   .run-card pre code.hljs,
@@ -941,20 +1054,20 @@ $ kite run ./eval.star --sandbox-driver=podman</code></pre>
 <p class="section-lead">Install the <code>kite</code> binary on your local machine using your preferred setup:</p>
 <div class="install-section">
   <div class="install-tabs">
-    <input type="radio" name="install-tab" id="tab-macos" checked>
-    <label for="tab-macos">macOS</label>
-    <input type="radio" name="install-tab" id="tab-linux">
+    <input type="radio" name="install-tab" id="tab-linux" checked>
     <label for="tab-linux">Linux</label>
+    <input type="radio" name="install-tab" id="tab-macos">
+    <label for="tab-macos">macOS</label>
     <input type="radio" name="install-tab" id="tab-windows">
     <label for="tab-windows">Windows</label>
   </div>
 
-  <div id="content-macos" class="install-content active">
-    <pre><code>brew install project-starkite/tap/kite</code></pre>
+  <div id="content-linux" class="install-content active">
+    <pre><code>curl -fsSL https://starkite.run/install.sh | sh</code></pre>
   </div>
 
-  <div id="content-linux" class="install-content">
-    <pre><code>curl -fsSL https://starkite.run/install.sh | sh</code></pre>
+  <div id="content-macos" class="install-content">
+    <pre><code>brew install project-starkite/tap/kite</code></pre>
   </div>
 
   <div id="content-windows" class="install-content">
@@ -1173,11 +1286,16 @@ Time:  9ms
 </section>
 
 <div class="section-divider">
-  <h2 class="section-divider__title">Ready to Start? <em>Learn more.</em></h2>
+  <h2 class="section-divider__title">Ready to Start?</h2>
   <div class="section-divider__ctas">
     <a href="getting-started/" class="md-button md-button--primary">Get Started</a>
-    <a href="infra/" class="md-button">Cloud-Native</a>
-    <a href="ai/agents/" class="md-button">AI Agents</a>
+    <div class="hero-install-box">
+      <span class="hero-install-prompt">$</span>
+      <code class="hero-install-cmd"><span class="cmd-bin">curl</span> <span class="cmd-flag">-fsSL</span> <span class="cmd-url">https://starkite.run/install.sh</span> <span class="cmd-pipe">|</span> <span class="cmd-bin">sh</span></code>
+      <button class="hero-copy-btn" onclick="copyText('curl -fsSL https://starkite.run/install.sh | sh', this)" aria-label="Copy install command" title="Copy to clipboard">
+        <svg viewBox="0 0 24 24"><path d="M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z"/></svg>
+      </button>
+    </div>
   </div>
 </div>
 
