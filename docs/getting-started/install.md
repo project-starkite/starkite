@@ -10,10 +10,16 @@ Starkite is distributed as a single, self-contained binary (`kite`) that bundles
 
 === "macOS"
 
-    Install starkite on macOS using the Homebrew package manager:
+    Install using Homebrew:
 
     ```bash
     brew install project-starkite/tap/kite
+    ```
+
+    Or install using the script:
+
+    ```bash
+    curl -fsSL https://starkite.run/install.sh | sh
     ```
 
 === "Linux"
