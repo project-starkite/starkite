@@ -217,11 +217,11 @@ def test_integration_logs():
     # Clean up
     client.delete(cnt, force=True)
 
-def test_integration_images():
-    """Verify client.images() returns list of local images from live daemon."""
+def test_integration_image_list():
+    """Verify client.image_list() returns list of local images from live daemon."""
     client = _get_client()
-    imgs = client.images()
-    assert(type(imgs) == "list", "client.images() should return a list")
+    imgs = client.image_list()
+    assert(type(imgs) == "list", "client.image_list() should return a list")
     assert(len(imgs) > 0, "daemon should have at least one local image (e.g. alpine)")
 
     img = imgs[0]
@@ -230,11 +230,11 @@ def test_integration_images():
     assert("repo_tags" in img or "RepoTags" in img, "image should have repo_tags")
     assert("size" in img or "Size" in img, "image should have size")
 
-def test_integration_pull():
-    """Verify client.pull() pulls image from registry or verifies existing cache."""
+def test_integration_image_pull():
+    """Verify client.image_pull() pulls image from registry or verifies existing cache."""
     client = _get_client()
     # Pull alpine:latest which is fast and reliable
-    client.pull("docker.io/library/alpine:latest")
+    client.image_pull("docker.io/library/alpine:latest")
 
 def test_integration_prune():
     """Verify client.prune() executes cleanup against live daemon and returns report."""

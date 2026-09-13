@@ -33,10 +33,10 @@ func (c *Client) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type:
 
 func (c *Client) AttrNames() []string {
 	return []string{
-		"build", "create", "delete", "endpoint", "exec", "get", "image_build",
-		"image_inspect", "image_list", "image_pull", "image_remove", "images",
-		"inspect", "list", "logs", "ping", "port", "prune", "pull", "remove",
-		"restart", "rmi", "run", "socket", "start", "stop", "version", "wait",
+		"create", "delete", "endpoint", "exec", "get", "image_build",
+		"image_inspect", "image_list", "image_pull", "image_remove",
+		"inspect", "list", "logs", "ping", "port", "prune", "remove",
+		"restart", "run", "socket", "start", "stop", "version", "wait",
 	}
 }
 
@@ -89,16 +89,16 @@ func (c *Client) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin("Client.exec", c.execFn), nil
 	case "logs":
 		return starlark.NewBuiltin("Client.logs", c.logsFn), nil
-	case "image_list", "images":
-		return starlark.NewBuiltin("Client."+name, c.imageListFn), nil
-	case "image_pull", "pull":
-		return starlark.NewBuiltin("Client."+name, c.imagePullFn), nil
+	case "image_list":
+		return starlark.NewBuiltin("Client.image_list", c.imageListFn), nil
+	case "image_pull":
+		return starlark.NewBuiltin("Client.image_pull", c.imagePullFn), nil
 	case "image_inspect":
 		return starlark.NewBuiltin("Client.image_inspect", c.imageInspectFn), nil
-	case "image_remove", "rmi":
-		return starlark.NewBuiltin("Client."+name, c.imageRemoveFn), nil
-	case "image_build", "build":
-		return starlark.NewBuiltin("Client."+name, c.imageBuildFn), nil
+	case "image_remove":
+		return starlark.NewBuiltin("Client.image_remove", c.imageRemoveFn), nil
+	case "image_build":
+		return starlark.NewBuiltin("Client.image_build", c.imageBuildFn), nil
 	case "prune":
 		return starlark.NewBuiltin("Client.prune", c.pruneFn), nil
 	default:

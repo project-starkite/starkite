@@ -42,14 +42,10 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"delete":        starlark.NewBuiltin("containers.delete", m.shortcutDelete),
 			"remove":        starlark.NewBuiltin("containers.remove", m.shortcutDelete),
 			"image_pull":    starlark.NewBuiltin("containers.image_pull", m.shortcutImagePull),
-			"pull":          starlark.NewBuiltin("containers.pull", m.shortcutImagePull),
 			"image_build":   starlark.NewBuiltin("containers.image_build", m.shortcutImageBuild),
-			"build":         starlark.NewBuiltin("containers.build", m.shortcutImageBuild),
 			"image_list":    starlark.NewBuiltin("containers.image_list", m.shortcutImageList),
-			"images":        starlark.NewBuiltin("containers.images", m.shortcutImageList),
 			"image_inspect": starlark.NewBuiltin("containers.image_inspect", m.shortcutImageInspect),
 			"image_remove":  starlark.NewBuiltin("containers.image_remove", m.shortcutImageRemove),
-			"rmi":           starlark.NewBuiltin("containers.rmi", m.shortcutImageRemove),
 		}
 		m.module = libkite.NewTryModule(string(ModuleName), members)
 	})

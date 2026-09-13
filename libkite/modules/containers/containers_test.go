@@ -1222,7 +1222,7 @@ load("containers", "containers")
 def main():
     c = containers.config(host=%q)
 
-    # 1. client.image_list() and alias client.images()
+    # 1. client.image_list()
     imgs = c.image_list()
     if len(imgs) != 1:
         fail("expected 1 image, got %%d" %% len(imgs))
@@ -1238,13 +1238,8 @@ def main():
     if img["labels"]["type"] != "base":
         fail("unexpected label: %%s" %% img["labels"]["type"])
 
-    # verify alias images() returns same count
-    if len(c.images()) != 1:
-        fail("alias c.images() failed")
-
-    # 2. client.image_pull() and alias client.pull()
+    # 2. client.image_pull()
     c.image_pull("alpine:latest", auth={"username": "user", "password": "pw"})
-    c.pull("alpine:latest")
 
     # 3. client.image_inspect()
     info = c.image_inspect("alpine:latest")
@@ -1255,18 +1250,13 @@ def main():
     if info.Config.Entrypoint[0] != "/bin/sh":
         fail("unexpected Entrypoint: %%s" %% str(info.Config.Entrypoint))
 
-    # 4. client.image_build() and alias client.build()
+    # 4. client.image_build()
     build_logs = c.image_build(%q, tag="test:latest")
     if "Successfully tagged" not in build_logs:
         fail("unexpected build_logs: %%s" %% build_logs)
 
-    build_logs_alias = c.build(%q, tag="test:latest")
-    if "Successfully tagged" not in build_logs_alias:
-        fail("unexpected build_logs_alias: %%s" %% build_logs_alias)
-
-    # 5. client.image_remove() and alias client.rmi()
+    # 5. client.image_remove()
     c.image_remove("alpine:latest", force=True)
-    c.rmi("alpine:latest")
 
     # 6. client.prune()
     rep = c.prune(containers=True, volumes=True, images=True)
@@ -1280,7 +1270,7 @@ def main():
         fail("unexpected space_reclaimed: %%d" %% rep["space_reclaimed"])
 
 main()
-`, host, tmpDir, tmpDir)
+`, host, tmpDir)
 
 	rt, err := libkite.New(&libkite.Config{
 		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
@@ -1314,7 +1304,7 @@ func TestImageAndPrunePermissions(t *testing.T) {
 	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
 
-	// 1. Deny containers.read -> c.images() fails
+	// 1. Deny containers.read -> c.image_list() fails
 	rtDenyRead, err := libkite.New(&libkite.Config{
 		Registry: loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
 		Permissions: &libkite.PermissionConfig{
@@ -1332,15 +1322,15 @@ func TestImageAndPrunePermissions(t *testing.T) {
 load("containers", "containers")
 def main():
     c = containers.config(host=%q)
-    c.images()
+    c.image_list()
 main()
 `, host)
 
 	if err := rtDenyRead.Execute(context.Background(), scriptImages); err == nil {
-		t.Fatal("expected c.images() to fail when containers.read is denied")
+		t.Fatal("expected c.image_list() to fail when containers.read is denied")
 	}
 
-	// 2. Deny containers.write -> c.pull() fails
+	// 2. Deny containers.write -> c.image_pull() fails
 	rtDenyWrite, err := libkite.New(&libkite.Config{
 		Registry: loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
 		Permissions: &libkite.PermissionConfig{
@@ -1358,12 +1348,12 @@ main()
 load("containers", "containers")
 def main():
     c = containers.config(host=%q)
-    c.pull("alpine:latest")
+    c.image_pull("alpine:latest")
 main()
 `, host)
 
 	if err := rtDenyWrite.Execute(context.Background(), scriptPull); err == nil {
-		t.Fatal("expected c.pull() to fail when containers.write is denied")
+		t.Fatal("expected c.image_pull() to fail when containers.write is denied")
 	}
 
 	// 3. Deny containers.write -> c.prune() fails
@@ -1605,12 +1595,8 @@ def main():
     imgs = containers.image_list()
     if len(imgs) != 1:
         fail("expected 1 image from containers.image_list")
-    imgs_alias = containers.images()
-    if len(imgs_alias) != 1:
-        fail("expected 1 image from containers.images")
 
     containers.image_pull("alpine:latest")
-    containers.pull("alpine:latest")
 
 main()
 `, containerID, containerID, containerID)

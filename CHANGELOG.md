@@ -1,5 +1,27 @@
 # Changelog
 
+## v0.7.5
+
+### Breaking Changes
+
+- **Canonical Image API Standardization**: All container image operations are now strictly standardized under the `image_*` naming convention:
+  - `client.image_list(all=False)` (replaces v0.7.0 `client.images()`)
+  - `client.image_pull(image, auth=None)` (replaces v0.7.0 `client.pull()`)
+  - `client.image_inspect(image)`
+  - `client.image_remove(image, force=False)`
+  - `client.image_build(path, tag=None, dockerfile="Dockerfile")`
+  All legacy aliases (`images`, `pull`, `rmi`, `build`) have been removed from both `Client` and the `containers` module shortcuts.
+
+### Added & Enhanced
+
+- **Containers Module Shortcuts**: Top-level shortcuts on the `containers` module for direct single-line execution (`containers.image_pull`, `containers.image_build`, `containers.image_list`, `containers.image_inspect`, `containers.image_remove`, `containers.run`, `containers.exec`, `containers.stop`, `containers.delete`).
+- **Apex Domain Install Distribution**: Edge routing via Cloudflare Worker for `https://starkite.run/install.sh` and `https://starkite.run/install.ps1`.
+- **Responsive Documentation UI**: CSS container queries (`hero-terminal`) and fluid typography (`clamp()`) for code terminals and install commands; unified elevated code card styling across docs.
+
+### Fixed
+
+- **Windows Named Pipe Hanging**: Implemented active deadline enforcement (`SetReadDeadline`, `SetWriteDeadline`) on Windows named pipes (`//./pipe/docker_engine`) using `time.Timer` and `windows.CancelIoEx`, resolving blocking I/O on broken pipes or daemon aborts.
+
 ## Unreleased
 
 ### Breaking changes — `--sandbox` and `--trust` removed

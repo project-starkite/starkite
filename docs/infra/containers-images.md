@@ -8,25 +8,25 @@ weight: 5
 
 The `containers` module provides APIs to pull container images from OCI registries, build images from local directory contexts, inspect image metadata, list locally cached images, remove images, and perform disk housekeeping by pruning unused resources.
 
-### Method Naming and Aliases
+### Method Naming
 
 Image operations on the container client use explicit `image_*` prefixes to distinguish image actions from container lifecycle methods (`run`, `stop`, `exec`, `list`, `delete`):
 
-| Canonical Method | Short Alias | Description |
-|:---|:---|:---|
-| `client.image_pull(image, auth=None)` | `client.pull()` | Pull an image from an OCI registry. |
-| `client.image_build(path, tag=None, dockerfile="Dockerfile")` | `client.build()` | Build an image from a local context directory. |
-| `client.image_list(all=False)` | `client.images()` | List images present in the local engine cache. |
-| `client.image_inspect(image)` | — | Retrieve low-level metadata for an image. |
-| `client.image_remove(image, force=False)` | `client.rmi()` | Remove an image from the local cache. |
+| Method | Description |
+|:---|:---|
+| `client.image_pull(image, auth=None)` | Pull an image from an OCI registry. |
+| `client.image_build(path, tag=None, dockerfile="Dockerfile")` | Build an image from a local context directory. |
+| `client.image_list(all=False)` | List images present in the local engine cache. |
+| `client.image_inspect(image)` | Retrieve low-level metadata for an image. |
+| `client.image_remove(image, force=False)` | Remove an image from the local cache. |
 
-Both canonical and alias forms are also exposed as top-level shortcuts on the `containers` module (for example, `containers.image_pull()` and `containers.pull()`).
+Image operations are also exposed as top-level shortcuts on the `containers` module (`containers.image_pull()`, `containers.image_build()`, `containers.image_list()`, `containers.image_inspect()`, `containers.image_remove()`).
 
 ---
 
 ## Pulling Images
 
-To pull an image from a public or private OCI registry, call `client.image_pull()` (or alias `client.pull()`):
+To pull an image from a public or private OCI registry, call `client.image_pull()`:
 
 ```python
 def main():
@@ -63,7 +63,7 @@ The daemon streams and decodes progress responses line-by-line, raising a Starla
 
 ## Building Images
 
-Use `client.image_build()` (or alias `client.build()`) to build an image from a local context directory containing a Dockerfile:
+Use `client.image_build()` to build an image from a local context directory containing a Dockerfile:
 
 ```python
 def main():
@@ -111,7 +111,7 @@ def main():
 
 ## Listing Cached Images
 
-Use `client.image_list()` (or alias `client.images()`) to inspect all images available locally in the engine cache:
+Use `client.image_list()` to inspect all images available locally in the engine cache:
 
 ```python
 def main():
@@ -138,7 +138,7 @@ def main():
 
 ## Removing Images
 
-Use `client.image_remove()` (or alias `client.rmi()`) to delete an image from the local cache:
+Use `client.image_remove()` to delete an image from the local cache:
 
 ```python
 def main():

@@ -496,10 +496,9 @@ def test_container_logs():
 
     srv.shutdown()
 
-def test_client_images():
-    """Verify client.image_list() and alias client.images() list local images with normalized dict keys."""
+def test_client_image_list():
+    """Verify client.image_list() lists local images with normalized dict keys."""
     srv, client, state = _create_mock_engine()
-    # Canonical image_list
     imgs = client.image_list()
     assert(len(imgs) == 1, "should return 1 image")
     img = imgs[0]
@@ -511,25 +510,20 @@ def test_client_images():
     assert(img["created"] == 1700000000, "created should match")
     assert(img["labels"]["maintainer"] == "kite", "labels should match")
 
-    # Alias images
-    imgs_alias = client.images()
-    assert(len(imgs_alias) == 1, "images alias returns same list")
-    assert(imgs_alias[0]["id"] == "sha256:img123456", "alias id matches")
-
     srv.shutdown()
 
-def test_client_pull():
-    """Verify client.image_pull() and alias client.pull() pull images and encode auth headers."""
+def test_client_image_pull():
+    """Verify client.image_pull() pulls images and encodes auth headers."""
     srv, client, state = _create_mock_engine()
 
-    # 1. Canonical client.image_pull()
+    # 1. Plain pull
     client.image_pull("alpine:latest")
     assert(len(state["pulled"]) == 1, "1 pull recorded")
     assert(state["pulled"][0]["image"] == "alpine:latest", "pulled image matches")
     assert(state["pulled"][0]["auth"] == "", "auth should be empty")
 
-    # 2. Alias client.pull() with auth dict
-    client.pull("myreg.io/private/app:v1", auth={"username": "user", "password": "pw"})
+    # 2. Pull with auth dict
+    client.image_pull("myreg.io/private/app:v1", auth={"username": "user", "password": "pw"})
     assert(len(state["pulled"]) == 2, "2 pulls recorded")
     assert(state["pulled"][1]["image"] == "myreg.io/private/app:v1", "pulled image matches")
     assert(state["pulled"][1]["auth"] != "", "auth header should be non-empty base64")
@@ -547,22 +541,16 @@ def test_client_image_inspect():
     srv.shutdown()
 
 def test_client_image_remove():
-    """Verify client.image_remove() and alias client.rmi() remove images."""
+    """Verify client.image_remove() removes images."""
     srv, client, state = _create_mock_engine()
-    # Canonical image_remove
     client.image_remove("alpine:latest", force=True)
     assert(len(state["removed_images"]) == 1, "1 image removal recorded")
     assert(state["removed_images"][0]["image"] == "alpine:latest", "removed image matches")
     assert(state["removed_images"][0]["force"] == "true", "force matches")
-
-    # Alias rmi
-    client.rmi("alpine:3.19")
-    assert(len(state["removed_images"]) == 2, "2 image removals recorded")
-    assert(state["removed_images"][1]["image"] == "alpine:3.19", "removed image matches")
     srv.shutdown()
 
 def test_client_image_build():
-    """Verify client.image_build() and alias client.build() stream build context."""
+    """Verify client.image_build() streams build context."""
     srv, client, state = _create_mock_engine()
 
     d = fs.path(temp_dir()) / "test_build_context"
@@ -574,17 +562,10 @@ def test_client_image_build():
     d.mkdir()
     df.write_text("FROM alpine:latest\nCMD [\"echo\", \"built\"]\n")
 
-    # 1. Canonical image_build
     out1 = client.image_build(str(d.string), tag="mytest:latest", dockerfile="Dockerfile")
     assert("Successfully tagged mytest:latest" in out1, "build output contains tag")
     assert(len(state["built"]) == 1, "1 build recorded")
     assert(state["built"][0]["tag"] == "mytest:latest", "tag matches")
-
-    # 2. Alias build
-    out2 = client.build(str(d.string), tag="mytest:v2")
-    assert("Successfully tagged mytest:v2" in out2, "alias build output contains tag")
-    assert(len(state["built"]) == 2, "2 builds recorded")
-    assert(state["built"][1]["tag"] == "mytest:v2", "tag matches")
 
     df.remove()
     d.remove()
@@ -672,16 +653,18 @@ def test_module_shortcuts():
     assert(hasattr(containers, "try_stop") == True, "containers.try_stop should be exposed")
     assert(hasattr(containers, "try_delete") == True, "containers.try_delete should be exposed")
 
-    # Image shortcuts & aliases
+    # Image shortcuts
     assert(hasattr(containers, "image_pull") == True, "containers.image_pull should be exposed")
-    assert(hasattr(containers, "pull") == True, "containers.pull should be exposed")
     assert(hasattr(containers, "image_build") == True, "containers.image_build should be exposed")
-    assert(hasattr(containers, "build") == True, "containers.build should be exposed")
     assert(hasattr(containers, "image_list") == True, "containers.image_list should be exposed")
-    assert(hasattr(containers, "images") == True, "containers.images should be exposed")
     assert(hasattr(containers, "image_inspect") == True, "containers.image_inspect should be exposed")
     assert(hasattr(containers, "image_remove") == True, "containers.image_remove should be exposed")
-    assert(hasattr(containers, "rmi") == True, "containers.rmi should be exposed")
+
+    # Assert legacy aliases are NOT exposed
+    assert(hasattr(containers, "pull") == False, "containers.pull alias should NOT be exposed")
+    assert(hasattr(containers, "build") == False, "containers.build alias should NOT be exposed")
+    assert(hasattr(containers, "images") == False, "containers.images alias should NOT be exposed")
+    assert(hasattr(containers, "rmi") == False, "containers.rmi alias should NOT be exposed")
 
 
 
