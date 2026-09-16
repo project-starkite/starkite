@@ -271,6 +271,11 @@ func (rt *Runtime) NewThread(name string) *starlark.Thread {
 	return thread
 }
 
+// Thread returns the primary Starlark thread of the runtime.
+func (rt *Runtime) Thread() *starlark.Thread {
+	return rt.thread
+}
+
 // GetRuntime retrieves the Runtime from a thread's local storage.
 // Returns nil if no runtime is set.
 func GetRuntime(thread *starlark.Thread) *Runtime {

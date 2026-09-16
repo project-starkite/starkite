@@ -5,6 +5,7 @@ package loader
 
 import (
 	"github.com/project-starkite/starkite/libkite"
+	argsmod "github.com/project-starkite/starkite/libkite/modules/args"
 	"github.com/project-starkite/starkite/libkite/modules/base64"
 	"github.com/project-starkite/starkite/libkite/modules/concur"
 	"github.com/project-starkite/starkite/libkite/modules/containers"
@@ -40,6 +41,7 @@ import (
 // RegisterAll registers all built-in modules with the given registry.
 func RegisterAll(r *libkite.Registry) {
 	// Core modules with global aliases
+	r.Register(argsmod.New())    // args.* (string, int, bool, float, list, positional, parse)
 	r.Register(osmod.New())      // os.* + global aliases (env, exec, etc.)
 	r.Register(fs.New())         // fs.* + global aliases (read_file, exists, etc.)
 	r.Register(fmtmod.New())     // fmt.* + global aliases (printf, sprintf, errorf)
