@@ -287,7 +287,37 @@ def test_args_full_schema_and_parse():
     args.bool("dry-run", shorthand = "d")
     args.float("threshold", default = 0.8, min = 0.0, max = 1.0)
     args.list("tags", default = ["k8s", "app"])
-    args.positional("cluster-target")
+    args.positional("cluster-target", default = "default-cluster")
 
     p = args.parse()
     assert(p != None, "args.parse() should return non-None struct")
+    assert(p.environment == "staging", "default environment")
+    assert(p.concurrency == 4, "default concurrency")
+    assert(p.dry_run == False, "default dry_run")
+    assert(p.threshold == 0.8, "default threshold")
+    assert(len(p.tags) == 2, "default tags count")
+    assert(p.tags[0] == "k8s", "tag 0")
+    assert(p.cluster_target == "default-cluster", "default cluster-target")
+
+    # Verify .get() method
+    assert(p.get("environment") == "staging", "p.get('environment')")
+    assert(p.get("missing", "fallback") == "fallback", "p.get with fallback")
+    assert(p.get("missing") == None, "p.get without fallback")
+
+    # Verify dictionary indexing
+    assert(p["environment"] == "staging", "p['environment']")
+    assert(p["cluster_target"] == "default-cluster", "p['cluster_target']")
+
+def test_args_try_parse_missing_required_flag():
+    """Verify try_parse fails when a required flag is missing."""
+    args.string("auth-token", required = True)
+    res = args.try_parse()
+    assert(not res.ok, "try_parse should fail on missing required flag")
+    assert("missing required flag: --auth-token" in res.error, "error message should name the flag")
+
+def test_args_try_parse_missing_required_positional():
+    """Verify try_parse fails when a required positional is missing."""
+    args.positional("manifest-file", required = True)
+    res = args.try_parse()
+    assert(not res.ok, "try_parse should fail on missing required positional")
+    assert("missing required positional argument: <manifest-file>" in res.error, "error message should name positional")

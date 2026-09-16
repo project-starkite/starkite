@@ -43,7 +43,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"float":      starlark.NewBuiltin("args.float", m.buildFloat),
 			"list":       starlark.NewBuiltin("args.list", m.buildList),
 			"positional": starlark.NewBuiltin("args.positional", m.buildPositional),
-			"parse":      starlark.NewBuiltin("args.parse", m.parseStub),
+			"parse":      starlark.NewBuiltin("args.parse", m.parse),
 		}
 
 		m.module = libkite.NewTryModule(string(ModuleName), members)

@@ -5,7 +5,6 @@ import (
 	"slices"
 
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -468,16 +467,6 @@ func (m *Module) buildPositional(thread *starlark.Thread, fn *starlark.Builtin, 
 	}
 
 	return starlark.None, nil
-}
-
-// parseStub provides the args.parse() entry point. Full parsing is implemented in Phase 3.
-func (m *Module) parseStub(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs); err != nil {
-		return nil, err
-	}
-	ctx := libkite.EnsureScriptArgs(thread)
-	ctx.Parsed = true
-	return starlarkstruct.FromStringDict(starlarkstruct.Default, make(starlark.StringDict)), nil
 }
 
 // --- Helpers ---

@@ -51,6 +51,7 @@ type PositionalDef struct {
 type ScriptArgsContext struct {
 	RawArgs     []string
 	Parsed      bool
+	Result      starlark.Value
 	Flags       []FlagDef
 	Positionals []PositionalDef
 

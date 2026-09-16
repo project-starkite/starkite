@@ -488,7 +488,7 @@ func TestArgsParseStub(t *testing.T) {
 	rt := newTestRuntime(t)
 	script := `
 args.string("action", default="install")
-args.positional("cluster-name")
+args.positional("cluster-name", default="my-cluster")
 p = args.parse()
 `
 	if err := rt.Execute(context.Background(), script); err != nil {

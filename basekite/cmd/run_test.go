@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/project-starkite/starkite/libkite"
+	baseloader "github.com/project-starkite/starkite/libkite/loader"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"go.starlark.net/starlark"
@@ -202,5 +203,47 @@ func TestScriptArgsIntegrationWithRuntime(t *testing.T) {
 
 	if !slices.Equal(receivedArgs, expectedArgs) {
 		t.Errorf("expected receivedArgs %v, got %v", expectedArgs, receivedArgs)
+	}
+}
+
+func TestScriptArgsEndToEndWithArgsModule(t *testing.T) {
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	fs.Bool("dry-run", false, "dry run")
+
+	// CLI input: kite run ./deploy.star --action upgrade -r 4 prod-cluster
+	input := []string{"./deploy.star", "--action", "upgrade", "-r", "4", "prod-cluster"}
+	target, scriptArgs, err := parseScriptCommandLine(fs, input)
+	if err != nil {
+		t.Fatalf("parseScriptCommandLine error: %v", err)
+	}
+	if target != "./deploy.star" {
+		t.Fatalf("unexpected target: %s", target)
+	}
+
+	reg := baseloader.NewDefaultRegistry(nil)
+	cfg := &libkite.Config{
+		Registry:   reg,
+		ScriptArgs: scriptArgs,
+	}
+
+	rt, err := libkite.New(cfg)
+	if err != nil {
+		t.Fatalf("libkite.New error: %v", err)
+	}
+	defer rt.Cleanup()
+
+	script := `
+args.string("action", default="install")
+args.int("replicas", shorthand="r", default=1)
+args.positional("cluster")
+
+p = args.parse()
+
+assert(p.action == "upgrade", "action should be upgrade")
+assert(p.replicas == 4, "replicas should be 4")
+assert(p.cluster == "prod-cluster", "cluster should be prod-cluster")
+`
+	if err := rt.Execute(context.Background(), script); err != nil {
+		t.Fatalf("script failed: %v", err)
 	}
 }
