@@ -15,6 +15,7 @@ const (
 	ExitSyntaxError = 3   // Starlark syntax error
 	ExitConfigError = 4   // Configuration error
 	ExitTimeout     = 5   // Script timed out
+	ExitUsageError  = 6   // Command-line usage or argument error
 	ExitInterrupt   = 130 // SIGINT received
 	ExitTerminate   = 143 // SIGTERM received
 )

@@ -176,6 +176,11 @@ func New(config *Config) (*Runtime, error) {
 	// Store runtime reference in thread.Local for modules that need it
 	rt.thread.SetLocal(runtimeKey, rt)
 
+	// Set script arguments in thread.Local
+	SetScriptArgs(rt.thread, &ScriptArgsContext{
+		RawArgs: config.ScriptArgs,
+	})
+
 	// Set up signal handling
 	rt.setupSignalHandling()
 
@@ -257,6 +262,11 @@ func (rt *Runtime) NewThread(name string) *starlark.Thread {
 
 	// Store runtime reference in thread.Local
 	thread.SetLocal(runtimeKey, rt)
+
+	// Set script arguments in thread.Local
+	SetScriptArgs(thread, &ScriptArgsContext{
+		RawArgs: rt.config.ScriptArgs,
+	})
 
 	return thread
 }

@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 	"go.starlark.net/syntax"
 )
 
@@ -67,8 +69,9 @@ Examples:
   # Pipe output to kubectl
   kite ./manifest.star | kubectl apply -f -
 `,
-	Args: cobra.ExactArgs(1),
-	RunE: runScript,
+	DisableFlagParsing: true,
+	Args:               cobra.MinimumNArgs(1),
+	RunE:               runScript,
 }
 
 func init() {
@@ -76,9 +79,31 @@ func init() {
 }
 
 func runScript(cmd *cobra.Command, args []string) error {
+	if len(args) == 0 || (len(args) == 1 && (args[0] == "--help" || args[0] == "-h")) {
+		return cmd.Help()
+	}
+
+	target, scriptArgs, err := parseScriptCommandLine(rootCmd.PersistentFlags(), args)
+	if err != nil {
+		return err
+	}
+	if target == "" {
+		return &libkite.ScriptError{
+			Message:  "missing required run target",
+			ExitCode: libkite.ExitUsageError,
+		}
+	}
+
+	if err := checkPermissionFlagConflict(rootCmd.PersistentFlags()); err != nil {
+		return err
+	}
+	if err := checkSandboxFlagConflict(rootCmd.PersistentFlags()); err != nil {
+		return err
+	}
+
 	// Resolve the run target: a script file, a directory module, or an
 	// installed namespace/name. Module runs require a main() entry point.
-	scriptPath, isModule, err := resolveRunTarget(args[0])
+	scriptPath, isModule, err := resolveRunTarget(target)
 	if err != nil {
 		return &libkite.ScriptError{
 			Message:  err.Error(),
@@ -167,6 +192,7 @@ func runScript(cmd *cobra.Command, args []string) error {
 	// Create runtime configuration
 	cfg := &libkite.Config{
 		ScriptPath:        scriptPath,
+		ScriptArgs:        scriptArgs,
 		OutputFormat:      outputFormat,
 		Debug:             debugMode,
 		DryRun:            dryRun,
@@ -208,4 +234,54 @@ func runScript(cmd *cobra.Command, args []string) error {
 	}
 
 	return nil
+}
+
+// parseKnownFlags parses known flags from args using flagSet,
+// consuming only known flags and leaving all unknown flags and positional args in remainder.
+func parseKnownFlags(flagSet *pflag.FlagSet, args []string) (remainder []string, err error) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			remainder = append(remainder, args[i+1:]...)
+			break
+		}
+		if strings.HasPrefix(arg, "-") && arg != "-" {
+			name := strings.TrimLeft(strings.Split(arg, "=")[0], "-")
+			f := flagSet.Lookup(name)
+			if f == nil && len(name) == 1 {
+				f = flagSet.ShorthandLookup(name)
+			}
+			if f != nil {
+				isZeroArg := strings.Contains(arg, "=") || f.Value.Type() == "bool" || f.NoOptDefVal != ""
+				if isZeroArg {
+					if err := flagSet.Parse([]string{arg}); err != nil {
+						return nil, err
+					}
+				} else if i+1 < len(args) {
+					if err := flagSet.Parse([]string{arg, args[i+1]}); err != nil {
+						return nil, err
+					}
+					i++
+				} else {
+					return nil, flagSet.Parse([]string{arg})
+				}
+				continue
+			}
+		}
+		remainder = append(remainder, arg)
+	}
+	return remainder, nil
+}
+
+// parseScriptCommandLine parses the command line arguments for the run command,
+// extracting the script target and any forwarded script arguments.
+func parseScriptCommandLine(flagSet *pflag.FlagSet, rawArgs []string) (target string, scriptArgs []string, err error) {
+	rem, err := parseKnownFlags(flagSet, rawArgs)
+	if err != nil {
+		return "", nil, err
+	}
+	if len(rem) == 0 {
+		return "", nil, nil
+	}
+	return rem[0], rem[1:], nil
 }

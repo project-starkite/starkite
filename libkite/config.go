@@ -66,6 +66,9 @@ type Config struct {
 	// for loose script files.
 	RequireEntryPoint bool
 
+	// ScriptArgs holds command-line arguments forwarded to the script (flags and positionals).
+	ScriptArgs []string
+
 	// Logger receives runtime session diagnostics, such as a skipped automatic
 	// entry-point invocation. If nil, a text logger to stderr is used.
 	Logger *slog.Logger
@@ -73,6 +76,13 @@ type Config struct {
 
 // ConfigOption is a functional option for Config.
 type ConfigOption func(*Config)
+
+// WithScriptArgs sets the command-line arguments forwarded to the script.
+func WithScriptArgs(args ...string) ConfigOption {
+	return func(c *Config) {
+		c.ScriptArgs = args
+	}
+}
 
 // WithPermissions sets the permission config.
 func WithPermissions(perms *PermissionConfig) ConfigOption {
