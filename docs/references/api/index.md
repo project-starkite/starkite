@@ -40,6 +40,12 @@ System primitives, control flow, and built-in utilities every script needs.
 
     Interactive user input — `confirm`, `prompt`.
 
+-   :material-flag:{ .lg .middle } [`args`](args.md)
+
+    ---
+
+    Declarative CLI flag and positional argument parsing.
+
 -   :material-variable:{ .lg .middle } [`vars`](vars.md)
 
     ---

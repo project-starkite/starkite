@@ -333,7 +333,7 @@ func (m *Module) buildList(thread *starlark.Thread, fn *starlark.Builtin, args s
 		flag        string
 		defaultVal  starlark.Value = starlark.None
 		shorthand   string
-		itemType    string = "string"
+		itemType    = "string"
 		help        string
 		varFallback string
 	)
