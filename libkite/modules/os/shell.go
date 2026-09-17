@@ -3,7 +3,9 @@ package osmod
 import (
 	"fmt"
 	"maps"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -43,13 +45,13 @@ func defaultFlagForCommand(cmd string) string {
 }
 
 func (s *Shell) String() string {
-	return fmt.Sprintf("Shell(command=%q, flag=%q, cwd=%q, timeout=%q)", s.command, s.flag, s.cwd, s.timeoutStr)
+	return fmt.Sprintf("os.shell(command=%q, flag=%q, cwd=%q, timeout=%q)", s.command, s.flag, s.cwd, s.timeoutStr)
 }
 
-func (s *Shell) Type() string          { return "Shell" }
+func (s *Shell) Type() string          { return "os.shell" }
 func (s *Shell) Freeze()               {} // Shell is immutable
 func (s *Shell) Truth() starlark.Bool  { return starlark.True }
-func (s *Shell) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: Shell") }
+func (s *Shell) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: os.shell") }
 
 func (s *Shell) Attr(name string) (starlark.Value, error) {
 	switch name {
@@ -377,4 +379,65 @@ func (m *Module) shell(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		useridVal:  useridVal,
 		groupidVal: groupidVal,
 	}, nil
+}
+
+func resolvePowerShellCommand() string {
+	if p, err := exec.LookPath("pwsh"); err == nil && p != "" {
+		return "pwsh"
+	}
+	if runtime.GOOS == "windows" {
+		if p, err := exec.LookPath("powershell.exe"); err == nil && p != "" {
+			return "powershell.exe"
+		}
+		if p, err := exec.LookPath("powershell"); err == nil && p != "" {
+			return "powershell"
+		}
+		return "powershell.exe"
+	}
+	return "pwsh"
+}
+
+func (m *Module) shellWithPreset(thread *starlark.Thread, fn *starlark.Builtin, defaultCmd, defaultFlag string, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(args) > 0 {
+		return nil, fmt.Errorf("%s: takes no positional arguments", fn.Name())
+	}
+	hasCmd := false
+	hasFlag := false
+	for _, kv := range kwargs {
+		k := string(kv[0].(starlark.String))
+		if k == "command" {
+			hasCmd = true
+		} else if k == "flag" {
+			hasFlag = true
+		}
+	}
+	var newKwargs []starlark.Tuple
+	if !hasCmd {
+		newKwargs = append(newKwargs, starlark.Tuple{starlark.String("command"), starlark.String(defaultCmd)})
+	}
+	if !hasFlag {
+		newKwargs = append(newKwargs, starlark.Tuple{starlark.String("flag"), starlark.String(defaultFlag)})
+	}
+	newKwargs = append(newKwargs, kwargs...)
+	return m.shell(thread, fn, nil, newKwargs)
+}
+
+func (m *Module) sh(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.shellWithPreset(thread, fn, "/bin/sh", "-c", args, kwargs)
+}
+
+func (m *Module) bash(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.shellWithPreset(thread, fn, "/bin/bash", "-c", args, kwargs)
+}
+
+func (m *Module) zsh(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.shellWithPreset(thread, fn, "/bin/zsh", "-c", args, kwargs)
+}
+
+func (m *Module) cmdexe(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.shellWithPreset(thread, fn, "cmd.exe", "/c", args, kwargs)
+}
+
+func (m *Module) powershell(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.shellWithPreset(thread, fn, resolvePowerShellCommand(), "-Command", args, kwargs)
 }

@@ -65,12 +65,12 @@ def check_os():
 
 ### Running Shell Features (Pipes, Redirection, Chaining)
 
-Because direct process execution does not use a shell, shell features like pipes (`|`), redirections (`>`, `<`), and chaining (`&&`, `;`) must be invoked explicitly through the system shell:
+Because direct process execution does not use a shell, shell features like pipes (`|`), redirections (`>`, `<`), and chaining (`&&`, `;`) can be invoked via `os.shell()` or the shell factory shortcuts:
 
 ```python
 def check_disk_space():
-    # Explicit shell execution via os.exec
-    disk_info = os.exec("sh", ["-c", "df -h / | tail -1"])
+    sh = os.sh()
+    disk_info = sh.exec("df -h / | tail -1")
     print("Disk Info:", disk_info.strip())
 ```
 
@@ -81,6 +81,82 @@ Direct process execution requires the **`allow-all`** permission profile (or a c
 ```bash
 kite run ./script.star --permissions allow-all
 ```
+
+---
+
+## Shell Execution (`os.shell` and Shortcuts)
+
+For scripts requiring shell parsing, multi-command pipelines, or environment persistence, the `os` module provides the `os.shell()` constructor and factory shortcuts.
+
+### Shell Constructors and Shortcuts
+
+| Constructor | Default Command | Default Flag | Description |
+|---|---|---|---|
+| `os.shell(...)` | Platform default (`/bin/sh` or `cmd.exe`) | Platform default (`-c` or `/c`) | Configurable shell instance |
+| `os.sh(...)` | `/bin/sh` | `-c` | Standard POSIX shell |
+| `os.bash(...)` | `/bin/bash` | `-c` | Bash shell |
+| `os.zsh(...)` | `/bin/zsh` | `-c` | Zsh shell |
+| `os.cmdexe(...)` | `cmd.exe` | `/c` | Windows Command Prompt |
+| `os.powershell(...)` | `pwsh` (or `powershell.exe`) | `-Command` | PowerShell shell |
+
+Each constructor accepts initial defaults:
+* `command` (`string`): Target shell binary or path.
+* `flag` (`string`): Argument flag preceding the script (`-c`, `/c`, `-Command`).
+* `cwd` (`string`): Default working directory.
+* `env` (`dict`): Bound environment variable map.
+* `timeout` (`string`): Bound execution timeout (default: `"60s"`).
+* `userid` / `groupid` (`string` \| `int`): User and group execution identities (POSIX only).
+
+### Shell Methods: `exec` and `try_exec`
+
+A `Shell` instance provides two execution methods:
+* **`sh.exec(script, ...)`**: Executes the script string in the shell, returning standard output. Halts execution with an error on non-zero exit.
+* **`sh.try_exec(script, ...)`**: Executes the script string, returning an `ExecResult` for programmatic exit code checks.
+
+Both methods accept per-invocation overrides for `cwd`, `env`, `timeout`, `userid`, `groupid`, `input`, and `output`.
+
+### Examples
+
+#### Pipelines and Redirections
+
+```python
+def extract_process_info():
+    bash = os.bash()
+    top_proc = bash.exec("ps aux | sort -nrk 3,3 | head -n 5")
+    print("Top processes by CPU:\n", top_proc)
+```
+
+#### Multi-line Script Execution
+
+```python
+def run_setup():
+    sh = os.sh()
+    setup_script = """
+    set -e
+    mkdir -p build/logs
+    touch build/logs/app.log
+    """
+    sh.exec(setup_script)
+```
+
+#### Bound Context and Per-Call Overrides
+
+```python
+def run_build():
+    # Configure base shell environment
+    ci = os.bash(
+        cwd = "/repo",
+        env = {"CI": "true", "GOOS": "linux"},
+        timeout = "5m",
+    )
+
+    # Per-call environment overrides merge with bound options
+    ci.exec("make build", env = {"VERBOSE": "1"})
+```
+
+#### Permission Model
+
+Constructing a `Shell` performs no I/O and requires no permissions. Calling `sh.exec(script)` delegates directly to `os.exec([sh.command, sh.flag, script])` and validates against standard `os.exec` permission rules for the target shell binary.
 
 ---
 

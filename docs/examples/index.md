@@ -51,6 +51,7 @@ Begin where every script begins: the base modules for talking to the local syste
 | Example | Description |
 |---------|-------------|
 | [hello.star](https://github.com/project-starkite/starkite/blob/main/examples/core/hello.star) | Hello world |
+| [shell.star](https://github.com/project-starkite/starkite/blob/main/examples/core/shell.star) | Shell execution, pipelines, and script runners |
 | [sysinfo.star](https://github.com/project-starkite/starkite/blob/main/examples/core/sysinfo.star) | System information gathering |
 | [remote-check.star](https://github.com/project-starkite/starkite/blob/main/examples/core/remote-check.star) | Remote server health checks via SSH |
 | [http-server/](https://github.com/project-starkite/starkite/tree/main/examples/core/http-server) | REST APIs, webhooks, middleware |

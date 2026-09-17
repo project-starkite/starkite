@@ -23,6 +23,12 @@ The `os` module provides access to environment variables, process information, a
 | `os.exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `string` | Execute a binary directly (returns stdout) |
 | `os.try_exec(cmd, args=[], env=None, cwd=None, timeout="60s", userid=None, groupid=None, input=None, output=None)` | `ExecResult` | Execute a binary directly, capturing results |
 | `os.which(name)` | `string`/`None` | Find executable on PATH |
+| `os.shell(command=None, flag=None, cwd=None, env=None, timeout="60s", userid=None, groupid=None)` | `Shell` | Construct a configured shell execution object |
+| `os.sh(...)` | `Shell` | Construct `/bin/sh` shell (`flag="-c"`) |
+| `os.bash(...)` | `Shell` | Construct `/bin/bash` shell (`flag="-c"`) |
+| `os.zsh(...)` | `Shell` | Construct `/bin/zsh` shell (`flag="-c"`) |
+| `os.cmdexe(...)` | `Shell` | Construct Windows `cmd.exe` shell (`flag="/c"`) |
+| `os.powershell(...)` | `Shell` | Construct PowerShell shell (`flag="-Command"`, resolves `pwsh` or `powershell.exe`) |
 | `os.username()` | `string` | Get current username |
 | `os.userid()` | `string` | Get current user ID |
 | `os.groupid()` | `string` | Get current group ID |
@@ -43,6 +49,12 @@ The following functions are available as top-level globals, equivalent to their 
 * `exec(cmd, args=[])`
 * `try_exec(cmd, args=[])`
 * `which(name)`
+* `shell(...)`
+* `sh(...)`
+* `bash(...)`
+* `zsh(...)`
+* `cmdexe(...)`
+* `powershell(...)`
 * `username()`
 * `userid()`
 * `groupid()`
@@ -65,6 +77,26 @@ The `ExecResult` object returned by `os.try_exec()` and `try_exec()` has these a
 | `code` | `int` | Exit code (0 = success) |
 | `ok` | `bool` | `True` if exit code is 0 |
 | `error` | `string` | Error message on failure; empty string when `ok` is `True` |
+
+## Shell
+
+The `Shell` object returned by `os.shell()` and the shell factory shortcuts (`os.sh()`, `os.bash()`, `os.zsh()`, `os.cmdexe()`, `os.powershell()`) encapsulates shell configuration and executes scripts via `os.exec`:
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `command` | `string` | Shell executable path or binary name |
+| `flag` | `string` | Flag passed before the script argument (`-c`, `/c`, `-Command`) |
+| `cwd` | `string` | Bound working directory (`""` if unset) |
+| `timeout` | `string` | Bound execution timeout string |
+
+### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `sh.exec(script, cwd=None, env=None, timeout=None, userid=None, groupid=None, input=None, output=None)` | `string` | Execute script via shell; returns stdout. Raises error on non-zero exit. |
+| `sh.try_exec(script, cwd=None, env=None, timeout=None, userid=None, groupid=None, input=None, output=None)` | `ExecResult` | Execute script via shell; returns `ExecResult`. |
 
 ## Examples
 
@@ -150,6 +182,38 @@ if go_path:
 ```python
 os.chdir("/tmp")
 print(os.cwd())  # /tmp
+```
+
+### Shell execution
+
+```python
+# Create a shell runner (defaults to /bin/sh on POSIX, cmd.exe on Windows)
+sh = os.sh()
+
+# Pipelines and redirections
+files = sh.exec("ls -la | grep -E '\\.star$'")
+print("Files:", files)
+
+# Multi-line scripts
+script = """
+set -e
+echo "Starting task..."
+echo "Completed"
+"""
+sh.exec(script)
+
+# Error handling with try_exec
+res = sh.try_exec("exit 42")
+if not res.ok:
+    print("Failed with exit code:", res.code)
+
+# Bound options and per-call overrides
+ci_shell = os.bash(cwd="/repo", env={"CI": "true"}, timeout="5m")
+ci_shell.exec("make test", env={"VERBOSE": "1"})
+
+# PowerShell execution (cross-platform pwsh or Windows PowerShell)
+ps = os.powershell()
+ps.exec("Get-Process | Select-Object -First 5")
 ```
 
 > **Note:**

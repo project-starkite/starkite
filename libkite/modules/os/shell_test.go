@@ -359,3 +359,114 @@ func TestShellExecution_Permissions(t *testing.T) {
 		t.Errorf("expected 'blocked by deny rule: os.exec', got %v", err)
 	}
 }
+
+func TestShellFactory_Presets(t *testing.T) {
+	m, thread := newTestOSModule(t)
+
+	tests := []struct {
+		name         string
+		factory      func(*starlark.Thread, *starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error)
+		expectedCmd  string
+		expectedFlag string
+	}{
+		{"sh", m.sh, "/bin/sh", "-c"},
+		{"bash", m.bash, "/bin/bash", "-c"},
+		{"zsh", m.zsh, "/bin/zsh", "-c"},
+		{"cmdexe", m.cmdexe, "cmd.exe", "/c"},
+		{"powershell", m.powershell, resolvePowerShellCommand(), "-Command"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := starlark.NewBuiltin("os."+tt.name, tt.factory)
+			val, err := tt.factory(thread, b, nil, nil)
+			if err != nil {
+				t.Fatalf("%s() failed: %v", tt.name, err)
+			}
+			sh, ok := val.(*Shell)
+			if !ok {
+				t.Fatalf("expected *Shell, got %T", val)
+			}
+			if sh.command != tt.expectedCmd {
+				t.Errorf("%s.command = %q; expected %q", tt.name, sh.command, tt.expectedCmd)
+			}
+			if sh.flag != tt.expectedFlag {
+				t.Errorf("%s.flag = %q; expected %q", tt.name, sh.flag, tt.expectedFlag)
+			}
+		})
+	}
+}
+
+func TestShellFactory_OptionsAndOverrides(t *testing.T) {
+	m, thread := newTestOSModule(t)
+
+	envDict := starlark.NewDict(1)
+	envDict.SetKey(starlark.String("ENV_VAR"), starlark.String("test"))
+
+	kwargs := []starlark.Tuple{
+		{starlark.String("cwd"), starlark.String("/custom/dir")},
+		{starlark.String("timeout"), starlark.String("15s")},
+		{starlark.String("env"), envDict},
+		{starlark.String("flag"), starlark.String("-l")},
+	}
+
+	b := starlark.NewBuiltin("os.bash", m.bash)
+	val, err := m.bash(thread, b, nil, kwargs)
+	if err != nil {
+		t.Fatalf("os.bash() with kwargs failed: %v", err)
+	}
+
+	sh := val.(*Shell)
+	if sh.command != "/bin/bash" {
+		t.Errorf("expected command '/bin/bash', got %q", sh.command)
+	}
+	if sh.flag != "-l" {
+		t.Errorf("expected overridden flag '-l', got %q", sh.flag)
+	}
+	if sh.cwd != "/custom/dir" {
+		t.Errorf("expected cwd '/custom/dir', got %q", sh.cwd)
+	}
+	if sh.timeout != 15*time.Second {
+		t.Errorf("expected timeout 15s, got %v", sh.timeout)
+	}
+	if sh.env["ENV_VAR"] != "test" {
+		t.Errorf("expected env ENV_VAR=test, got %v", sh.env)
+	}
+}
+
+func TestShellFactory_PositionalArgsRejected(t *testing.T) {
+	m, thread := newTestOSModule(t)
+
+	b := starlark.NewBuiltin("os.sh", m.sh)
+	_, err := m.sh(thread, b, starlark.Tuple{starlark.String("echo hello")}, nil)
+	if err == nil {
+		t.Fatal("expected error when passing positional arguments to factory shortcut")
+	}
+	if !strings.Contains(err.Error(), "takes no positional arguments") {
+		t.Errorf("expected 'takes no positional arguments' error, got: %v", err)
+	}
+}
+
+func TestShellFactory_ModuleRegistration(t *testing.T) {
+	m, _ := newTestOSModule(t)
+
+	hasAttrs, ok := m.module.(starlark.HasAttrs)
+	if !ok {
+		t.Fatalf("expected m.module to implement starlark.HasAttrs, got %T", m.module)
+	}
+
+	shortcuts := []string{"shell", "sh", "bash", "zsh", "cmdexe", "powershell"}
+	for _, name := range shortcuts {
+		val, err := hasAttrs.Attr(name)
+		if err != nil || val == nil {
+			t.Errorf("module.Attr(%q) not found or err: %v", name, err)
+		}
+		tryVal, err := hasAttrs.Attr("try_" + name)
+		if err != nil || tryVal == nil {
+			t.Errorf("module.Attr(try_%s) not found or err: %v", name, err)
+		}
+		if _, ok := m.aliases[name]; !ok {
+			t.Errorf("alias %q not registered in module aliases", name)
+		}
+	}
+}
