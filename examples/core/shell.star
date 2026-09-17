@@ -29,11 +29,14 @@ def main():
     # 3. Multi-line script execution
     print("\n--- 2. Multi-line Script Execution ---")
     if is_windows:
+        ps = os.powershell()
         script = """
-        echo Setting up workspace...
-        echo Current time: %TIME%
-        echo Workspace ready.
+        Write-Output "Setting up workspace..."
+        $stage = "staging"
+        Write-Output "Target stage: $stage"
+        Write-Output "Workspace ready."
         """
+        script_out = ps.exec(script)
     else:
         script = """
         set -e
@@ -42,7 +45,7 @@ def main():
         echo "Target stage: $STAGE"
         echo "Workspace ready."
         """
-    script_out = sh.exec(script)
+        script_out = sh.exec(script)
     print(script_out.strip())
 
     # 4. Programmatic error handling with try_exec

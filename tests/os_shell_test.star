@@ -103,14 +103,21 @@ def test_shell_exec_and_try_exec():
 def test_shell_multiline_script():
     """Test multi-line script execution in shell."""
     if runtime.platform() == "windows":
-        sh_inst = os.cmdexe()
+        # PowerShell supports multi-line script blocks natively
+        pwsh = os.powershell()
         script = """
         echo line1
         echo line2
         """
-        out = sh_inst.exec(script)
-        assert("line1" in out, "output should contain line1")
-        assert("line2" in out, "output should contain line2")
+        out = pwsh.exec(script)
+        assert("line1" in out, "powershell output should contain line1")
+        assert("line2" in out, "powershell output should contain line2")
+
+        # cmd.exe chains multiple commands via '&'
+        cmd_inst = os.cmdexe()
+        cmd_out = cmd_inst.exec("echo line1 & echo line2")
+        assert("line1" in cmd_out, "cmdexe output should contain line1")
+        assert("line2" in cmd_out, "cmdexe output should contain line2")
     else:
         sh_inst = os.sh()
         script = """
