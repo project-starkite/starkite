@@ -233,17 +233,39 @@ func runScript(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	// Strict unhandled arguments check: if arguments were passed to the script
+	// but the script never called args.parse(), fail immediately with ExitUsageError.
+	if sCtx := libkite.GetScriptArgs(rt.Thread()); sCtx != nil {
+		if len(sCtx.RawArgs) > 0 && !sCtx.Parsed {
+			return &libkite.ScriptError{
+				Message: fmt.Sprintf("unhandled arguments: %s\n  Script '%s' did not process these arguments (args.parse() was not called).",
+					strings.Join(sCtx.RawArgs, " "), scriptPath),
+				ExitCode: libkite.ExitUsageError,
+			}
+		}
+	}
+
 	return nil
 }
 
 // parseKnownFlags parses known flags from args using flagSet,
 // consuming only known flags and leaving all unknown flags and positional args in remainder.
 func parseKnownFlags(flagSet *pflag.FlagSet, args []string) (remainder []string, err error) {
+	var targetFound bool
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		if arg == "--" {
 			remainder = append(remainder, args[i+1:]...)
 			break
+		}
+		if !strings.HasPrefix(arg, "-") && !targetFound {
+			targetFound = true
+			remainder = append(remainder, arg)
+			continue
+		}
+		if targetFound && (arg == "--help" || arg == "-h") {
+			remainder = append(remainder, arg)
+			continue
 		}
 		if strings.HasPrefix(arg, "-") && arg != "-" {
 			name := strings.TrimLeft(strings.Split(arg, "=")[0], "-")

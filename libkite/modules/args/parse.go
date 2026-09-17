@@ -24,6 +24,20 @@ func (m *Module) parse(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		return ctx.Result, nil
 	}
 
+	// Intercept --help / -h requests before flag evaluation
+	for _, arg := range ctx.RawArgs {
+		if arg == "--help" || arg == "-h" {
+			helpText := FormatScriptHelp(ctx)
+			if thread != nil && thread.Print != nil {
+				thread.Print(thread, helpText)
+			} else {
+				fmt.Println(helpText)
+			}
+			ctx.Parsed = true
+			return nil, libkite.NewExitError(libkite.ExitSuccess)
+		}
+	}
+
 	fs := pflag.NewFlagSet("script", pflag.ContinueOnError)
 
 	stringVars := make(map[string]*string)

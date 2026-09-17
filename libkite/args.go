@@ -50,6 +50,7 @@ type PositionalDef struct {
 // and records declared flag/positional argument schemas.
 type ScriptArgsContext struct {
 	RawArgs     []string
+	ScriptPath  string
 	Parsed      bool
 	Result      starlark.Value
 	Flags       []FlagDef

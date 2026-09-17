@@ -112,6 +112,11 @@ func (e *exitError) Error() string {
 	return fmt.Sprintf("exit(%d)", e.code)
 }
 
+// NewExitError creates an internal exit error that causes the runtime to exit with the given code.
+func NewExitError(code int) error {
+	return &exitError{code: code}
+}
+
 // SkipError is returned when a test is skipped.
 type SkipError struct {
 	Reason string

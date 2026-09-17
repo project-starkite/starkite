@@ -178,7 +178,8 @@ func New(config *Config) (*Runtime, error) {
 
 	// Set script arguments in thread.Local
 	SetScriptArgs(rt.thread, &ScriptArgsContext{
-		RawArgs: config.ScriptArgs,
+		RawArgs:    config.ScriptArgs,
+		ScriptPath: config.ScriptPath,
 	})
 
 	// Set up signal handling
@@ -265,7 +266,8 @@ func (rt *Runtime) NewThread(name string) *starlark.Thread {
 
 	// Set script arguments in thread.Local
 	SetScriptArgs(thread, &ScriptArgsContext{
-		RawArgs: rt.config.ScriptArgs,
+		RawArgs:    rt.config.ScriptArgs,
+		ScriptPath: rt.config.ScriptPath,
 	})
 
 	return thread
