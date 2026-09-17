@@ -78,6 +78,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"exec":     starlark.NewBuiltin("os.exec", m.execCmd),
 			"try_exec": starlark.NewBuiltin("os.try_exec", m.tryExecCmd),
 			"which":    starlark.NewBuiltin("os.which", m.which),
+			"shell":    starlark.NewBuiltin("os.shell", m.shell),
 
 			// User info
 			"username": starlark.NewBuiltin("os.username", m.username),
