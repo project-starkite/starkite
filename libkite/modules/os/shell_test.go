@@ -2,6 +2,7 @@ package osmod
 
 import (
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -189,5 +190,172 @@ func TestShellConstructor_Errors(t *testing.T) {
 	})
 	if err == nil {
 		t.Errorf("expected error for unknown keyword argument")
+	}
+}
+
+func TestShellExecution_ExecAndTryExec(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell test skipped on windows")
+	}
+
+	m, thread := newTestOSModule(t)
+
+	val, err := m.shell(thread, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("os.shell() failed: %v", err)
+	}
+	sh := val.(*Shell)
+
+	// 1. Basic exec
+	execAttr, err := sh.Attr("exec")
+	if err != nil {
+		t.Fatalf("Attr('exec') failed: %v", err)
+	}
+	execFn := execAttr.(*starlark.Builtin)
+
+	outVal, err := execFn.CallInternal(thread, starlark.Tuple{starlark.String("echo 'hello from shell'")}, nil)
+	if err != nil {
+		t.Fatalf("sh.exec() failed: %v", err)
+	}
+	if outStr := outVal.(starlark.String).GoString(); outStr != "hello from shell\n" {
+		t.Errorf("sh.exec output = %q, expected 'hello from shell\\n'", outStr)
+	}
+
+	// 2. Pipelines and redirection
+	outVal, err = execFn.CallInternal(thread, starlark.Tuple{starlark.String("printf 'alpha\nbeta\ngamma' | grep beta")}, nil)
+	if err != nil {
+		t.Fatalf("sh.exec() pipeline failed: %v", err)
+	}
+	if outStr := outVal.(starlark.String).GoString(); outStr != "beta\n" {
+		t.Errorf("sh.exec pipeline output = %q, expected 'beta\\n'", outStr)
+	}
+
+	// 3. Non-zero exit in exec raises error
+	_, err = execFn.CallInternal(thread, starlark.Tuple{starlark.String("exit 7")}, nil)
+	if err == nil {
+		t.Errorf("expected error on non-zero exit")
+	}
+
+	// 4. Basic try_exec success
+	tryExecAttr, err := sh.Attr("try_exec")
+	if err != nil {
+		t.Fatalf("Attr('try_exec') failed: %v", err)
+	}
+	tryExecFn := tryExecAttr.(*starlark.Builtin)
+
+	resVal, err := tryExecFn.CallInternal(thread, starlark.Tuple{starlark.String("echo success")}, nil)
+	if err != nil {
+		t.Fatalf("sh.try_exec() returned Go error: %v", err)
+	}
+	res := resVal.(*ExecResult)
+	if !res.isOK() || res.exitCode != 0 {
+		t.Errorf("try_exec expected ok=true, code=0, got %v", res)
+	}
+	if res.stdout != "success\n" {
+		t.Errorf("try_exec stdout = %q, expected 'success\\n'", res.stdout)
+	}
+
+	// 5. try_exec on non-zero exit captures code and ok=False without error
+	resVal, err = tryExecFn.CallInternal(thread, starlark.Tuple{starlark.String("echo 'failed message' >&2; exit 42")}, nil)
+	if err != nil {
+		t.Fatalf("sh.try_exec() should not return Go error on non-zero exit: %v", err)
+	}
+	res = resVal.(*ExecResult)
+	if res.isOK() {
+		t.Errorf("try_exec on exit 42 should have ok=False")
+	}
+	if res.exitCode != 42 {
+		t.Errorf("try_exec expected exitCode=42, got %d", res.exitCode)
+	}
+	if res.stderr != "failed message\n" {
+		t.Errorf("try_exec stderr = %q, expected 'failed message\\n'", res.stderr)
+	}
+}
+
+func TestShellExecution_EnvAndCwdOverrides(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell test skipped on windows")
+	}
+
+	m, thread := newTestOSModule(t)
+
+	boundEnv := starlark.NewDict(2)
+	boundEnv.SetKey(starlark.String("VAR1"), starlark.String("bound1"))
+	boundEnv.SetKey(starlark.String("VAR2"), starlark.String("bound2"))
+
+	val, err := m.shell(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("cwd"), starlark.String("/tmp")},
+		{starlark.String("env"), boundEnv},
+	})
+	if err != nil {
+		t.Fatalf("os.shell() failed: %v", err)
+	}
+	sh := val.(*Shell)
+
+	execAttr, _ := sh.Attr("exec")
+	execFn := execAttr.(*starlark.Builtin)
+
+	// 1. Inherits bound env and cwd
+	outVal, err := execFn.CallInternal(thread, starlark.Tuple{starlark.String("echo $VAR1 $VAR2 $(pwd)")}, nil)
+	if err != nil {
+		t.Fatalf("sh.exec() failed: %v", err)
+	}
+	outStr := outVal.(starlark.String).GoString()
+	if !strings.HasPrefix(outStr, "bound1 bound2") {
+		t.Errorf("expected output to start with 'bound1 bound2', got %q", outStr)
+	}
+
+	// 2. Per-call overrides merge into and override bound options
+	callEnv := starlark.NewDict(2)
+	callEnv.SetKey(starlark.String("VAR2"), starlark.String("overridden2"))
+	callEnv.SetKey(starlark.String("VAR3"), starlark.String("call3"))
+
+	outVal, err = execFn.CallInternal(thread, starlark.Tuple{starlark.String("echo $VAR1 $VAR2 $VAR3")}, []starlark.Tuple{
+		{starlark.String("env"), callEnv},
+	})
+	if err != nil {
+		t.Fatalf("sh.exec() with call env failed: %v", err)
+	}
+	if outStr = outVal.(starlark.String).GoString(); outStr != "bound1 overridden2 call3\n" {
+		t.Errorf("expected 'bound1 overridden2 call3\\n', got %q", outStr)
+	}
+}
+
+func TestShellExecution_Permissions(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell test skipped on windows")
+	}
+
+	// Create runtime with explicit deny on os.exec
+	rt, err := libkite.New(&libkite.Config{
+		Permissions: libkite.AllowPermissions("os.exec"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	m := New()
+	if _, err := m.Load(nil); err != nil {
+		t.Fatal(err)
+	}
+	thread := rt.NewThread("test-deny-thread")
+
+	val, err := m.shell(thread, nil, nil, nil)
+	if err != nil {
+		t.Fatalf("os.shell() construction should not fail even when exec denied: %v", err)
+	}
+	sh := val.(*Shell)
+
+	execAttr, _ := sh.Attr("exec")
+	execFn := execAttr.(*starlark.Builtin)
+
+	// Calling exec must be denied by the permission checker
+	_, err = execFn.CallInternal(thread, starlark.Tuple{starlark.String("echo denied")}, nil)
+	if err == nil {
+		t.Fatalf("expected permission denial on sh.exec()")
+	}
+	if !strings.Contains(err.Error(), "blocked by deny rule: os.exec") {
+		t.Errorf("expected 'blocked by deny rule: os.exec', got %v", err)
 	}
 }

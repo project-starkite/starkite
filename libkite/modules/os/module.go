@@ -346,61 +346,6 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 		}
 	}
 
-	var targetUID uint32
-	var targetGID uint32
-	var hasUID bool
-	var hasGID bool
-
-	if (useridVal != starlark.None || groupidVal != starlark.None) && !supportsUserSwitch {
-		return nil, fmt.Errorf("os.exec: userid and groupid execution switching is not supported on this platform")
-	}
-
-	if useridVal != starlark.None {
-		hasUID = true
-		if s, ok := starlark.AsString(useridVal); ok {
-			u, err := user.Lookup(s)
-			if err != nil {
-				return nil, fmt.Errorf("os.exec: failed to resolve username %q: %w", s, err)
-			}
-			var uid int
-			if _, err := fmt.Sscanf(u.Uid, "%d", &uid); err != nil {
-				return nil, fmt.Errorf("os.exec: invalid system UID %q for user %q: %w", u.Uid, s, err)
-			}
-			targetUID = uint32(uid)
-		} else if i, ok := useridVal.(starlark.Int); ok {
-			uid, ok := i.Int64()
-			if !ok || uid < 0 {
-				return nil, fmt.Errorf("os.exec: userid cannot be negative or out of range")
-			}
-			targetUID = uint32(uid)
-		} else {
-			return nil, fmt.Errorf("os.exec: userid must be a string or integer, got %s", useridVal.Type())
-		}
-	}
-
-	if groupidVal != starlark.None {
-		hasGID = true
-		if s, ok := starlark.AsString(groupidVal); ok {
-			g, err := user.LookupGroup(s)
-			if err != nil {
-				return nil, fmt.Errorf("os.exec: failed to resolve groupname %q: %w", s, err)
-			}
-			var gid int
-			if _, err := fmt.Sscanf(g.Gid, "%d", &gid); err != nil {
-				return nil, fmt.Errorf("os.exec: invalid system GID %q for group %q: %w", g.Gid, s, err)
-			}
-			targetGID = uint32(gid)
-		} else if i, ok := groupidVal.(starlark.Int); ok {
-			gid, ok := i.Int64()
-			if !ok || gid < 0 {
-				return nil, fmt.Errorf("os.exec: groupid cannot be negative or out of range")
-			}
-			targetGID = uint32(gid)
-		} else {
-			return nil, fmt.Errorf("os.exec: groupid must be a string or integer, got %s", groupidVal.Type())
-		}
-	}
-
 	m.mu.RLock()
 	workDir := m.workDir
 	timeout := m.timeout
@@ -410,16 +355,6 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 
 	if s, ok := starlark.AsString(cwdStr); ok && s != "" {
 		workDir = s
-	}
-
-	execTarget := resolveExecTarget(cmdStr, workDir, baseEnv)
-	if err := libkite.Check(thread, "os", "exec", "exec", execTarget); err != nil {
-		return nil, err
-	}
-	if hasUID || hasGID {
-		if err := libkite.Check(thread, "os", "exec", "switch_identity", execTarget); err != nil {
-			return nil, err
-		}
 	}
 
 	if s, ok := starlark.AsString(timeoutStr); ok && s != "" {
@@ -442,28 +377,129 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 		}
 	}
 
+	p := execParams{
+		cmdStr:     cmdStr,
+		execArgs:   execArgs,
+		workDir:    workDir,
+		envMap:     baseEnv,
+		timeout:    timeout,
+		useridVal:  useridVal,
+		groupidVal: groupidVal,
+		inputVal:   inputVal,
+		outputVal:  outputVal,
+	}
+
+	return m.executeParams(thread, "os.exec", p)
+}
+
+// execParams holds parsed parameters for process execution.
+type execParams struct {
+	cmdStr     string
+	execArgs   []string
+	workDir    string
+	envMap     map[string]string
+	timeout    time.Duration
+	useridVal  starlark.Value
+	groupidVal starlark.Value
+	inputVal   starlark.Value
+	outputVal  starlark.Value
+}
+
+// executeParams handles credential switching, permission checks, and process execution.
+func (m *Module) executeParams(thread *starlark.Thread, callerPrefix string, p execParams) (*cmdResult, error) {
+	if callerPrefix == "" {
+		callerPrefix = "os.exec"
+	}
+
+	var targetUID uint32
+	var targetGID uint32
+	var hasUID bool
+	var hasGID bool
+
+	if (p.useridVal != nil && p.useridVal != starlark.None) || (p.groupidVal != nil && p.groupidVal != starlark.None) {
+		if !supportsUserSwitch {
+			return nil, fmt.Errorf("%s: userid and groupid execution switching is not supported on this platform", callerPrefix)
+		}
+	}
+
+	if p.useridVal != nil && p.useridVal != starlark.None {
+		hasUID = true
+		if s, ok := starlark.AsString(p.useridVal); ok {
+			u, err := user.Lookup(s)
+			if err != nil {
+				return nil, fmt.Errorf("%s: failed to resolve username %q: %w", callerPrefix, s, err)
+			}
+			var uid int
+			if _, err := fmt.Sscanf(u.Uid, "%d", &uid); err != nil {
+				return nil, fmt.Errorf("%s: invalid system UID %q for user %q: %w", callerPrefix, u.Uid, s, err)
+			}
+			targetUID = uint32(uid)
+		} else if i, ok := p.useridVal.(starlark.Int); ok {
+			uid, ok := i.Int64()
+			if !ok || uid < 0 {
+				return nil, fmt.Errorf("%s: userid cannot be negative or out of range", callerPrefix)
+			}
+			targetUID = uint32(uid)
+		} else {
+			return nil, fmt.Errorf("%s: userid must be a string or integer, got %s", callerPrefix, p.useridVal.Type())
+		}
+	}
+
+	if p.groupidVal != nil && p.groupidVal != starlark.None {
+		hasGID = true
+		if s, ok := starlark.AsString(p.groupidVal); ok {
+			g, err := user.LookupGroup(s)
+			if err != nil {
+				return nil, fmt.Errorf("%s: failed to resolve groupname %q: %w", callerPrefix, s, err)
+			}
+			var gid int
+			if _, err := fmt.Sscanf(g.Gid, "%d", &gid); err != nil {
+				return nil, fmt.Errorf("%s: invalid system GID %q for group %q: %w", callerPrefix, g.Gid, s, err)
+			}
+			targetGID = uint32(gid)
+		} else if i, ok := p.groupidVal.(starlark.Int); ok {
+			gid, ok := i.Int64()
+			if !ok || gid < 0 {
+				return nil, fmt.Errorf("%s: groupid cannot be negative or out of range", callerPrefix)
+			}
+			targetGID = uint32(gid)
+		} else {
+			return nil, fmt.Errorf("%s: groupid must be a string or integer, got %s", callerPrefix, p.groupidVal.Type())
+		}
+	}
+
+	execTarget := resolveExecTarget(p.cmdStr, p.workDir, p.envMap)
+	if err := libkite.Check(thread, "os", "exec", "exec", execTarget); err != nil {
+		return nil, err
+	}
+	if hasUID || hasGID {
+		if err := libkite.Check(thread, "os", "exec", "switch_identity", execTarget); err != nil {
+			return nil, err
+		}
+	}
+
 	var inputReader io.Reader
-	if inputVal != starlark.None {
-		switch v := inputVal.(type) {
+	if p.inputVal != nil && p.inputVal != starlark.None {
+		switch v := p.inputVal.(type) {
 		case starlark.String:
 			inputReader = strings.NewReader(string(v))
 		case starlark.Bytes:
 			inputReader = bytes.NewReader([]byte(v))
 		default:
-			if sr, ok := inputVal.(libkite.StarlarkReader); ok {
+			if sr, ok := p.inputVal.(libkite.StarlarkReader); ok {
 				inputReader = sr.Reader()
 			} else {
-				return nil, fmt.Errorf("os.exec: input must be a string, bytes, or io.reader, got %s", inputVal.Type())
+				return nil, fmt.Errorf("%s: input must be a string, bytes, or io.reader, got %s", callerPrefix, p.inputVal.Type())
 			}
 		}
 	}
 
 	var stdoutWriter io.Writer
-	if outputVal != starlark.None {
-		if sw, ok := outputVal.(libkite.StarlarkWriter); ok {
+	if p.outputVal != nil && p.outputVal != starlark.None {
+		if sw, ok := p.outputVal.(libkite.StarlarkWriter); ok {
 			stdoutWriter = sw.Writer()
 		} else {
-			return nil, fmt.Errorf("os.exec: output must be an io.writer, got %s", outputVal.Type())
+			return nil, fmt.Errorf("%s: output must be an io.writer, got %s", callerPrefix, p.outputVal.Type())
 		}
 	}
 
@@ -471,27 +507,27 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 		if inputReader != nil {
 			if rc, ok := inputReader.(io.Closer); ok {
 				rc.Close()
-			} else if closer, ok := inputVal.(io.Closer); ok {
+			} else if closer, ok := p.inputVal.(io.Closer); ok {
 				closer.Close()
 			}
 		}
 		if stdoutWriter != nil {
 			if wc, ok := stdoutWriter.(io.Closer); ok {
 				wc.Close()
-			} else if closer, ok := outputVal.(io.Closer); ok {
+			} else if closer, ok := p.outputVal.(io.Closer); ok {
 				closer.Close()
 			}
 		}
 	}()
 
-	cmd := exec.Command(cmdStr, execArgs...)
+	cmd := exec.Command(p.cmdStr, p.execArgs...)
 
 	configureCredential(cmd, targetUID, targetGID, hasUID, hasGID)
-	if workDir != "" {
-		cmd.Dir = workDir
+	if p.workDir != "" {
+		cmd.Dir = p.workDir
 	}
 	cmd.Env = os.Environ()
-	for k, v := range baseEnv {
+	for k, v := range p.envMap {
 		cmd.Env = append(cmd.Env, k+"="+v)
 	}
 
@@ -515,11 +551,11 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 	var runErr error
 	select {
 	case runErr = <-done:
-	case <-time.After(timeout):
+	case <-time.After(p.timeout):
 		if cmd.Process != nil {
 			cmd.Process.Kill()
 		}
-		runErr = fmt.Errorf("command timed out after %v", timeout)
+		runErr = fmt.Errorf("command timed out after %v", p.timeout)
 	}
 
 	res := &cmdResult{
@@ -582,6 +618,34 @@ func resolveExecTarget(cmdStr, workDir string, env map[string]string) string {
 	return bin
 }
 
+func formatExecResult(res *cmdResult) (starlark.Value, error) {
+	if res.err != nil {
+		return nil, res.err
+	}
+	if res.exitCode != 0 {
+		errMsg := strings.TrimSpace(res.stderr)
+		if errMsg == "" {
+			errMsg = strings.TrimSpace(res.stdout)
+		}
+		return nil, fmt.Errorf("command failed (exit code %d): %s", res.exitCode, errMsg)
+	}
+	if res.stderr != "" {
+		return starlark.String(res.stderr + " " + res.stdout), nil
+	}
+	return starlark.String(res.stdout), nil
+}
+
+func formatTryExecResult(res *cmdResult) *ExecResult {
+	if res.err != nil {
+		return &ExecResult{exitCode: -1, errMsg: res.err.Error()}
+	}
+	return &ExecResult{
+		stdout:   res.stdout,
+		stderr:   res.stderr,
+		exitCode: res.exitCode,
+	}
+}
+
 // execCmd runs a command and returns the output as a string.
 // On non-zero exit, returns a Starlark error. On success with non-empty stderr,
 // returns stderr + stdout combined so warnings are not silently lost.
@@ -598,20 +662,7 @@ func (m *Module) execCmd(thread *starlark.Thread, fn *starlark.Builtin, args sta
 	if err != nil {
 		return nil, err
 	}
-	if res.err != nil {
-		return nil, res.err
-	}
-	if res.exitCode != 0 {
-		errMsg := strings.TrimSpace(res.stderr)
-		if errMsg == "" {
-			errMsg = strings.TrimSpace(res.stdout)
-		}
-		return nil, fmt.Errorf("command failed (exit code %d): %s", res.exitCode, errMsg)
-	}
-	if res.stderr != "" {
-		return starlark.String(res.stderr + " " + res.stdout), nil
-	}
-	return starlark.String(res.stdout), nil
+	return formatExecResult(res)
 }
 
 // tryExecCmd runs a command and returns an ExecResult directly.
@@ -631,14 +682,7 @@ func (m *Module) tryExecCmd(thread *starlark.Thread, fn *starlark.Builtin, args 
 	if err != nil {
 		return nil, err
 	}
-	if res.err != nil {
-		return &ExecResult{exitCode: -1, errMsg: res.err.Error()}, nil
-	}
-	return &ExecResult{
-		stdout:   res.stdout,
-		stderr:   res.stderr,
-		exitCode: res.exitCode,
-	}, nil
+	return formatTryExecResult(res), nil
 }
 
 // ExecResult is a Starlark value returned by try_exec with flattened access

@@ -2,6 +2,7 @@ package osmod
 
 import (
 	"fmt"
+	"maps"
 	"path/filepath"
 	"strings"
 	"time"
@@ -72,12 +73,165 @@ func (s *Shell) AttrNames() []string {
 	return []string{"command", "cwd", "exec", "flag", "timeout", "try_exec"}
 }
 
+func (s *Shell) prepareParams(methodName string, args starlark.Tuple, kwargs []starlark.Tuple) (string, execParams, error) {
+	var (
+		scriptVal  starlark.Value = starlark.None
+		envVal     starlark.Value = starlark.None
+		cwdVal     starlark.Value = starlark.None
+		timeoutVal starlark.Value = starlark.None
+		inputVal   starlark.Value = starlark.None
+		outputVal  starlark.Value = starlark.None
+		useridVal  starlark.Value = starlark.None
+		groupidVal starlark.Value = starlark.None
+	)
+
+	if len(args) > 1 {
+		return "", execParams{}, fmt.Errorf("%s: expected at most 1 positional argument (script), got %d", methodName, len(args))
+	}
+	if len(args) == 1 {
+		scriptVal = args[0]
+	}
+
+	for _, kv := range kwargs {
+		key := string(kv[0].(starlark.String))
+		switch key {
+		case "script":
+			if len(args) == 1 {
+				return "", execParams{}, fmt.Errorf("%s: got multiple values for keyword argument 'script'", methodName)
+			}
+			scriptVal = kv[1]
+		case "env":
+			envVal = kv[1]
+		case "cwd":
+			cwdVal = kv[1]
+		case "timeout":
+			timeoutVal = kv[1]
+		case "input":
+			inputVal = kv[1]
+		case "output":
+			outputVal = kv[1]
+		case "userid":
+			useridVal = kv[1]
+		case "groupid":
+			groupidVal = kv[1]
+		default:
+			return "", execParams{}, fmt.Errorf("%s: unexpected keyword argument %q", methodName, key)
+		}
+	}
+
+	if scriptVal == starlark.None {
+		return "", execParams{}, fmt.Errorf("%s: expected at least 1 argument (script)", methodName)
+	}
+	script, ok := starlark.AsString(scriptVal)
+	if !ok {
+		return "", execParams{}, fmt.Errorf("%s: script must be a string, got %s", methodName, scriptVal.Type())
+	}
+
+	workDir := s.cwd
+	if workDir == "" && s.module != nil {
+		s.module.mu.RLock()
+		workDir = s.module.workDir
+		s.module.mu.RUnlock()
+	}
+	if cwdVal != starlark.None {
+		cwdStr, ok := starlark.AsString(cwdVal)
+		if !ok {
+			return "", execParams{}, fmt.Errorf("%s: cwd must be a string, got %s", methodName, cwdVal.Type())
+		}
+		workDir = cwdStr
+	}
+
+	envMap := make(map[string]string)
+	if s.module != nil {
+		s.module.mu.RLock()
+		maps.Copy(envMap, s.module.env)
+		s.module.mu.RUnlock()
+	}
+	maps.Copy(envMap, s.env)
+
+	if envVal != starlark.None {
+		dict, ok := envVal.(*starlark.Dict)
+		if !ok {
+			return "", execParams{}, fmt.Errorf("%s: env must be a dict, got %s", methodName, envVal.Type())
+		}
+		for _, item := range dict.Items() {
+			k, ok1 := starlark.AsString(item[0])
+			v, ok2 := starlark.AsString(item[1])
+			if !ok1 || !ok2 {
+				return "", execParams{}, fmt.Errorf("%s: env keys and values must be strings", methodName)
+			}
+			envMap[k] = v
+		}
+	}
+
+	timeout := s.timeout
+	if timeoutVal != starlark.None {
+		sTimeout, ok := starlark.AsString(timeoutVal)
+		if !ok {
+			return "", execParams{}, fmt.Errorf("%s: timeout must be a duration string, got %s", methodName, timeoutVal.Type())
+		}
+		d, err := time.ParseDuration(sTimeout)
+		if err != nil {
+			return "", execParams{}, fmt.Errorf("%s: invalid timeout %q: %w", methodName, sTimeout, err)
+		}
+		timeout = d
+	}
+
+	effectiveUID := s.useridVal
+	if useridVal != starlark.None {
+		effectiveUID = useridVal
+	}
+
+	effectiveGID := s.groupidVal
+	if groupidVal != starlark.None {
+		effectiveGID = groupidVal
+	}
+
+	p := execParams{
+		cmdStr:     s.command,
+		execArgs:   []string{s.flag, script},
+		workDir:    workDir,
+		envMap:     envMap,
+		timeout:    timeout,
+		useridVal:  effectiveUID,
+		groupidVal: effectiveGID,
+		inputVal:   inputVal,
+		outputVal:  outputVal,
+	}
+
+	return script, p, nil
+}
+
 func (s *Shell) exec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return nil, fmt.Errorf("Shell.exec: not implemented yet")
+	script, p, err := s.prepareParams("Shell.exec", args, kwargs)
+	if err != nil {
+		return nil, err
+	}
+	if s.module != nil && s.module.config != nil && s.module.config.DryRun {
+		return starlark.String(fmt.Sprintf("[DRY RUN] Would execute: %s %s %s", s.command, s.flag, script)), nil
+	}
+	res, err := s.module.executeParams(thread, "Shell.exec", p)
+	if err != nil {
+		return nil, err
+	}
+	return formatExecResult(res)
 }
 
 func (s *Shell) tryExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return nil, fmt.Errorf("Shell.try_exec: not implemented yet")
+	script, p, err := s.prepareParams("Shell.try_exec", args, kwargs)
+	if err != nil {
+		return nil, err
+	}
+	if s.module != nil && s.module.config != nil && s.module.config.DryRun {
+		return &ExecResult{
+			stdout: fmt.Sprintf("[DRY RUN] Would execute: %s %s %s", s.command, s.flag, script),
+		}, nil
+	}
+	res, err := s.module.executeParams(thread, "Shell.try_exec", p)
+	if err != nil {
+		return nil, err
+	}
+	return formatTryExecResult(res), nil
 }
 
 // shell constructs a new Shell execution object.
