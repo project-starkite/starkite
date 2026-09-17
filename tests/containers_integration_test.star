@@ -5,7 +5,7 @@ def _get_client():
     """Initializes container client, skipping if neither Docker nor Podman is reachable."""
     if not os.env("STARKITE_CONTAINER_INTEGRATION"):
         skip("STARKITE_CONTAINER_INTEGRATION is not set; skipping live container daemon integration test")
-    res_cfg = containers.try_config(timeout="3s")
+    res_cfg = containers.try_config(timeout="30s")
     if not res_cfg.ok:
         skip("container engine is not configured: " + str(res_cfg.error))
     client = res_cfg.value
