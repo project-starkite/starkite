@@ -146,14 +146,16 @@ func (m *Module) retryDo(thread *starlark.Thread, fn *starlark.Builtin, args sta
 // Usage: retry.with_backoff(func, max_attempts=5, delay="500ms", max_delay="30s", ...)
 func (m *Module) retryWithBackoff(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
-		Func        starlark.Value `name:"func" position:"0" required:"true"`
-		MaxAttempts int            `name:"max_attempts"`
-		Delay       string         `name:"delay"`
-		MaxDelay    string         `name:"max_delay"`
-		RetryOn     starlark.Value `name:"retry_on"`
-		OnRetry     starlark.Value `name:"on_retry"`
-		Timeout     string         `name:"timeout"`
-		Jitter      bool           `name:"jitter"`
+		Func          starlark.Value `name:"func" position:"0" required:"true"`
+		MaxAttempts   int            `name:"max_attempts"`
+		Delay         string         `name:"delay"`
+		InitialDelay  string         `name:"initial_delay"`
+		MaxDelay      string         `name:"max_delay"`
+		BackoffFactor float64        `name:"backoff_factor"`
+		RetryOn       starlark.Value `name:"retry_on"`
+		OnRetry       starlark.Value `name:"on_retry"`
+		Timeout       string         `name:"timeout"`
+		Jitter        bool           `name:"jitter"`
 	}
 	p.MaxAttempts = 5
 	p.Delay = "500ms"
@@ -161,6 +163,9 @@ func (m *Module) retryWithBackoff(thread *starlark.Thread, fn *starlark.Builtin,
 	p.Jitter = true
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
+	}
+	if p.InitialDelay != "" {
+		p.Delay = p.InitialDelay
 	}
 
 	callFn, err := toCallable(p.Func, "func")

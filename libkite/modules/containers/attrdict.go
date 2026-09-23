@@ -124,10 +124,7 @@ func (d *AttrDict) Attr(name string) (starlark.Value, error) {
 			}
 			d.mu.RLock()
 			defer d.mu.RUnlock()
-			if val, ok := d.data[s]; ok {
-				return goToStarlarkValue(val, d.mu), nil
-			}
-			if val, ok := d.data[strings.ToLower(s)]; ok {
+			if val, ok := lookupCaseFold(d.data, s); ok {
 				return goToStarlarkValue(val, d.mu), nil
 			}
 			return defaultVal, nil
@@ -168,10 +165,7 @@ func (d *AttrDict) Attr(name string) (starlark.Value, error) {
 		}), nil
 	}
 
-	val, ok := d.data[name]
-	if !ok {
-		val, ok = d.data[strings.ToLower(name)]
-	}
+	val, ok := lookupCaseFold(d.data, name)
 	if !ok {
 		return starlark.None, nil
 	}
@@ -198,14 +192,27 @@ func (d *AttrDict) Get(key starlark.Value) (v starlark.Value, found bool, err er
 	}
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	val, ok := d.data[s]
-	if !ok {
-		val, ok = d.data[strings.ToLower(s)]
-	}
+	val, ok := lookupCaseFold(d.data, s)
 	if !ok {
 		return starlark.None, false, nil
 	}
 	return goToStarlarkValue(val, d.mu), true, nil
+}
+
+func lookupCaseFold(data map[string]any, name string) (any, bool) {
+	if val, ok := data[name]; ok {
+		return val, true
+	}
+	nameLower := strings.ToLower(name)
+	if val, ok := data[nameLower]; ok {
+		return val, true
+	}
+	for k, v := range data {
+		if strings.ToLower(k) == nameLower {
+			return v, true
+		}
+	}
+	return nil, false
 }
 
 // SetKey implements starlark.HasSetKey for dict-style write: obj["key"] = value

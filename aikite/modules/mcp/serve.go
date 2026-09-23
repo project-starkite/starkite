@@ -70,7 +70,7 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 		return nil, fmt.Errorf("mcp.serve: %w", err)
 	}
 	if p.Name == "" {
-		return nil, fmt.Errorf("mcp.serve: name is required")
+		p.Name = "starkite"
 	}
 	if p.Version == "" {
 		p.Version = defaultServerVersion

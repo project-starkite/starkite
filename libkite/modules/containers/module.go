@@ -46,6 +46,8 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"image_list":    starlark.NewBuiltin("containers.image_list", m.shortcutImageList),
 			"image_inspect": starlark.NewBuiltin("containers.image_inspect", m.shortcutImageInspect),
 			"image_remove":  starlark.NewBuiltin("containers.image_remove", m.shortcutImageRemove),
+			"inspect":       starlark.NewBuiltin("containers.inspect", m.shortcutInspect),
+			"list":          starlark.NewBuiltin("containers.list", m.shortcutList),
 		}
 		m.module = libkite.NewTryModule(string(ModuleName), members)
 	})
@@ -153,6 +155,22 @@ func (m *Module) shortcutImageRemove(thread *starlark.Thread, fn *starlark.Built
 		return nil, err
 	}
 	return client.imageRemoveFn(thread, fn, args, kwargs)
+}
+
+func (m *Module) shortcutInspect(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.inspectFn(thread, fn, args, kwargs)
+}
+
+func (m *Module) shortcutList(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	client, err := m.ensureDefaultClient(thread)
+	if err != nil {
+		return nil, err
+	}
+	return client.listFn(thread, fn, args, kwargs)
 }
 
 // configConstructor creates a new containers.Client instance.

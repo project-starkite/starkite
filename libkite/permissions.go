@@ -283,6 +283,11 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 		if pattern == "*" || pattern == "**" {
 			return true
 		}
+		if filepath.IsAbs(pattern) && !filepath.IsAbs(res) {
+			if abs, err := filepath.Abs(resource); err == nil {
+				res = filepath.ToSlash(abs)
+			}
+		}
 		matched, err := filepath.Match(pattern, res)
 		if err != nil {
 			// Try as a prefix match for directory patterns
