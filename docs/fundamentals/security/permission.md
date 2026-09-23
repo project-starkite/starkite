@@ -27,7 +27,7 @@ Starkite includes five built-in profiles forming a capability ladder, selectable
 | `deny-all` | `--deny-all` | Compute-only (`strings`, `json`, `yaml`, `time`), plus `load()`, `print()`, `log()` |
 | `allow-fs` | `--allow-fs` | File reads, file writes within `$CWD`, environment variables, SQLite |
 | `allow-net` | `--allow-net` | HTTP clients, SSH connections, remote SQL databases |
-| `allow-local` | `--allow-local` | Local command execution (within `$CWD`), HTTP servers, Kubernetes, MCP, AI |
+| `allow-local` | `--allow-local` | Local command execution (within `$CWD`), HTTP servers, Kubernetes, MCP |
 | `allow-all` | `--allow-all` | Unrestricted execution anywhere on the host, system process controls, full capabilities |
 
 Example:
@@ -154,7 +154,6 @@ The permission engine only checks modules that access host resources. Pure-compu
 | `ssh` | `connect`, `transfer` | Remote SSH execution, file uploads/downloads (SCP) |
 | `k8s` | `read`, `write`, `exec`, `config` | Cluster reads/writes, kubectl exec, kubeconfig loading |
 | `sql` | `open` | Database connections (scoped by driver, e.g., `sqlite`, `postgres`) |
-| `ai` | `generate` | LLM calls (model name checked as a resource) |
 | `mcp` | `client`, `server` | MCP connections and hosting |
 | `io` | `prompt` | Terminal user prompts |
 

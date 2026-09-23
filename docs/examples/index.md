@@ -6,7 +6,7 @@ weight: 1
 
 # Examples
 
-The fastest way to learn what a Starkite script looks like is to read one that already works. This page catalogs runnable `.star` scripts from the [starkite repository](https://github.com/project-starkite/starkite/tree/main/examples), grouped by the domain they exercise — core automation, Kubernetes, AI agents, and the sandbox. Each entry links to source you can clone and run as-is with `kite run <path>`, then adapt to your own task. Start with the card that matches what you are trying to do.
+The fastest way to learn what a Starkite script looks like is to read one that already works. This page catalogs runnable `.star` scripts from the [starkite repository](https://github.com/project-starkite/starkite/tree/main/examples), grouped by the domain they exercise — core automation, Kubernetes, AI & MCP, and the sandbox. Each entry links to source you can clone and run as-is with `kite run <path>`, then adapt to your own task. Start with the card that matches what you are trying to do.
 
 <div class="grid cards" markdown>
 
@@ -26,13 +26,13 @@ The fastest way to learn what a Starkite script looks like is to read one that a
 
     [:octicons-arrow-right-24: Browse](#kubernetes)
 
--   :material-robot:{ .lg .middle } __AI__
+-   :material-robot:{ .lg .middle } __AI & MCP__
 
     ---
 
-    Agent loops and MCP integration with the `ai` and `mcp` modules.
+    MCP tool serving and client integration with the `mcp` module.
 
-    [:octicons-arrow-right-24: Browse](#ai)
+    [:octicons-arrow-right-24: Browse](#ai-mcp)
 
 -   :material-shield-lock:{ .lg .middle } __Sandbox__
 
@@ -81,18 +81,15 @@ Once you are comfortable with the base modules, the `k8s` module turns those sam
 
 For the concepts these scripts rest on — connecting to a cluster, applying manifests, watching resources — see the [Kubernetes guides](../infra/k8s-connect.md).
 
-## AI
+## AI & MCP
 
-The `ai` and `mcp` modules let a script drive a model the same way it drives a cluster. These examples live under [`aikite/examples/agent/`](https://github.com/project-starkite/starkite/tree/main/aikite/examples/agent) and walk the common agent shapes — a run-to-completion loop, a human-in-the-loop REPL, history management for long sessions, and wrapping an external tool server over MCP.
+The `mcp` module lets a script serve tools to external agent harnesses or connect to remote tool servers. This example lives under [`aikite/examples/agent/`](https://github.com/project-starkite/starkite/tree/main/aikite/examples/agent) and demonstrates connecting to an MCP tool server and invoking tools.
 
 | Example | Description |
 |---------|-------------|
-| [autonomous_fix.star](https://github.com/project-starkite/starkite/blob/main/aikite/examples/agent/autonomous_fix.star) | Autonomous run-to-completion agent |
-| [interactive_assistant.star](https://github.com/project-starkite/starkite/blob/main/aikite/examples/agent/interactive_assistant.star) | User-in-the-loop REPL agent |
-| [history_management.star](https://github.com/project-starkite/starkite/blob/main/aikite/examples/agent/history_management.star) | History summarization for long runs |
-| [mcp_integration.star](https://github.com/project-starkite/starkite/blob/main/aikite/examples/agent/mcp_integration.star) | Wrapping an MCP server's tools |
+| [mcp_integration.star](https://github.com/project-starkite/starkite/blob/main/aikite/examples/agent/mcp_integration.star) | Client connection and tool invocation over MCP |
 
-To understand the agent and MCP patterns these scripts assemble, read the [AI Support guides](../ai/agents.md).
+To understand MCP tool serving and client patterns, read the [MCP guide](../ai/mcp.md).
 
 ## Sandbox
 

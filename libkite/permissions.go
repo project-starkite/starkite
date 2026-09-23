@@ -437,7 +437,7 @@ func AllowAllPermissions() *PermissionConfig {
 // DenyAllPermissions returns a config that denies every gated operation.
 // Pure utility modules (strings, json, yaml, …) bypass the permission system,
 // so they remain available; any module that calls Check (fs, os, http, ssh,
-// k8s, ai, mcp, io) is blocked.
+// k8s, mcp, io) is blocked.
 func DenyAllPermissions() *PermissionConfig {
 	return &PermissionConfig{
 		Default: DefaultDeny,
@@ -467,12 +467,11 @@ var allowNetRules = append(append([]string{}, allowFSRules...),
 )
 
 // allow-local: allow-net plus serve, $CWD-scoped exec, and higher-level
-// networked services (ai, k8s, mcp). Withholds unrestricted exec, k8s.exec,
+// networked services (k8s, mcp). Withholds unrestricted exec, k8s.exec,
 // and process control — that is the line to allow-all.
 var allowLocalRules = append(append([]string{}, allowNetRules...),
 	"http.server",
 	"os.exec($CWD/**)",
-	"ai.generate",
 	"k8s.read", "k8s.write", "k8s.config",
 	"mcp.client", "mcp.server",
 	"containers.connect", "containers.read", "containers.write", "containers.manage",

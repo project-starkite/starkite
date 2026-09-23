@@ -1191,14 +1191,14 @@ def main():
 <section class="feature-section">
   <div class="feature-section__split">
     <div class="feature-section__text">
-      <p>Supercharge your AI-native automation. Starkite integrates with LLMs in three key ways:</p>
+      <p>Supercharge your AI-native automation. Starkite integrates with LLMs and agent harnesses through standard protocols:</p>
       <ul style="margin: 0 0 1.25rem 1.25rem; padding: 0; line-height: 1.6;">
         <li style="margin-bottom: 0.5rem;"><strong>MCP Tool Serving</strong>: Expose Starlark functions as instant tools for external agents (Claude, Cursor, IDEs).</li>
-        <li style="margin-bottom: 0.5rem;"><strong>Agent Loops</strong>: Orchestrate autonomous scripts with native, multi-provider LLM support.</li>
-        <li style="margin-bottom: 0.5rem;"><strong>Code Generation</strong>: Load <strong>starkite-skills</strong> to let LLMs write clean Starlark code.</li>
+        <li style="margin-bottom: 0.5rem;"><strong>Sandboxed Execution</strong>: External agents run deterministic, dependency-free Starlark scripts within explicit capability boundaries.</li>
+        <li style="margin-bottom: 0.5rem;"><strong>Deterministic Tooling</strong>: Because Starlark is hermetic and sandboxed, AI agents can generate and execute scripts safely without environment drift.</li>
       </ul>
       <p>Because Starlark is dependency-free and sandboxed, AI agents can generate and run scripts safely without complex setup.</p>
-      <a href="ai/agents/" class="feature-section__cta">Build agents</a>
+      <a href="ai/mcp/" class="feature-section__cta">MCP Integration</a>
     </div>
     <div class="feature-section__code">
       <pre><code class="language-python">#!/usr/bin/env kite

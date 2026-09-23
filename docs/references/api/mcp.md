@@ -78,7 +78,7 @@ Both TLS kwargs must be set together; setting only one errors at validation time
 |-------|------|-------------|
 | `name` | string | Server identifier (required) |
 | `version` | string | Server version (default `"0.1.0"`) |
-| `tools` | list | Tool callables (plain functions or `ai.tool(fn)` wrappers). Schema auto-inferred from signature/docstring — same rules as `ai.tool()` |
+| `tools` | list | Tool callables (plain Starlark functions). Schema and description are auto-inferred from signature and docstring |
 | `resources` | dict | `{uri: fn}` mapping URIs to read handlers. `fn` takes the URI string and returns text |
 | `prompts` | dict | `{name: fn}` mapping prompt names to templates. `fn` takes optional arguments and returns the rendered prompt string |
 | `port` | int | Listen port; omit or 0 for stdio |
@@ -168,34 +168,23 @@ Each item in `.content` is a dict keyed by content type:
 
 Unknown or future content types fall back to `{"type": "<server_reported>"}`.
 
-### Using MCP tools with `ai.chat`
+### Calling remote MCP tools
 
-Wrap remote MCP tools as local callables, then pass them to a chat session:
+Connect to a remote server, inspect its tools, and invoke them directly:
 
 ```python
 client = mcp.connect(["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"])
 
-def read_file(path):
-    """Read a file from the MCP-exposed filesystem."""
-    return client.call("read_file", path=path).text
+# Inspect discovered tools
+for tool in client.tools:
+    print(tool.name, tool.description)
 
-def list_directory(path):
-    """List a directory's entries via the MCP server."""
-    return client.call("list_directory", path=path).text
-
-chat = ai.chat(
-    model  = "anthropic/claude-sonnet-4-5",
-    system = "You help the user inspect files. Use the tools.",
-    tools  = [read_file, list_directory],
-)
-
-resp = chat.send("What's in /tmp?")
-print(resp.text)
+# Call a tool directly
+result = client.call("list_directory", path="/tmp")
+print(result.text)
 
 client.close()
 ```
-
-See [agents guide — Pattern 4](../../ai/agents.md#pattern-4-mcp-integration) for more.
 
 ## Examples
 
@@ -238,8 +227,8 @@ mcp.serve(
     port     = 8443,
     host     = "0.0.0.0",
     path     = "/mcp",
-    tls_cert = env("TLS_CERT_PATH"),
-    tls_key  = env("TLS_KEY_PATH"),
+    tls_cert = os.env("TLS_CERT_PATH"),
+    tls_key  = os.env("TLS_KEY_PATH"),
 )
 ```
 

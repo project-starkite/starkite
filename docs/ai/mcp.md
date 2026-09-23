@@ -7,7 +7,7 @@ edition: ai
 
 # Creating MCP servers
 
-The Model Context Protocol is how an MCP client — Claude Desktop, an `ai`-based agent, or any other consumer — discovers and calls tools that live outside it. The `mcp` module implements both sides of that protocol, so a starkite script can be either end of the connection. `mcp.serve()` turns a script into an MCP server, publishing its tools, resources, and prompts for a client to use; `mcp.connect()` runs the other direction, calling an existing server as a client (covered in [Building agents](agents.md#pattern-4-mcp-integration)). This page is about serving.
+The Model Context Protocol is how an MCP client — Claude Desktop, Cursor, an external AI agent, or any other consumer — discovers and calls tools that live outside it. The `mcp` module implements both sides of that protocol, so a starkite script can be either end of the connection. `mcp.serve()` turns a script into an MCP server, publishing its tools, resources, and prompts for a client to use; `mcp.connect()` runs the other direction, calling an existing server as a client. This page is about serving.
 
 !!! note "Needs the AI modules"
     The `mcp` module is in the default `kite` binary and the lean `kiteai` edition. See [Editions](../fundamentals/editions.md).
@@ -28,7 +28,7 @@ def hostname():
 mcp.serve(tools=[add, hostname])
 ```
 
-You wrote two plain functions and a one-line call, and a client connecting over stdio now sees `add` and `hostname` as callable tools. The description and the schema were not declared anywhere — `mcp.serve()` infers them: the function docstring becomes the tool description, and the signature becomes the input schema, the same inference [`ai.tool`](agents.md) uses. The cost of that convenience is that the docstring and parameter names are the contract the client reads, so write them as documentation, not as notes to yourself.
+You wrote two plain functions and a one-line call, and a client connecting over stdio now sees `add` and `hostname` as callable tools. The description and the schema were not declared anywhere — `mcp.serve()` infers them: the function docstring becomes the tool description, and the signature becomes the input schema. The cost of that convenience is that the docstring and parameter names are the contract the client reads, so write them as documentation, not as notes to yourself.
 
 ## Tools, resources, and prompts
 
@@ -59,4 +59,4 @@ One thing the server needs that a pure-compute script does not is permission. Se
 ## See also
 
 - [`mcp` API reference](../references/api/mcp.md) — full `serve`/`connect` surface, schema control, resource and prompt registration
-- [Building agents — MCP integration](agents.md#pattern-4-mcp-integration) — consuming an MCP server from an agent
+- [CLI tool provider](cli-tool.md) — invoking kite as a CLI tool from external agents

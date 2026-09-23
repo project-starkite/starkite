@@ -22,7 +22,7 @@ func TestServe_ToolsMustBeFuncOrTool(t *testing.T) {
 	thread := &starlark.Thread{Name: "test"}
 	_, err := starlark.ExecFile(thread, "t.star",
 		`mcp.serve(name="x", tools=[42])`, globals)
-	if err == nil || !strings.Contains(err.Error(), "function or ai.Tool") {
+	if err == nil || !strings.Contains(err.Error(), "function or mcp.Tool") {
 		t.Errorf("expected type error, got %v", err)
 	}
 }

@@ -60,13 +60,13 @@ Install the runtime and write your first script. When you want to understand how
 
     [:octicons-arrow-right-24: Cloud-Native](../infra/index.md)
 
--   :material-robot:{ .lg .middle } __AI Support__
+-   :material-robot:{ .lg .middle } __AI & MCP Support__
 
     ---
 
-    Build multi-turn agents, tool-calling loops, and MCP servers.
+    Expose deterministic tools and serve Model Context Protocol endpoints.
 
-    [:octicons-arrow-right-24: AI Support](../ai/agents.md)
+    [:octicons-arrow-right-24: MCP Support](../ai/mcp.md)
 
 -   :material-book-open-variant:{ .lg .middle } __References__
 

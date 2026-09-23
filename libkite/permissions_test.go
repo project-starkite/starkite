@@ -179,7 +179,7 @@ func TestPermissionChecker(t *testing.T) {
 			{"http", "client", "get"},
 			{"ssh", "connect", "config"},
 			{"k8s", "read", "read"},
-			{"ai", "generate", "generate"},
+			{"mcp", "client", "connect"},
 		} {
 			if err := checker.Check(c.mod, c.cat, c.fn, "anything"); err == nil {
 				t.Errorf("allow-fs should block %s.%s.%s", c.mod, c.cat, c.fn)

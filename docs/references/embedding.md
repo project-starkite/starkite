@@ -89,7 +89,7 @@ A runtime can only call the modules its registry holds, so the registry is where
 | `libkite.NewRegistry(nil)` | empty |
 | `loader.NewDefaultRegistry(nil)` | base (27 modules) |
 | `cloudloader.NewCloudRegistry(nil)` | base + `k8s` |
-| `ailoader.NewAIRegistry(nil)` | base + `ai` + `mcp` |
+| `ailoader.NewAIRegistry(nil)` | base + `mcp` |
 
 ### Composing module sets (strict mode)
 
@@ -246,7 +246,7 @@ A registry decides what modules exist; permissions decide what a script may do w
 | `libkite.DenyAllPermissions()` | compute, print, and log only; no fs, network, or exec |
 | `libkite.AllowFSPermissions()` | read any file; write/delete within `$CWD`; `os.env`, `io.prompt` |
 | `libkite.AllowNetPermissions()` | adds `http.client` and all `ssh` |
-| `libkite.AllowLocalPermissions()` | adds `http.server`, `os.exec` under `$CWD`, `ai.generate`, `k8s.read`/`write`/`config`, `mcp.client`/`server` |
+| `libkite.AllowLocalPermissions()` | adds `http.server`, `os.exec` under `$CWD`, `k8s.read`/`write`/`config`, `mcp.client`/`server` |
 | `libkite.AllowAllPermissions()` | every operation allowed, including unrestricted `os.exec`, `k8s.exec`, and `os.process` |
 | `&libkite.PermissionConfig{Allow: …, Deny: …, Default: …}` | custom rules |
 
@@ -346,9 +346,9 @@ rt, _ := libkite.NewTrusted(&libkite.Config{Registry: registry})
 
 That capability is not free: it pulls in `k8s.io/client-go` and its dependency tree, adding roughly 37 MB to the binary. Reach for it only when scripts actually use `k8s`.
 
-## Adding AI/MCP support
+## Adding MCP support
 
-The AI registry follows the same shape, bundling `ai` and `mcp` on top of the base set so scripts can call models and MCP servers:
+The AI registry follows the same shape, bundling `mcp` on top of the base set so scripts can connect to or host MCP servers:
 
 ```go
 import (
@@ -356,7 +356,7 @@ import (
     ailoader "github.com/project-starkite/starkite/aikite/loader"
 )
 
-registry := ailoader.NewAIRegistry(nil)         // base + ai + mcp
+registry := ailoader.NewAIRegistry(nil)         // base + mcp
 rt, _ := libkite.NewTrusted(&libkite.Config{Registry: registry})
 ```
 
@@ -391,4 +391,4 @@ Every module you bundle is code compiled into your binary, so the registry you c
 | `libkite.New(nil)` (no registry) | none | ~5 MB |
 | `loader.NewDefaultRegistry(nil)` | 27 base | ~26 MB |
 | `cloudloader.NewCloudRegistry(nil)` | 27 + k8s | ~63 MB |
-| `ailoader.NewAIRegistry(nil)` | 27 + ai + mcp | ~92 MB |
+| `ailoader.NewAIRegistry(nil)` | 27 + mcp | ~28 MB |

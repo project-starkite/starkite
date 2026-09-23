@@ -223,16 +223,9 @@ Kubernetes and cloud-native resource management — **cloud edition** (`kiteclou
 </div>
 
 ## AI
-
-LLM clients and Model Context Protocol — **AI edition** (`kiteai` or `kite`).
+Model Context Protocol — **AI edition** (`kiteai` or `kite`).
 
 <div class="grid cards" markdown>
-
--   :material-robot:{ .lg .middle } [`ai`](ai.md)
-
-    ---
-
-    Multi-provider LLM client with chat, tools, streaming, and structured output.
 
 -   :material-connection:{ .lg .middle } [`mcp`](mcp.md)
 

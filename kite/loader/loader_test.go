@@ -42,8 +42,8 @@ func TestNewAllRegistry_ContainsAllExpectedModules(t *testing.T) {
 		"os", "fs", "http", "ssh", "json", "yaml", "log", "runtime", "vars", "test",
 		// cloud
 		"k8s",
-		// ai (genai module exports under the Starlark name "ai")
-		"ai", "mcp",
+		// ai
+		"mcp",
 	}
 
 	for _, name := range expected {

@@ -4,7 +4,7 @@ description: "Starkite command-line interface"
 weight: 10
 ---
 
-The default binary is `kite` (all-in-one); the lean editions — `kitecmd` (base only), `kitecloud` (base + Kubernetes), `kiteai` (base + LLM/MCP) — are subsets for space-conscious targets. Every command works in any edition that includes the modules it touches; edition-specific commands are flagged below.
+The default binary is `kite` (all-in-one); the lean editions — `kitecmd` (base only), `kitecloud` (base + Kubernetes), `kiteai` (base + MCP) — are subsets for space-conscious targets. Every command works in any edition that includes the modules it touches; edition-specific commands are flagged below.
 
 Examples use `kite`; substitute `kitecmd`/`kitecloud`/`kiteai` for the lean editions.
 

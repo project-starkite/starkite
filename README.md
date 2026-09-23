@@ -3,7 +3,7 @@
     <h3 align="center"> Secure Runtime for Cloud-Native and Agentic AI Automation with Starlark </h3> 
 </p>
 
-**starkite** is an automation language built on [Starlark](https://github.com/google/starlark-go) (a Python-like language). It exposes Go's standard library as type-safe, scriptable Starlark modules — providing a unified interface for general-purpose, cloud-native, and GenAI agent automation.
+**starkite** is an automation language built on [Starlark](https://github.com/google/starlark-go) (a Python-like language). It exposes Go's standard library as type-safe, scriptable Starlark modules — providing a unified interface for general-purpose, cloud-native, and MCP agent automation.
 
 ## Features
 
@@ -11,7 +11,7 @@
 - **Python-like syntax** — Uses Starlark, a deterministic, hermetic Python dialect
 - **General-purpose automation** — System tasks, scripting, data processing
 - **Cloud-native operations** — Kubernetes integration, infrastructure management (Cloud edition)
-- **GenAI agent automation** — Tool execution and orchestration for AI agents
+- **Agent automation** — Tool execution and MCP integration for AI agents
 - **27+ built-in modules** — OS, filesystem, HTTP (client + server), SSH, JSON, YAML, CSV, concurrency, retry, and more
 - **SSH operations** — Multi-host concurrent execution, jump hosts, SCP upload/download
 - **Resilience patterns** — Retry with exponential backoff, concurrent map/each/exec
@@ -24,10 +24,10 @@ The default binary is **`kite`**, the all-in-one edition — it bundles every mo
 
 | Binary | Adds on top of base | Use when |
 |---|---|---|
-| `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | you want everything in one binary |
+| `kite` | base + Kubernetes + MCP (all-in-one) | you want everything in one binary |
 | `kitecmd` | base modules only (os, fs, http, ssh, json, yaml, time, log, …) | system scripts, CI tasks, general automation |
 | `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
-| `kiteai` | base + LLM clients + MCP server/client | agentic AI tools and orchestration |
+| `kiteai` | base + MCP server and client | MCP tools and agent orchestration |
 
 Use `kite` unless binary size or attack surface is a real constraint — init containers, edge nodes, or CI runners under a restricted profile such as `--permissions=allow-fs`. The lean editions (`kitecmd` / `kitecloud` / `kiteai`) are a strict subset for those targets.
 
@@ -84,7 +84,7 @@ make kite               # ./bin/kite — the default all-in-one
 # lean editions (optional, smaller footprint):
 make build-base         # ./bin/kitecmd    (base only)
 make build-cloud        # ./bin/kitecloud  (base + k8s)
-make build-ai           # ./bin/kiteai     (base + LLM/MCP)
+make build-ai           # ./bin/kiteai     (base + MCP)
 make all                # all four at once
 ```
 
@@ -172,7 +172,7 @@ yaml.source(data).write_file("output.yaml")
 | Utility | `time`, `uuid`, `log`, `table`, `vars`, `path` |
 | Testing | `test` (assert, assert_equal, assert_contains, skip) |
 | Cloud | `k8s` (in `kite` and `kitecloud`) |
-| AI | `ai`, `mcp` (in `kite` and `kiteai`) |
+| AI | `mcp` (in `kite` and `kiteai`) |
 
 See the [API reference](https://starkite.ai/references/api/) for full module documentation.
 
@@ -183,7 +183,7 @@ starkite controls script privileges via CLI flags. The default is `deny-all` —
 ```bash
 kite run script.star                          # deny-all (default)
 kite run script.star --permissions=allow-fs   # read any file; write within $CWD; env
-kite run script.star --permissions=allow-local # serve, $CWD exec, k8s, ai
+kite run script.star --permissions=allow-local # serve, $CWD exec, k8s, mcp
 kite run script.star --permissions=allow-all  # unrestricted
 ```
 

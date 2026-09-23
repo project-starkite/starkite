@@ -114,7 +114,6 @@ nav:
               - Transferring files:      infra/ssh-transfer.md
               - Fleet orchestration:     infra/fleet.md
       - AI:
-          - Building agents:       ai/agents.md
           - Creating MCP servers:  ai/mcp.md
           - CLI tool provider:     ai/cli-tool.md
   - References:
@@ -147,6 +146,7 @@ nav:
               - log: references/api/log.md
               - template: references/api/template.md
               - uuid: references/api/uuid.md
+              - args: references/api/args.md
           - Data & Formats:
               - json: references/api/json.md
               - yaml: references/api/yaml.md
@@ -170,7 +170,6 @@ nav:
               - test: references/api/test.md
           - Platform & AI:
               - k8s: references/api/k8s.md
-              - ai: references/api/ai.md
               - mcp: references/api/mcp.md
   - Examples:
       - Overview: examples/index.md

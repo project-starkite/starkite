@@ -12,16 +12,16 @@ By default, the all-in-one **`kite`** binary is used. Reach for a lean edition o
 
 | Binary | Included Modules | Use Case |
 |---|---|---|
-| `kite` | Base + Kubernetes + AI/MCP | **Default all-in-one** developer workstation binary |
+| `kite` | Base + Kubernetes + MCP | **Default all-in-one** developer workstation binary |
 | `kitecmd` | Base only | Minimal system scripting, general automation, and CI tasks |
 | `kitecloud` | Base + Kubernetes (`k8s` module + `kite kube` CLI commands) | Cloud-native ops and manifest workflows |
-| `kiteai` | Base + LLM clients + MCP capabilities | Agentic AI orchestration and LLM tool integration |
+| `kiteai` | Base + MCP capabilities | Agentic AI tool integration and MCP server/client |
 
 Lean editions (`kitecmd`, `kitecloud`, and `kiteai`) are strict subsets of `kite`, packaged smaller for space-conscious environments like init containers, edge nodes, and CI runners.
 
 ## Per-edition Go modules
 
-To optimize binary footprints, each edition is defined as a distinct Go module with independent dependency graphs. This ensures omitted modules are never compiled in. For example, `kitecmd` links no Kubernetes or LLM client libraries, producing a ~26 MB binary with no cloud-native library overhead. Lean editions are tailored for container init steps, edge computing, or CI runners; developers typically use the all-in-one `kite` binary.
+To optimize binary footprints, each edition is defined as a distinct Go module with independent dependency graphs. This ensures omitted modules are never compiled in. For example, `kitecmd` links no Kubernetes or MCP libraries, producing a lean binary with no cloud-native library overhead. Lean editions are tailored for container init steps, edge computing, or CI runners; developers typically use the all-in-one `kite` binary.
 
 ## Base modules
 
@@ -39,6 +39,6 @@ For guides, see the [Kubernetes Guide](../infra/k8s-connect.md).
 
 ## What `kiteai` adds
 
-The `kiteai` edition adds LLM client integration and Model Context Protocol (MCP) support. This includes multi-provider chat and streaming APIs (`ai` module) and host-server MCP capabilities (`mcp` module).
+The `kiteai` edition adds Model Context Protocol (MCP) support (`mcp` module). This enables scripts to act as MCP tool servers (`mcp.serve()`) or connect to remote tool servers as clients (`mcp.connect()`) over stdio and HTTP.
 
-For guides, see the [AI Agents Guide](../ai/agents.md).
+For guides, see the [MCP Server Guide](../ai/mcp.md).

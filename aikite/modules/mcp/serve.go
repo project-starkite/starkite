@@ -16,7 +16,6 @@ import (
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 
-	"github.com/project-starkite/starkite/aikite/modules/genai"
 	"github.com/project-starkite/starkite/libkite"
 )
 
@@ -89,9 +88,9 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 		return nil, fmt.Errorf("mcp.serve: host/path/tls_* kwargs require port to be set")
 	}
 
-	var tools []*genai.Tool
+	var tools []*Tool
 	if p.Tools != nil {
-		coerced, err := genai.CoerceTools(p.Tools)
+		coerced, err := CoerceTools(p.Tools)
 		if err != nil {
 			return nil, fmt.Errorf("mcp.serve: %w", err)
 		}
@@ -145,7 +144,7 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 // buildServer constructs an MCP server from the resolved inputs and registers
 // the provided tools, resources, and prompts. Extracted so unit tests can
 // exercise registration logic without calling server.Run (which blocks on stdio).
-func buildServer(name, version string, tools []*genai.Tool, resources []*resourceEntry, prompts []*promptEntry, rt *libkite.Runtime) (*mcpsdk.Server, error) {
+func buildServer(name, version string, tools []*Tool, resources []*resourceEntry, prompts []*promptEntry, rt *libkite.Runtime) (*mcpsdk.Server, error) {
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: name, Version: version}, nil)
 
 	for _, t := range tools {

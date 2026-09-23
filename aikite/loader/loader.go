@@ -3,7 +3,6 @@
 package loader
 
 import (
-	"github.com/project-starkite/starkite/aikite/modules/genai"
 	"github.com/project-starkite/starkite/aikite/modules/mcp"
 	"github.com/project-starkite/starkite/libkite"
 	baseloader "github.com/project-starkite/starkite/libkite/loader"
@@ -11,7 +10,6 @@ import (
 
 // RegisterAIModules registers ai-specific modules on an existing registry.
 func RegisterAIModules(r *libkite.Registry) {
-	r.Register(genai.New())
 	r.Register(mcp.New())
 }
 

@@ -9,22 +9,15 @@ import (
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.starlark.net/starlark"
 
-	"github.com/project-starkite/starkite/aikite/modules/genai"
 	"github.com/project-starkite/starkite/libkite"
 )
 
 // buildToolFromSource compiles a Starlark script defining functions and returns
-// *genai.Tool values for the given names, via genai.CoerceTools.
-func buildToolFromSource(t *testing.T, src string, toolNames ...string) []*genai.Tool {
+// *Tool values for the given names, via CoerceTools.
+func buildToolFromSource(t *testing.T, src string, toolNames ...string) []*Tool {
 	t.Helper()
-	// Load the ai module so ai.tool is available if tests need it.
-	genaiMod := genai.New()
-	globals, err := genaiMod.Load(&libkite.ModuleConfig{})
-	if err != nil {
-		t.Fatalf("load genai: %v", err)
-	}
 	thread := &starlark.Thread{Name: "tool-test"}
-	exec, err := starlark.ExecFile(thread, "t.star", src, globals)
+	exec, err := starlark.ExecFile(thread, "t.star", src, nil)
 	if err != nil {
 		t.Fatalf("ExecFile: %v", err)
 	}
@@ -38,7 +31,7 @@ func buildToolFromSource(t *testing.T, src string, toolNames ...string) []*genai
 		items = append(items, v)
 	}
 	list := starlark.NewList(items)
-	tools, err := genai.CoerceTools(list)
+	tools, err := CoerceTools(list)
 	if err != nil {
 		t.Fatalf("CoerceTools: %v", err)
 	}
