@@ -50,7 +50,7 @@ brews:
       name: homebrew-tap
       token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
     directory: Formula
-    homepage: "https://starkite.ai"
+    homepage: "https://starkite.dev"
     description: "Secure scripting runtime for operational and agentic automation with Starlark"
     license: "Apache-2.0"
     install: |
@@ -66,7 +66,7 @@ scoops:
       owner: project-starkite
       name: scoop-bucket
       token: "{{ .Env.SCOOP_BUCKET_TOKEN }}"
-    homepage: "https://starkite.ai"
+    homepage: "https://starkite.dev"
     description: "Secure scripting runtime for operational and agentic automation with Starlark"
     license: "Apache-2.0"
 

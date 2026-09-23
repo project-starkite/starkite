@@ -1,7 +1,7 @@
 site_name: Starkite
 site_description: Secure Starlark Runtime for System, Cloud, and Agent Automation
 site_author: Vladimir Vivien
-site_url: https://starkite.ai/
+site_url: https://starkite.dev/
 
 repo_name: project-starkite/starkite
 repo_url: https://github.com/project-starkite/starkite
