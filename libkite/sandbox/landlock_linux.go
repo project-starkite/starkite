@@ -252,21 +252,6 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	}
 
 	err := cmd.Run()
-	if err != nil && cmd.SysProcAttr != nil {
-		// If kernel restricts unprivileged user/net namespaces (e.g. Ubuntu AppArmor), fallback without SysProcAttr
-		retryCmd := exec.CommandContext(execCtx, spec.Command[0], spec.Command[1:]...)
-		if spec.Cwd != "" {
-			retryCmd.Dir = spec.Cwd
-		}
-		retryCmd.Env = cmd.Env
-		stdoutBuf.Reset()
-		stderrBuf.Reset()
-		retryCmd.Stdout = cmd.Stdout
-		retryCmd.Stderr = cmd.Stderr
-		retryCmd.Stdin = cmd.Stdin
-		err = retryCmd.Run()
-		cmd = retryCmd
-	}
 	duration := time.Since(start)
 
 	result := &ExecResult{
@@ -290,6 +275,10 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 		if errors.As(err, &exitErr) {
 			result.ExitCode = exitErr.ExitCode()
 			return result, nil
+		}
+		// If command failed to launch with network isolation namespaces, fail closed immediately
+		if cmd.SysProcAttr != nil && (errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOSYS) || errors.Is(err, os.ErrPermission)) {
+			return result, fmt.Errorf("sandbox: network isolation (network=%q) failed: %w (unprivileged user namespaces restricted or unsupported by host kernel; use --sandbox-driver=podman or configure kernel.apparmor_restrict_unprivileged_userns=0)", spec.Network, err)
 		}
 		return result, fmt.Errorf("sandbox: landlock exec failed: %w", err)
 	}

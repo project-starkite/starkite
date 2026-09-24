@@ -85,3 +85,33 @@ func TestLandlockDriver_FilesystemIsolation(t *testing.T) {
 		t.Errorf("expected allowed data in stdout, got %q", res.Stdout)
 	}
 }
+
+func TestLandlockDriver_NetworkIsolationFailClosed(t *testing.T) {
+	d, err := Get(DriverLandlock)
+	if err != nil {
+		t.Fatalf("Get(DriverLandlock) failed: %v", err)
+	}
+
+	spec := &ExecutionSpec{
+		Command: []string{"/bin/echo", "isolated"},
+		Network: NetworkNone,
+		Timeout: 5 * time.Second,
+	}
+
+	res, err := d.Exec(context.Background(), spec)
+	if err != nil {
+		// If host kernel restricts unprivileged user namespaces, must fail closed with descriptive message
+		if strings.Contains(err.Error(), `network isolation (network="none") failed`) {
+			t.Logf("Deterministic fail-closed on restricted userns: %v", err)
+			return
+		}
+		t.Fatalf("unexpected Exec error: %v", err)
+	}
+
+	if res.ExitCode != 0 {
+		t.Errorf("ExitCode = %d, want 0", res.ExitCode)
+	}
+	if !strings.Contains(res.Stdout, "isolated") {
+		t.Errorf("Stdout = %q, want 'isolated'", res.Stdout)
+	}
+}

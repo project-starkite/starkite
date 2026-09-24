@@ -23,9 +23,19 @@ def test_sandbox_config():
 
 def test_box_exec():
     """Verify box.exec runs a basic command and captures output"""
-    box = sandbox.config(driver="default", network="none")
+    box = sandbox.config(driver="default", network="host")
     res = box.exec("echo", ["hello-starlark-sandbox"])
     assert(res.ok == True, "execution should be ok")
     assert(res.exit_code == 0, "exit code should be 0")
     assert("hello-starlark-sandbox" in res.stdout, "stdout should contain hello-starlark-sandbox")
     assert(res.duration != "", "duration should not be empty")
+
+def test_box_exec_network_none():
+    """Verify box.exec with network="none" either succeeds in isolated netns or fails closed cleanly"""
+    box = sandbox.config(driver="default", network="none")
+    res = box.exec("echo", ["isolated"])
+    if res.ok:
+        assert("isolated" in res.stdout, "stdout should contain isolated")
+    else:
+        assert("network isolation" in res.error, "failure should report network isolation failure")
+
