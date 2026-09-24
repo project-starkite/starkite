@@ -113,6 +113,27 @@ func TestContainerDriver_DefaultImageAndNetworkHost(t *testing.T) {
 	}
 }
 
+func TestContainerDriver_StarkiteImageEntrypoint(t *testing.T) {
+	d := NewContainerDriver("podman", "/usr/bin/podman")
+
+	// When using the default starkite image, kite binary prefix should be stripped
+	// since the OCI entrypoint is already /ko-app/kite.
+	spec := &ExecutionSpec{
+		Command: []string{"/path/to/kite", "run", "deploy.star", "--permissions=allow-net"},
+	}
+
+	args := d.BuildArgs(spec)
+	joined := strings.Join(args, " ")
+
+	if strings.Contains(joined, "/path/to/kite") || strings.Contains(joined, "/usr/local/bin/kite") {
+		t.Errorf("expected kite binary to be stripped, got args: %s", joined)
+	}
+	expectedTail := "ghcr.io/project-starkite/starkite:latest run deploy.star --permissions=allow-net"
+	if !strings.HasSuffix(joined, expectedTail) {
+		t.Errorf("expected args to end with %q, got: %s", expectedTail, joined)
+	}
+}
+
 func TestContainerDriver_LiveExec(t *testing.T) {
 	engines := []string{DriverPodman, DriverDocker, DriverNerdctl}
 	var anyRan bool

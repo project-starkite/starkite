@@ -166,30 +166,38 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 		image = DefaultContainerImage
 	}
 
+	// Command assembly
 	command := spec.Command
+	if len(command) > 0 {
+		binName := filepath.Base(command[0])
+		isKiteBin := binName == "kite" || binName == "kitecmd" || binName == "kitecloud" || binName == "kiteai" || strings.HasPrefix(binName, "kite")
 
-	// If host is Linux and a minimal base image (alpine) is used, bind-mount the host Linux binary
-	if runtime.GOOS == "linux" && (image == "docker.io/library/alpine:latest" || image == "alpine:latest" || image == "alpine") {
-		if len(command) > 0 && filepath.IsAbs(command[0]) {
-			binPath := command[0]
-			if _, err := os.Stat(binPath); err == nil {
-				isMounted := false
-				for _, m := range spec.Mounts {
-					if m.Source == binPath || (m.Source != "" && strings.HasPrefix(binPath, m.Source)) {
-						isMounted = true
-						break
+		// If the container image is the official Starkite image (built with ko or OCI entrypoint "kite"),
+		// the image already defines the entrypoint as the kite executable (/ko-app/kite).
+		// Forward only subcommands and arguments directly to avoid unknown-command errors.
+		if isKiteImage(image) {
+			if isKiteBin {
+				command = command[1:]
+			}
+		} else if runtime.GOOS == "linux" && (image == "docker.io/library/alpine:latest" || image == "alpine:latest" || image == "alpine") {
+			// If host is Linux and a minimal base image (alpine) is used, bind-mount the host Linux binary
+			if filepath.IsAbs(command[0]) {
+				binPath := command[0]
+				if _, err := os.Stat(binPath); err == nil {
+					isMounted := false
+					for _, m := range spec.Mounts {
+						if m.Source == binPath || (m.Source != "" && strings.HasPrefix(binPath, m.Source)) {
+							isMounted = true
+							break
+						}
+					}
+					if !isMounted {
+						args = append(args, "-v", fmt.Sprintf("%s:%s:ro", binPath, binPath))
 					}
 				}
-				if !isMounted {
-					args = append(args, "-v", fmt.Sprintf("%s:%s:ro", binPath, binPath))
-				}
 			}
-		}
-	} else if len(command) > 0 {
-		// When using an image containing kite (e.g. ghcr.io/project-starkite/kite:latest)
-		// or running from a non-Linux host (macOS/Windows), use the container's built-in "/usr/local/bin/kite" command.
-		binName := filepath.Base(command[0])
-		if binName == "kite" || binName == "kitecmd" || binName == "kitecloud" || binName == "kiteai" || strings.HasPrefix(binName, "kite") {
+		} else if isKiteBin {
+			// Non-starkite container on macOS/Windows or custom container image with kite installed in /usr/local/bin
 			command = append([]string{"/usr/local/bin/kite"}, command[1:]...)
 		}
 	}
@@ -203,6 +211,15 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 	args = append(args, command...)
 
 	return args
+}
+
+// isKiteImage reports whether the given image reference represents the Starkite CLI container image.
+func isKiteImage(img string) bool {
+	if img == "" || img == DefaultContainerImage {
+		return true
+	}
+	clean := strings.ToLower(img)
+	return strings.Contains(clean, "starkite") || strings.Contains(clean, "/kite:") || strings.HasSuffix(clean, "/kite")
 }
 
 // Exec executes the command inside an ephemeral container using the container engine CLI.

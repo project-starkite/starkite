@@ -112,6 +112,7 @@ kite run ./build.star --sandbox-profile ci-builder --sandbox-driver podman  # CL
 When using container sandbox drivers (`podman`, `docker`, `nerdctl`), Starkite executes scripts within an OCI container:
 
 - **Default Image**: Container drivers default to `ghcr.io/project-starkite/starkite:latest`. Custom images can be specified using `image:` in profile configuration or `--sandbox-image`.
+- **Image Composition**: The official `ghcr.io/project-starkite/starkite:latest` container is a minimal distroless image containing the `kite` engine as its entrypoint. For executing general OS utilities or custom toolchains inside a container sandbox, specify an image containing the required binaries (such as `alpine:latest` or custom developer images).
 - **Cross-Platform Host Support**: On non-Linux hosts (such as macOS), container drivers execute the Linux `kite` binary packaged within the OCI container, seamlessly mounting the local workspace into `/workspace` without attempting to mount the host's native (Mach-O) binary.
 - **Local Testing & Development**: When developing or testing container isolation locally without pulling the remote registry image, build the local container image using the Makefile:
 
