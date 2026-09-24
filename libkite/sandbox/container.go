@@ -20,7 +20,7 @@ const (
 	EngineNerdctl = "nerdctl"
 
 	// DefaultContainerImage is the fallback base image if none is specified in ExecutionSpec.
-	DefaultContainerImage = "ghcr.io/project-starkite/kite:latest"
+	DefaultContainerImage = "ghcr.io/project-starkite/starkite:latest"
 )
 
 // ContainerDriver implements the Driver interface by orchestrating ephemeral

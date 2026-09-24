@@ -101,7 +101,7 @@ deps: ## Download dependencies
 	cd aikite && go mod tidy
 	cd kite && go mod tidy
 
-IMAGE_NAME?=ghcr.io/project-starkite/kite:latest
+IMAGE_NAME?=ghcr.io/project-starkite/starkite:latest
 
 kite-linux: ## Build static Linux kite binary (for container image packaging)
 	mkdir -p $(BIN_DIR)

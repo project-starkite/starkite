@@ -37,12 +37,12 @@ func TestServe_RejectsPositional(t *testing.T) {
 	}
 }
 
-func TestServe_RequiresName(t *testing.T) {
+func TestServe_RequiresRuntime(t *testing.T) {
 	m := New()
 	globals, _ := m.Load(&libkite.ModuleConfig{})
 	thread := &starlark.Thread{Name: "test"}
 	_, err := starlark.ExecFile(thread, "t.star", `mcp.serve()`, globals)
-	if err == nil || !strings.Contains(err.Error(), "name is required") {
-		t.Errorf("expected name-required error, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "no runtime available in thread") {
+		t.Errorf("expected no-runtime error, got %v", err)
 	}
 }
