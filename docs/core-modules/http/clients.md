@@ -16,7 +16,30 @@ kite run ./fetch.star --permissions=allow-net
 
 ## Making requests
 
-Use `http.url(address)` to create a URL object. The object supports standard HTTP request methods: `get()`, `post()`, `put()`, `patch()`, and `delete()`. 
+You can make requests either directly using top-level convenience methods (`http.get()`, `http.post()`, `http.put()`, `http.patch()`, `http.delete()`) or by constructing an `http.url(address)` object.
+
+### Direct convenience calls
+
+For simple webhooks, health checks, or one-off API queries, call the HTTP verbs directly on the `http` module:
+
+```python
+# Direct GET request
+resp = http.get("https://api.example.com/data")
+print("Status:", resp.status_code)
+print("Body:", resp.get_text())
+
+# Direct POST request with automatic JSON serialization
+resp = http.post(
+    "https://api.example.com/events",
+    body={"event": "backup_completed", "status": "ok"},
+    headers={"Authorization": "Bearer token123"},
+    timeout="5s",
+)
+```
+
+### Using `http.url`
+
+Use `http.url(address)` to create a reusable URL object. The object supports standard HTTP request methods: `get()`, `post()`, `put()`, `patch()`, and `delete()`. 
 
 These methods execute the request synchronously and return an `http.response` object containing the following properties:
 
@@ -28,7 +51,8 @@ These methods execute the request synchronously and return an `http.response` ob
 Use `resp.get_text()` to retrieve the payload as a UTF-8 string, and `resp.get_bytes()` (or the `body` property) to retrieve the raw bytes.
 
 ```python
-resp = http.url("https://api.example.com/data").get()
+url = http.url("https://api.example.com/data")
+resp = url.get()
 
 # Print the status code
 print(resp.status_code)

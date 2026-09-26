@@ -1908,3 +1908,117 @@ func TestPhase4_ResilienceAndPDB(t *testing.T) {
 		t.Errorf("Service YAML missing trafficDistribution:\n%s", svcYAML)
 	}
 }
+
+func TestResourceQuotaAndLimitRange(t *testing.T) {
+	m := New()
+	modMap, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	k8sMod := modMap["k8s"].(starlark.HasAttrs)
+	yamlFnVal, _ := k8sMod.Attr("yaml")
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+	thread := &starlark.Thread{Name: "test-thread"}
+
+	// 1. Test ResourceQuota constructor and alias
+	hardDict := starlark.NewDict(3)
+	hardDict.SetKey(starlark.String("requests.cpu"), starlark.String("4"))
+	hardDict.SetKey(starlark.String("requests.memory"), starlark.String("8Gi"))
+	hardDict.SetKey(starlark.String("pods"), starlark.String("20"))
+
+	scopesList := starlark.NewList([]starlark.Value{starlark.String("BestEffort")})
+
+	rqObj, err := newKubeResource(resourceQuotaSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("compute-quota")},
+		{starlark.String("namespace"), starlark.String("team-a")},
+		{starlark.String("hard"), hardDict},
+		{starlark.String("scopes"), scopesList},
+	})
+	if err != nil {
+		t.Fatalf("resource_quota error: %v", err)
+	}
+
+	rqYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{rqObj}, nil)
+	if err != nil {
+		t.Fatalf("yaml(rq) error: %v", err)
+	}
+	rqYAML := string(rqYAMLVal.(starlark.String))
+
+	if !strings.Contains(rqYAML, "kind: ResourceQuota") {
+		t.Errorf("ResourceQuota YAML missing kind:\n%s", rqYAML)
+	}
+	if !strings.Contains(rqYAML, "apiVersion: v1") {
+		t.Errorf("ResourceQuota YAML missing apiVersion:\n%s", rqYAML)
+	}
+	if !strings.Contains(rqYAML, "name: compute-quota") {
+		t.Errorf("ResourceQuota YAML missing name:\n%s", rqYAML)
+	}
+	if !strings.Contains(rqYAML, "requests.cpu:") {
+		t.Errorf("ResourceQuota YAML missing requests.cpu:\n%s", rqYAML)
+	}
+	if !strings.Contains(rqYAML, "BestEffort") {
+		t.Errorf("ResourceQuota YAML missing scopes:\n%s", rqYAML)
+	}
+
+	// 2. Test LimitRange and LimitRangeItem constructor
+	maxDict := starlark.NewDict(2)
+	maxDict.SetKey(starlark.String("cpu"), starlark.String("2"))
+	maxDict.SetKey(starlark.String("memory"), starlark.String("4Gi"))
+
+	minDict := starlark.NewDict(2)
+	minDict.SetKey(starlark.String("cpu"), starlark.String("100m"))
+	minDict.SetKey(starlark.String("memory"), starlark.String("128Mi"))
+
+	defaultReqDict := starlark.NewDict(2)
+	defaultReqDict.SetKey(starlark.String("cpu"), starlark.String("200m"))
+	defaultReqDict.SetKey(starlark.String("memory"), starlark.String("256Mi"))
+
+	itemObj, err := newKubeResource(limitRangeItemSchema, nil, []starlark.Tuple{
+		{starlark.String("type"), starlark.String("Container")},
+		{starlark.String("max"), maxDict},
+		{starlark.String("min"), minDict},
+		{starlark.String("default_request"), defaultReqDict},
+	})
+	if err != nil {
+		t.Fatalf("limit_range_item error: %v", err)
+	}
+
+	lrObj, err := newKubeResource(limitRangeSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("cpu-min-max")},
+		{starlark.String("namespace"), starlark.String("team-a")},
+		{starlark.String("limits"), starlark.NewList([]starlark.Value{itemObj})},
+	})
+	if err != nil {
+		t.Fatalf("limit_range error: %v", err)
+	}
+
+	lrYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{lrObj}, nil)
+	if err != nil {
+		t.Fatalf("yaml(lr) error: %v", err)
+	}
+	lrYAML := string(lrYAMLVal.(starlark.String))
+
+	if !strings.Contains(lrYAML, "kind: LimitRange") {
+		t.Errorf("LimitRange YAML missing kind:\n%s", lrYAML)
+	}
+	if !strings.Contains(lrYAML, "apiVersion: v1") {
+		t.Errorf("LimitRange YAML missing apiVersion:\n%s", lrYAML)
+	}
+	if !strings.Contains(lrYAML, "type: Container") {
+		t.Errorf("LimitRange YAML missing type Container:\n%s", lrYAML)
+	}
+	if !strings.Contains(lrYAML, "defaultRequest:") {
+		t.Errorf("LimitRange YAML missing defaultRequest:\n%s", lrYAML)
+	}
+
+	// 3. Verify constructors in ObjConstructors()
+	objConstructors := ObjConstructors()
+	for _, name := range []string{
+		"persistent_volume", "storage_class", "resource_quota", "quota",
+		"limit_range", "limit_range_item", "pod_disruption_budget", "pdb",
+	} {
+		if _, ok := objConstructors[name]; !ok {
+			t.Errorf("k8s.obj.%s constructor missing from ObjConstructors", name)
+		}
+	}
+}

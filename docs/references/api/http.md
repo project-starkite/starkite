@@ -11,10 +11,40 @@ The `http` module provides HTTP client functionality, a URL builder, and an embe
 
 | Function | Returns | Description |
 |----------|---------|-------------|
+| `http.get(url, headers={}, timeout="")` | `http.response` | Send GET request directly to a URL |
+| `http.post(url, body=None, headers={}, timeout="")` | `http.response` | Send POST request directly to a URL |
+| `http.put(url, body=None, headers={}, timeout="")` | `http.response` | Send PUT request directly to a URL |
+| `http.patch(url, body=None, headers={}, timeout="")` | `http.response` | Send PATCH request directly to a URL |
+| `http.delete(url, headers={}, timeout="")` | `http.response` | Send DELETE request directly to a URL |
 | `http.url(url_string)` | `http.url` | Create a URL object for making requests |
 | `http.config(timeout="30s", headers={})` | `None` | Set default client configuration |
 | `http.server(port=0, host="", tls_cert="", tls_key="", read_timeout="", write_timeout="", idle_timeout="", shutdown_timeout="", max_header_bytes=0, max_body_bytes=0)` | `http.server` | Create an HTTP server. Timeout kwargs take duration strings (e.g. `"30s"`); `max_*_bytes` take integer byte sizes |
 | `http.serve(handler_or_routes, port=0, host="", tls_cert="", tls_key="")` | `None` | Quick-start a server with a handler or route dict |
+
+## Top-Level HTTP Requests
+
+You can execute HTTP requests directly via `http.get()`, `http.post()`, `http.put()`, `http.patch()`, and `http.delete()` without constructing an intermediate `http.url` object:
+
+```python
+# Simple one-liner GET
+resp = http.get("https://httpbin.org/get")
+print(resp.status_code)
+
+# POST with dictionary automatically encoded as JSON
+resp = http.post(
+    "https://httpbin.org/post",
+    body={"service": "starkite", "status": "active"},
+    headers={"Authorization": "Bearer token123"},
+    timeout="5s",
+)
+
+# Safe try_ variants return a Result instead of failing
+res = http.try_get("https://unreachable.example.com/status", timeout="2s")
+if res.ok:
+    print("Online:", res.value.status_code)
+else:
+    print("Offline:", res.error)
+```
 
 ## http.url
 

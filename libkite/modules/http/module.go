@@ -5,6 +5,7 @@ package http
 import (
 	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
@@ -38,7 +39,7 @@ func New() *Module {
 func (m *Module) Name() libkite.ModuleName { return ModuleName }
 
 func (m *Module) Description() string {
-	return "http provides HTTP client and server: url, config, server, serve"
+	return "http provides HTTP client and server: get, post, put, patch, delete, url, config, server, serve"
 }
 
 func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error) {
@@ -46,7 +47,14 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 		m.config = config
 		m.client = &http.Client{Timeout: m.timeout}
 		m.module = libkite.NewTryModule(string(ModuleName), starlark.StringDict{
-			// Client
+			// Client convenience shortcuts
+			"get":    starlark.NewBuiltin("http.get", m.getFn),
+			"post":   starlark.NewBuiltin("http.post", m.postFn),
+			"put":    starlark.NewBuiltin("http.put", m.putFn),
+			"patch":  starlark.NewBuiltin("http.patch", m.patchFn),
+			"delete": starlark.NewBuiltin("http.delete", m.deleteFn),
+
+			// Client core
 			"url":    starlark.NewBuiltin("http.url", m.urlFactory),
 			"config": starlark.NewBuiltin("http.config", m.configFn),
 
@@ -247,4 +255,61 @@ func filterKwarg(kwargs []starlark.Tuple, name string, dest **starlark.Dict) []s
 		}
 	}
 	return filtered
+}
+
+// requestHelper executes an HTTP request given a method and arguments.
+func (m *Module) requestHelper(method string, hasBody bool, thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if len(args) == 0 {
+		var urlVal starlark.Value
+		var filteredKwargs []starlark.Tuple
+		for _, kv := range kwargs {
+			if string(kv[0].(starlark.String)) == "url" {
+				urlVal = kv[1]
+			} else {
+				filteredKwargs = append(filteredKwargs, kv)
+			}
+		}
+		if urlVal == nil {
+			return nil, fmt.Errorf("http.%s: expected at least 1 argument (url), got 0", strings.ToLower(method))
+		}
+		kwargs = filteredKwargs
+		args = starlark.Tuple{urlVal}
+	}
+
+	urlStr, ok := starlark.AsString(args[0])
+	if !ok {
+		if uVal, ok := args[0].(*URL); ok {
+			urlStr = uVal.rawURL
+		} else {
+			return nil, fmt.Errorf("http.%s: url must be a string, got %s", strings.ToLower(method), args[0].Type())
+		}
+	}
+
+	u := &URL{rawURL: urlStr, thread: thread, module: m}
+	return u.doRequest(method, hasBody, args[1:], kwargs)
+}
+
+// getFn implements http.get(url, headers=None, timeout=None).
+func (m *Module) getFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.requestHelper("GET", false, thread, fn, args, kwargs)
+}
+
+// postFn implements http.post(url, body=None, headers=None, timeout=None).
+func (m *Module) postFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.requestHelper("POST", true, thread, fn, args, kwargs)
+}
+
+// putFn implements http.put(url, body=None, headers=None, timeout=None).
+func (m *Module) putFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.requestHelper("PUT", true, thread, fn, args, kwargs)
+}
+
+// patchFn implements http.patch(url, body=None, headers=None, timeout=None).
+func (m *Module) patchFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.requestHelper("PATCH", true, thread, fn, args, kwargs)
+}
+
+// deleteFn implements http.delete(url, headers=None, timeout=None).
+func (m *Module) deleteFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return m.requestHelper("DELETE", false, thread, fn, args, kwargs)
 }

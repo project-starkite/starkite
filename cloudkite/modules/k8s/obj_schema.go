@@ -216,6 +216,24 @@ var storageClassSchema = &ResourceSchema{
 	}),
 }
 
+var resourceQuotaSchema = &ResourceSchema{
+	Kind:       "ResourceQuota",
+	APIVersion: "v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"hard":           {JSONKey: "hard", Typ: FieldDict, SpecKey: true},
+		"scopes":         {JSONKey: "scopes", Typ: FieldList, SpecKey: true},
+		"scope_selector": {JSONKey: "scopeSelector", Typ: FieldDict, SpecKey: true},
+	}),
+}
+
+var limitRangeSchema = &ResourceSchema{
+	Kind:       "LimitRange",
+	APIVersion: "v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"limits": {JSONKey: "limits", Typ: FieldList, SpecKey: true, Required: true},
+	}),
+}
+
 var serviceAccountSchema = &ResourceSchema{
 	Kind:       "ServiceAccount",
 	APIVersion: "v1",
@@ -725,6 +743,19 @@ var securityContextSchema = &ResourceSchema{
 	},
 }
 
+var limitRangeItemSchema = &ResourceSchema{
+	Kind:        "LimitRangeItem",
+	IsSubObject: true,
+	Fields: map[string]*FieldSpec{
+		"type":                    {JSONKey: "type", Typ: FieldString, Required: true},
+		"max":                     {JSONKey: "max", Typ: FieldDict},
+		"min":                     {JSONKey: "min", Typ: FieldDict},
+		"default":                 {JSONKey: "default", Typ: FieldDict},
+		"default_request":         {JSONKey: "defaultRequest", Typ: FieldDict},
+		"max_limit_request_ratio": {JSONKey: "maxLimitRequestRatio", Typ: FieldDict},
+	},
+}
+
 // --- Schema registry ---
 
 var allSchemas = map[string]*ResourceSchema{
@@ -771,6 +802,10 @@ var allSchemas = map[string]*ResourceSchema{
 	"resource_slice":                      resourceSliceSchema,
 	"persistent_volume":                   persistentVolumeSchema,
 	"storage_class":                       storageClassSchema,
+	"resource_quota":                      resourceQuotaSchema,
+	"quota":                               resourceQuotaSchema,
+	"limit_range":                         limitRangeSchema,
+	"limit_range_item":                    limitRangeItemSchema,
 	"gateway_class":                       gatewayClassSchema,
 	"gateway":                             gatewaySchema,
 	"http_route":                          httpRouteSchema,

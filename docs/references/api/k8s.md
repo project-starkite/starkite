@@ -491,6 +491,8 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 | `k8s.obj.storage_class(name, provisioner="", volume_binding_mode="", reclaim_policy="", allow_volume_expansion=False, parameters={}, mount_options=[], labels={}, annotations={})` | `KubeResource` | Construct a StorageClass manifest (cluster-scoped) |
 | `k8s.obj.namespace(name, labels={}, annotations={})` | `KubeResource` | Construct a Namespace manifest |
 | `k8s.obj.service_account(name, labels={}, annotations={})` | `KubeResource` | Construct a ServiceAccount manifest |
+| `k8s.obj.resource_quota(name, hard={}, scopes=[], scope_selector={}, labels={}, annotations={})` | `KubeResource` | Construct a `v1` `ResourceQuota` manifest (alias `k8s.obj.quota`) |
+| `k8s.obj.limit_range(name, limits=[], labels={}, annotations={})` | `KubeResource` | Construct a `v1` `LimitRange` manifest |
 | `k8s.obj.device_class(name, selectors=[], config=[], suitable_nodes={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `DeviceClass` (cluster-scoped) |
 | `k8s.obj.resource_claim(name, device_class="", count=1, allocation_mode="", device_tolerations=[], selectors=[], devices={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `ResourceClaim` |
 | `k8s.obj.resource_claim_template(name, spec=None, claim_metadata={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `ResourceClaimTemplate` |
@@ -520,6 +522,7 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 | `k8s.obj.security_context(run_as_user=0, run_as_group=0, run_as_non_root=False, read_only_root_filesystem=False, privileged=False, allow_privilege_escalation=False, capabilities={}, se_linux_options={}, seccomp_profile={}, apparmor_profile={}, fs_group=0, fs_group_change_policy="", windows_options={})` | `KubeResource` | Pod or container security context |
 | `k8s.obj.volume(name, pvc=None, claim_name="", config_map=None, secret=None, empty_dir=None, ephemeral=None, host_path={}, nfs={}, csi={}, projected={}, downward_api={})` | `KubeResource` | Pod volume definition with ergonomic shortcuts for PVCs, ConfigMaps, Secrets, EmptyDir, and Ephemeral volumes |
 | `k8s.obj.volume_mount(name, mount_path, sub_path="", sub_path_expr="", read_only=False, mount_propagation="", recursive_read_only="")` | `KubeResource` | Container volume mount specification |
+| `k8s.obj.limit_range_item(type, max={}, min={}, default={}, default_request={}, max_limit_request_ratio={})` | `KubeResource` | LimitRange item specification for containers, pods, or PVCs |
 
 ### Example — construct and apply workload
 
@@ -554,6 +557,39 @@ svc = k8s.obj.service(
 
 # Apply directly using Server-Side Apply
 k8s.apply([dep, svc], namespace="default")
+```
+
+### Example — resource quota and limit range
+
+```python
+# Construct LimitRange with container defaults and constraints
+limits = k8s.obj.limit_range(
+    name = "team-limits",
+    limits = [
+        k8s.obj.limit_range_item(
+            type = "Container",
+            default = {"cpu": "500m", "memory": "256Mi"},
+            default_request = {"cpu": "100m", "memory": "128Mi"},
+            max = {"cpu": "2", "memory": "1Gi"},
+            min = {"cpu": "50m", "memory": "64Mi"},
+        ),
+    ],
+)
+
+# Construct ResourceQuota for namespace hard limits
+quota = k8s.obj.resource_quota(
+    name = "team-quota",
+    hard = {
+        "requests.cpu": "4",
+        "requests.memory": "8Gi",
+        "limits.cpu": "8",
+        "limits.memory": "16Gi",
+        "pods": "10",
+    },
+)
+
+# Apply both resources to target namespace
+k8s.apply([limits, quota], namespace="team-a")
 ```
 
 ### `k8s.obj.crd()`

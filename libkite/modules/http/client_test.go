@@ -2,8 +2,10 @@ package http
 
 import (
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"go.starlark.net/starlark"
@@ -127,5 +129,154 @@ def test_stream():
 	}
 	if string(b) != "hello" {
 		t.Errorf("got %q, want %q", string(b), "hello")
+	}
+}
+
+func TestHTTPTopLevelDryRun(t *testing.T) {
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	httpMod := New()
+	dict, err := httpMod.Load(&libkite.ModuleConfig{DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	predeclared := starlark.StringDict{
+		"http": dict["http"],
+	}
+
+	script := `
+def test_dry():
+    r1 = http.get("https://example.com/dry-get")
+    r2 = http.post("https://example.com/dry-post", body="hello")
+    r3 = http.delete("https://example.com/dry-del")
+    return (r1.status_code, r2.status_code, r3.status_code)
+`
+	thread := rt.NewThread("test-dry")
+	globals, err := starlark.ExecFile(thread, "test_dry.star", script, predeclared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := starlark.Call(thread, globals["test_dry"], nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tup := res.(starlark.Tuple)
+	if tup[0].(starlark.Int).BigInt().Int64() != 200 ||
+		tup[1].(starlark.Int).BigInt().Int64() != 200 ||
+		tup[2].(starlark.Int).BigInt().Int64() != 200 {
+		t.Errorf("expected 200 for dry run responses, got %v", res)
+	}
+}
+
+func TestHTTPTopLevelConvenienceMethods(t *testing.T) {
+	var lastMethod string
+	var lastPath string
+	var lastBody string
+	var lastAuth string
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		lastMethod = r.Method
+		lastPath = r.URL.Path
+		lastAuth = r.Header.Get("Authorization")
+		b, _ := io.ReadAll(r.Body)
+		lastBody = string(b)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"status":"ok"}`)
+	}))
+	defer ts.Close()
+
+	rt := testRuntime(t)
+	defer rt.Close()
+
+	httpMod := New()
+	dict, err := httpMod.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	predeclared := starlark.StringDict{
+		"http": dict["http"],
+	}
+
+	// 1. Test http.get
+	script := fmt.Sprintf(`
+def test_get():
+    resp = http.get("%s/test-get", headers={"Authorization": "Bearer secret"})
+    return resp.status_code
+`, ts.URL)
+	thread := rt.NewThread("test-thread")
+	globals, err := starlark.ExecFile(thread, "test_get.star", script, predeclared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := starlark.Call(thread, globals["test_get"], nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.(starlark.Int).BigInt().Int64() != 200 {
+		t.Errorf("status = %v, want 200", res)
+	}
+	if lastMethod != "GET" || lastPath != "/test-get" || lastAuth != "Bearer secret" {
+		t.Errorf("unexpected request details: %s %s %s", lastMethod, lastPath, lastAuth)
+	}
+
+	// 2. Test http.post
+	script = fmt.Sprintf(`
+def test_post():
+    resp = http.post("%s/test-post", body={"message": "hello"})
+    return resp.status_code
+`, ts.URL)
+	globals, err = starlark.ExecFile(thread, "test_post.star", script, predeclared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err = starlark.Call(thread, globals["test_post"], nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.(starlark.Int).BigInt().Int64() != 200 {
+		t.Errorf("status = %v, want 200", res)
+	}
+	if lastMethod != "POST" || lastPath != "/test-post" || !strings.Contains(lastBody, "hello") {
+		t.Errorf("unexpected post details: %s %s %s", lastMethod, lastPath, lastBody)
+	}
+
+	// 3. Test http.try_get on valid url
+	script = fmt.Sprintf(`
+def test_try_get():
+    res = http.try_get("%s/try-endpoint")
+    return (res.ok, res.value.status_code)
+`, ts.URL)
+	globals, err = starlark.ExecFile(thread, "test_try_get.star", script, predeclared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err = starlark.Call(thread, globals["test_try_get"], nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tup := res.(starlark.Tuple)
+	if bool(tup[0].(starlark.Bool)) != true {
+		t.Errorf("expected ok=True")
+	}
+
+	// 4. Test http.try_get on failing/invalid address
+	script = `
+def test_try_fail():
+    res = http.try_get("http://127.0.0.1:1/invalid-port", timeout="50ms")
+    return res.ok
+`
+	globals, err = starlark.ExecFile(thread, "test_try_fail.star", script, predeclared)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err = starlark.Call(thread, globals["test_try_fail"], nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bool(res.(starlark.Bool)) != false {
+		t.Errorf("expected ok=False for failing network call")
 	}
 }
