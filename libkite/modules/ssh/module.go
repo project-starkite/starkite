@@ -45,6 +45,9 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"keygen":               starlark.NewBuiltin("ssh.keygen", m.sshKeygen),
 			"scan_host_keys":       starlark.NewBuiltin("ssh.scan_host_keys", m.sshScanHostKeys),
 			"check_authorized_key": starlark.NewBuiltin("ssh.check_authorized_key", m.sshCheckAuthorizedKey),
+			"find_known_hosts":     starlark.NewBuiltin("ssh.find_known_hosts", m.sshFindKnownHosts),
+			"remove_known_host":    starlark.NewBuiltin("ssh.remove_known_host", m.sshRemoveKnownHost),
+			"add_known_host":       starlark.NewBuiltin("ssh.add_known_host", m.sshAddKnownHost),
 			// Backwards-compatible aliases
 			"keyscan":   starlark.NewBuiltin("ssh.keyscan", m.sshScanHostKeys),
 			"key_check": starlark.NewBuiltin("ssh.key_check", m.sshCheckAuthorizedKey),
@@ -748,6 +751,12 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 			return libkite.TryWrap("ssh.client."+name, starlark.NewBuiltin("ssh.client.upload", c.upload)), nil
 		case "download":
 			return libkite.TryWrap("ssh.client."+name, starlark.NewBuiltin("ssh.client.download", c.download)), nil
+		case "find_known_hosts":
+			return libkite.TryWrap("ssh.client."+name, starlark.NewBuiltin("ssh.client.find_known_hosts", c.findKnownHosts)), nil
+		case "remove_known_host":
+			return libkite.TryWrap("ssh.client."+name, starlark.NewBuiltin("ssh.client.remove_known_host", c.removeKnownHost)), nil
+		case "add_known_host":
+			return libkite.TryWrap("ssh.client."+name, starlark.NewBuiltin("ssh.client.add_known_host", c.addKnownHost)), nil
 		}
 		return nil, nil
 	}
@@ -758,6 +767,12 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		return starlark.NewBuiltin("ssh.client.scan_host_keys", c.scanHostKeys), nil
 	case "check_authorized_key", "key_check":
 		return starlark.NewBuiltin("ssh.client.check_authorized_key", c.checkAuthorizedKey), nil
+	case "find_known_hosts":
+		return starlark.NewBuiltin("ssh.client.find_known_hosts", c.findKnownHosts), nil
+	case "remove_known_host":
+		return starlark.NewBuiltin("ssh.client.remove_known_host", c.removeKnownHost), nil
+	case "add_known_host":
+		return starlark.NewBuiltin("ssh.client.add_known_host", c.addKnownHost), nil
 	case "exec":
 		return starlark.NewBuiltin("ssh.client.exec", c.exec), nil
 	case "upload":
@@ -813,6 +828,7 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 
 func (c *SSHClient) AttrNames() []string {
 	return []string{
+		"add_known_host",
 		"auth",
 		"check_authorized_key",
 		"copy_id",
@@ -821,18 +837,23 @@ func (c *SSHClient) AttrNames() []string {
 		"exec_max_workers",
 		"exec_on_error",
 		"exec_policy",
+		"find_known_hosts",
 		"fleet",
 		"hosts",
 		"jump",
 		"key_check",
 		"keyscan",
+		"remove_known_host",
 		"scan_host_keys",
+		"try_add_known_host",
 		"try_check_authorized_key",
 		"try_copy_id",
 		"try_download",
 		"try_exec",
+		"try_find_known_hosts",
 		"try_key_check",
 		"try_keyscan",
+		"try_remove_known_host",
 		"try_scan_host_keys",
 		"try_upload",
 		"upload",

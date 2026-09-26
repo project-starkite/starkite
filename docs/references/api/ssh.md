@@ -11,7 +11,7 @@ The `ssh` module provides remote command execution and file transfer over SSH co
 
 The module exposes two distinct operational tiers:
 
-1. **One-Shot Utilities (`ssh.exec`, `ssh.copy_id`, `ssh.keyscan`, `ssh.key_check`, `ssh.keygen`)**: Lightweight, direct functions for ad-hoc command execution, key discovery, and credential management against literal hosts.
+1. **One-Shot Utilities (`ssh.exec`, `ssh.copy_id`, `ssh.keyscan`, `ssh.key_check`, `ssh.keygen`, `ssh.find_known_hosts`, `ssh.remove_known_host`, `ssh.add_known_host`)**: Lightweight, direct functions for ad-hoc command execution, key discovery, known hosts maintenance, and credential management against literal hosts.
 2. **Configured Client (`ssh.config`)**: Client constructor supporting complex topologies (`fleet`, bastion jump tunnels) and execution controls. Uses structured `auth={...}` and `jump={...}` parameter objects.
 
 ---
@@ -174,6 +174,9 @@ All execution and file transfer methods support `try_` variants (e.g. `client.tr
 | `client.copy_id(key, ...)` | Install public key into target hosts' `authorized_keys` |
 | `client.scan_host_keys(...)` | Discover and inspect public host keys across target hosts (alias: `client.keyscan`) |
 | `client.check_authorized_key(key, ...)` | Probe remote hosts for public key authorization without logging in (alias: `client.key_check`) |
+| `client.find_known_hosts(host=None, ...)` | Query entries matching target hosts in known_hosts file |
+| `client.remove_known_host(host=None, ...)` | Evict stale host key entries matching target hosts |
+| `client.add_known_host(key, host=None, ...)` | Append host key entry for target host to known_hosts |
 
 ---
 
@@ -326,6 +329,98 @@ keys = client.scan_host_keys(save=True)
 | `fingerprint` | `string` | SHA256 key fingerprint (`"SHA256:..."`) |
 | `line` | `string` | Standard OpenSSH `known_hosts` entry line |
 | `hashed_line` | `string` | Hashed OpenSSH `known_hosts` entry line |
+
+---
+
+## Known Hosts Management (`find_known_hosts`, `remove_known_host`, `add_known_host`)
+
+Manage and inspect `~/.ssh/known_hosts` entries programmatically without shelling out to `ssh-keygen -F` or `ssh-keygen -R`.
+
+### Querying Known Hosts (`ssh.find_known_hosts`)
+
+Find all host key records matching a hostname or IP address, supporting both plaintext and HMAC-SHA1 hashed entries (`|1|...`):
+
+```python
+entries = ssh.find_known_hosts("192.168.1.50")
+for entry in entries:
+    printf("Host: %s [%s] - Fingerprint: %s (line %d)\n",
+        entry.host, entry.type, entry.fingerprint, entry.line_number)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `host` | `string` | required | Hostname, IP address, or wildcard to query |
+| `path` | `string` | `"~/.ssh/known_hosts"` | Known hosts file destination |
+| `port` | `int` | `22` | Target SSH port (used when matching `[host]:port`) |
+
+#### `SSHKnownHostEntry` Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `host` | `string` | Matched hostname, IP, or host pattern |
+| `type` | `string` | Host key algorithm (e.g. `"ssh-ed25519"`, `"rsa-sha2-512"`) |
+| `public_key` | `string` | OpenSSH authorized public key line |
+| `fingerprint` | `string` | SHA256 key fingerprint (`"SHA256:..."`) |
+| `line_number` | `int` | 1-indexed line number in source file |
+| `hashed` | `bool` | True if the source entry is hashed (`|1|...`) |
+| `comment` | `string` | Trailing comment text (if present) |
+| `line` | `string` | Full raw known_hosts file line |
+
+### Evicting Stale Host Keys (`ssh.remove_known_host`)
+
+Prunes stale host keys when nodes are re-imaged or IP addresses reassigned (equivalent to `ssh-keygen -R`). Uses atomic file replacement with file locking to guarantee consistency during concurrent execution:
+
+```python
+# Evict old entries for a re-provisioned node
+removed = ssh.remove_known_host("192.168.1.50")
+print("Removed %d stale known_hosts records" % removed)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `host` | `string` | required | Hostname or IP address to remove |
+| `path` | `string` | `"~/.ssh/known_hosts"` | Known hosts file destination |
+| `port` | `int` | `22` | Target SSH port |
+
+### Programmatic Append (`ssh.add_known_host`)
+
+Appends a host key record to `known_hosts` idempotently:
+
+```python
+entry = ssh.add_known_host(
+    host = "edge-node-1",
+    key  = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAI...",
+    hash = True,                 # Store with hashed hostname (|1|...)
+)
+```
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `host` | `string` | required | Hostname or IP address |
+| `key` | `string` | required | OpenSSH public key line or raw base64 string |
+| `path` | `string` | `"~/.ssh/known_hosts"` | Known hosts file destination |
+| `hash` | `bool` | `True` | Store using OpenSSH HMAC-SHA1 hashed hostname |
+| `port` | `int` | `22` | Target SSH port |
+| `comment` | `string` | `""` | Optional comment suffix |
+
+### Host Key Rotation Workflow
+
+When a physical machine or cloud VM is re-provisioned with the same IP address, combining `find_known_hosts`, `remove_known_host`, and `scan_host_keys` rotates keys safely without disabling `host_key_check`:
+
+```python
+host = "192.168.1.50"
+
+# 1. Audit existing records
+old_entries = ssh.find_known_hosts(host)
+for e in old_entries:
+    log.info("Removing stale host key", {"fingerprint": e.fingerprint})
+
+# 2. Prune old records to resolve the conflict
+ssh.remove_known_host(host)
+
+# 3. Discover and safely store new host key
+ssh.scan_host_keys(hosts=[host], save=True, hash=True)
+```
 
 ---
 
