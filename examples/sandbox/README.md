@@ -18,6 +18,10 @@ kite run ./defense-in-depth.star --sandbox-opaque --permissions=deny-all
 
 # programmatic execution using Starlark sandbox module
 kite run ./sandbox-module-exec.star --permissions=allow-all
+
+# Seccomp-BPF network isolation test (isolated mode vs allowed mode)
+kite run ./seccomp-network-test.star --sandbox-opaque --permissions=allow-all
+kite run ./seccomp-network-test.star --sandbox-net --permissions=allow-all
 ```
 
 Or override the backend driver via `--sandbox-driver`:

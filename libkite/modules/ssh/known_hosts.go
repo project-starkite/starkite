@@ -157,8 +157,8 @@ func matchHostPattern(pattern, host string, port int) bool {
 		return matchHashedHost(pattern, normTarget) || matchHashedHost(pattern, rawHost)
 	}
 
-	patterns := strings.Split(pattern, ",")
-	for _, p := range patterns {
+	patterns := strings.SplitSeq(pattern, ",")
+	for p := range patterns {
 		p = strings.TrimSpace(p)
 		if p == "" {
 			continue

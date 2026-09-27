@@ -189,6 +189,17 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		return fmt.Errorf("sandbox: prctl(PR_SET_NO_NEW_PRIVS) failed: %w", err)
 	}
 
+	// Apply network isolation via Seccomp-BPF if requested
+	if spec.Network == NetworkNone || spec.Network == NetworkLoopback {
+		filter, err := BuildNetworkFilter()
+		if err != nil {
+			return fmt.Errorf("sandbox: failed to build seccomp network filter: %w", err)
+		}
+		if err := ApplySeccompFilter(filter); err != nil {
+			return fmt.Errorf("sandbox: failed to apply seccomp network filter: %w", err)
+		}
+	}
+
 	// Restrict calling thread and future child processes
 	if _, _, err := unix.Syscall(sysLandlockRestrictSelf, rulesetFd, 0, 0); err != 0 {
 		return fmt.Errorf("sandbox: landlock_restrict_self failed: %w", err)
@@ -223,8 +234,10 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 		cmd.Env = os.Environ()
 	}
 
-	// Network isolation via namespace unsharing if requested
-	if spec.Network == NetworkNone || spec.Network == NetworkLoopback {
+	// Network isolation: If already running inside an in-process sandbox, child processes
+	// automatically inherit the parent Seccomp-BPF and Landlock restrictions across execve.
+	// Otherwise, attempt namespace unsharing if requested.
+	if os.Getenv(InsideEnvVar) != "1" && (spec.Network == NetworkNone || spec.Network == NetworkLoopback) {
 		cmd.SysProcAttr = &syscall.SysProcAttr{
 			Cloneflags: syscall.CLONE_NEWUSER | syscall.CLONE_NEWNET,
 			UidMappings: []syscall.SysProcIDMap{
