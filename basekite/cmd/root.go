@@ -41,6 +41,7 @@ var (
 	sandboxed      bool
 	sandboxProfile string
 	sandboxDriver  string
+	allowHomeCwd   bool
 
 	// sandboxProfileAliases maps shortcut flag names to their target profile names.
 	sandboxProfileAliases = map[string]string{
@@ -160,6 +161,9 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&sandboxDriver, "sandbox-driver", "",
 		"Sandbox execution driver (auto|landlock|seatbelt|podman|docker|nerdctl|gvisor). "+
 			"Overrides the driver configured in the sandbox profile.")
+
+	rootCmd.PersistentFlags().BoolVar(&allowHomeCwd, "allow-home-cwd", false,
+		"Allow sandbox execution directly in $HOME or / (bypasses Landlock directory exposure guard)")
 
 	// Boolean shortcut aliases for the built-in rungs
 	for flagName, profile := range sandboxProfileAliases {
@@ -471,6 +475,12 @@ func GetSandbox() (sandbox.Profile, error) {
 //   - (true, err) when the sandbox driver handled execution in a subprocess/container (caller must return/exit immediately)
 //   - (false, err) when sandbox initialization failed.
 func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
+	return MaybeHandoffToSandboxWithScript(ctx, "")
+}
+
+// MaybeHandoffToSandboxWithScript checks whether a sandbox is requested and routes
+// execution through the resolved sandbox driver, passing scriptPath for runtime asset baseline protection.
+func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bool, error) {
 	if os.Getenv(sandbox.InsideEnvVar) == "1" {
 		return false, nil
 	}
@@ -494,17 +504,19 @@ func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
 
 	cwd, _ := os.Getwd()
 	spec := &sandbox.ExecutionSpec{
-		Command:     os.Args,
-		Cwd:         cwd,
-		Env:         os.Environ(),
-		Network:     profile.Network,
-		Mounts:      profile.Mounts,
-		MaxMemoryMB: profile.MaxMemoryMB,
-		Timeout:     profile.Timeout,
-		Image:       profile.Image,
-		Stdin:       os.Stdin,
-		Stdout:      os.Stdout,
-		Stderr:      os.Stderr,
+		Command:      os.Args,
+		Cwd:          cwd,
+		Env:          os.Environ(),
+		Network:      profile.Network,
+		Mounts:       profile.Mounts,
+		MaxMemoryMB:  profile.MaxMemoryMB,
+		Timeout:      profile.Timeout,
+		Image:        profile.Image,
+		AllowHomeCwd: allowHomeCwd,
+		ScriptFile:   scriptPath,
+		Stdin:        os.Stdin,
+		Stdout:       os.Stdout,
+		Stderr:       os.Stderr,
 	}
 
 	// Case 1: In-process native driver (e.g. Landlock on Linux, Seatbelt on macOS)

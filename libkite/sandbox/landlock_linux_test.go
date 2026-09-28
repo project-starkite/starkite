@@ -115,3 +115,79 @@ func TestLandlockDriver_NetworkIsolationFailClosed(t *testing.T) {
 		t.Errorf("Stdout = %q, want 'isolated'", res.Stdout)
 	}
 }
+
+func TestLandlockDriver_ValidateSpec_HomeGuard(t *testing.T) {
+	d := NewLandlockDriver()
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		t.Skip("skipping test: os.UserHomeDir() unavailable")
+	}
+
+	// 1. Cwd == $HOME and AllowHomeCwd == false -> should fail
+	specHome := &ExecutionSpec{
+		Command: []string{"/bin/true"},
+		Cwd:     home,
+	}
+	if err := d.ValidateSpec(specHome); err == nil {
+		t.Errorf("ValidateSpec with Cwd=HOME without AllowHomeCwd should fail, got nil")
+	} else if !strings.Contains(err.Error(), "prohibited under Landlock") {
+		t.Errorf("ValidateSpec error = %v, expected Landlock home prohibition", err)
+	}
+
+	// 2. Cwd == "/" and AllowHomeCwd == false -> should fail
+	specRoot := &ExecutionSpec{
+		Command: []string{"/bin/true"},
+		Cwd:     "/",
+	}
+	if err := d.ValidateSpec(specRoot); err == nil {
+		t.Errorf("ValidateSpec with Cwd=/ without AllowHomeCwd should fail, got nil")
+	} else if !strings.Contains(err.Error(), "prohibited under Landlock") {
+		t.Errorf("ValidateSpec error = %v, expected Landlock home prohibition", err)
+	}
+
+	// 3. Cwd == $HOME and AllowHomeCwd == true -> should succeed
+	specHomeAllowed := &ExecutionSpec{
+		Command:      []string{"/bin/true"},
+		Cwd:          home,
+		AllowHomeCwd: true,
+	}
+	if err := d.ValidateSpec(specHomeAllowed); err != nil {
+		t.Errorf("ValidateSpec with Cwd=HOME and AllowHomeCwd=true failed: %v", err)
+	}
+
+	// 4. Cwd == "/" and AllowHomeCwd == true -> should succeed
+	specRootAllowed := &ExecutionSpec{
+		Command:      []string{"/bin/true"},
+		Cwd:          "/",
+		AllowHomeCwd: true,
+	}
+	if err := d.ValidateSpec(specRootAllowed); err != nil {
+		t.Errorf("ValidateSpec with Cwd=/ and AllowHomeCwd=true failed: %v", err)
+	}
+
+	// 5. Cwd == subdirectory of $HOME and AllowHomeCwd == false -> should succeed
+	subDir := filepath.Join(home, "starkite-test-sandbox-sub")
+	specSub := &ExecutionSpec{
+		Command: []string{"/bin/true"},
+		Cwd:     subDir,
+	}
+	if err := d.ValidateSpec(specSub); err != nil {
+		t.Errorf("ValidateSpec with Cwd=subDir failed: %v", err)
+	}
+}
+
+func TestLandlockDriver_ApplyResourceLimits(t *testing.T) {
+	// Test applyResourceLimits with various spec configurations
+	specDefault := &ExecutionSpec{}
+	if err := applyResourceLimits(specDefault); err != nil {
+		t.Errorf("applyResourceLimits(default) failed: %v", err)
+	}
+
+	specCustom := &ExecutionSpec{
+		MaxPIDs: 1024,
+		Timeout: 5 * time.Second,
+	}
+	if err := applyResourceLimits(specCustom); err != nil {
+		t.Errorf("applyResourceLimits(custom) failed: %v", err)
+	}
+}

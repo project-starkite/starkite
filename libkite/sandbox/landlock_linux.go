@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"syscall"
 	"time"
@@ -86,6 +87,19 @@ func (d *LandlockDriver) ValidateSpec(spec *ExecutionSpec) error {
 	if err := spec.Validate(); err != nil {
 		return err
 	}
+
+	// $HOME & root directory invariant guard (defeats Landlock's additive whitelist trap)
+	if !spec.AllowHomeCwd && spec.Cwd != "" {
+		home, err := os.UserHomeDir()
+		if err == nil && home != "" {
+			cleanCwd := filepath.Clean(spec.Cwd)
+			cleanHome := filepath.Clean(home)
+			if cleanCwd == cleanHome || cleanCwd == "/" {
+				return fmt.Errorf("sandbox: executing directly in %s is prohibited under Landlock (would expose sensitive files like ~/.ssh without denial subpaths); specify a dedicated workspace subdirectory or override with --allow-home-cwd", cleanCwd)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -149,6 +163,26 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		}
 	}
 
+	// Runtime asset baseline: inject read-only Landlock rules for ~/.starkite, script files, and mod.lock
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		starkiteDir := filepath.Join(home, ".starkite")
+		if _, statErr := os.Stat(starkiteDir); statErr == nil {
+			_ = addLandlockPathRule(int(rulesetFd), starkiteDir, readAccess)
+		}
+	}
+	if spec.ScriptFile != "" {
+		if _, statErr := os.Stat(spec.ScriptFile); statErr == nil {
+			_ = addLandlockPathRule(int(rulesetFd), spec.ScriptFile, readAccess)
+		}
+		scriptDir := filepath.Dir(spec.ScriptFile)
+		for _, asset := range []string{"mod.lock", "star.mod"} {
+			assetPath := filepath.Join(scriptDir, asset)
+			if _, statErr := os.Stat(assetPath); statErr == nil {
+				_ = addLandlockPathRule(int(rulesetFd), assetPath, readAccess)
+			}
+		}
+	}
+
 	// Mounts from ExecutionSpec
 	for _, m := range spec.Mounts {
 		target := m.Source
@@ -184,12 +218,17 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 	// confined to the Landlock-restricted thread and its child processes.
 	runtime.LockOSThread()
 
+	// Apply POSIX resource limits (anti-fork-bomb barrier)
+	if err := applyResourceLimits(spec); err != nil {
+		return fmt.Errorf("sandbox: failed to apply resource limits: %w", err)
+	}
+
 	// Enforce no new privileges
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		return fmt.Errorf("sandbox: prctl(PR_SET_NO_NEW_PRIVS) failed: %w", err)
 	}
 
-	// Apply network isolation via Seccomp-BPF if requested
+	// Apply network isolation and process boundary rules via Seccomp-BPF if requested
 	if spec.Network == NetworkNone || spec.Network == NetworkLoopback {
 		filter, err := BuildNetworkFilter()
 		if err != nil {
@@ -203,6 +242,39 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 	// Restrict calling thread and future child processes
 	if _, _, err := unix.Syscall(sysLandlockRestrictSelf, rulesetFd, 0, 0); err != 0 {
 		return fmt.Errorf("sandbox: landlock_restrict_self failed: %w", err)
+	}
+
+	return nil
+}
+
+// applyResourceLimits applies unprivileged POSIX setrlimit constraints.
+func applyResourceLimits(spec *ExecutionSpec) error {
+	// 1. Anti-Fork-Bomb: Set a conservative ceiling on max threads/processes (RLIMIT_NPROC).
+	maxProcs := uint64(2048)
+	if spec.MaxPIDs > 0 {
+		maxProcs = uint64(spec.MaxPIDs)
+	}
+	var rlim unix.Rlimit
+	if err := unix.Getrlimit(unix.RLIMIT_NPROC, &rlim); err == nil {
+		if maxProcs < rlim.Cur || rlim.Cur == unix.RLIM_INFINITY {
+			rlim.Cur = maxProcs
+			if maxProcs < rlim.Max || rlim.Max == unix.RLIM_INFINITY {
+				rlim.Max = maxProcs
+			}
+			_ = unix.Setrlimit(unix.RLIMIT_NPROC, &rlim)
+		}
+	}
+
+	// 2. CPU Timeout: Enforce hard execution seconds
+	if spec.Timeout > 0 {
+		var cpuRlim unix.Rlimit
+		if err := unix.Getrlimit(unix.RLIMIT_CPU, &cpuRlim); err == nil {
+			cpuSecs := uint64(spec.Timeout.Seconds()) + 1
+			if cpuSecs < cpuRlim.Cur || cpuRlim.Cur == unix.RLIM_INFINITY {
+				cpuRlim.Cur = cpuSecs
+				_ = unix.Setrlimit(unix.RLIMIT_CPU, &cpuRlim)
+			}
+		}
 	}
 
 	return nil
@@ -248,6 +320,15 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 			},
 		}
 	}
+
+	// Process lifecycle and orphan protection:
+	// Set Pdeathsig = SIGKILL so child processes are killed if the parent exits,
+	// and Setpgid = true to isolate the child into its own process group.
+	if cmd.SysProcAttr == nil {
+		cmd.SysProcAttr = &syscall.SysProcAttr{}
+	}
+	cmd.SysProcAttr.Pdeathsig = syscall.SIGKILL
+	cmd.SysProcAttr.Setpgid = true
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 	if spec.Stdout != nil {
