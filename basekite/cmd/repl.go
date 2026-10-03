@@ -42,13 +42,14 @@ func init() {
 }
 
 func startRepl(cmd *cobra.Command, args []string) error {
-	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+	// Create and populate variable store before sandboxing
+	// (allows the Go runtime to load defaults from ~/.starkite/config.yaml).
+	varStore, err := loadVarStore()
+	if err != nil {
 		return err
 	}
 
-	// Create and populate variable store
-	varStore, err := loadVarStore()
-	if err != nil {
+	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
 		return err
 	}
 

@@ -2,6 +2,8 @@ package sandbox
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -40,6 +42,37 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	b.WriteString("    (literal \"/dev/zero\")\n")
 	b.WriteString(")\n\n")
 
+	var isHomeOrRoot bool
+	cleanCwd := ""
+	cleanHome := ""
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		cleanHome = filepath.Clean(home)
+	}
+	if spec.Cwd != "" {
+		cleanCwd = filepath.Clean(spec.Cwd)
+		if cleanCwd == "/" || (cleanHome != "" && cleanCwd == cleanHome) {
+			isHomeOrRoot = true
+		}
+	}
+
+	// Container-parity isolation for home directory:
+	// Deny broad access to $HOME so sensitive files (~/.ssh, ~/.aws, etc.) are never exposed.
+	if cleanHome != "" {
+		b.WriteString(";; Container-parity isolation for home directory\n")
+		b.WriteString(fmt.Sprintf("(deny file-read* (subpath %q))\n", cleanHome))
+		b.WriteString(fmt.Sprintf("(deny file-write* (subpath %q))\n", cleanHome))
+
+		if !isHomeOrRoot {
+			if strings.HasPrefix(cleanCwd, cleanHome) {
+				b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", cleanCwd))
+				b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", cleanCwd))
+			}
+			starkiteDir := filepath.Join(cleanHome, ".starkite")
+			b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", starkiteDir))
+		}
+		b.WriteString("\n")
+	}
+
 	// Explicit writable mounts from ExecutionSpec
 	if len(spec.Mounts) > 0 {
 		b.WriteString(";; Spec Writable Mount Rules\n")
@@ -52,15 +85,26 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 				continue
 			}
 
+			cleanTarget := filepath.Clean(target)
+			if isHomeOrRoot && (cleanTarget == cleanHome || cleanTarget == "/") {
+				// Under container parity, omit host $HOME or / bind mount
+				continue
+			}
+
+			// If mount is inside $HOME, explicitly allow read
+			if cleanHome != "" && strings.HasPrefix(cleanTarget, cleanHome) {
+				b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", cleanTarget))
+			}
+
 			if m.Type == MountTmpfs || m.Mode == MountRW {
-				b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", target))
-				if target == "/tmp" {
+				b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", cleanTarget))
+				if cleanTarget == "/tmp" {
 					b.WriteString("(allow file-write* (subpath \"/private/tmp\"))\n")
 				}
-				if target == "/var" {
+				if cleanTarget == "/var" {
 					b.WriteString("(allow file-write* (subpath \"/private/var\"))\n")
 				}
-				if target == "/etc" {
+				if cleanTarget == "/etc" {
 					b.WriteString("(allow file-write* (subpath \"/private/etc\"))\n")
 				}
 			}
@@ -68,19 +112,28 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 		b.WriteString("\n")
 	}
 
-	// Working directory writable if specified
-	if spec.Cwd != "" {
+	// Target script file access: under container parity (especially if CWD == $HOME or /),
+	// allow reading only the script file itself.
+	if spec.ScriptFile != "" {
+		b.WriteString(";; Script File Access\n")
+		b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n\n", spec.ScriptFile))
+	}
+
+	// Working directory writable if specified and not HOME or root
+	if cleanCwd != "" && !isHomeOrRoot {
 		b.WriteString(";; Working Directory Access\n")
-		b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", spec.Cwd))
-		if strings.HasPrefix(spec.Cwd, "/var/") {
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", "/private"+spec.Cwd))
-		} else if strings.HasPrefix(spec.Cwd, "/private/var/") {
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", strings.TrimPrefix(spec.Cwd, "/private")))
+		if cleanHome == "" || !strings.HasPrefix(cleanCwd, cleanHome) {
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", cleanCwd))
 		}
-		if strings.HasPrefix(spec.Cwd, "/tmp/") {
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", "/private"+spec.Cwd))
-		} else if strings.HasPrefix(spec.Cwd, "/private/tmp/") {
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", strings.TrimPrefix(spec.Cwd, "/private")))
+		if strings.HasPrefix(cleanCwd, "/var/") {
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", "/private"+cleanCwd))
+		} else if strings.HasPrefix(cleanCwd, "/private/var/") {
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", strings.TrimPrefix(cleanCwd, "/private")))
+		}
+		if strings.HasPrefix(cleanCwd, "/tmp/") {
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", "/private"+cleanCwd))
+		} else if strings.HasPrefix(cleanCwd, "/private/tmp/") {
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", strings.TrimPrefix(cleanCwd, "/private")))
 		}
 		b.WriteString("\n")
 	}

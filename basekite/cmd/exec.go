@@ -37,17 +37,18 @@ func init() {
 func execCode(cmd *cobra.Command, args []string) error {
 	code := args[0]
 
-	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
-		return err
-	}
-
-	// Create and populate variable store
+	// Create and populate variable store before sandboxing
+	// (allows the Go runtime to load defaults from ~/.starkite/config.yaml).
 	varStore, err := loadVarStore()
 	if err != nil {
 		return &libkite.ScriptError{
 			Message:  err.Error(),
 			ExitCode: libkite.ExitConfigError,
 		}
+	}
+
+	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+		return err
 	}
 
 	// Create module config

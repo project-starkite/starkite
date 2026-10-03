@@ -84,23 +84,7 @@ func (d *LandlockDriver) Available() bool {
 
 // ValidateSpec verifies that the ExecutionSpec is valid for Landlock isolation.
 func (d *LandlockDriver) ValidateSpec(spec *ExecutionSpec) error {
-	if err := spec.Validate(); err != nil {
-		return err
-	}
-
-	// $HOME & root directory invariant guard (defeats Landlock's additive whitelist trap)
-	if !spec.AllowHomeCwd && spec.Cwd != "" {
-		home, err := os.UserHomeDir()
-		if err == nil && home != "" {
-			cleanCwd := filepath.Clean(spec.Cwd)
-			cleanHome := filepath.Clean(home)
-			if cleanCwd == cleanHome || cleanCwd == "/" {
-				return fmt.Errorf("sandbox: executing directly in %s is prohibited under Landlock (would expose sensitive files like ~/.ssh without denial subpaths); specify a dedicated workspace subdirectory or override with --allow-home-cwd", cleanCwd)
-			}
-		}
-	}
-
-	return nil
+	return spec.Validate()
 }
 
 // ApplyInProcess restricts the current process and all future children
@@ -163,9 +147,23 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		}
 	}
 
-	// Runtime asset baseline: inject read-only Landlock rules for ~/.starkite, script files, and mod.lock
+	var isHomeOrRoot bool
+	cleanCwd := ""
+	cleanHome := ""
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		starkiteDir := filepath.Join(home, ".starkite")
+		cleanHome = filepath.Clean(home)
+	}
+	if spec.Cwd != "" {
+		cleanCwd = filepath.Clean(spec.Cwd)
+		if cleanCwd == "/" || (cleanHome != "" && cleanCwd == cleanHome) {
+			isHomeOrRoot = true
+		}
+	}
+
+	// Runtime asset baseline: inject read-only Landlock rules for ~/.starkite, script files, and mod.lock
+	// Under container parity, if CWD == $HOME or /, the script sees NO other files in $HOME (~/.starkite is omitted).
+	if !isHomeOrRoot && cleanHome != "" {
+		starkiteDir := filepath.Join(cleanHome, ".starkite")
 		if _, statErr := os.Stat(starkiteDir); statErr == nil {
 			_ = addLandlockPathRule(int(rulesetFd), starkiteDir, readAccess)
 		}
@@ -192,25 +190,39 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		if target == "" {
 			continue
 		}
-		if _, statErr := os.Stat(target); statErr != nil {
+		cleanTarget := filepath.Clean(target)
+		if isHomeOrRoot && (cleanTarget == cleanHome || cleanTarget == "/") {
+			// Under container parity, omit host $HOME or / bind mount
+			continue
+		}
+		if _, statErr := os.Stat(cleanTarget); statErr != nil {
 			continue
 		}
 
 		if m.Mode == MountRW || m.Type == MountTmpfs {
-			if err := addLandlockPathRule(int(rulesetFd), target, writeAccess); err != nil {
-				return fmt.Errorf("sandbox: failed to add rw rule for %q: %w", target, err)
+			if err := addLandlockPathRule(int(rulesetFd), cleanTarget, writeAccess); err != nil {
+				return fmt.Errorf("sandbox: failed to add rw rule for %q: %w", cleanTarget, err)
 			}
 		} else {
-			if err := addLandlockPathRule(int(rulesetFd), target, readAccess); err != nil {
-				return fmt.Errorf("sandbox: failed to add ro rule for %q: %w", target, err)
+			if err := addLandlockPathRule(int(rulesetFd), cleanTarget, readAccess); err != nil {
+				return fmt.Errorf("sandbox: failed to add ro rule for %q: %w", cleanTarget, err)
 			}
 		}
 	}
 
-	// Working directory
-	if spec.Cwd != "" {
+	// Working directory: under container parity, omit $HOME or / to avoid
+	// granting broad Landlock additive access.
+	if spec.Cwd != "" && !isHomeOrRoot {
 		if err := addLandlockPathRule(int(rulesetFd), spec.Cwd, writeAccess); err != nil {
 			return fmt.Errorf("sandbox: failed to add cwd rule for %q: %w", spec.Cwd, err)
+		}
+	}
+
+	if isHomeOrRoot {
+		if cleanCwd == "/" {
+			fmt.Fprintln(os.Stderr, "sandbox: working directory is /; isolated to script file only. No other files in / are accessible.")
+		} else {
+			fmt.Fprintln(os.Stderr, "sandbox: working directory is $HOME; isolated to script file only. No other files in $HOME are accessible.")
 		}
 	}
 
@@ -296,6 +308,26 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	}
 
 	cmd := exec.CommandContext(execCtx, spec.Command[0], spec.Command[1:]...)
+
+	var isHomeOrRoot bool
+	cleanCwd := ""
+	cleanHome := ""
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		cleanHome = filepath.Clean(home)
+	}
+	if spec.Cwd != "" {
+		cleanCwd = filepath.Clean(spec.Cwd)
+		if cleanCwd == "/" || (cleanHome != "" && cleanCwd == cleanHome) {
+			isHomeOrRoot = true
+		}
+	}
+	if isHomeOrRoot && os.Getenv(InsideEnvVar) != "1" {
+		if cleanCwd == "/" {
+			fmt.Fprintln(os.Stderr, "sandbox: working directory is /; isolated to script file only. No other files in / are accessible.")
+		} else {
+			fmt.Fprintln(os.Stderr, "sandbox: working directory is $HOME; isolated to script file only. No other files in $HOME are accessible.")
+		}
+	}
 
 	if spec.Cwd != "" {
 		cmd.Dir = spec.Cwd

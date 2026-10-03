@@ -142,13 +142,6 @@ func runScript(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Sandbox handoff: if STARKITE_SECURITY_SANDBOX is set, hand the
-	// entire script execution to the OS-level sandbox backend and
-	// return its result.
-	if handled, err := MaybeHandoffToSandboxWithScript(context.Background(), scriptPath); handled || err != nil {
-		return err
-	}
-
 	// Read the resolved entry file.
 	content, err := os.ReadFile(scriptPath)
 	if err != nil {
@@ -158,13 +151,21 @@ func runScript(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Create and populate variable store
+	// Create and populate variable store before sandboxing
+	// (allows the Go runtime to load defaults from ~/.starkite/config.yaml).
 	varStore, err := loadVarStore()
 	if err != nil {
 		return &libkite.ScriptError{
 			Message:  err.Error(),
 			ExitCode: libkite.ExitConfigError,
 		}
+	}
+
+	// Sandbox handoff: if STARKITE_SECURITY_SANDBOX is set, hand the
+	// entire script execution to the OS-level sandbox backend and
+	// return its result.
+	if handled, err := MaybeHandoffToSandboxWithScript(context.Background(), scriptPath); handled || err != nil {
+		return err
 	}
 
 	if debugMode {

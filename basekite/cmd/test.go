@@ -111,12 +111,12 @@ func runTests(cmd *cobra.Command, args []string) error {
 		return runTestFilesInSandbox(testFiles)
 	}
 
-	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+	perms, err := GetPermissions()
+	if err != nil {
 		return err
 	}
 
-	perms, err := GetPermissions()
-	if err != nil {
+	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
 		return err
 	}
 

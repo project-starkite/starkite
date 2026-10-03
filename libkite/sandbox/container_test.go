@@ -167,6 +167,8 @@ func TestContainerDriver_LiveExec(t *testing.T) {
 					strings.Contains(lower, "failed to connect to the docker api") ||
 					strings.Contains(lower, "connection refused") ||
 					strings.Contains(lower, "cannot connect to the podman service") ||
+					strings.Contains(lower, "cannot connect to podman") ||
+					strings.Contains(lower, "unable to connect to podman") ||
 					strings.Contains(lower, "is the docker daemon running") ||
 					strings.Contains(lower, "pipe/docker_engine") ||
 					(runtime.GOOS == "windows" && exitCode != 0)

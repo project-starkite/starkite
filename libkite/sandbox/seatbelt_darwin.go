@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 	"unsafe"
@@ -75,6 +76,26 @@ func (d *SeatbeltDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		return errors.New("sandbox: seatbelt driver not available")
 	}
 
+	var isHomeOrRoot bool
+	cleanCwd := ""
+	cleanHome := ""
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		cleanHome = filepath.Clean(home)
+	}
+	if spec.Cwd != "" {
+		cleanCwd = filepath.Clean(spec.Cwd)
+		if cleanCwd == "/" || (cleanHome != "" && cleanCwd == cleanHome) {
+			isHomeOrRoot = true
+		}
+	}
+	if isHomeOrRoot {
+		if cleanCwd == "/" {
+			fmt.Fprintln(os.Stderr, "sandbox: working directory is /; isolated to script file only. No other files in / are accessible.")
+		} else {
+			fmt.Fprintln(os.Stderr, "sandbox: working directory is $HOME; isolated to script file only. No other files in $HOME are accessible.")
+		}
+	}
+
 	sbpl := GenerateSeatbeltSBPL(spec)
 	cProfile, err := stringToNullTerminatedBytes(sbpl)
 	if err != nil {
@@ -125,6 +146,26 @@ func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	} else {
 		args := append([]string{"-p", sbpl, "--"}, spec.Command...)
 		cmd = exec.CommandContext(execCtx, "/usr/bin/sandbox-exec", args...)
+	}
+
+	var isHomeOrRoot bool
+	cleanCwd := ""
+	cleanHome := ""
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		cleanHome = filepath.Clean(home)
+	}
+	if spec.Cwd != "" {
+		cleanCwd = filepath.Clean(spec.Cwd)
+		if cleanCwd == "/" || (cleanHome != "" && cleanCwd == cleanHome) {
+			isHomeOrRoot = true
+		}
+	}
+	if isHomeOrRoot && os.Getenv(InsideEnvVar) != "1" {
+		if cleanCwd == "/" {
+			fmt.Fprintln(os.Stderr, "sandbox: working directory is /; isolated to script file only. No other files in / are accessible.")
+		} else {
+			fmt.Fprintln(os.Stderr, "sandbox: working directory is $HOME; isolated to script file only. No other files in $HOME are accessible.")
+		}
 	}
 
 	if spec.Cwd != "" {

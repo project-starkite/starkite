@@ -116,56 +116,32 @@ func TestLandlockDriver_NetworkIsolationFailClosed(t *testing.T) {
 	}
 }
 
-func TestLandlockDriver_ValidateSpec_HomeGuard(t *testing.T) {
+func TestLandlockDriver_ValidateSpec_ContainerParity(t *testing.T) {
 	d := NewLandlockDriver()
 	home, err := os.UserHomeDir()
 	if err != nil || home == "" {
 		t.Skip("skipping test: os.UserHomeDir() unavailable")
 	}
 
-	// 1. Cwd == $HOME and AllowHomeCwd == false -> should fail
+	// 1. Cwd == $HOME -> should succeed (isolated to script file only under container parity)
 	specHome := &ExecutionSpec{
 		Command: []string{"/bin/true"},
 		Cwd:     home,
 	}
-	if err := d.ValidateSpec(specHome); err == nil {
-		t.Errorf("ValidateSpec with Cwd=HOME without AllowHomeCwd should fail, got nil")
-	} else if !strings.Contains(err.Error(), "prohibited under Landlock") {
-		t.Errorf("ValidateSpec error = %v, expected Landlock home prohibition", err)
+	if err := d.ValidateSpec(specHome); err != nil {
+		t.Errorf("ValidateSpec with Cwd=HOME should succeed under container parity, got: %v", err)
 	}
 
-	// 2. Cwd == "/" and AllowHomeCwd == false -> should fail
+	// 2. Cwd == "/" -> should succeed (isolated to script file only under container parity)
 	specRoot := &ExecutionSpec{
 		Command: []string{"/bin/true"},
 		Cwd:     "/",
 	}
-	if err := d.ValidateSpec(specRoot); err == nil {
-		t.Errorf("ValidateSpec with Cwd=/ without AllowHomeCwd should fail, got nil")
-	} else if !strings.Contains(err.Error(), "prohibited under Landlock") {
-		t.Errorf("ValidateSpec error = %v, expected Landlock home prohibition", err)
+	if err := d.ValidateSpec(specRoot); err != nil {
+		t.Errorf("ValidateSpec with Cwd=/ should succeed under container parity, got: %v", err)
 	}
 
-	// 3. Cwd == $HOME and AllowHomeCwd == true -> should succeed
-	specHomeAllowed := &ExecutionSpec{
-		Command:      []string{"/bin/true"},
-		Cwd:          home,
-		AllowHomeCwd: true,
-	}
-	if err := d.ValidateSpec(specHomeAllowed); err != nil {
-		t.Errorf("ValidateSpec with Cwd=HOME and AllowHomeCwd=true failed: %v", err)
-	}
-
-	// 4. Cwd == "/" and AllowHomeCwd == true -> should succeed
-	specRootAllowed := &ExecutionSpec{
-		Command:      []string{"/bin/true"},
-		Cwd:          "/",
-		AllowHomeCwd: true,
-	}
-	if err := d.ValidateSpec(specRootAllowed); err != nil {
-		t.Errorf("ValidateSpec with Cwd=/ and AllowHomeCwd=true failed: %v", err)
-	}
-
-	// 5. Cwd == subdirectory of $HOME and AllowHomeCwd == false -> should succeed
+	// 3. Cwd == subdirectory of $HOME -> should succeed
 	subDir := filepath.Join(home, "starkite-test-sandbox-sub")
 	specSub := &ExecutionSpec{
 		Command: []string{"/bin/true"},
