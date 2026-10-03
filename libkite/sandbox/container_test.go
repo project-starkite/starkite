@@ -2,6 +2,9 @@ package sandbox
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -72,6 +75,11 @@ func TestContainerDriver_BuildArgs(t *testing.T) {
 
 	expectedTokens := []string{
 		"run --rm -i",
+		"--cap-drop=ALL",
+		"--security-opt=no-new-privileges:true",
+		"--ipc=private",
+		"--uts=private",
+		"--read-only",
 		"--network=none",
 		"--workdir /workspace",
 		"-e GOOS=linux",
@@ -81,7 +89,7 @@ func TestContainerDriver_BuildArgs(t *testing.T) {
 		"--pids-limit=100",
 		"-v /host/src:/workspace:rw",
 		"-v /host/cache:/root/.cache:ro",
-		"--tmpfs=/tmp:rw,noexec,nosuid",
+		"--tmpfs=/tmp:rw,noexec,nosuid,nodev",
 		"--runtime=runsc",
 		"golang:1.24-alpine",
 		"go build -o app",
@@ -131,6 +139,129 @@ func TestContainerDriver_StarkiteImageEntrypoint(t *testing.T) {
 	expectedTail := "ghcr.io/project-starkite/starkite:latest run deploy.star --permissions=allow-net"
 	if !strings.HasSuffix(joined, expectedTail) {
 		t.Errorf("expected args to end with %q, got: %s", expectedTail, joined)
+	}
+}
+
+func TestContainerDriver_HardeningContract(t *testing.T) {
+	d := NewContainerDriver("docker", "/usr/bin/docker")
+
+	// 1. Verify default pids-limit=256 and default /tmp tmpfs when unconstrained
+	spec := &ExecutionSpec{
+		Command: []string{"test.star"},
+		Cwd:     "/workspace",
+	}
+
+	args := d.BuildArgs(spec)
+	joined := strings.Join(args, " ")
+
+	hardeningTokens := []string{
+		"--cap-drop=ALL",
+		"--security-opt=no-new-privileges:true",
+		"--ipc=private",
+		"--uts=private",
+		"--read-only",
+		"--pids-limit=256",
+		"--tmpfs=/tmp:rw,noexec,nosuid,nodev",
+	}
+
+	for _, token := range hardeningTokens {
+		if !strings.Contains(joined, token) {
+			t.Errorf("HardeningContract missing token %q in: %s", token, joined)
+		}
+	}
+
+	// 2. On Linux, verify --user=<uid>:<gid> is injected
+	if runtime.GOOS == "linux" {
+		expectedUser := fmt.Sprintf("--user=%d:%d", os.Getuid(), os.Getgid())
+		if !strings.Contains(joined, expectedUser) {
+			t.Errorf("expected Linux user flag %q in: %s", expectedUser, joined)
+		}
+	}
+}
+
+func TestContainerDriver_ContainerParity(t *testing.T) {
+	d := NewContainerDriver("docker", "/usr/bin/docker")
+
+	homeDir, err := os.UserHomeDir()
+	if err != nil || homeDir == "" {
+		t.Skip("skipping container parity test: cannot resolve UserHomeDir")
+	}
+
+	// Case 1: Cwd == $HOME -> omit $HOME bind mount, mount script file read-only
+	scriptPath := filepath.Join(homeDir, "script.star")
+	specHome := &ExecutionSpec{
+		Command:    []string{"script.star"},
+		Cwd:        homeDir,
+		ScriptFile: scriptPath,
+		Mounts: []Mount{
+			{
+				Source:      homeDir,
+				Destination: homeDir,
+				Type:        MountBind,
+				Mode:        MountRW,
+			},
+		},
+	}
+
+	argsHome := d.BuildArgs(specHome)
+	joinedHome := strings.Join(argsHome, " ")
+
+	// Ensure the full host $HOME bind mount is NOT in args
+	badMount := fmt.Sprintf("-v %s:%s:rw", homeDir, homeDir)
+	if strings.Contains(joinedHome, badMount) {
+		t.Errorf("container parity violation: host $HOME mount %q must be omitted when Cwd is $HOME", badMount)
+	}
+
+	// Ensure the script file is mounted read-only
+	expectedScriptMount := fmt.Sprintf("-v %s:%s:ro", scriptPath, scriptPath)
+	if !strings.Contains(joinedHome, expectedScriptMount) {
+		t.Errorf("container parity: expected script mount %q in args: %s", expectedScriptMount, joinedHome)
+	}
+
+	// Case 2: Cwd == "/" -> omit root mount, mount script file read-only
+	specRoot := &ExecutionSpec{
+		Command:    []string{"root.star"},
+		Cwd:        "/",
+		ScriptFile: "/root.star",
+		Mounts: []Mount{
+			{
+				Source:      "/",
+				Destination: "/",
+				Type:        MountBind,
+				Mode:        MountRW,
+			},
+		},
+	}
+
+	argsRoot := d.BuildArgs(specRoot)
+	joinedRoot := strings.Join(argsRoot, " ")
+
+	if strings.Contains(joinedRoot, "-v /:/:rw") {
+		t.Errorf("container parity violation: root mount -v /:/:rw must be omitted when Cwd is /")
+	}
+	if !strings.Contains(joinedRoot, "-v /root.star:/root.star:ro") {
+		t.Errorf("container parity: expected -v /root.star:/root.star:ro in args: %s", joinedRoot)
+	}
+
+	// Case 3: Cwd == "/workspace" (normal dir) -> keep normal mounts
+	specNormal := &ExecutionSpec{
+		Command: []string{"work.star"},
+		Cwd:     "/workspace",
+		Mounts: []Mount{
+			{
+				Source:      "/workspace",
+				Destination: "/workspace",
+				Type:        MountBind,
+				Mode:        MountRW,
+			},
+		},
+	}
+
+	argsNormal := d.BuildArgs(specNormal)
+	joinedNormal := strings.Join(argsNormal, " ")
+
+	if !strings.Contains(joinedNormal, "-v /workspace:/workspace:rw") {
+		t.Errorf("expected normal workspace mount to be preserved in args: %s", joinedNormal)
 	}
 }
 

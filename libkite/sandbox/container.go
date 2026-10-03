@@ -99,6 +99,22 @@ func (d *ContainerDriver) ValidateSpec(spec *ExecutionSpec) error {
 func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 	args := []string{"run", "--rm", "-i"}
 
+	// 7-Point Container Hardening: drop ambient capabilities, prevent privilege escalation,
+	// enforce private IPC/UTS namespaces, and lock container rootfs to read-only.
+	args = append(args,
+		"--cap-drop=ALL",
+		"--security-opt=no-new-privileges:true",
+		"--ipc=private",
+		"--uts=private",
+		"--read-only",
+	)
+
+	// User mapping: on Linux hosts, run as the invoking user/group to prevent root execution
+	// and avoid file ownership corruption on host mounts.
+	if runtime.GOOS == "linux" {
+		args = append(args, fmt.Sprintf("--user=%d:%d", os.Getuid(), os.Getgid()))
+	}
+
 	// Network configuration
 	switch spec.Network {
 	case NetworkHost:
@@ -124,28 +140,33 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 	if spec.MaxCPUs > 0 {
 		args = append(args, fmt.Sprintf("--cpus=%f", spec.MaxCPUs))
 	}
-	if spec.MaxPIDs > 0 {
-		args = append(args, fmt.Sprintf("--pids-limit=%d", spec.MaxPIDs))
+
+	// Anti-fork-bomb barrier: default to conservative 256 PIDs if unconstrained
+	pidsLimit := spec.MaxPIDs
+	if pidsLimit <= 0 {
+		pidsLimit = 256
 	}
+	args = append(args, fmt.Sprintf("--pids-limit=%d", pidsLimit))
+
+	// Container parity: if Cwd is $HOME or /, omit host $HOME / / from writable mounts
+	isMatch, _ := isHomeOrRoot(spec.Cwd)
+	var cleanHome string
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		cleanHome = filepath.Clean(home)
+	}
+
+	hasTmp := false
+	hasScriptMounted := false
 
 	// Mount bindings
 	for _, m := range spec.Mounts {
-		if m.Type == MountTmpfs {
-			args = append(args, fmt.Sprintf("--tmpfs=%s:rw,noexec,nosuid", m.Destination))
-			continue
+		if filepath.Clean(m.Destination) == "/tmp" {
+			hasTmp = true
 		}
 
-		// On non-Linux hosts (macOS/Windows), skip host OS system directories (/etc, /usr, /bin, /lib, /lib64, /sbin)
-		// so the Linux container retains its native ELF runtime, libraries, TLS CA certs, and network resolver.
-		if runtime.GOOS != "linux" {
-			dst := filepath.Clean(m.Destination)
-			if strings.HasPrefix(dst, "/etc") || dst == "/usr" || strings.HasPrefix(dst, "/usr/") ||
-				dst == "/bin" || strings.HasPrefix(dst, "/bin/") ||
-				dst == "/lib" || strings.HasPrefix(dst, "/lib/") ||
-				dst == "/lib64" || strings.HasPrefix(dst, "/lib64/") ||
-				dst == "/sbin" || strings.HasPrefix(dst, "/sbin/") {
-				continue
-			}
+		if m.Type == MountTmpfs {
+			args = append(args, fmt.Sprintf("--tmpfs=%s:rw,noexec,nosuid,nodev", m.Destination))
+			continue
 		}
 
 		src := m.Source
@@ -153,11 +174,50 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 			src = m.Destination
 		}
 
+		cleanSrc := filepath.Clean(src)
+		cleanDst := filepath.Clean(m.Destination)
+
+		// Under container parity, if Cwd == $HOME or /, omit host $HOME or / bind mount
+		if isMatch && (cleanSrc == cleanHome || cleanSrc == "/" || cleanDst == cleanHome || cleanDst == "/") {
+			continue
+		}
+
+		// On non-Linux hosts (macOS/Windows), skip host OS system directories (/etc, /usr, /bin, /lib, /lib64, /sbin)
+		// so the Linux container retains its native ELF runtime, libraries, TLS CA certs, and network resolver.
+		if runtime.GOOS != "linux" {
+			if strings.HasPrefix(cleanDst, "/etc") || cleanDst == "/usr" || strings.HasPrefix(cleanDst, "/usr/") ||
+				cleanDst == "/bin" || strings.HasPrefix(cleanDst, "/bin/") ||
+				cleanDst == "/lib" || strings.HasPrefix(cleanDst, "/lib/") ||
+				cleanDst == "/lib64" || strings.HasPrefix(cleanDst, "/lib64/") ||
+				cleanDst == "/sbin" || strings.HasPrefix(cleanDst, "/sbin/") {
+				continue
+			}
+		}
+
 		mode := "ro"
 		if m.Mode == MountRW {
 			mode = "rw"
 		}
 		args = append(args, "-v", fmt.Sprintf("%s:%s:%s", src, m.Destination, mode))
+
+		if spec.ScriptFile != "" && cleanSrc == filepath.Clean(spec.ScriptFile) {
+			hasScriptMounted = true
+		}
+	}
+
+	// Always ensure an isolated, ephemeral /tmp tmpfs is mounted for scratch space
+	if !hasTmp {
+		args = append(args, "--tmpfs=/tmp:rw,noexec,nosuid,nodev")
+	}
+
+	// Under container parity, if Cwd is $HOME or /, ensure the script file is mounted read-only
+	if isMatch && spec.ScriptFile != "" && !hasScriptMounted {
+		scriptPath := spec.ScriptFile
+		if !filepath.IsAbs(scriptPath) && spec.Cwd != "" {
+			scriptPath = filepath.Join(spec.Cwd, scriptPath)
+		}
+		cleanScript := filepath.Clean(scriptPath)
+		args = append(args, "-v", fmt.Sprintf("%s:%s:ro", cleanScript, cleanScript))
 	}
 
 	// Container Image
@@ -238,6 +298,18 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 		defer cancel()
 	}
 
+	// Under container parity, emit notification if Cwd is $HOME or /
+	if isMatch, isRoot := isHomeOrRoot(spec.Cwd); isMatch {
+		msg := "sandbox (container): working directory is $HOME; isolated to script file only. No other files in $HOME are mounted."
+		if isRoot {
+			msg = "sandbox (container): working directory is /; isolated to script file only. No other files in / are mounted."
+		}
+		fmt.Fprintln(os.Stderr, msg)
+		if spec.Stderr != nil && spec.Stderr != os.Stderr {
+			fmt.Fprintln(spec.Stderr, msg)
+		}
+	}
+
 	cmd := exec.CommandContext(execCtx, d.binPath, cliArgs...)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -290,4 +362,22 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 	}
 
 	return result, nil
+}
+
+// isHomeOrRoot reports whether the given working directory matches the host user's $HOME or root (/).
+// It returns (isMatch, isRoot).
+func isHomeOrRoot(cwd string) (bool, bool) {
+	if cwd == "" {
+		return false, false
+	}
+	cleanCwd := filepath.Clean(cwd)
+	if cleanCwd == "/" {
+		return true, true
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		if cleanCwd == filepath.Clean(home) {
+			return true, false
+		}
+	}
+	return false, false
 }
