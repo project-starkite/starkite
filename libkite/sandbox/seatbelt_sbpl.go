@@ -7,6 +7,13 @@ import (
 	"strings"
 )
 
+func cleanSBPLPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Clean(p))
+}
+
 // GenerateSeatbeltSBPL generates a macOS Sandbox Profile Language (SBPL)
 // configuration string from an ExecutionSpec.
 func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
@@ -46,10 +53,10 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	cleanCwd := ""
 	cleanHome := ""
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		cleanHome = filepath.Clean(home)
+		cleanHome = cleanSBPLPath(home)
 	}
 	if spec.Cwd != "" {
-		cleanCwd = filepath.Clean(spec.Cwd)
+		cleanCwd = cleanSBPLPath(spec.Cwd)
 		if cleanCwd == "/" || (cleanHome != "" && cleanCwd == cleanHome) {
 			isHomeOrRoot = true
 		}
@@ -67,7 +74,7 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 				b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", cleanCwd))
 				b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", cleanCwd))
 			}
-			starkiteDir := filepath.Join(cleanHome, ".starkite")
+			starkiteDir := cleanSBPLPath(filepath.Join(cleanHome, ".starkite"))
 			b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", starkiteDir))
 		}
 		b.WriteString("\n")
@@ -85,7 +92,7 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 				continue
 			}
 
-			cleanTarget := filepath.Clean(target)
+			cleanTarget := cleanSBPLPath(target)
 			if isHomeOrRoot && (cleanTarget == cleanHome || cleanTarget == "/") {
 				// Under container parity, omit host $HOME or / bind mount
 				continue
@@ -115,8 +122,9 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	// Target script file access: under container parity (especially if CWD == $HOME or /),
 	// allow reading only the script file itself.
 	if spec.ScriptFile != "" {
+		cleanScript := cleanSBPLPath(spec.ScriptFile)
 		b.WriteString(";; Script File Access\n")
-		b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n\n", spec.ScriptFile))
+		b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n\n", cleanScript))
 	}
 
 	// Working directory writable if specified and not HOME or root

@@ -87,13 +87,14 @@ func TestGenerateSeatbeltSBPL_NetworkModes(t *testing.T) {
 }
 
 func TestGenerateSeatbeltSBPL_ContainerParity(t *testing.T) {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
+	rawHome, err := os.UserHomeDir()
+	if err != nil || rawHome == "" {
 		t.Skip("skipping test: os.UserHomeDir() unavailable")
 	}
+	home := cleanSBPLPath(rawHome)
 
 	t.Run("home directory execution", func(t *testing.T) {
-		scriptFile := filepath.Join(home, "hello.star")
+		scriptFile := cleanSBPLPath(filepath.Join(home, "hello.star"))
 		spec := &ExecutionSpec{
 			Command:    []string{"kite", "run", scriptFile},
 			Cwd:        home,
@@ -113,7 +114,8 @@ func TestGenerateSeatbeltSBPL_ContainerParity(t *testing.T) {
 		if strings.Contains(sbpl, fmt.Sprintf("(allow file-write* (subpath %q))", home)) {
 			t.Errorf("home directory must not be granted write access")
 		}
-		if strings.Contains(sbpl, fmt.Sprintf("(allow file-read* (subpath %q))", filepath.Join(home, ".starkite"))) {
+		starkiteDir := cleanSBPLPath(filepath.Join(home, ".starkite"))
+		if strings.Contains(sbpl, fmt.Sprintf("(allow file-read* (subpath %q))", starkiteDir)) {
 			t.Errorf("~/.starkite must not be granted read access when Cwd is $HOME")
 		}
 
@@ -143,7 +145,7 @@ func TestGenerateSeatbeltSBPL_ContainerParity(t *testing.T) {
 	})
 
 	t.Run("subdirectory inside home", func(t *testing.T) {
-		subDir := filepath.Join(home, "projects", "demo")
+		subDir := cleanSBPLPath(filepath.Join(home, "projects", "demo"))
 		spec := &ExecutionSpec{
 			Command: []string{"kite", "run", "main.star"},
 			Cwd:     subDir,
@@ -164,7 +166,8 @@ func TestGenerateSeatbeltSBPL_ContainerParity(t *testing.T) {
 		}
 
 		// Must re-allow ~/.starkite for dependencies
-		if !strings.Contains(sbpl, fmt.Sprintf("(allow file-read* (subpath %q))", filepath.Join(home, ".starkite"))) {
+		starkiteDir := cleanSBPLPath(filepath.Join(home, ".starkite"))
+		if !strings.Contains(sbpl, fmt.Sprintf("(allow file-read* (subpath %q))", starkiteDir)) {
 			t.Errorf("expected ~/.starkite read allow in SBPL")
 		}
 	})
