@@ -100,12 +100,11 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 	args := []string{"run", "--rm", "-i"}
 
 	// 7-Point Container Hardening: drop ambient capabilities, prevent privilege escalation,
-	// enforce private IPC/UTS namespaces, and lock container rootfs to read-only.
+	// enforce private IPC namespace, and lock container rootfs to read-only.
 	args = append(args,
 		"--cap-drop=ALL",
 		"--security-opt=no-new-privileges:true",
 		"--ipc=private",
-		"--uts=private",
 		"--read-only",
 	)
 
@@ -178,7 +177,7 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 		cleanDst := filepath.Clean(m.Destination)
 
 		// Under container parity, if Cwd == $HOME or /, omit host $HOME or / bind mount
-		if isMatch && (cleanSrc == cleanHome || cleanSrc == "/" || cleanDst == cleanHome || cleanDst == "/") {
+		if isMatch && (cleanSrc == cleanHome || isRootPath(cleanSrc) || cleanDst == cleanHome || isRootPath(cleanDst)) {
 			continue
 		}
 
@@ -371,7 +370,7 @@ func isHomeOrRoot(cwd string) (bool, bool) {
 		return false, false
 	}
 	cleanCwd := filepath.Clean(cwd)
-	if cleanCwd == "/" {
+	if isRootPath(cleanCwd) {
 		return true, true
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
@@ -380,4 +379,10 @@ func isHomeOrRoot(cwd string) (bool, bool) {
 		}
 	}
 	return false, false
+}
+
+// isRootPath reports whether p represents a filesystem root ("/" or "\" on Windows).
+func isRootPath(p string) bool {
+	clean := filepath.Clean(p)
+	return clean == "/" || clean == `\`
 }

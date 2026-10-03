@@ -78,7 +78,6 @@ func TestContainerDriver_BuildArgs(t *testing.T) {
 		"--cap-drop=ALL",
 		"--security-opt=no-new-privileges:true",
 		"--ipc=private",
-		"--uts=private",
 		"--read-only",
 		"--network=none",
 		"--workdir /workspace",
@@ -158,7 +157,6 @@ func TestContainerDriver_HardeningContract(t *testing.T) {
 		"--cap-drop=ALL",
 		"--security-opt=no-new-privileges:true",
 		"--ipc=private",
-		"--uts=private",
 		"--read-only",
 		"--pids-limit=256",
 		"--tmpfs=/tmp:rw,noexec,nosuid,nodev",
@@ -236,11 +234,16 @@ func TestContainerDriver_ContainerParity(t *testing.T) {
 	argsRoot := d.BuildArgs(specRoot)
 	joinedRoot := strings.Join(argsRoot, " ")
 
-	if strings.Contains(joinedRoot, "-v /:/:rw") {
-		t.Errorf("container parity violation: root mount -v /:/:rw must be omitted when Cwd is /")
+	cleanRoot := filepath.Clean("/")
+	badRootMount := fmt.Sprintf("-v %s:%s:rw", cleanRoot, cleanRoot)
+	if strings.Contains(joinedRoot, badRootMount) {
+		t.Errorf("container parity violation: root mount %q must be omitted when Cwd is /", badRootMount)
 	}
-	if !strings.Contains(joinedRoot, "-v /root.star:/root.star:ro") {
-		t.Errorf("container parity: expected -v /root.star:/root.star:ro in args: %s", joinedRoot)
+
+	cleanRootScript := filepath.Clean("/root.star")
+	expectedRootScriptMount := fmt.Sprintf("-v %s:%s:ro", cleanRootScript, cleanRootScript)
+	if !strings.Contains(joinedRoot, expectedRootScriptMount) {
+		t.Errorf("container parity: expected %s in args: %s", expectedRootScriptMount, joinedRoot)
 	}
 
 	// Case 3: Cwd == "/workspace" (normal dir) -> keep normal mounts
