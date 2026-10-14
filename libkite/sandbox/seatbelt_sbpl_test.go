@@ -172,3 +172,71 @@ func TestGenerateSeatbeltSBPL_ContainerParity(t *testing.T) {
 		}
 	})
 }
+
+func TestGenerateSeatbeltSBPL_NoExecAndWX(t *testing.T) {
+	t.Run("no_exec true denies process-exec", func(t *testing.T) {
+		spec := &ExecutionSpec{
+			Command: []string{"/bin/echo", "hi"},
+			NoExec:  true,
+		}
+		sbpl := GenerateSeatbeltSBPL(spec)
+		if !strings.Contains(sbpl, "(deny process-exec)") {
+			t.Errorf("expected (deny process-exec) when NoExec=true, got:\n%s", sbpl)
+		}
+		if strings.Contains(sbpl, "(allow process-exec)") {
+			t.Errorf("unexpected (allow process-exec) when NoExec=true")
+		}
+	})
+
+	t.Run("allowed_exec_paths restricts process-exec", func(t *testing.T) {
+		spec := &ExecutionSpec{
+			Command:          []string{"/bin/echo", "hi"},
+			AllowedExecPaths: []string{"/bin/echo", "/usr/bin"},
+		}
+		sbpl := GenerateSeatbeltSBPL(spec)
+		if !strings.Contains(sbpl, "(deny process-exec)") {
+			t.Errorf("expected baseline (deny process-exec) when AllowedExecPaths is set")
+		}
+		if !strings.Contains(sbpl, `(allow process-exec (subpath "/bin/echo"))`) {
+			t.Errorf("expected allow process-exec for /bin/echo, got:\n%s", sbpl)
+		}
+		if !strings.Contains(sbpl, `(allow process-exec (subpath "/usr/bin"))`) {
+			t.Errorf("expected allow process-exec for /usr/bin, got:\n%s", sbpl)
+		}
+	})
+
+	t.Run("W^X and /dev/shm isolation", func(t *testing.T) {
+		spec := &ExecutionSpec{
+			Command: []string{"/bin/echo", "hi"},
+			Cwd:     "/workspace",
+			Mounts: []Mount{
+				{
+					Source:      "/dev/shm",
+					Destination: "/dev/shm",
+					Type:        MountBind,
+					Mode:        MountRW,
+				},
+				{
+					Destination: "/tmp",
+					Type:        MountTmpfs,
+					Mode:        MountRW,
+				},
+			},
+		}
+		sbpl := GenerateSeatbeltSBPL(spec)
+		for _, want := range []string{
+			`(deny file-read* (subpath "/dev/shm"))`,
+			`(deny file-write* (subpath "/dev/shm"))`,
+			`(deny process-exec (subpath "/tmp"))`,
+			`(deny process-exec (subpath "/private/tmp"))`,
+			`(deny process-exec (subpath "/workspace"))`,
+		} {
+			if !strings.Contains(sbpl, want) {
+				t.Errorf("missing expected SBPL rule %q in:\n%s", want, sbpl)
+			}
+		}
+		if strings.Contains(sbpl, `(allow file-write* (subpath "/dev/shm"))`) {
+			t.Errorf("/dev/shm must never be granted file-write* in SBPL")
+		}
+	})
+}

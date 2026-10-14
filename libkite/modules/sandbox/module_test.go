@@ -178,3 +178,43 @@ func TestParseMemory(t *testing.T) {
 		}
 	}
 }
+
+func TestSandboxModule_NoExecAndAllowedExecPaths(t *testing.T) {
+	m := New()
+	dict, _ := m.Load(&libkite.ModuleConfig{})
+	modVal := dict[string(ModuleName)].(starlark.HasAttrs)
+	thread := newTestThread()
+
+	configFn, _ := modVal.Attr("config")
+
+	kwargs := []starlark.Tuple{
+		{starlark.String("driver"), starlark.String("default")},
+		{starlark.String("no_exec"), starlark.True},
+		{starlark.String("allowed_exec_paths"), starlark.NewList([]starlark.Value{
+			starlark.String("/usr/bin/git"),
+			starlark.String("/bin/echo"),
+		})},
+	}
+
+	boxVal, err := starlark.Call(thread, configFn.(starlark.Callable), nil, kwargs)
+	if err != nil {
+		t.Fatalf("sandbox.config() error: %v", err)
+	}
+
+	box, ok := boxVal.(*Sandbox)
+	if !ok {
+		t.Fatalf("expected *Sandbox, got %T", boxVal)
+	}
+
+	if !box.noExec {
+		t.Errorf("expected box.noExec = true")
+	}
+	if len(box.allowedExecPaths) != 2 || box.allowedExecPaths[0] != "/usr/bin/git" || box.allowedExecPaths[1] != "/bin/echo" {
+		t.Errorf("unexpected box.allowedExecPaths: %v", box.allowedExecPaths)
+	}
+
+	noExecAttr, err := box.Attr("no_exec")
+	if err != nil || noExecAttr != starlark.True {
+		t.Errorf("box.Attr('no_exec') = %v (err=%v), want True", noExecAttr, err)
+	}
+}

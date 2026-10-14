@@ -159,8 +159,16 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 
 	// Mount bindings
 	for _, m := range spec.Mounts {
-		if filepath.Clean(m.Destination) == "/tmp" {
+		cleanDst := filepath.Clean(m.Destination)
+		if cleanDst == "/tmp" {
 			hasTmp = true
+		}
+
+		// Isolate shared memory (/dev/shm and /run/shm): container runs with --ipc=private,
+		// so omit any host /dev/shm or /run/shm bind/tmpfs overrides.
+		if cleanDst == "/dev/shm" || strings.HasPrefix(cleanDst, "/dev/shm/") ||
+			cleanDst == "/run/shm" || strings.HasPrefix(cleanDst, "/run/shm/") {
+			continue
 		}
 
 		if m.Type == MountTmpfs {
@@ -174,7 +182,10 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 		}
 
 		cleanSrc := filepath.Clean(src)
-		cleanDst := filepath.Clean(m.Destination)
+		if cleanSrc == "/dev/shm" || strings.HasPrefix(cleanSrc, "/dev/shm/") ||
+			cleanSrc == "/run/shm" || strings.HasPrefix(cleanSrc, "/run/shm/") {
+			continue
+		}
 
 		// Under container parity, if Cwd == $HOME or /, omit host $HOME or / bind mount
 		if isMatch && (cleanSrc == cleanHome || isRootPath(cleanSrc) || cleanDst == cleanHome || isRootPath(cleanDst)) {
@@ -240,18 +251,25 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 			}
 		} else if runtime.GOOS == "linux" && (image == "docker.io/library/alpine:latest" || image == "alpine:latest" || image == "alpine") {
 			// If host is Linux and a minimal base image (alpine) is used, bind-mount the host Linux binary
+			// when it is not a standard system binary already present in the container rootfs.
 			if filepath.IsAbs(command[0]) {
-				binPath := command[0]
-				if _, err := os.Stat(binPath); err == nil {
-					isMounted := false
-					for _, m := range spec.Mounts {
-						if m.Source == binPath || (m.Source != "" && strings.HasPrefix(binPath, m.Source)) {
-							isMounted = true
-							break
+				binPath := filepath.Clean(command[0])
+				isSystemBin := strings.HasPrefix(binPath, "/bin/") ||
+					strings.HasPrefix(binPath, "/sbin/") ||
+					strings.HasPrefix(binPath, "/usr/bin/") ||
+					strings.HasPrefix(binPath, "/usr/sbin/")
+				if !isSystemBin {
+					if _, err := os.Stat(binPath); err == nil {
+						isMounted := false
+						for _, m := range spec.Mounts {
+							if m.Source == binPath || (m.Source != "" && strings.HasPrefix(binPath, m.Source)) {
+								isMounted = true
+								break
+							}
 						}
-					}
-					if !isMounted {
-						args = append(args, "-v", fmt.Sprintf("%s:%s:ro", binPath, binPath))
+						if !isMounted {
+							args = append(args, "-v", fmt.Sprintf("%s:%s:ro", binPath, binPath))
+						}
 					}
 				}
 			}
@@ -281,10 +299,61 @@ func isKiteImage(img string) bool {
 	return strings.Contains(clean, "starkite") || strings.Contains(clean, "/kite:") || strings.HasSuffix(clean, "/kite")
 }
 
+// checkContainerExecPolicy enforces NoExec, AllowedExecPaths, and W^X on writable mounts
+// for containerized execution parity with Landlock and Seatbelt.
+func checkContainerExecPolicy(spec *ExecutionSpec) error {
+	if spec.NoExec {
+		return FormatPermissionError(os.ErrPermission, spec.Command[0], spec)
+	}
+	cmdBin := spec.Command[0]
+	if len(spec.AllowedExecPaths) > 0 {
+		cleanBin := filepath.Clean(cmdBin)
+		allowed := false
+		for _, p := range spec.AllowedExecPaths {
+			cleanP := filepath.Clean(p)
+			if cleanBin == cleanP || strings.HasPrefix(cleanBin, cleanP+"/") {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return FormatPermissionError(os.ErrPermission, cmdBin, spec)
+		}
+		return nil
+	}
+
+	// Check W^X on direct execution of a binary from a writable mount or /tmp
+	if strings.HasPrefix(cmdBin, "/") {
+		cleanBin := filepath.Clean(cmdBin)
+		if cleanBin == "/tmp" || strings.HasPrefix(cleanBin, "/tmp/") ||
+			cleanBin == "/private/tmp" || strings.HasPrefix(cleanBin, "/private/tmp/") {
+			return FormatPermissionError(os.ErrPermission, cmdBin, spec)
+		}
+		for _, m := range spec.Mounts {
+			if m.Mode == MountRW || m.Type == MountTmpfs {
+				dst := filepath.Clean(m.Destination)
+				src := filepath.Clean(m.Source)
+				if cleanBin == dst || strings.HasPrefix(cleanBin, dst+"/") ||
+					(m.Source != "" && (cleanBin == src || strings.HasPrefix(cleanBin, src+"/"))) {
+					return FormatPermissionError(os.ErrPermission, cmdBin, spec)
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // Exec executes the command inside an ephemeral container using the container engine CLI.
 func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecResult, error) {
 	if err := d.ValidateSpec(spec); err != nil {
 		return nil, err
+	}
+
+	if policyErr := checkContainerExecPolicy(spec); policyErr != nil {
+		return &ExecResult{
+			ExitCode: 126,
+			Stderr:   policyErr.Error() + "\n",
+		}, nil
 	}
 
 	start := time.Now()
@@ -355,9 +424,14 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 			if result.ExitCode == 137 && strings.Contains(strings.ToLower(result.Stderr), "oom") {
 				result.KilledByOOM = true
 			}
+			result.Stderr = enrichPermissionStderr(result.Stderr, spec)
 			return result, nil
 		}
-		return result, fmt.Errorf("sandbox: container execution failed: %w", err)
+		return result, FormatPermissionError(fmt.Errorf("sandbox: container execution failed: %w", err), spec.Command[0], spec)
+	}
+
+	if result.ExitCode != 0 {
+		result.Stderr = enrichPermissionStderr(result.Stderr, spec)
 	}
 
 	return result, nil

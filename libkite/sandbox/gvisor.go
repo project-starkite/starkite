@@ -96,6 +96,13 @@ func (d *GVisorDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecResu
 }
 
 func (d *GVisorDriver) execStandaloneRunsc(ctx context.Context, spec *ExecutionSpec) (*ExecResult, error) {
+	if policyErr := checkContainerExecPolicy(spec); policyErr != nil {
+		return &ExecResult{
+			ExitCode: 126,
+			Stderr:   policyErr.Error() + "\n",
+		}, nil
+	}
+
 	start := time.Now()
 
 	execCtx := ctx
@@ -159,9 +166,14 @@ func (d *GVisorDriver) execStandaloneRunsc(ctx context.Context, spec *ExecutionS
 	if err != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			result.ExitCode = exitErr.ExitCode()
+			result.Stderr = enrichPermissionStderr(result.Stderr, spec)
 			return result, nil
 		}
-		return result, fmt.Errorf("sandbox: gVisor runsc exec failed: %w", err)
+		return result, FormatPermissionError(fmt.Errorf("sandbox: gVisor runsc exec failed: %w", err), spec.Command[0], spec)
+	}
+
+	if result.ExitCode != 0 {
+		result.Stderr = enrichPermissionStderr(result.Stderr, spec)
 	}
 
 	return result, nil

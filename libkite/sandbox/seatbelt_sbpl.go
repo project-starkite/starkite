@@ -14,6 +14,36 @@ func cleanSBPLPath(p string) string {
 	return filepath.ToSlash(filepath.Clean(p))
 }
 
+func sbplPathVariants(p string) []string {
+	clean := cleanSBPLPath(p)
+	if clean == "" {
+		return nil
+	}
+	seen := map[string]bool{clean: true}
+	out := []string{clean}
+	add := func(cand string) {
+		c := cleanSBPLPath(cand)
+		if c != "" && !seen[c] {
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+
+	for _, prefix := range []string{"/tmp", "/var", "/etc"} {
+		if clean == prefix || strings.HasPrefix(clean, prefix+"/") {
+			add("/private" + clean)
+		}
+		privPrefix := "/private" + prefix
+		if clean == privPrefix || strings.HasPrefix(clean, privPrefix+"/") {
+			add(strings.TrimPrefix(clean, "/private"))
+		}
+	}
+	if resolved, err := filepath.EvalSymlinks(clean); err == nil {
+		add(resolved)
+	}
+	return out
+}
+
 // GenerateSeatbeltSBPL generates a macOS Sandbox Profile Language (SBPL)
 // configuration string from an ExecutionSpec.
 func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
@@ -25,7 +55,11 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 
 	// Standard process capabilities and system services
 	b.WriteString(";; Process execution and system capabilities\n")
-	b.WriteString("(allow process-exec)\n")
+	if spec.NoExec || len(spec.AllowedExecPaths) > 0 {
+		b.WriteString("(deny process-exec)\n")
+	} else {
+		b.WriteString("(allow process-exec)\n")
+	}
 	b.WriteString("(allow process-fork)\n")
 	b.WriteString("(allow signal (target self))\n")
 	b.WriteString("(allow sysctl-read)\n")
@@ -35,6 +69,13 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	b.WriteString(";; Host system library and binary access\n")
 	b.WriteString("(allow file-read*)\n")
 	b.WriteString("(allow file-read-metadata)\n\n")
+
+	// Shared memory (/dev/shm and /run/shm) isolation
+	b.WriteString(";; Shared memory (/dev/shm) isolation\n")
+	b.WriteString("(deny file-read* (subpath \"/dev/shm\"))\n")
+	b.WriteString("(deny file-write* (subpath \"/dev/shm\"))\n")
+	b.WriteString("(deny file-read* (subpath \"/run/shm\"))\n")
+	b.WriteString("(deny file-write* (subpath \"/run/shm\"))\n\n")
 
 	// Standard terminal and device handles
 	b.WriteString(";; Standard terminal, null/zero devices, and stdout/stderr pipes\n")
@@ -66,16 +107,22 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	// Deny broad access to $HOME so sensitive files (~/.ssh, ~/.aws, etc.) are never exposed.
 	if cleanHome != "" {
 		b.WriteString(";; Container-parity isolation for home directory\n")
-		b.WriteString(fmt.Sprintf("(deny file-read* (subpath %q))\n", cleanHome))
-		b.WriteString(fmt.Sprintf("(deny file-write* (subpath %q))\n", cleanHome))
+		for _, hVar := range sbplPathVariants(cleanHome) {
+			b.WriteString(fmt.Sprintf("(deny file-read* (subpath %q))\n", hVar))
+			b.WriteString(fmt.Sprintf("(deny file-write* (subpath %q))\n", hVar))
+		}
 
 		if !isHomeOrRoot {
 			if strings.HasPrefix(cleanCwd, cleanHome) {
-				b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", cleanCwd))
-				b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", cleanCwd))
+				for _, cwdVar := range sbplPathVariants(cleanCwd) {
+					b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", cwdVar))
+					b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", cwdVar))
+				}
 			}
 			starkiteDir := cleanSBPLPath(filepath.Join(cleanHome, ".starkite"))
-			b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", starkiteDir))
+			for _, stVar := range sbplPathVariants(starkiteDir) {
+				b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", stVar))
+			}
 		}
 		b.WriteString("\n")
 	}
@@ -93,30 +140,42 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 			}
 
 			cleanTarget := cleanSBPLPath(target)
+			cleanDst := cleanSBPLPath(m.Destination)
 			if isHomeOrRoot && (cleanTarget == cleanHome || cleanTarget == "/") {
 				// Under container parity, omit host $HOME or / bind mount
+				continue
+			}
+			if cleanTarget == "/dev/shm" || strings.HasPrefix(cleanTarget, "/dev/shm/") ||
+				cleanTarget == "/run/shm" || strings.HasPrefix(cleanTarget, "/run/shm/") ||
+				cleanDst == "/dev/shm" || strings.HasPrefix(cleanDst, "/dev/shm/") ||
+				cleanDst == "/run/shm" || strings.HasPrefix(cleanDst, "/run/shm/") {
 				continue
 			}
 
 			// If mount is inside $HOME, explicitly allow read
 			if cleanHome != "" && strings.HasPrefix(cleanTarget, cleanHome) {
-				b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", cleanTarget))
+				for _, variant := range sbplPathVariants(cleanTarget) {
+					b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", variant))
+				}
 			}
 
 			if m.Type == MountTmpfs || m.Mode == MountRW {
-				b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", cleanTarget))
-				if cleanTarget == "/tmp" {
-					b.WriteString("(allow file-write* (subpath \"/private/tmp\"))\n")
-				}
-				if cleanTarget == "/var" {
-					b.WriteString("(allow file-write* (subpath \"/private/var\"))\n")
-				}
-				if cleanTarget == "/etc" {
-					b.WriteString("(allow file-write* (subpath \"/private/etc\"))\n")
+				for _, variant := range sbplPathVariants(cleanTarget) {
+					b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", variant))
+					if !spec.NoExec {
+						b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", variant))
+					}
 				}
 			}
 		}
 		b.WriteString("\n")
+	}
+
+	// Write-XOR-Execute (W^X) baseline on /tmp and /private/tmp
+	if !spec.NoExec {
+		b.WriteString(";; Write-XOR-Execute (W^X) on scratch directories\n")
+		b.WriteString("(deny process-exec (subpath \"/tmp\"))\n")
+		b.WriteString("(deny process-exec (subpath \"/private/tmp\"))\n\n")
 	}
 
 	// Target script file access: under container parity (especially if CWD == $HOME or /),
@@ -124,7 +183,10 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	if spec.ScriptFile != "" {
 		cleanScript := cleanSBPLPath(spec.ScriptFile)
 		b.WriteString(";; Script File Access\n")
-		b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n\n", cleanScript))
+		for _, sVar := range sbplPathVariants(cleanScript) {
+			b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", sVar))
+		}
+		b.WriteString("\n")
 	}
 
 	// Working directory writable if specified and not HOME or root
@@ -133,15 +195,51 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 		if cleanHome == "" || !strings.HasPrefix(cleanCwd, cleanHome) {
 			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", cleanCwd))
 		}
+		if !spec.NoExec {
+			b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", cleanCwd))
+		}
 		if strings.HasPrefix(cleanCwd, "/var/") {
 			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", "/private"+cleanCwd))
+			if !spec.NoExec {
+				b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", "/private"+cleanCwd))
+			}
 		} else if strings.HasPrefix(cleanCwd, "/private/var/") {
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", strings.TrimPrefix(cleanCwd, "/private")))
+			trimmed := strings.TrimPrefix(cleanCwd, "/private")
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", trimmed))
+			if !spec.NoExec {
+				b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", trimmed))
+			}
 		}
 		if strings.HasPrefix(cleanCwd, "/tmp/") {
 			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", "/private"+cleanCwd))
+			if !spec.NoExec {
+				b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", "/private"+cleanCwd))
+			}
 		} else if strings.HasPrefix(cleanCwd, "/private/tmp/") {
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", strings.TrimPrefix(cleanCwd, "/private")))
+			trimmed := strings.TrimPrefix(cleanCwd, "/private")
+			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", trimmed))
+			if !spec.NoExec {
+				b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", trimmed))
+			}
+		}
+		b.WriteString("\n")
+	}
+
+	// Explicit executable allowlist when AllowedExecPaths is specified and NoExec is false
+	if !spec.NoExec && len(spec.AllowedExecPaths) > 0 {
+		b.WriteString(";; Allowed Executable Paths\n")
+		for _, p := range spec.AllowedExecPaths {
+			cleanP := cleanSBPLPath(p)
+			if cleanP == "" {
+				continue
+			}
+			b.WriteString(fmt.Sprintf("(allow process-exec (subpath %q))\n", cleanP))
+			if resolved, evalErr := filepath.EvalSymlinks(cleanP); evalErr == nil {
+				cleanResolved := cleanSBPLPath(resolved)
+				if cleanResolved != "" && cleanResolved != cleanP {
+					b.WriteString(fmt.Sprintf("(allow process-exec (subpath %q))\n", cleanResolved))
+				}
+			}
 		}
 		b.WriteString("\n")
 	}

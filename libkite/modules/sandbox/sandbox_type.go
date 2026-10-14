@@ -16,19 +16,21 @@ import (
 
 // Sandbox is a Starlark value representing a configured sandbox isolation container.
 type Sandbox struct {
-	driverName  string
-	driver      sandbox.Driver
-	image       string
-	network     sandbox.NetworkMode
-	mounts      []sandbox.Mount
-	maxMemoryMB int64
-	maxCPUs     float64
-	maxPIDs     int64
-	timeout     time.Duration
-	env         []string
-	cwd         string
-	runtime     string
-	frozen      bool
+	driverName       string
+	driver           sandbox.Driver
+	image            string
+	network          sandbox.NetworkMode
+	mounts           []sandbox.Mount
+	maxMemoryMB      int64
+	maxCPUs          float64
+	maxPIDs          int64
+	timeout          time.Duration
+	env              []string
+	cwd              string
+	runtime          string
+	noExec           bool
+	allowedExecPaths []string
+	frozen           bool
 }
 
 var (
@@ -63,6 +65,14 @@ func (s *Sandbox) Attr(name string) (starlark.Value, error) {
 		return starlark.String(s.timeout.String()), nil
 	case "cwd":
 		return starlark.String(s.cwd), nil
+	case "no_exec":
+		return starlark.Bool(s.noExec), nil
+	case "allowed_exec_paths":
+		elems := make([]starlark.Value, len(s.allowedExecPaths))
+		for i, p := range s.allowedExecPaths {
+			elems[i] = starlark.String(p)
+		}
+		return starlark.NewList(elems), nil
 	case "exec":
 		return starlark.NewBuiltin("Sandbox.exec", s.boxExec), nil
 	default:
@@ -71,7 +81,7 @@ func (s *Sandbox) Attr(name string) (starlark.Value, error) {
 }
 
 func (s *Sandbox) AttrNames() []string {
-	names := []string{"cpus", "cwd", "driver", "exec", "image", "memory", "network", "timeout"}
+	names := []string{"allowed_exec_paths", "cpus", "cwd", "driver", "exec", "image", "memory", "network", "no_exec", "timeout"}
 	sort.Strings(names)
 	return names
 }
@@ -161,17 +171,19 @@ func (s *Sandbox) boxExec(thread *starlark.Thread, fn *starlark.Builtin, args st
 	}
 
 	spec := &sandbox.ExecutionSpec{
-		Command:     commandList,
-		Cwd:         execCwd,
-		Env:         envList,
-		Network:     s.network,
-		Mounts:      s.mounts,
-		MaxMemoryMB: s.maxMemoryMB,
-		MaxCPUs:     s.maxCPUs,
-		MaxPIDs:     s.maxPIDs,
-		Timeout:     execTimeout,
-		Image:       s.image,
-		Runtime:     s.runtime,
+		Command:          commandList,
+		Cwd:              execCwd,
+		Env:              envList,
+		Network:          s.network,
+		Mounts:           s.mounts,
+		MaxMemoryMB:      s.maxMemoryMB,
+		MaxCPUs:          s.maxCPUs,
+		MaxPIDs:          s.maxPIDs,
+		Timeout:          execTimeout,
+		Image:            s.image,
+		Runtime:          s.runtime,
+		NoExec:           s.noExec,
+		AllowedExecPaths: s.allowedExecPaths,
 	}
 
 	ctx := context.Background()

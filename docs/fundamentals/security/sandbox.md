@@ -84,9 +84,17 @@ sandbox:
     base: net-access
     driver: podman             # Optional: binds a default driver to this profile
 
-  # Custom named profiles
+  # Strictly confined script profile with no subprocess execution
+  strict:
+    base: opaque
+    no_exec: true              # Blocks all subprocess execution (execve)
+
+  # Custom named profile with targeted binary execution allowlist
   dev:
     base: host                 # Inherits host settings
+    allowed_exec_paths:        # Restricts execution to specific binaries
+      - /bin/echo
+      - /usr/bin/git
     mounts:
       - source: $HOME/.cache
         destination: $HOME/.cache
@@ -106,6 +114,33 @@ Execute with custom profiles:
 ```bash
 kite run ./build.star --sandbox-profile ci-builder --sandbox-driver podman  # CLI driver overrides profile default
 ```
+
+## Security Invariants & Confinement
+
+Starkite sandbox drivers enforce four core security invariants across native OS and container runtimes.
+
+### Write-XOR-Execute (W^X)
+
+To prevent code injection and dynamic binary dropping, all writable locations—including `$CWD`, `/tmp`, and any bind mount with `mode: rw`—are mounted with `noexec` access rights. Scripts cannot generate a binary or script file inside a writable scratch directory and then execute it directly as a subprocess. Binaries must reside on immutable, read-only system paths or explicitly mounted read-only directories.
+
+### Subprocess Execution Lockdown
+
+You can constrain or completely eliminate subprocess execution within a sandbox:
+
+- **`no_exec` (boolean)**: Completely disables process execution. Any attempt to invoke a subprocess (`SYS_EXECVE`/`SYS_EXECVEAT` in Linux Seccomp-BPF or `process-exec` in macOS Seatbelt) immediately fails with an execution policy denial.
+- **`allowed_exec_paths` (list of strings)**: Restricts executable paths to an allowlist of absolute binary paths. Spawning any binary outside this list is denied.
+
+### Shared Memory & IPC Isolation
+
+Host shared memory segments (`/dev/shm` and `/run/shm`) and System V IPC primitives (`shmget`, `semget`, `msgget`) present cross-process attack surfaces. Starkite isolates shared memory across all drivers:
+
+- **Landlock & Seccomp-BPF**: System V IPC syscalls are denied by the in-process Seccomp-BPF filter, and `/dev/shm` paths are excluded from Landlock rulesets.
+- **Seatbelt**: macOS SBPL profiles deny POSIX and System V shared memory descriptors.
+- **Containers**: Container runtimes are launched with `--ipc=private`, preventing access to the host's IPC namespace.
+
+### Process Inspection & Signal Boundary
+
+On Linux, the Seccomp-BPF filter is installed unconditionally across all profiles, including the `host` profile and `network: host`. The filter prevents sandboxed processes from inspecting or tampering with host processes (`SYS_PTRACE`, `SYS_PROCESS_VM_READV`, `SYS_PROCESS_VM_WRITEV`) and forbids sending signals (`SYS_KILL`) to processes outside the sandbox process tree.
 
 ## Container Driver Execution & Image Packaging
 
@@ -134,18 +169,25 @@ In addition to CLI-level process isolation, Starkite provides a built-in `sandbo
 # Query host driver
 driver = sandbox.default_driver()
 
-# Create a configured sandbox instance
+# Create a configured sandbox instance with execution gating
 box = sandbox.config(
     driver="auto",
     network="host",
+    no_exec=False,
+    allowed_exec_paths=["/bin/echo", "/usr/bin/git"],
     mounts=[
         {"source": ".", "destination": "/workspace", "mode": "rw"},
     ],
     timeout="30s",
 )
 
+# Inspect configuration attributes
+if box.no_exec:
+    print("Subprocess execution is disabled")
+print("Permitted binaries:", box.allowed_exec_paths)
+
 # Run commands within the sandbox
-result = box.exec("echo hello-from-sandbox")
+result = box.exec("echo", ["hello-from-sandbox"])
 if result.ok:
     print(result.stdout)
 else:
@@ -171,6 +213,16 @@ When running inside an active parent sandbox (e.g. via `kite run --sandbox-opaqu
 $$\text{Effective Permissions} = \text{Parent Permissions} \cap \text{Requested Permissions}$$
 
 If an outer sandbox has `network: none`, child sandboxes cannot request `network: host`.
+
+## Actionable Denial Diagnostics
+
+When the sandbox intercepts an unauthorized operation, Starkite formats the error with context identifying the active policy constraint:
+
+- **`denied by no_exec policy`**: The profile or sandbox configuration set `no_exec: true`, preventing all child process execution.
+- **`denied by allowed_exec_paths policy`**: The requested executable is not in the configured `allowed_exec_paths` allowlist.
+- **`denied by W^X noexec policy (binary resides on a writable mount or /tmp)`**: The command attempted to execute a file located within a writable mount or temporary directory. Relocate the binary to a read-only path or run it through an allowlisted system interpreter.
+- **`denied by shared memory (/dev/shm) isolation policy`**: Direct access to host shared memory files was blocked.
+- **`denied by home directory isolation policy`**: When running with `$CWD` set to `$HOME` or root (`/`), sibling files in the home directory are isolated and inaccessible to protect credentials.
 
 ## Combining Sandboxing with Permissions
 

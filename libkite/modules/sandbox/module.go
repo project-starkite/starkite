@@ -55,20 +55,22 @@ func (m *Module) Aliases() starlark.StringDict { return nil }
 func (m *Module) FactoryMethod() string        { return "config" }
 
 // sandboxConfig creates a new configured Sandbox instance.
-// Usage: sandbox.config(driver="default", image="", network="none", mounts=[], memory="512MB", cpus=2.0, pids=100, timeout="30s", env=[], cwd="", runtime="")
+// Usage: sandbox.config(driver="default", image="", network="none", mounts=[], memory="512MB", cpus=2.0, pids=100, timeout="30s", env=[], cwd="", runtime="", no_exec=False, allowed_exec_paths=[])
 func (m *Module) sandboxConfig(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
-		Driver  string         `name:"driver"`
-		Image   string         `name:"image"`
-		Network string         `name:"network"`
-		Mounts  starlark.Value `name:"mounts"`
-		Memory  starlark.Value `name:"memory"`
-		CPUs    float64        `name:"cpus"`
-		PIDs    int64          `name:"pids"`
-		Timeout starlark.Value `name:"timeout"`
-		Env     starlark.Value `name:"env"`
-		Cwd     string         `name:"cwd"`
-		Runtime string         `name:"runtime"`
+		Driver           string         `name:"driver"`
+		Image            string         `name:"image"`
+		Network          string         `name:"network"`
+		Mounts           starlark.Value `name:"mounts"`
+		Memory           starlark.Value `name:"memory"`
+		CPUs             float64        `name:"cpus"`
+		PIDs             int64          `name:"pids"`
+		Timeout          starlark.Value `name:"timeout"`
+		Env              starlark.Value `name:"env"`
+		Cwd              string         `name:"cwd"`
+		Runtime          string         `name:"runtime"`
+		NoExec           bool           `name:"no_exec"`
+		AllowedExecPaths starlark.Value `name:"allowed_exec_paths"`
 	}
 	p.Driver = sandbox.DriverDefault
 	p.Network = string(sandbox.NetworkNone)
@@ -133,19 +135,46 @@ func (m *Module) sandboxConfig(thread *starlark.Thread, fn *starlark.Builtin, ar
 		}
 	}
 
+	// Parse allowed_exec_paths
+	var allowedExecPaths []string
+	if p.AllowedExecPaths != nil && p.AllowedExecPaths != starlark.None {
+		switch v := p.AllowedExecPaths.(type) {
+		case *starlark.List:
+			for i := 0; i < v.Len(); i++ {
+				s, ok := starlark.AsString(v.Index(i))
+				if !ok {
+					return nil, fmt.Errorf("sandbox.config: allowed_exec_paths element %d is not a string", i)
+				}
+				allowedExecPaths = append(allowedExecPaths, s)
+			}
+		case starlark.Tuple:
+			for i, elem := range v {
+				s, ok := starlark.AsString(elem)
+				if !ok {
+					return nil, fmt.Errorf("sandbox.config: allowed_exec_paths element %d is not a string", i)
+				}
+				allowedExecPaths = append(allowedExecPaths, s)
+			}
+		default:
+			return nil, fmt.Errorf("sandbox.config: allowed_exec_paths must be list or tuple, got %s", p.AllowedExecPaths.Type())
+		}
+	}
+
 	return &Sandbox{
-		driverName:  driver.Name(),
-		driver:      driver,
-		image:       p.Image,
-		network:     sandbox.NetworkMode(p.Network),
-		mounts:      parsedMounts,
-		maxMemoryMB: maxMemMB,
-		maxCPUs:     p.CPUs,
-		maxPIDs:     p.PIDs,
-		timeout:     parsedTimeout,
-		env:         envStrings,
-		cwd:         p.Cwd,
-		runtime:     p.Runtime,
+		driverName:       driver.Name(),
+		driver:           driver,
+		image:            p.Image,
+		network:          sandbox.NetworkMode(p.Network),
+		mounts:           parsedMounts,
+		maxMemoryMB:      maxMemMB,
+		maxCPUs:          p.CPUs,
+		maxPIDs:          p.PIDs,
+		timeout:          parsedTimeout,
+		env:              envStrings,
+		cwd:              p.Cwd,
+		runtime:          p.Runtime,
+		noExec:           p.NoExec,
+		allowedExecPaths: allowedExecPaths,
 	}, nil
 }
 
@@ -235,17 +264,19 @@ func (m *Module) runScript(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	spec := &sandbox.ExecutionSpec{
-		Command:     cmdArgs,
-		Cwd:         scriptDir,
-		Env:         append(box.env, fmt.Sprintf("%s=1", sandbox.InsideEnvVar)),
-		Network:     box.network,
-		Mounts:      box.mounts,
-		MaxMemoryMB: box.maxMemoryMB,
-		MaxCPUs:     box.maxCPUs,
-		MaxPIDs:     box.maxPIDs,
-		Timeout:     box.timeout,
-		Image:       box.image,
-		Runtime:     box.runtime,
+		Command:          cmdArgs,
+		Cwd:              scriptDir,
+		Env:              append(box.env, fmt.Sprintf("%s=1", sandbox.InsideEnvVar)),
+		Network:          box.network,
+		Mounts:           box.mounts,
+		MaxMemoryMB:      box.maxMemoryMB,
+		MaxCPUs:          box.maxCPUs,
+		MaxPIDs:          box.maxPIDs,
+		Timeout:          box.timeout,
+		Image:            box.image,
+		Runtime:          box.runtime,
+		NoExec:           box.noExec,
+		AllowedExecPaths: box.allowedExecPaths,
 	}
 
 	ctx := context.Background()

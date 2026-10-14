@@ -217,9 +217,14 @@ func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	if err != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			result.ExitCode = exitErr.ExitCode()
+			result.Stderr = enrichPermissionStderr(result.Stderr, spec)
 			return result, nil
 		}
-		return result, fmt.Errorf("sandbox: seatbelt exec failed: %w", err)
+		return result, FormatPermissionError(fmt.Errorf("sandbox: seatbelt exec failed: %w", err), spec.Command[0], spec)
+	}
+
+	if result.ExitCode != 0 {
+		result.Stderr = enrichPermissionStderr(result.Stderr, spec)
 	}
 
 	return result, nil

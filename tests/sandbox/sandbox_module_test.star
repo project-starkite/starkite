@@ -15,11 +15,15 @@ def test_sandbox_config():
         driver="default",
         memory="256MB",
         network="none",
-        timeout="10s"
+        timeout="10s",
+        no_exec=True,
+        allowed_exec_paths=["/bin/echo", "/usr/bin/git"]
     )
     assert(box.driver != "", "driver should not be empty")
     assert(box.network == "none", "network should be none")
     assert(box.memory == 256, "memory should be 256MB")
+    assert(box.no_exec == True, "no_exec should be True")
+    assert(len(box.allowed_exec_paths) == 2, "allowed_exec_paths should have 2 entries")
 
 def test_box_exec():
     """Verify box.exec runs a basic command and captures output"""
@@ -38,4 +42,3 @@ def test_box_exec_network_none():
         assert("isolated" in res.stdout, "stdout should contain isolated")
     else:
         assert("network isolation" in res.error, "failure should report network isolation failure")
-

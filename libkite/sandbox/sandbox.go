@@ -138,13 +138,15 @@ type Mount struct {
 // built-ins live as .yaml files in libkite/sandbox/profiles/ and are
 // embedded via go:embed.
 type Profile struct {
-	Name        string        // empty for "no sandbox"
-	Driver      string        // driver name: "default", "podman", "docker", "landlock", "seatbelt", etc.
-	Image       string        // container image (for container/podman/docker drivers)
-	Network     NetworkMode   // none | host | loopback
-	Mounts      []Mount       // filesystem mount list
-	MaxMemoryMB int64         // memory limit in megabytes (0 = unconstrained)
-	Timeout     time.Duration // execution timeout (0 = unconstrained)
+	Name             string        // empty for "no sandbox"
+	Driver           string        // driver name: "default", "podman", "docker", "landlock", "seatbelt", etc.
+	Image            string        // container image (for container/podman/docker drivers)
+	Network          NetworkMode   // none | host | loopback
+	Mounts           []Mount       // filesystem mount list
+	MaxMemoryMB      int64         // memory limit in megabytes (0 = unconstrained)
+	Timeout          time.Duration // execution timeout (0 = unconstrained)
+	NoExec           bool          // disable subprocess execution inside the sandbox
+	AllowedExecPaths []string      // explicit allowlist of executable paths
 }
 
 // IsZero reports whether the profile is the empty value, i.e. the caller

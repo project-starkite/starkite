@@ -806,3 +806,54 @@ sandbox:
 		t.Errorf("p.Network = %v, want host (inherited from base)", p.Network)
 	}
 }
+
+func TestDecodeProfile_NoExecAndAllowedExecPaths(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	work := t.TempDir()
+	writeFile(t, filepath.Join(work, "config.yaml"), `
+sandbox:
+  locked:
+    base: opaque
+    no_exec: true
+  allowlisted:
+    network: none
+    allowed_exec_paths:
+      - /usr/bin/git
+      - $CWD/bin/tool
+  bad-exec-path:
+    network: none
+    allowed_exec_paths:
+      - relative/bin
+`)
+	t.Chdir(work)
+	cwd, _ := os.Getwd()
+
+	pLocked, err := LoadProfile("locked")
+	if err != nil {
+		t.Fatalf("LoadProfile(locked): %v", err)
+	}
+	if !pLocked.NoExec {
+		t.Errorf("expected NoExec=true on locked profile")
+	}
+
+	pAllow, err := LoadProfile("allowlisted")
+	if err != nil {
+		t.Fatalf("LoadProfile(allowlisted): %v", err)
+	}
+	if len(pAllow.AllowedExecPaths) != 2 {
+		t.Fatalf("len(AllowedExecPaths) = %d, want 2", len(pAllow.AllowedExecPaths))
+	}
+	if pAllow.AllowedExecPaths[0] != "/usr/bin/git" {
+		t.Errorf("AllowedExecPaths[0] = %q, want /usr/bin/git", pAllow.AllowedExecPaths[0])
+	}
+	wantTool := filepath.Join(cwd, "bin", "tool")
+	if pAllow.AllowedExecPaths[1] != wantTool {
+		t.Errorf("AllowedExecPaths[1] = %q, want %q", pAllow.AllowedExecPaths[1], wantTool)
+	}
+
+	if _, err := LoadProfile("bad-exec-path"); err == nil || !strings.Contains(err.Error(), "must be an absolute path") {
+		t.Errorf("expected relative allowed_exec_paths to fail validation, got: %v", err)
+	}
+}

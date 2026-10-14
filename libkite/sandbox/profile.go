@@ -65,13 +65,15 @@ func (ps *profileSpec) UnmarshalYAML(node *yaml.Node) error {
 // the same decoder parses both embedded and user-defined profiles. Base,
 // when set, names a built-in rung the body composes on top of.
 type profileBody struct {
-	Base      string      `yaml:"base,omitempty"`
-	Driver    string      `yaml:"driver,omitempty"`
-	Image     string      `yaml:"image,omitempty"`
-	Network   string      `yaml:"network,omitempty"`
-	MaxMemory string      `yaml:"max_memory,omitempty"`
-	Timeout   string      `yaml:"timeout,omitempty"`
-	Mounts    []mountSpec `yaml:"mounts,omitempty"`
+	Base             string      `yaml:"base,omitempty"`
+	Driver           string      `yaml:"driver,omitempty"`
+	Image            string      `yaml:"image,omitempty"`
+	Network          string      `yaml:"network,omitempty"`
+	MaxMemory        string      `yaml:"max_memory,omitempty"`
+	Timeout          string      `yaml:"timeout,omitempty"`
+	NoExec           *bool       `yaml:"no_exec,omitempty"`
+	AllowedExecPaths []string    `yaml:"allowed_exec_paths,omitempty"`
+	Mounts           []mountSpec `yaml:"mounts,omitempty"`
 }
 
 // mountSpec is the YAML form of a single mount entry. Defaults applied
@@ -154,6 +156,19 @@ func decodeProfile(name string, data []byte, origin string) (Profile, error) {
 			return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
 		}
 		p.Timeout = dur
+	}
+
+	if body.NoExec != nil {
+		p.NoExec = *body.NoExec
+	}
+
+	for i, rawPath := range body.AllowedExecPaths {
+		expanded := expandPath(rawPath, cwd, home)
+		if expanded == "" || !isHostAbs(expanded) {
+			return Profile{}, fmt.Errorf("sandbox: profile %q%s: allowed_exec_paths[%d]: %q must be an absolute path",
+				name, fmtOrigin(origin), i, rawPath)
+		}
+		p.AllowedExecPaths = append(p.AllowedExecPaths, expanded)
 	}
 
 	switch body.Network {
@@ -262,12 +277,14 @@ func composeProfile(name string, body profileBody, origin string) (Profile, erro
 	}
 
 	p := Profile{
-		Name:        name,
-		Driver:      base.Driver,
-		Image:       base.Image,
-		Network:     base.Network,
-		MaxMemoryMB: base.MaxMemoryMB,
-		Timeout:     base.Timeout,
+		Name:             name,
+		Driver:           base.Driver,
+		Image:            base.Image,
+		Network:          base.Network,
+		MaxMemoryMB:      base.MaxMemoryMB,
+		Timeout:          base.Timeout,
+		NoExec:           base.NoExec,
+		AllowedExecPaths: append([]string(nil), base.AllowedExecPaths...),
 	}
 
 	if body.Driver != "" {
@@ -293,6 +310,9 @@ func composeProfile(name string, body profileBody, origin string) (Profile, erro
 		}
 		p.Timeout = dur
 	}
+	if body.NoExec != nil {
+		p.NoExec = *body.NoExec
+	}
 
 	switch body.Network {
 	case "":
@@ -312,6 +332,18 @@ func composeProfile(name string, body profileBody, origin string) (Profile, erro
 		return Profile{}, fmt.Errorf("sandbox: profile %q: getwd: %w", name, err)
 	}
 	home, _ := os.UserHomeDir()
+
+	if len(body.AllowedExecPaths) > 0 {
+		p.AllowedExecPaths = nil
+		for i, rawPath := range body.AllowedExecPaths {
+			expanded := expandPath(rawPath, cwd, home)
+			if expanded == "" || !isHostAbs(expanded) {
+				return Profile{}, fmt.Errorf("sandbox: profile %q%s: allowed_exec_paths[%d]: %q must be an absolute path",
+					name, fmtOrigin(origin), i, rawPath)
+			}
+			p.AllowedExecPaths = append(p.AllowedExecPaths, expanded)
+		}
+	}
 
 	var added []Mount
 	for i, m := range body.Mounts {

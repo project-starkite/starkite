@@ -500,18 +500,20 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 
 	cwd, _ := os.Getwd()
 	spec := &sandbox.ExecutionSpec{
-		Command:     os.Args,
-		Cwd:         cwd,
-		Env:         os.Environ(),
-		Network:     profile.Network,
-		Mounts:      profile.Mounts,
-		MaxMemoryMB: profile.MaxMemoryMB,
-		Timeout:     profile.Timeout,
-		Image:       profile.Image,
-		ScriptFile:  scriptPath,
-		Stdin:       os.Stdin,
-		Stdout:      os.Stdout,
-		Stderr:      os.Stderr,
+		Command:          os.Args,
+		Cwd:              cwd,
+		Env:              os.Environ(),
+		Network:          profile.Network,
+		Mounts:           profile.Mounts,
+		MaxMemoryMB:      profile.MaxMemoryMB,
+		Timeout:          profile.Timeout,
+		Image:            profile.Image,
+		ScriptFile:       scriptPath,
+		NoExec:           profile.NoExec,
+		AllowedExecPaths: profile.AllowedExecPaths,
+		Stdin:            os.Stdin,
+		Stdout:           os.Stdout,
+		Stderr:           os.Stderr,
 	}
 
 	// Case 1: In-process native driver (e.g. Landlock on Linux, Seatbelt on macOS)
