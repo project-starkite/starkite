@@ -87,7 +87,7 @@ func FormatPermissionError(err error, targetPath string, spec *ExecutionSpec) er
 		return fmt.Errorf("sandbox: subprocess execution denied by no_exec policy: %w", err)
 	}
 	if targetPath != "" {
-		cleanTarget := filepath.Clean(targetPath)
+		cleanTarget := filepath.ToSlash(filepath.Clean(targetPath))
 		if cleanTarget == "/dev/shm" || strings.HasPrefix(cleanTarget, "/dev/shm/") ||
 			cleanTarget == "/run/shm" || strings.HasPrefix(cleanTarget, "/run/shm/") {
 			return fmt.Errorf("sandbox: access to %q denied by shared memory (/dev/shm) isolation: %w", targetPath, err)
@@ -97,8 +97,8 @@ func FormatPermissionError(err error, targetPath string, spec *ExecutionSpec) er
 			return fmt.Errorf("sandbox: execution or access of %q denied on writable scratch mount (W^X noexec policy): %w", targetPath, err)
 		}
 		for _, m := range spec.Mounts {
-			dst := filepath.Clean(m.Destination)
-			src := filepath.Clean(m.Source)
+			dst := filepath.ToSlash(filepath.Clean(m.Destination))
+			src := filepath.ToSlash(filepath.Clean(m.Source))
 			if (m.Mode == MountRW || m.Type == MountTmpfs) &&
 				(cleanTarget == dst || strings.HasPrefix(cleanTarget, dst+"/") ||
 					(m.Source != "" && (cleanTarget == src || strings.HasPrefix(cleanTarget, src+"/")))) {
@@ -106,8 +106,8 @@ func FormatPermissionError(err error, targetPath string, spec *ExecutionSpec) er
 			}
 		}
 		if home, homeErr := os.UserHomeDir(); homeErr == nil && home != "" {
-			cleanHome := filepath.Clean(home)
-			if cleanTarget == cleanHome || strings.HasPrefix(cleanTarget, cleanHome+string(filepath.Separator)) {
+			cleanHome := filepath.ToSlash(filepath.Clean(home))
+			if cleanTarget == cleanHome || strings.HasPrefix(cleanTarget, cleanHome+"/") {
 				return fmt.Errorf("sandbox: access to %q denied by home directory isolation ($HOME is not mounted by default; add an explicit mount in your sandbox profile): %w", targetPath, err)
 			}
 		}

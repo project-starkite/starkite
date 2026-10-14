@@ -118,6 +118,7 @@ func TestFormatPermissionError_Attribution(t *testing.T) {
 func isContainerDaemonUnavailable(errMsg string, exitCode int) bool {
 	lower := strings.ToLower(errMsg)
 	return strings.Contains(lower, "no matching manifest for windows") ||
+		strings.Contains(lower, "not supported for windows containers") ||
 		strings.Contains(lower, "docker_engine") ||
 		strings.Contains(lower, "daemon is running") ||
 		strings.Contains(lower, "cannot connect to the docker daemon") ||
@@ -244,6 +245,14 @@ func TestCrossDriverParitySuite(t *testing.T) {
 				res, err := d.Exec(context.Background(), wxSpec)
 				if err == nil && res != nil && res.ExitCode == 0 {
 					t.Fatalf("[%s] W^X parity violation: executing %q from writable mount succeeded! stdout=%q", drvName, payload, res.Stdout)
+				}
+				if isContainer && res != nil && isContainerDaemonUnavailable(res.Stderr, res.ExitCode) {
+					t.Logf("[%s] container daemon unavailable for W^X check: %s", drvName, res.Stderr)
+					return
+				}
+				if isContainer && err != nil && isContainerDaemonUnavailable(err.Error(), 125) {
+					t.Logf("[%s] container daemon unavailable for W^X check: %v", drvName, err)
+					return
 				}
 				if res != nil && !strings.Contains(res.Stderr, "W^X") && !strings.Contains(strings.ToLower(res.Stderr), "permission denied") && !strings.Contains(strings.ToLower(res.Stderr), "not permitted") {
 					t.Errorf("[%s] expected W^X diagnostic in stderr, got: %q", drvName, res.Stderr)

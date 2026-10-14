@@ -159,7 +159,7 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 
 	// Mount bindings
 	for _, m := range spec.Mounts {
-		cleanDst := filepath.Clean(m.Destination)
+		cleanDst := filepath.ToSlash(filepath.Clean(m.Destination))
 		if cleanDst == "/tmp" {
 			hasTmp = true
 		}
@@ -181,7 +181,7 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 			src = m.Destination
 		}
 
-		cleanSrc := filepath.Clean(src)
+		cleanSrc := filepath.ToSlash(filepath.Clean(src))
 		if cleanSrc == "/dev/shm" || strings.HasPrefix(cleanSrc, "/dev/shm/") ||
 			cleanSrc == "/run/shm" || strings.HasPrefix(cleanSrc, "/run/shm/") {
 			continue
@@ -323,20 +323,18 @@ func checkContainerExecPolicy(spec *ExecutionSpec) error {
 	}
 
 	// Check W^X on direct execution of a binary from a writable mount or /tmp
-	if strings.HasPrefix(cmdBin, "/") {
-		cleanBin := filepath.Clean(cmdBin)
-		if cleanBin == "/tmp" || strings.HasPrefix(cleanBin, "/tmp/") ||
-			cleanBin == "/private/tmp" || strings.HasPrefix(cleanBin, "/private/tmp/") {
-			return FormatPermissionError(os.ErrPermission, cmdBin, spec)
-		}
-		for _, m := range spec.Mounts {
-			if m.Mode == MountRW || m.Type == MountTmpfs {
-				dst := filepath.Clean(m.Destination)
-				src := filepath.Clean(m.Source)
-				if cleanBin == dst || strings.HasPrefix(cleanBin, dst+"/") ||
-					(m.Source != "" && (cleanBin == src || strings.HasPrefix(cleanBin, src+"/"))) {
-					return FormatPermissionError(os.ErrPermission, cmdBin, spec)
-				}
+	cleanBin := filepath.ToSlash(filepath.Clean(cmdBin))
+	if cleanBin == "/tmp" || strings.HasPrefix(cleanBin, "/tmp/") ||
+		cleanBin == "/private/tmp" || strings.HasPrefix(cleanBin, "/private/tmp/") {
+		return FormatPermissionError(os.ErrPermission, cmdBin, spec)
+	}
+	for _, m := range spec.Mounts {
+		if m.Mode == MountRW || m.Type == MountTmpfs {
+			dst := filepath.ToSlash(filepath.Clean(m.Destination))
+			src := filepath.ToSlash(filepath.Clean(m.Source))
+			if cleanBin == dst || strings.HasPrefix(cleanBin, dst+"/") ||
+				(m.Source != "" && (cleanBin == src || strings.HasPrefix(cleanBin, src+"/"))) {
+				return FormatPermissionError(os.ErrPermission, cmdBin, spec)
 			}
 		}
 	}
