@@ -151,7 +151,7 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 	isMatch, _ := isHomeOrRoot(spec.Cwd)
 	var cleanHome string
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		cleanHome = filepath.Clean(home)
+		cleanHome = filepath.ToSlash(filepath.Clean(home))
 	}
 
 	hasTmp := false
@@ -441,20 +441,20 @@ func isHomeOrRoot(cwd string) (bool, bool) {
 	if cwd == "" {
 		return false, false
 	}
-	cleanCwd := filepath.Clean(cwd)
+	cleanCwd := filepath.ToSlash(filepath.Clean(cwd))
 	if isRootPath(cleanCwd) {
 		return true, true
 	}
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		if cleanCwd == filepath.Clean(home) {
+		if cleanCwd == filepath.ToSlash(filepath.Clean(home)) {
 			return true, false
 		}
 	}
 	return false, false
 }
 
-// isRootPath reports whether p represents a filesystem root ("/" or "\" on Windows).
+// isRootPath reports whether p represents a filesystem root ("/" or "\" or "C:/" on Windows).
 func isRootPath(p string) bool {
-	clean := filepath.Clean(p)
-	return clean == "/" || clean == `\`
+	clean := filepath.ToSlash(filepath.Clean(p))
+	return clean == "/" || clean == `\` || (len(clean) == 3 && clean[1] == ':' && clean[2] == '/')
 }
