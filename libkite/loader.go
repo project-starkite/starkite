@@ -163,9 +163,16 @@ func isPathRef(ref string) bool {
 // this is what makes a locked build reproducible. Without a lock entry it falls
 // back to the single installed revision; multiple revisions are ambiguous and
 // require a mod.lock to disambiguate, and none is "not installed".
+func isSafeModuleSegment(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	return !strings.ContainsAny(s, "/\\@\x00") && !strings.Contains(s, "..")
+}
+
 func (rt *Runtime) resolveInstalledModule(module string) (string, error) {
 	ns, name, ok := strings.Cut(module, "/")
-	if !ok {
+	if !ok || !isSafeModuleSegment(ns) || !isSafeModuleSegment(name) {
 		return "", fmt.Errorf("module %q not found", module)
 	}
 	home, err := os.UserHomeDir()
@@ -176,8 +183,16 @@ func (rt *Runtime) resolveInstalledModule(module string) (string, error) {
 
 	if lock := rt.activeLock(); lock != nil {
 		if locked, ok := lock.Modules[module]; ok && locked.Rev != "" {
+			if !isSafeModuleSegment(locked.Rev) {
+				return "", fmt.Errorf("module %q has invalid locked revision %q", module, locked.Rev)
+			}
 			dir := filepath.Join(nsDir, name+"@"+locked.Rev)
 			if isModuleDir(dir) {
+				if locked.Hash != "" {
+					if err := VerifyTree(dir, locked.Hash); err != nil {
+						return "", fmt.Errorf("module %q failed integrity verification: %w", module, err)
+					}
+				}
 				return dir, nil
 			}
 			return "", fmt.Errorf("module %q is locked to revision %s, which is not installed; resolve dependencies (kite run on the owning module) or reinstall it", module, locked.Rev)

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -144,13 +145,27 @@ func promptPasswordIfNeeded(c *SSHClient, prompt bool) (string, error) {
 	return "", nil
 }
 
+// isSafeUsername checks that a username contains only safe POSIX username characters.
+func isSafeUsername(u string) bool {
+	if u == "" {
+		return false
+	}
+	for i, r := range u {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || (i > 0 && (r == '-' || r == '$')) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 // buildCopyIdCommand generates a robust, idempotent shell script for key installation.
 func buildCopyIdCommand(pubKey string, asUser string) string {
 	encodedKey := base64.StdEncoding.EncodeToString([]byte(strings.TrimSpace(pubKey)))
 
 	homeSetup := ""
 	chownSetup := ""
-	if asUser != "" {
+	if asUser != "" && isSafeUsername(asUser) {
 		homeSetup = fmt.Sprintf(`USER_HOME=$(eval echo ~%s 2>/dev/null)
 if [ -n "${USER_HOME}" ] && [ -d "${USER_HOME}" ]; then
     TARGET_HOME="${USER_HOME}"
@@ -193,6 +208,17 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 		return nil, err
 	}
 
+	for _, h := range c.hosts {
+		if err := libkite.Check(thread, "ssh", "connect", "copy_id", h); err != nil {
+			return nil, err
+		}
+	}
+	if c.jumpHost != "" {
+		if err := libkite.Check(thread, "ssh", "connect", "copy_id", c.jumpHost); err != nil {
+			return nil, err
+		}
+	}
+
 	// 1. Resolve Public Key
 	pubKey, err := resolvePublicKey(p.Key, c.useAgent)
 	if err != nil {
@@ -218,6 +244,9 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 	if asUser == "" {
 		asUser = c.user
 	}
+	if asUser != "" && !isSafeUsername(asUser) {
+		return nil, fmt.Errorf("ssh.copy_id: invalid username %q", asUser)
+	}
 	sudo := p.Sudo || c.defaultSudo
 
 	// 2. Pre-flight Key Check (if check_first / check_authorized / key_check is enabled)
@@ -230,14 +259,16 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 			var jc *jumpConfig
 			if c.jumpHost != "" {
 				jc = &jumpConfig{
-					Host:       c.jumpHost,
-					Port:       c.jumpPort,
-					User:       c.jumpUser,
-					Key:        c.jumpKeyFile,
-					Passphrase: c.jumpKeyPassphrase,
-					Password:   c.jumpPassword,
-					UseAgent:   c.jumpUseAgent,
-					Prompt:     c.jumpPrompt,
+					Host:           c.jumpHost,
+					Port:           c.jumpPort,
+					User:           c.jumpUser,
+					Key:            c.jumpKeyFile,
+					Passphrase:     c.jumpKeyPassphrase,
+					Password:       c.jumpPassword,
+					UseAgent:       c.jumpUseAgent,
+					Prompt:         c.jumpPrompt,
+					HostKeyCheck:   c.jumpHostKeyCheck,
+					KnownHostsFile: c.jumpKnownHostsFile,
 				}
 			}
 

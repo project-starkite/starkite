@@ -101,6 +101,19 @@ func (m *Module) sshKeygen(thread *starlark.Thread, fn *starlark.Builtin, args s
 		return nil, err
 	}
 
+	if err := libkite.Check(thread, "ssh", "connect", "keygen", p.Path); err != nil {
+		return nil, err
+	}
+	if p.Path != "" {
+		expanded, err := expandPath(p.Path)
+		if err != nil {
+			return nil, fmt.Errorf("ssh.keygen: %w", err)
+		}
+		if err := libkite.Check(thread, "fs", "write", "keygen", libkite.CanonicalizePath(expanded)); err != nil {
+			return nil, err
+		}
+	}
+
 	kp, err := GenerateKeyPairWithOptions(KeyGenOptions{
 		Type:       p.Type,
 		Bits:       p.Bits,
@@ -685,7 +698,7 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 			}
 		}
 	}
-	client.dryRun = p.DryRun
+	client.dryRun = p.DryRun || (m.config != nil && m.config.DryRun)
 
 	return client, nil
 }

@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/project-starkite/starkite/libkite"
 )
 
 func TestResolveExecTarget(t *testing.T) {
@@ -14,15 +16,17 @@ func TestResolveExecTarget(t *testing.T) {
 
 	t.Run("absolute path is returned cleaned", func(t *testing.T) {
 		got := resolveExecTarget("/usr/bin/kubectl apply -f x", "", nil)
-		if got != "/usr/bin/kubectl" {
-			t.Errorf("got %q, want /usr/bin/kubectl", got)
+		want := libkite.CanonicalizePath("/usr/bin/kubectl")
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
 		}
 	})
 
 	t.Run("relative path resolves against workDir", func(t *testing.T) {
 		got := resolveExecTarget("./build.sh --all", "/home/alice/proj", nil)
-		if got != "/home/alice/proj/build.sh" {
-			t.Errorf("got %q, want /home/alice/proj/build.sh", got)
+		want := libkite.CanonicalizePath("/home/alice/proj/build.sh")
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
 		}
 	})
 
@@ -33,8 +37,9 @@ func TestResolveExecTarget(t *testing.T) {
 			t.Fatal(err)
 		}
 		got := resolveExecTarget("mytool --version", "", map[string]string{"PATH": dir})
-		if got != bin {
-			t.Errorf("got %q, want %q", got, bin)
+		want := libkite.CanonicalizePath(bin)
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
 		}
 	})
 

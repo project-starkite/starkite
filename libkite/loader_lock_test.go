@@ -46,8 +46,12 @@ func TestResolveInstalledModuleLockAware(t *testing.T) {
 	writeCacheModule(t, home, "acme", "leaf", "bbbb2222")
 
 	t.Run("lock pins the revision over a newer cached one", func(t *testing.T) {
+		hashA, err := HashModuleTree(revA)
+		if err != nil {
+			t.Fatalf("HashModuleTree: %v", err)
+		}
 		entry := entryWithLock(t, map[string]LockedModule{
-			"acme/leaf": {Source: "x", Rev: "aaaa1111", Hash: "sha256:x"},
+			"acme/leaf": {Source: "x", Rev: "aaaa1111", Hash: hashA},
 		})
 		rt := &Runtime{config: &Config{ScriptPath: entry}}
 		got, err := rt.resolveInstalledModule("acme/leaf")
@@ -56,6 +60,16 @@ func TestResolveInstalledModuleLockAware(t *testing.T) {
 		}
 		if got != revA {
 			t.Errorf("got %q, want locked revision %q", got, revA)
+		}
+	})
+
+	t.Run("lock rejects tampered cached revision hash", func(t *testing.T) {
+		entry := entryWithLock(t, map[string]LockedModule{
+			"acme/leaf": {Source: "x", Rev: "aaaa1111", Hash: "sha256:tampered"},
+		})
+		rt := &Runtime{config: &Config{ScriptPath: entry}}
+		if _, err := rt.resolveInstalledModule("acme/leaf"); err == nil {
+			t.Error("expected integrity verification error for tampered hash")
 		}
 	})
 

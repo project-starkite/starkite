@@ -533,3 +533,69 @@ func TestParseRule_EmptyFuncInList(t *testing.T) {
 		t.Errorf("Resource = %q, want literal ,foo:*", rule.Resource)
 	}
 }
+
+func TestRuleMatches_EmptyResourceBypassBlocked(t *testing.T) {
+	checker, err := NewPermissionChecker(&PermissionConfig{
+		Allow:   []string{"http.server(127.0.0.1:8080)"},
+		Default: DefaultDeny,
+	})
+	if err != nil {
+		t.Fatalf("NewPermissionChecker: %v", err)
+	}
+	if err := checker.Check("http", "server", "serve", ""); err == nil {
+		t.Fatal("resource-scoped allow rule must not grant call with empty resource")
+	}
+	if err := checker.Check("http", "server", "serve", "127.0.0.1:8080"); err != nil {
+		t.Fatalf("expected exact resource to be allowed: %v", err)
+	}
+}
+
+func TestMatchDoublestar_MultiWildcardAndAnchoring(t *testing.T) {
+	cases := []struct {
+		pattern string
+		path    string
+		want    bool
+	}{
+		{"/work/**", "/work/a/b/c.txt", true},
+		{"/work/**", "/work-other/a.txt", false},
+		{"/**/secret/**", "/a/b/secret/c/key.pem", true},
+		{"/**/secret/**", "/a/b/public/c/key.pem", false},
+		{"/var/**/log/*.log", "/var/a/b/log/app.log", true},
+		{"/var/**/log/*.log", "/var/a/b/log/app.txt", false},
+		{"sqlite:**", "sqlite:/tmp/test.db", true},
+		{"sqlite:**", "postgres://localhost/db", false},
+	}
+	for _, tc := range cases {
+		if got := matchDoublestar(tc.pattern, tc.path); got != tc.want {
+			t.Errorf("matchDoublestar(%q, %q) = %v, want %v", tc.pattern, tc.path, got, tc.want)
+		}
+	}
+}
+
+func TestCanonicalizePath_SymlinkEscapeBlocked(t *testing.T) {
+	allowedDir := t.TempDir()
+	outsideDir := t.TempDir()
+
+	escapeLink := filepath.Join(allowedDir, "escape")
+	if err := os.Symlink(outsideDir, escapeLink); err != nil {
+		t.Skipf("symlink not supported: %v", err)
+	}
+
+	checker, err := NewPermissionChecker(&PermissionConfig{
+		Allow:   []string{"fs.write(" + filepath.ToSlash(allowedDir) + "/**)"},
+		Default: DefaultDeny,
+	})
+	if err != nil {
+		t.Fatalf("NewPermissionChecker: %v", err)
+	}
+
+	safeTarget := CanonicalizePath(filepath.Join(allowedDir, "sub", "file.txt"))
+	if err := checker.Check("fs", "write", "write", safeTarget); err != nil {
+		t.Fatalf("expected path inside allowedDir to succeed: %v", err)
+	}
+
+	escapedTarget := CanonicalizePath(filepath.Join(escapeLink, "pwned.txt"))
+	if err := checker.Check("fs", "write", "write", escapedTarget); err == nil {
+		t.Fatalf("expected symlink escape %q -> %q to be blocked", filepath.Join(escapeLink, "pwned.txt"), escapedTarget)
+	}
+}

@@ -71,13 +71,7 @@ func (m *Module) FactoryMethod() string { return "path" }
 // operation and the path shown to the user keep the original value; only the
 // permission resource is normalized.
 func checkPath(path string) string {
-	if path == "" {
-		return path
-	}
-	if abs, err := filepath.Abs(path); err == nil {
-		return abs
-	}
-	return path
+	return libkite.CanonicalizePath(path)
 }
 
 // pathFactory creates a new Path object.

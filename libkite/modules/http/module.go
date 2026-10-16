@@ -286,7 +286,7 @@ func (m *Module) requestHelper(method string, hasBody bool, thread *starlark.Thr
 	}
 
 	u := &URL{rawURL: urlStr, thread: thread, module: m}
-	return u.doRequest(method, hasBody, args[1:], kwargs)
+	return u.doRequest(thread, method, hasBody, args[1:], kwargs)
 }
 
 // getFn implements http.get(url, headers=None, timeout=None).

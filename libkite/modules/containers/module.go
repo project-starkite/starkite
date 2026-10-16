@@ -61,6 +61,9 @@ func (m *Module) ensureDefaultClient(thread *starlark.Thread) (*Client, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.cachedClient != nil {
+		if err := libkite.Check(thread, "containers", "connect", "default", m.cachedClient.socketPath); err != nil {
+			return nil, err
+		}
 		return m.cachedClient, nil
 	}
 

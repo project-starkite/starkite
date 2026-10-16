@@ -103,6 +103,12 @@ func (m *Module) configFactory(thread *starlark.Thread, fn *starlark.Builtin, ar
 		return nil, err
 	}
 
+	if p.Kubeconfig != "" {
+		if err := libkite.Check(thread, "fs", "read", "kubeconfig", libkite.CanonicalizePath(p.Kubeconfig)); err != nil {
+			return nil, err
+		}
+	}
+
 	return newK8sClient(thread, m.config, clientOptions{
 		contextName:   p.Context,
 		namespace:     p.Namespace,

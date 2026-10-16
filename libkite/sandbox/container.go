@@ -306,8 +306,12 @@ func checkContainerExecPolicy(spec *ExecutionSpec) error {
 		return FormatPermissionError(os.ErrPermission, spec.Command[0], spec)
 	}
 	cmdBin := spec.Command[0]
+	resolvedBin := cmdBin
+	if !filepath.IsAbs(resolvedBin) && spec.Cwd != "" && (strings.ContainsRune(resolvedBin, filepath.Separator) || strings.HasPrefix(resolvedBin, ".")) {
+		resolvedBin = filepath.Join(spec.Cwd, resolvedBin)
+	}
 	if len(spec.AllowedExecPaths) > 0 {
-		cleanBin := filepath.Clean(cmdBin)
+		cleanBin := filepath.Clean(resolvedBin)
 		allowed := false
 		for _, p := range spec.AllowedExecPaths {
 			cleanP := filepath.Clean(p)
@@ -323,7 +327,7 @@ func checkContainerExecPolicy(spec *ExecutionSpec) error {
 	}
 
 	// Check W^X on direct execution of a binary from a writable mount or /tmp
-	cleanBin := filepath.ToSlash(filepath.Clean(cmdBin))
+	cleanBin := filepath.ToSlash(filepath.Clean(resolvedBin))
 	if cleanBin == "/tmp" || strings.HasPrefix(cleanBin, "/tmp/") ||
 		cleanBin == "/private/tmp" || strings.HasPrefix(cleanBin, "/private/tmp/") {
 		return FormatPermissionError(os.ErrPermission, cmdBin, spec)

@@ -10,15 +10,25 @@ import (
 // GitClone clones a repository to the destination path.
 // If version is specified, checks out that version (tag, branch, or commit).
 func GitClone(repo, version, destPath string) error {
+	if strings.HasPrefix(repo, "-") {
+		return fmt.Errorf("invalid repository reference %q: must not start with '-'", repo)
+	}
+	if strings.HasPrefix(version, "-") {
+		return fmt.Errorf("invalid version %q: must not start with '-'", version)
+	}
+
 	// Convert short form to full URL if needed
 	repoURL := normalizeRepoURL(repo)
+	if strings.HasPrefix(repoURL, "-") {
+		return fmt.Errorf("invalid repository URL %q: must not start with '-'", repoURL)
+	}
 
 	// Clone the repository
 	args := []string{"clone", "--depth", "1"}
 	if version != "" {
 		args = append(args, "--branch", version)
 	}
-	args = append(args, repoURL, destPath)
+	args = append(args, "--", repoURL, destPath)
 
 	cmd := exec.Command("git", args...)
 	var stderr bytes.Buffer
@@ -38,8 +48,15 @@ func GitClone(repo, version, destPath string) error {
 // gitCloneAndCheckout does a full clone and checks out a specific version.
 // This handles cases where the version is a commit hash.
 func gitCloneAndCheckout(repoURL, version, destPath string) error {
+	if strings.HasPrefix(repoURL, "-") {
+		return fmt.Errorf("invalid repository URL %q: must not start with '-'", repoURL)
+	}
+	if strings.HasPrefix(version, "-") {
+		return fmt.Errorf("invalid version %q: must not start with '-'", version)
+	}
+
 	// Full clone
-	cloneCmd := exec.Command("git", "clone", repoURL, destPath)
+	cloneCmd := exec.Command("git", "clone", "--", repoURL, destPath)
 	var stderr bytes.Buffer
 	cloneCmd.Stderr = &stderr
 
@@ -48,7 +65,7 @@ func gitCloneAndCheckout(repoURL, version, destPath string) error {
 	}
 
 	// Checkout the version
-	checkoutCmd := exec.Command("git", "-C", destPath, "checkout", version)
+	checkoutCmd := exec.Command("git", "-C", destPath, "checkout", version, "--")
 	checkoutCmd.Stderr = &stderr
 
 	if err := checkoutCmd.Run(); err != nil {

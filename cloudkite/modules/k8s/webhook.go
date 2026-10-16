@@ -43,6 +43,16 @@ func (m *Module) webhookBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		return nil, fmt.Errorf("k8s.webhook: at least one handler required (validate or mutate)")
 	}
 
+	if err := libkite.Check(thread, "http", "server", "webhook", fmt.Sprintf(":%d%s", p.Port, p.Path)); err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(thread, "fs", "read", "tls_cert", libkite.CanonicalizePath(p.TLSCert)); err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(thread, "fs", "read", "tls_key", libkite.CanonicalizePath(p.TLSKey)); err != nil {
+		return nil, err
+	}
+
 	cert, err := tls.LoadX509KeyPair(p.TLSCert, p.TLSKey)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.webhook: failed to load TLS cert: %w", err)
@@ -64,7 +74,13 @@ func (m *Module) webhookBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		return nil, fmt.Errorf("k8s.webhook: listen on %s: %w", addr, err)
 	}
 
-	server := &gohttp.Server{Handler: mux}
+	server := &gohttp.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 
 	// Signal handler for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
@@ -100,6 +116,7 @@ func (wh *webhookHandler) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) 
 		return
 	}
 
+	r.Body = gohttp.MaxBytesReader(w, r.Body, 10<<20)
 	defer r.Body.Close()
 	body, err := io.ReadAll(r.Body)
 	if err != nil {

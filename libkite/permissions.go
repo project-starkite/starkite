@@ -57,7 +57,13 @@ func NewPermissionChecker(config *PermissionConfig) (*PermissionChecker, error) 
 	}
 
 	cwd, _ := os.Getwd()
+	if cwd != "" {
+		cwd = CanonicalizePath(cwd)
+	}
 	home, _ := os.UserHomeDir()
+	if home != "" {
+		home = CanonicalizePath(home)
+	}
 
 	checker := &PermissionChecker{
 		default_: config.Default,
@@ -68,7 +74,7 @@ func NewPermissionChecker(config *PermissionConfig) (*PermissionChecker, error) 
 		if err != nil {
 			return nil, fmt.Errorf("invalid allow rule %q: %w", pattern, err)
 		}
-		rule.Resource = expandPathVariables(rule.Resource, cwd, home)
+		rule.Resource = canonicalizePattern(expandPathVariables(rule.Resource, cwd, home))
 		checker.allow = append(checker.allow, *rule)
 	}
 
@@ -77,7 +83,7 @@ func NewPermissionChecker(config *PermissionConfig) (*PermissionChecker, error) 
 		if err != nil {
 			return nil, fmt.Errorf("invalid deny rule %q: %w", pattern, err)
 		}
-		rule.Resource = expandPathVariables(rule.Resource, cwd, home)
+		rule.Resource = canonicalizePattern(expandPathVariables(rule.Resource, cwd, home))
 		checker.deny = append(checker.deny, *rule)
 	}
 
@@ -275,30 +281,30 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 		}
 	}
 
-	if r.Resource != "" && resource != "" {
+	if r.Resource != "" {
+		if resource == "" {
+			return false
+		}
 		pattern := filepath.ToSlash(r.Resource)
-		res := filepath.ToSlash(resource)
 		// Bare "*" or "**" matches any non-empty resource (filepath.Match
 		// treats "*" as not crossing path separators, which surprises users).
 		if pattern == "*" || pattern == "**" {
 			return true
 		}
-		if filepath.IsAbs(pattern) && !filepath.IsAbs(res) {
-			if abs, err := filepath.Abs(resource); err == nil {
-				res = filepath.ToSlash(abs)
-			}
+		res := filepath.ToSlash(resource)
+		if filepath.IsAbs(pattern) {
+			pattern = canonicalizePattern(pattern)
+			res = filepath.ToSlash(CanonicalizePath(resource))
 		}
 		matched, err := filepath.Match(pattern, res)
 		if err != nil {
-			// Try as a prefix match for directory patterns
 			if before, ok := strings.CutSuffix(pattern, "**"); ok {
-				prefix := before
-				return strings.HasPrefix(res, prefix)
+				return strings.HasPrefix(res, before)
 			}
 			return false
 		}
 
-		// Also handle ** patterns (match any depth)
+		// Handle ** patterns (match any directory depth)
 		if !matched && strings.Contains(pattern, "**") {
 			matched = matchDoublestar(pattern, res)
 		}
@@ -309,6 +315,57 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 	}
 
 	return true
+}
+
+// CanonicalizePath resolves a path to an absolute, cleaned physical path by
+// evaluating symlinks on the longest existing ancestor prefix. This prevents
+// lexical ".." traversal and symlink escapes out of $CWD- or directory-scoped
+// permission rules, even when the leaf target does not yet exist on disk.
+func CanonicalizePath(path string) string {
+	if path == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = filepath.Clean(path)
+	}
+	return evalSymlinksLongestPrefix(abs)
+}
+
+func evalSymlinksLongestPrefix(absPath string) string {
+	curr := filepath.Clean(absPath)
+	var tail []string
+	for {
+		if resolved, err := filepath.EvalSymlinks(curr); err == nil {
+			for _, t := range slices.Backward(tail) {
+				resolved = filepath.Join(resolved, t)
+			}
+			return filepath.Clean(resolved)
+		}
+		parent := filepath.Dir(curr)
+		if parent == curr {
+			return filepath.Clean(absPath)
+		}
+		tail = append(tail, filepath.Base(curr))
+		curr = parent
+	}
+}
+
+func canonicalizePattern(pattern string) string {
+	if !filepath.IsAbs(pattern) {
+		return pattern
+	}
+	slashed := filepath.ToSlash(pattern)
+	idx := strings.IndexAny(slashed, "*?[")
+	if idx == -1 {
+		return filepath.ToSlash(CanonicalizePath(pattern))
+	}
+	slashIdx := strings.LastIndex(slashed[:idx], "/")
+	if slashIdx <= 0 {
+		return slashed
+	}
+	prefix := CanonicalizePath(slashed[:slashIdx])
+	return filepath.ToSlash(prefix) + slashed[slashIdx:]
 }
 
 // expandPathVariables substitutes $CWD and $HOME in a resource pattern. An
@@ -328,24 +385,49 @@ func expandPathVariables(pattern, cwd, home string) string {
 func matchDoublestar(pattern, path string) bool {
 	pattern = filepath.ToSlash(pattern)
 	path = filepath.ToSlash(path)
-	// Simple implementation: ** matches any number of path segments
-	parts := strings.Split(pattern, "**")
-	if len(parts) != 2 {
-		return false
+
+	if pattern == "**" {
+		return true
 	}
 
-	prefix := parts[0]
-	suffix := parts[1]
-
-	if prefix != "" && !strings.HasPrefix(path, prefix) {
-		return false
+	// Fast path for non-slash prefix wildcard (e.g. "sqlite:**", "postgres:**").
+	if before, ok := strings.CutSuffix(pattern, "**"); ok && !strings.HasSuffix(before, "/") && !strings.ContainsAny(before, "*?[") {
+		return strings.HasPrefix(path, before)
 	}
 
-	if suffix != "" && !strings.HasSuffix(path, suffix) {
-		return false
-	}
+	patSegs := strings.Split(pattern, "/")
+	pathSegs := strings.Split(path, "/")
+	return matchSegments(patSegs, pathSegs)
+}
 
-	return true
+func matchSegments(patSegs, pathSegs []string) bool {
+	for len(patSegs) > 0 {
+		if patSegs[0] == "**" {
+			for len(patSegs) > 1 && patSegs[1] == "**" {
+				patSegs = patSegs[1:]
+			}
+			if len(patSegs) == 1 {
+				return true
+			}
+			for i := 0; i <= len(pathSegs); i++ {
+				if matchSegments(patSegs[1:], pathSegs[i:]) {
+					return true
+				}
+			}
+			return false
+		}
+		if len(pathSegs) == 0 {
+			return false
+		}
+		segPat := strings.ReplaceAll(patSegs[0], "**", "*")
+		matched, err := filepath.Match(segPat, pathSegs[0])
+		if err != nil || !matched {
+			return false
+		}
+		patSegs = patSegs[1:]
+		pathSegs = pathSegs[1:]
+	}
+	return len(pathSegs) == 0
 }
 
 // Check validates module.category.function(resource) against the permission

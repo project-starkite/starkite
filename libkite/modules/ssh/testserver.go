@@ -321,11 +321,11 @@ func (ts *TestServer) handleExec(ch gossh.Channel, payload []byte) {
 
 	// Route SCP commands
 	if path, ok := strings.CutPrefix(cmd, "scp -t "); ok {
-		ts.handleSCPSink(ch, path)
+		ts.handleSCPSink(ch, cleanSCPArg(path))
 		return
 	}
 	if path, ok := strings.CutPrefix(cmd, "scp -f "); ok {
-		ts.handleSCPSource(ch, path)
+		ts.handleSCPSource(ch, cleanSCPArg(path))
 		return
 	}
 
@@ -342,6 +342,17 @@ func (ts *TestServer) handleExec(ch gossh.Channel, payload []byte) {
 		io.WriteString(ch.Stderr(), stderr)
 	}
 	ts.sendExitStatus(ch, code)
+}
+
+func cleanSCPArg(arg string) string {
+	arg = strings.TrimSpace(arg)
+	if rest, ok := strings.CutPrefix(arg, "-- "); ok {
+		arg = strings.TrimSpace(rest)
+	}
+	if len(arg) >= 2 && arg[0] == '\'' && arg[len(arg)-1] == '\'' {
+		arg = strings.ReplaceAll(arg[1:len(arg)-1], `'\''`, "'")
+	}
+	return arg
 }
 
 func (ts *TestServer) sendExitStatus(ch gossh.Channel, code int) {

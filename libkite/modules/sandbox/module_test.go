@@ -218,3 +218,42 @@ func TestSandboxModule_NoExecAndAllowedExecPaths(t *testing.T) {
 		t.Errorf("box.Attr('no_exec') = %v (err=%v), want True", noExecAttr, err)
 	}
 }
+
+func TestSandbox_PermissionsEnforcement(t *testing.T) {
+	mod := New()
+	dict, err := mod.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	sbMod := dict["sandbox"].(starlark.HasAttrs)
+	cfgFn, _ := sbMod.Attr("config")
+
+	// 1. deny-all blocks sandbox.config
+	denyChecker, err := libkite.NewPermissionChecker(libkite.DenyAllPermissions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	denyThread := &starlark.Thread{Name: "deny-test"}
+	libkite.SetPermissions(denyThread, denyChecker)
+
+	if _, err := starlark.Call(denyThread, cfgFn, nil, nil); err == nil {
+		t.Fatal("expected sandbox.config() to fail under deny-all permissions")
+	}
+
+	// 2. network="host" requires http.client
+	execOnlyChecker, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{
+		Allow:   []string{"os.exec"},
+		Default: libkite.DefaultDeny,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	execThread := &starlark.Thread{Name: "exec-only"}
+	libkite.SetPermissions(execThread, execOnlyChecker)
+
+	if _, err := starlark.Call(execThread, cfgFn, nil, []starlark.Tuple{
+		{starlark.String("network"), starlark.String("host")},
+	}); err == nil {
+		t.Fatal("expected sandbox.config(network='host') to fail without http.client permission")
+	}
+}

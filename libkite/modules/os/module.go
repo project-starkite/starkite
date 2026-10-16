@@ -591,11 +591,13 @@ func (m *Module) executeParams(thread *starlark.Thread, callerPrefix string, p e
 // be located, the bare command token is returned so a denial still names
 // something meaningful.
 func resolveExecTarget(cmdStr, workDir string, env map[string]string) string {
-	fields := strings.Fields(cmdStr)
-	if len(fields) == 0 {
+	bin := strings.TrimSpace(cmdStr)
+	if bin == "" {
 		return cmdStr
 	}
-	bin := fields[0]
+	if fields := strings.Fields(bin); len(fields) > 0 && !fileExists(bin) {
+		bin = fields[0]
+	}
 
 	// The command runs in workDir, or the process cwd when workDir is unset.
 	// Resolve relative binary paths against that same directory so the
@@ -605,13 +607,13 @@ func resolveExecTarget(cmdStr, workDir string, env map[string]string) string {
 		baseDir, _ = os.Getwd()
 	}
 
-	// Path-qualified (absolute or contains a separator): clean it, resolving
-	// relative paths against the base directory.
+	// Path-qualified (absolute or contains a separator): canonicalize it, resolving
+	// relative paths and symlinks against the base directory.
 	if strings.ContainsRune(bin, filepath.Separator) || filepath.IsAbs(bin) {
 		if !filepath.IsAbs(bin) && baseDir != "" {
 			bin = filepath.Join(baseDir, bin)
 		}
-		return filepath.Clean(bin)
+		return libkite.CanonicalizePath(bin)
 	}
 
 	// Bare name: resolve on PATH (prefer an explicit PATH override in env).
@@ -619,14 +621,19 @@ func resolveExecTarget(cmdStr, workDir string, env map[string]string) string {
 		for _, dir := range filepath.SplitList(p) {
 			cand := filepath.Join(dir, bin)
 			if fi, err := os.Stat(cand); err == nil && !fi.IsDir() {
-				return cand
+				return libkite.CanonicalizePath(cand)
 			}
 		}
 	}
 	if resolved, err := exec.LookPath(bin); err == nil {
-		return resolved
+		return libkite.CanonicalizePath(resolved)
 	}
 	return bin
+}
+
+func fileExists(path string) bool {
+	fi, err := os.Stat(path)
+	return err == nil && !fi.IsDir()
 }
 
 func formatExecResult(res *cmdResult) (starlark.Value, error) {

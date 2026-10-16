@@ -117,14 +117,42 @@ func insertRows(v starlark.Value) ([]*starlark.Dict, error) {
 	}
 }
 
+func isValidSQLIdent(ident string) bool {
+	if ident == "" {
+		return false
+	}
+	for part := range strings.SplitSeq(ident, ".") {
+		if part == "" {
+			return false
+		}
+		for i, r := range part {
+			switch {
+			case r == '_':
+			case r >= 'a' && r <= 'z':
+			case r >= 'A' && r <= 'Z':
+			case r >= '0' && r <= '9' && i > 0:
+			default:
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // buildInsert renders a single- or multi-row INSERT and its flat parameter list.
 // Columns come from the first row; every row must carry the same columns.
 func buildInsert(table string, rows []*starlark.Dict, style string) (string, []any, error) {
+	if !isValidSQLIdent(table) {
+		return "", nil, fmt.Errorf("invalid table identifier %q", table)
+	}
 	cols := make([]string, 0, rows[0].Len())
 	for _, k := range rows[0].Keys() {
 		s, ok := starlark.AsString(k)
 		if !ok {
 			return "", nil, fmt.Errorf("column name must be a string, got %s", k.Type())
+		}
+		if !isValidSQLIdent(s) {
+			return "", nil, fmt.Errorf("invalid column identifier %q", s)
 		}
 		cols = append(cols, s)
 	}

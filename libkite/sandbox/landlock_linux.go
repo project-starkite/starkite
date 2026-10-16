@@ -491,10 +491,10 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 		baseEnv = append([]string(nil), spec.Env...)
 	}
 
-	// When not already inside a sandbox and Landlock is supported by the host kernel,
-	// use self-reexec so the child process applies full in-process Landlock + Seccomp-BPF
-	// confinement before executing the target binary.
-	useSelfReexec := os.Getenv(InsideEnvVar) != "1" && d.Available()
+	// When Landlock is supported by the host kernel, use self-reexec so the child
+	// process applies full in-process Landlock + Seccomp-BPF confinement (stacking
+	// on top of any parent domain) before executing the target binary.
+	useSelfReexec := d.Available() && os.Getenv(landlockExecEnvVar) == ""
 	var selfBin string
 	var reexecEnv []string
 	if useSelfReexec {

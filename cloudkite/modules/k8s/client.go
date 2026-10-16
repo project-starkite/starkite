@@ -257,6 +257,15 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, opts cl
 			return nil, fmt.Errorf("k8s.config: invalid jump configuration: %w", err)
 		}
 
+		if err := libkite.Check(thread, "ssh", "connect", "jump", jumpCfg.Host); err != nil {
+			return nil, err
+		}
+		if jumpCfg.Key != "" {
+			if err := libkite.Check(thread, "fs", "read", "jump_key", libkite.CanonicalizePath(jumpCfg.Key)); err != nil {
+				return nil, err
+			}
+		}
+
 		targetAddr, err := resolveTargetAddr(restCfg.Host)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.config: failed to resolve target API server address from %q: %w", restCfg.Host, err)
@@ -380,9 +389,15 @@ func filterKwargValue(kwargs []starlark.Tuple, name string, dest *starlark.Value
 
 // Tier 1: Cluster info (simple methods that don't need separate files)
 func (c *K8sClient) contextName(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "k8s", "read", "context", c.context); err != nil {
+		return nil, err
+	}
 	return starlark.String(c.context), nil
 }
 func (c *K8sClient) namespaceName(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "k8s", "read", "namespace_name", c.namespace); err != nil {
+		return nil, err
+	}
 	return starlark.String(c.namespace), nil
 }
 
@@ -404,6 +419,13 @@ func filterKwargCallable(kwargs []starlark.Tuple, name string, dest *starlark.Ca
 }
 
 func (c *K8sClient) serverEndpoint(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	host := ""
+	if c.restCfg != nil {
+		host = c.restCfg.Host
+	}
+	if err := libkite.Check(thread, "k8s", "read", "server", host); err != nil {
+		return nil, err
+	}
 	if c.restCfg != nil {
 		return starlark.String(c.restCfg.Host), nil
 	}
@@ -411,6 +433,13 @@ func (c *K8sClient) serverEndpoint(thread *starlark.Thread, fn *starlark.Builtin
 }
 
 func (c *K8sClient) tlsServerName(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	sni := ""
+	if c.restCfg != nil {
+		sni = c.restCfg.TLSClientConfig.ServerName
+	}
+	if err := libkite.Check(thread, "k8s", "read", "tls_server_name", sni); err != nil {
+		return nil, err
+	}
 	if c.restCfg != nil && c.restCfg.TLSClientConfig.ServerName != "" {
 		return starlark.String(c.restCfg.TLSClientConfig.ServerName), nil
 	}

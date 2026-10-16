@@ -1314,3 +1314,47 @@ func TestPathStreamsTryVariants(t *testing.T) {
 		t.Error("try_get_reader on missing file should have ok=False")
 	}
 }
+
+func TestPathPermissions_RenameCopySymlinkGlobTargets(t *testing.T) {
+	allowedDir := t.TempDir()
+	forbiddenDir := t.TempDir()
+
+	srcFile := filepath.Join(allowedDir, "src.txt")
+	if err := os.WriteFile(srcFile, []byte("hello"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	checker, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{
+		Allow: []string{
+			"fs.read(" + filepath.ToSlash(allowedDir) + "/**)",
+			"fs.write(" + filepath.ToSlash(allowedDir) + "/**)",
+		},
+		Default: libkite.DefaultDeny,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	thread := &starlark.Thread{Name: "perm-test"}
+	libkite.SetPermissions(thread, checker)
+
+	pSrc := &Path{path: srcFile, thread: thread, config: &libkite.ModuleConfig{}}
+	forbiddenTarget := filepath.Join(forbiddenDir, "dst.txt")
+
+	if _, err := callMethod(pSrc, "rename", starlark.String(forbiddenTarget)); err == nil {
+		t.Error("expected rename to forbidden target to fail permission check")
+	}
+	if _, err := callMethod(pSrc, "copy_to", starlark.String(forbiddenTarget)); err == nil {
+		t.Error("expected copy_to to forbidden target to fail permission check")
+	}
+
+	pLink := &Path{path: filepath.Join(allowedDir, "link.txt"), thread: thread, config: &libkite.ModuleConfig{}}
+	if _, err := callMethod(pLink, "symlink_to", starlark.String(forbiddenTarget)); err == nil {
+		t.Error("expected symlink_to pointing to forbidden target to fail permission check")
+	}
+
+	pDir := &Path{path: allowedDir, thread: thread, config: &libkite.ModuleConfig{}}
+	if _, err := callMethod(pDir, "glob", starlark.String("../*")); err == nil {
+		t.Error("expected glob escaping allowedDir to fail permission check")
+	}
+}

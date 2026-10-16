@@ -91,7 +91,7 @@ func (r *Request) AttrNames() []string {
 }
 
 // buildRequest builds a Request from an http.Request and route pattern.
-func buildRequest(r *http.Request, pattern string) *Request {
+func buildRequest(r *http.Request, pattern string) (*Request, error) {
 	// url
 	url := r.URL.String()
 	if r.URL.Scheme == "" {
@@ -135,9 +135,10 @@ func buildRequest(r *http.Request, pattern string) *Request {
 	var body string
 	if r.Body != nil {
 		data, err := io.ReadAll(r.Body)
-		if err == nil {
-			body = string(data)
+		if err != nil {
+			return nil, err
 		}
+		body = string(data)
 	}
 
 	return &Request{
@@ -150,5 +151,5 @@ func buildRequest(r *http.Request, pattern string) *Request {
 		body:       body,
 		remoteAddr: r.RemoteAddr,
 		host:       r.Host,
-	}
+	}, nil
 }

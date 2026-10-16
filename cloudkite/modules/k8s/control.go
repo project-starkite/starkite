@@ -100,6 +100,20 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		return nil, fmt.Errorf("k8s.control: at least one handler required (reconcile, finalize, on_create, on_update, or on_delete)")
 	}
 
+	if err := libkite.Check(thread, "k8s", "read", "control", p.Kind); err != nil {
+		return nil, err
+	}
+	if finalizeFn != nil || p.Finalizer != "" || p.LeaderElection {
+		if err := libkite.Check(thread, "k8s", "write", "control", p.Kind); err != nil {
+			return nil, err
+		}
+	}
+	if p.HealthPort > 0 {
+		if err := libkite.Check(thread, "http", "server", "control_health", fmt.Sprintf(":%d", p.HealthPort)); err != nil {
+			return nil, err
+		}
+	}
+
 	// Resolve GVR
 	gvr, namespaced, err := client.resolver.Resolve(p.Kind)
 	if err != nil {
@@ -1664,6 +1678,9 @@ func (c *controller) applyPredicate(eventType string, obj *unstructuredObj) bool
 	filterThread := &starlark.Thread{Name: "controller-predicate"}
 	if c.thread != nil {
 		filterThread.Print = c.thread.Print
+		if perms := libkite.GetPermissions(c.thread); perms != nil {
+			libkite.SetPermissions(filterThread, perms)
+		}
 	}
 	attrDict := unstructuredToAttrDict(obj)
 	result, err := starlark.Call(filterThread, c.predicateFn, starlark.Tuple{

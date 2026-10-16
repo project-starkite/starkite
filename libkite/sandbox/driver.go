@@ -59,6 +59,9 @@ func (s *ExecutionSpec) Validate() error {
 		if m.Type == MountBind && m.Source == "" {
 			return fmt.Errorf("sandbox: mount[%d]: bind mount requires source", i)
 		}
+		if strings.ContainsAny(m.Destination, ":,\"\n\r\x00") || strings.ContainsAny(m.Source, ":,\"\n\r\x00") {
+			return fmt.Errorf("sandbox: mount[%d]: source and destination must not contain ':', ',', quotes, newlines, or NUL bytes", i)
+		}
 	}
 	for i, p := range s.AllowedExecPaths {
 		if p == "" || !isHostAbs(p) {
@@ -146,7 +149,7 @@ func enrichPermissionStderr(stderr string, spec *ExecutionSpec) string {
 
 	target := ""
 	for _, arg := range spec.Command {
-		for _, tok := range strings.Fields(arg) {
+		for tok := range strings.FieldsSeq(arg) {
 			cleanTok := strings.Trim(tok, "'\"`;|&()")
 			if strings.HasPrefix(cleanTok, "/") {
 				target = cleanTok

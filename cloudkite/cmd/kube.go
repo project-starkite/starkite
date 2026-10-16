@@ -137,9 +137,10 @@ func runGenArtifacts(cmd *cobra.Command, args []string) error {
 
 	// Create runtime
 	rt, err := libkite.New(&libkite.Config{
-		Registry:   registry,
-		VarStore:   vars,
-		ScriptPath: scriptName,
+		Registry:    registry,
+		VarStore:    vars,
+		ScriptPath:  scriptName,
+		Permissions: libkite.DenyAllPermissions(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create runtime: %w", err)
@@ -175,8 +176,9 @@ func extractCRDYAML(resourceFile string) (string, error) {
 	registry := loader.NewCloudRegistry(moduleConfig)
 
 	rt, err := libkite.New(&libkite.Config{
-		Registry:   registry,
-		ScriptPath: resourceFile,
+		Registry:    registry,
+		ScriptPath:  resourceFile,
+		Permissions: libkite.DenyAllPermissions(),
 		Print: func(thread *starlark.Thread, msg string) {
 			output.WriteString(msg)
 			output.WriteString("\n")
@@ -303,9 +305,10 @@ func runGenWebhookArtifacts(cmd *cobra.Command, args []string) error {
 	moduleConfig := &libkite.ModuleConfig{VarStore: vars}
 	registry := loader.NewCloudRegistry(moduleConfig)
 	rt, err := libkite.New(&libkite.Config{
-		Registry:   registry,
-		VarStore:   vars,
-		ScriptPath: scriptName,
+		Registry:    registry,
+		VarStore:    vars,
+		ScriptPath:  scriptName,
+		Permissions: libkite.DenyAllPermissions(),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create runtime: %w", err)

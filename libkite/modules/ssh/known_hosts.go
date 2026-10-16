@@ -545,6 +545,13 @@ func (m *Module) sshFindKnownHosts(thread *starlark.Thread, fn *starlark.Builtin
 	if err := libkite.Check(thread, "ssh", "connect", "find_known_hosts", p.Host); err != nil {
 		return nil, err
 	}
+	expandedFind, err := expandPath(p.Path)
+	if err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(thread, "fs", "read", "find_known_hosts", libkite.CanonicalizePath(expandedFind)); err != nil {
+		return nil, err
+	}
 
 	entries, err := findKnownHosts(p.Path, p.Host, p.Port)
 	if err != nil {
@@ -573,6 +580,13 @@ func (m *Module) sshRemoveKnownHost(thread *starlark.Thread, fn *starlark.Builti
 	}
 
 	if err := libkite.Check(thread, "ssh", "connect", "remove_known_host", p.Host); err != nil {
+		return nil, err
+	}
+	expandedRem, err := expandPath(p.Path)
+	if err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(thread, "fs", "write", "remove_known_host", libkite.CanonicalizePath(expandedRem)); err != nil {
 		return nil, err
 	}
 
@@ -604,6 +618,13 @@ func (m *Module) sshAddKnownHost(thread *starlark.Thread, fn *starlark.Builtin, 
 	}
 
 	if err := libkite.Check(thread, "ssh", "connect", "add_known_host", p.Host); err != nil {
+		return nil, err
+	}
+	expandedAdd, err := expandPath(p.Path)
+	if err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(thread, "fs", "write", "add_known_host", libkite.CanonicalizePath(expandedAdd)); err != nil {
 		return nil, err
 	}
 
@@ -651,8 +672,19 @@ func (c *SSHClient) findKnownHosts(thread *starlark.Thread, fn *starlark.Builtin
 		return nil, fmt.Errorf("ssh.client.find_known_hosts: no target hosts configured")
 	}
 
+	expandedFind, err := expandPath(p.Path)
+	if err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(thread, "fs", "read", "find_known_hosts", libkite.CanonicalizePath(expandedFind)); err != nil {
+		return nil, err
+	}
+
 	var allEntries []*KnownHostEntry
 	for _, h := range hosts {
+		if err := libkite.Check(thread, "ssh", "connect", "find_known_hosts", h); err != nil {
+			return nil, err
+		}
 		entries, err := findKnownHosts(p.Path, h, p.Port)
 		if err != nil {
 			return nil, err
@@ -702,8 +734,19 @@ func (c *SSHClient) removeKnownHost(thread *starlark.Thread, fn *starlark.Builti
 		return nil, fmt.Errorf("ssh.client.remove_known_host: no target hosts configured")
 	}
 
+	expandedRem, err := expandPath(p.Path)
+	if err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(thread, "fs", "write", "remove_known_host", libkite.CanonicalizePath(expandedRem)); err != nil {
+		return nil, err
+	}
+
 	total := 0
 	for _, h := range hosts {
+		if err := libkite.Check(thread, "ssh", "connect", "remove_known_host", h); err != nil {
+			return nil, err
+		}
 		count, err := removeKnownHost(p.Path, h, p.Port, c.dryRun)
 		if err != nil {
 			return nil, err
@@ -748,6 +791,17 @@ func (c *SSHClient) addKnownHost(thread *starlark.Thread, fn *starlark.Builtin, 
 	}
 	if targetHost == "" {
 		return nil, fmt.Errorf("ssh.client.add_known_host: 'host' is required")
+	}
+
+	if err := libkite.Check(thread, "ssh", "connect", "add_known_host", targetHost); err != nil {
+		return nil, err
+	}
+	expandedAdd, err := expandPath(p.Path)
+	if err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(thread, "fs", "write", "add_known_host", libkite.CanonicalizePath(expandedAdd)); err != nil {
+		return nil, err
 	}
 
 	entry, err := addKnownHost(p.Path, targetHost, p.Key, p.Hash, p.Port, p.Comment, c.dryRun)

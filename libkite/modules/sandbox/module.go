@@ -160,6 +160,10 @@ func (m *Module) sandboxConfig(thread *starlark.Thread, fn *starlark.Builtin, ar
 		}
 	}
 
+	if err := checkSandboxPermissions(thread, "config", "", sandbox.NetworkMode(p.Network), parsedMounts); err != nil {
+		return nil, err
+	}
+
 	return &Sandbox{
 		driverName:       driver.Name(),
 		driver:           driver,
@@ -178,6 +182,31 @@ func (m *Module) sandboxConfig(thread *starlark.Thread, fn *starlark.Builtin, ar
 	}, nil
 }
 
+func checkSandboxPermissions(thread *starlark.Thread, fnName, target string, network sandbox.NetworkMode, mounts []sandbox.Mount) error {
+	if err := libkite.Check(thread, "os", "exec", fnName, target); err != nil {
+		return err
+	}
+	if network == sandbox.NetworkHost {
+		if err := libkite.Check(thread, "http", "client", fnName, ""); err != nil {
+			return err
+		}
+	}
+	for _, mnt := range mounts {
+		if mnt.Type == sandbox.MountBind && mnt.Source != "" {
+			canonSrc := libkite.CanonicalizePath(mnt.Source)
+			if err := libkite.Check(thread, "fs", "read", fnName, canonSrc); err != nil {
+				return err
+			}
+			if mnt.Mode == sandbox.MountRW {
+				if err := libkite.Check(thread, "fs", "write", fnName, canonSrc); err != nil {
+					return err
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // runScript executes a child Starlark script under sandbox isolation with strict non-escalation guarantees.
 // Usage: sandbox.run_script(path, config=None, vars=None)
 func (m *Module) runScript(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -190,11 +219,9 @@ func (m *Module) runScript(thread *starlark.Thread, fn *starlark.Builtin, args s
 		return nil, err
 	}
 
-	scriptPath := p.Path
-	if !filepath.IsAbs(scriptPath) {
-		if abs, err := filepath.Abs(scriptPath); err == nil {
-			scriptPath = abs
-		}
+	scriptPath := libkite.CanonicalizePath(p.Path)
+	if err := libkite.Check(thread, "fs", "read", "run_script", scriptPath); err != nil {
+		return nil, err
 	}
 
 	var box *Sandbox
@@ -217,12 +244,16 @@ func (m *Module) runScript(thread *starlark.Thread, fn *starlark.Builtin, args s
 		}
 	}
 
+	if err := checkSandboxPermissions(thread, "run_script", scriptPath, box.network, box.mounts); err != nil {
+		return nil, err
+	}
+
+	netMode := box.network
 	// Enforce non-escalation: If parent environment is already inside a sandbox,
 	// ensure requested sub-sandbox permissions do not exceed parent.
 	if os.Getenv(sandbox.InsideEnvVar) == "1" {
-		// Child cannot elevate network if parent is restricted
-		if box.network == sandbox.NetworkHost {
-			box.network = sandbox.NetworkNone
+		if netMode == sandbox.NetworkHost {
+			netMode = sandbox.NetworkNone
 		}
 	}
 
@@ -245,17 +276,18 @@ func (m *Module) runScript(thread *starlark.Thread, fn *starlark.Builtin, args s
 		}
 	}
 
-	// Include script parent directory in mounts if not already mounted
+	// Clone mounts slice to avoid mutating the Sandbox object in place
+	mounts := append([]sandbox.Mount(nil), box.mounts...)
 	scriptDir := filepath.Dir(scriptPath)
 	hasMount := false
-	for _, mnt := range box.mounts {
+	for _, mnt := range mounts {
 		if mnt.Destination == scriptDir || mnt.Source == scriptDir {
 			hasMount = true
 			break
 		}
 	}
 	if !hasMount {
-		box.mounts = append(box.mounts, sandbox.Mount{
+		mounts = append(mounts, sandbox.Mount{
 			Source:      scriptDir,
 			Destination: scriptDir,
 			Type:        sandbox.MountBind,
@@ -266,9 +298,9 @@ func (m *Module) runScript(thread *starlark.Thread, fn *starlark.Builtin, args s
 	spec := &sandbox.ExecutionSpec{
 		Command:          cmdArgs,
 		Cwd:              scriptDir,
-		Env:              append(box.env, fmt.Sprintf("%s=1", sandbox.InsideEnvVar)),
-		Network:          box.network,
-		Mounts:           box.mounts,
+		Env:              append(append([]string(nil), box.env...), fmt.Sprintf("%s=1", sandbox.InsideEnvVar)),
+		Network:          netMode,
+		Mounts:           mounts,
 		MaxMemoryMB:      box.maxMemoryMB,
 		MaxCPUs:          box.maxCPUs,
 		MaxPIDs:          box.maxPIDs,

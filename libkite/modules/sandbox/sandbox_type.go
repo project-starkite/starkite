@@ -3,6 +3,8 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -170,11 +172,27 @@ func (s *Sandbox) boxExec(thread *starlark.Thread, fn *starlark.Builtin, args st
 		execCwd = p.Cwd
 	}
 
+	execTarget := commandList[0]
+	if strings.ContainsRune(execTarget, filepath.Separator) || filepath.IsAbs(execTarget) {
+		if !filepath.IsAbs(execTarget) && execCwd != "" {
+			execTarget = filepath.Join(execCwd, execTarget)
+		}
+		execTarget = libkite.CanonicalizePath(execTarget)
+	}
+	if err := checkSandboxPermissions(thread, "exec", execTarget, s.network, s.mounts); err != nil {
+		return nil, err
+	}
+
+	netMode := s.network
+	if os.Getenv(sandbox.InsideEnvVar) == "1" && netMode == sandbox.NetworkHost {
+		netMode = sandbox.NetworkNone
+	}
+
 	spec := &sandbox.ExecutionSpec{
 		Command:          commandList,
 		Cwd:              execCwd,
 		Env:              envList,
-		Network:          s.network,
+		Network:          netMode,
 		Mounts:           s.mounts,
 		MaxMemoryMB:      s.maxMemoryMB,
 		MaxCPUs:          s.maxCPUs,

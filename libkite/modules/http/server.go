@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	gohttp "net/http"
@@ -182,7 +183,7 @@ func (s *Server) serveMethod(thread *starlark.Thread, fn *starlark.Builtin,
 		return nil, err
 	}
 
-	if err := s.startInternal(kwargs); err != nil {
+	if err := s.startInternal(thread, kwargs); err != nil {
 		return nil, err
 	}
 
@@ -231,7 +232,7 @@ func (s *Server) startMethod(thread *starlark.Thread, fn *starlark.Builtin,
 		return nil, err
 	}
 
-	if err := s.startInternal(kwargs); err != nil {
+	if err := s.startInternal(thread, kwargs); err != nil {
 		return nil, err
 	}
 
@@ -290,7 +291,7 @@ func (s *Server) portMethod(thread *starlark.Thread, fn *starlark.Builtin,
 }
 
 // startInternal is shared by serve() and start().
-func (s *Server) startInternal(kwargs []starlark.Tuple) error {
+func (s *Server) startInternal(thread *starlark.Thread, kwargs []starlark.Tuple) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -329,6 +330,15 @@ func (s *Server) startInternal(kwargs []starlark.Tuple) error {
 		}
 	}
 
+	if tlsCert != "" && tlsKey != "" {
+		if err := libkite.Check(thread, "fs", "read", "tls_cert", libkite.CanonicalizePath(tlsCert)); err != nil {
+			return err
+		}
+		if err := libkite.Check(thread, "fs", "read", "tls_key", libkite.CanonicalizePath(tlsKey)); err != nil {
+			return err
+		}
+	}
+
 	// Build mux and register handlers
 	s.mux = gohttp.NewServeMux()
 	// Snapshot middlewares at start time
@@ -361,13 +371,19 @@ func (s *Server) startInternal(kwargs []starlark.Tuple) error {
 		}
 	}
 
+	readHeaderTimeout := 10 * time.Second
+	if s.readTimeout > 0 && s.readTimeout < readHeaderTimeout {
+		readHeaderTimeout = s.readTimeout
+	}
+
 	s.listener = ln
 	s.server = &gohttp.Server{
-		Handler:        s.mux,
-		ReadTimeout:    s.readTimeout,
-		WriteTimeout:   s.writeTimeout,
-		IdleTimeout:    s.idleTimeout,
-		MaxHeaderBytes: s.maxHeaderBytes,
+		Handler:           s.mux,
+		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       s.readTimeout,
+		WriteTimeout:      s.writeTimeout,
+		IdleTimeout:       s.idleTimeout,
+		MaxHeaderBytes:    s.maxHeaderBytes,
 	}
 
 	s.done = make(chan struct{})
@@ -399,7 +415,15 @@ func (s *Server) makeGoHandler(pattern string, handler starlark.Callable,
 		// Limit request body size to prevent OOM from large payloads
 		r.Body = gohttp.MaxBytesReader(w, r.Body, s.maxBodyBytes)
 
-		reqObj := buildRequest(r, pattern)
+		reqObj, err := buildRequest(r, pattern)
+		if err != nil {
+			if _, ok := errors.AsType[*gohttp.MaxBytesError](err); ok {
+				gohttp.Error(w, "request body too large", gohttp.StatusRequestEntityTooLarge)
+				return
+			}
+			gohttp.Error(w, fmt.Sprintf("bad request: %v", err), gohttp.StatusBadRequest)
+			return
+		}
 
 		// Thread-per-request: new thread, shared frozen globals
 		thread := s.runtime.NewThread("http-handler")

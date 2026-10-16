@@ -711,6 +711,9 @@ func (p *Path) renameMethod(_ *starlark.Thread, _ *starlark.Builtin, args starla
 	if err := libkite.Check(p.thread, "fs", "write", "rename", checkPath(p.path)); err != nil {
 		return nil, err
 	}
+	if err := libkite.Check(p.thread, "fs", "write", "rename", checkPath(target)); err != nil {
+		return nil, err
+	}
 	if p.isDryRun() {
 		return p.newPath(target), nil
 	}
@@ -749,6 +752,13 @@ func (p *Path) symlinkToMethod(_ *starlark.Thread, _ *starlark.Builtin, args sta
 	if err := libkite.Check(p.thread, "fs", "write", "symlink", checkPath(p.path)); err != nil {
 		return nil, err
 	}
+	resolvedTarget := params.Target
+	if !filepath.IsAbs(resolvedTarget) {
+		resolvedTarget = filepath.Join(filepath.Dir(p.path), resolvedTarget)
+	}
+	if err := libkite.Check(p.thread, "fs", "read", "symlink", checkPath(resolvedTarget)); err != nil {
+		return nil, err
+	}
 	if p.isDryRun() {
 		return starlark.None, nil
 	}
@@ -780,10 +790,10 @@ func (p *Path) globMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "read", "glob", checkPath(p.path)); err != nil {
+	fullPattern := filepath.Join(p.path, params.Pattern)
+	if err := libkite.Check(p.thread, "fs", "read", "glob", checkPath(fullPattern)); err != nil {
 		return nil, err
 	}
-	fullPattern := filepath.Join(p.path, params.Pattern)
 	matches, err := filepath.Glob(fullPattern)
 	if err != nil {
 		return nil, err
@@ -810,7 +820,7 @@ func (p *Path) copyToMethod(_ *starlark.Thread, _ *starlark.Builtin, args starla
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "write", "copy", checkPath(p.path)); err != nil {
+	if err := libkite.Check(p.thread, "fs", "read", "copy", checkPath(p.path)); err != nil {
 		return nil, err
 	}
 	if err := libkite.Check(p.thread, "fs", "write", "copy", checkPath(params.Target)); err != nil {
@@ -917,6 +927,12 @@ func (p *Path) hardlinkToMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		return nil, err
 	}
 	if err := libkite.Check(p.thread, "fs", "write", "hardlink", checkPath(p.path)); err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(p.thread, "fs", "read", "hardlink", checkPath(params.Target)); err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(p.thread, "fs", "write", "hardlink", checkPath(params.Target)); err != nil {
 		return nil, err
 	}
 	if p.isDryRun() {

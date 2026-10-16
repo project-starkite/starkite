@@ -107,6 +107,10 @@ func (m *Module) loadFile(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, err
 	}
 
+	if err := libkite.Check(thread, "fs", "read", "file", libkite.CanonicalizePath(p.Path)); err != nil {
+		return nil, err
+	}
+
 	data, err := os.ReadFile(p.Path)
 	if err != nil {
 		return nil, err

@@ -11,6 +11,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -302,16 +303,6 @@ func (m *Module) sshCheckAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 		}
 	}
 
-	pubKeyStr, err := resolvePublicKey(keyArg, false)
-	if err != nil {
-		return nil, fmt.Errorf("ssh.check_authorized_key: %w", err)
-	}
-
-	pubKey, _, _, _, err := gossh.ParseAuthorizedKey([]byte(pubKeyStr))
-	if err != nil {
-		return nil, fmt.Errorf("ssh.check_authorized_key: failed to parse public key: %w", err)
-	}
-
 	var hosts []string
 	if rawHosts != nil {
 		switch h := rawHosts.(type) {
@@ -339,6 +330,36 @@ func (m *Module) sshCheckAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 		return nil, fmt.Errorf("ssh.check_authorized_key: 'hosts' is required and cannot be empty")
 	}
 
+	for _, h := range hosts {
+		if err := libkite.Check(thread, "ssh", "connect", "check_authorized_key", h); err != nil {
+			return nil, err
+		}
+	}
+
+	var jc *jumpConfig
+	if jumpDict != nil {
+		j, err := parseJumpDict(jumpDict, authConfig{})
+		if err != nil {
+			return nil, fmt.Errorf("ssh.check_authorized_key: %w", err)
+		}
+		if j.Host != "" {
+			if err := libkite.Check(thread, "ssh", "connect", "check_authorized_key", j.Host); err != nil {
+				return nil, err
+			}
+		}
+		jc = &j
+	}
+
+	pubKeyStr, err := resolvePublicKey(keyArg, false)
+	if err != nil {
+		return nil, fmt.Errorf("ssh.check_authorized_key: %w", err)
+	}
+
+	pubKey, _, _, _, err := gossh.ParseAuthorizedKey([]byte(pubKeyStr))
+	if err != nil {
+		return nil, fmt.Errorf("ssh.check_authorized_key: failed to parse public key: %w", err)
+	}
+
 	user := p.User
 	if user == "" {
 		user = defaultUser()
@@ -351,15 +372,6 @@ func (m *Module) sshCheckAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 			return nil, fmt.Errorf("ssh.check_authorized_key: invalid timeout %q: %w", p.Timeout, err)
 		}
 		timeout = d
-	}
-
-	var jc *jumpConfig
-	if jumpDict != nil {
-		j, err := parseJumpDict(jumpDict, authConfig{})
-		if err != nil {
-			return nil, fmt.Errorf("ssh.check_authorized_key: %w", err)
-		}
-		jc = &j
 	}
 
 	checkResults, err := runKeyCheck(hosts, p.Port, user, pubKey, timeout, p.HostKeyCheck, "", jc)
@@ -430,16 +442,6 @@ func (c *SSHClient) checkAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 		}
 	}
 
-	pubKeyStr, err := resolvePublicKey(keyArg, c.useAgent)
-	if err != nil {
-		return nil, fmt.Errorf("ssh.client.check_authorized_key: %w", err)
-	}
-
-	pubKey, _, _, _, err := gossh.ParseAuthorizedKey([]byte(pubKeyStr))
-	if err != nil {
-		return nil, fmt.Errorf("ssh.client.check_authorized_key: failed to parse public key: %w", err)
-	}
-
 	var hosts []string
 	if rawHosts != nil {
 		switch h := rawHosts.(type) {
@@ -467,6 +469,41 @@ func (c *SSHClient) checkAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 		return nil, fmt.Errorf("ssh.client.check_authorized_key: no target hosts configured")
 	}
 
+	for _, h := range hosts {
+		if err := libkite.Check(thread, "ssh", "connect", "check_authorized_key", h); err != nil {
+			return nil, err
+		}
+	}
+
+	var jc *jumpConfig
+	if c.jumpHost != "" {
+		if err := libkite.Check(thread, "ssh", "connect", "check_authorized_key", c.jumpHost); err != nil {
+			return nil, err
+		}
+		jc = &jumpConfig{
+			Host:           c.jumpHost,
+			Port:           c.jumpPort,
+			User:           c.jumpUser,
+			Key:            c.jumpKeyFile,
+			Passphrase:     c.jumpKeyPassphrase,
+			Password:       c.jumpPassword,
+			UseAgent:       c.jumpUseAgent,
+			Prompt:         c.jumpPrompt,
+			HostKeyCheck:   c.jumpHostKeyCheck,
+			KnownHostsFile: c.jumpKnownHostsFile,
+		}
+	}
+
+	pubKeyStr, err := resolvePublicKey(keyArg, c.useAgent)
+	if err != nil {
+		return nil, fmt.Errorf("ssh.client.check_authorized_key: %w", err)
+	}
+
+	pubKey, _, _, _, err := gossh.ParseAuthorizedKey([]byte(pubKeyStr))
+	if err != nil {
+		return nil, fmt.Errorf("ssh.client.check_authorized_key: failed to parse public key: %w", err)
+	}
+
 	user := p.User
 	if user == "" {
 		user = c.user
@@ -476,20 +513,6 @@ func (c *SSHClient) checkAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 	if p.Timeout != "" {
 		if d, err := time.ParseDuration(p.Timeout); err == nil {
 			timeout = d
-		}
-	}
-
-	var jc *jumpConfig
-	if c.jumpHost != "" {
-		jc = &jumpConfig{
-			Host:       c.jumpHost,
-			Port:       c.jumpPort,
-			User:       c.jumpUser,
-			Key:        c.jumpKeyFile,
-			Passphrase: c.jumpKeyPassphrase,
-			Password:   c.jumpPassword,
-			UseAgent:   c.jumpUseAgent,
-			Prompt:     c.jumpPrompt,
 		}
 	}
 

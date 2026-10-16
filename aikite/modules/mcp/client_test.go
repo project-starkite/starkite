@@ -313,7 +313,7 @@ func TestClient_Invoke_AfterClose_Errors(t *testing.T) {
 	}
 	_ = client.doClose()
 
-	_, err := client.invoke("x", nil)
+	_, err := client.invoke(nil, "x", nil)
 	if err == nil || !strings.Contains(err.Error(), "closed") {
 		t.Errorf("expected closed error, got %v", err)
 	}

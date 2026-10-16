@@ -54,6 +54,15 @@ func (m *Module) connectBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 	if err := libkite.Check(thread, "mcp", "client", "connect", describeTransport(args[0])); err != nil {
 		return nil, err
 	}
+	if subproc != nil {
+		execTarget := subproc.Path
+		if execTarget != "" {
+			execTarget = libkite.CanonicalizePath(execTarget)
+		}
+		if err := libkite.Check(thread, "os", "exec", "exec", execTarget); err != nil {
+			return nil, err
+		}
+	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()

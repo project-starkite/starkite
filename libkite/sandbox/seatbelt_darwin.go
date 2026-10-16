@@ -139,9 +139,15 @@ func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	}
 
 	// If already running inside a sandbox or sandbox-exec is restricted, execute command directly
-	// as child processes naturally inherit parent sandbox restrictions.
+	// as child processes naturally inherit parent sandbox restrictions, after enforcing child exec policy.
 	var cmd *exec.Cmd
 	if os.Getenv(InsideEnvVar) == "1" {
+		if policyErr := checkContainerExecPolicy(spec); policyErr != nil {
+			return &ExecResult{
+				ExitCode: 126,
+				Stderr:   policyErr.Error() + "\n",
+			}, policyErr
+		}
 		cmd = exec.CommandContext(execCtx, spec.Command[0], spec.Command[1:]...)
 	} else {
 		args := append([]string{"-p", sbpl, "--"}, spec.Command...)

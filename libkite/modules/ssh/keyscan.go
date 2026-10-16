@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
@@ -250,16 +251,18 @@ func dialJumpClient(jump jumpConfig, timeout time.Duration) (*gossh.Client, erro
 	}
 
 	ephemeralClient := &SSHClient{
-		timeout:           timeout,
-		hostKeyCheck:      false, // host key of jump is not strictly enforced in probe mode unless configured
-		jumpHost:          jump.Host,
-		jumpPort:          jumpPort,
-		jumpUser:          jump.User,
-		jumpKeyFile:       jump.Key,
-		jumpKeyPassphrase: jump.Passphrase,
-		jumpPassword:      jump.Password,
-		jumpUseAgent:      jump.UseAgent,
-		jumpPrompt:        jump.Prompt,
+		timeout:            timeout,
+		hostKeyCheck:       false,
+		jumpHost:           jump.Host,
+		jumpPort:           jumpPort,
+		jumpUser:           jump.User,
+		jumpKeyFile:        jump.Key,
+		jumpKeyPassphrase:  jump.Passphrase,
+		jumpPassword:       jump.Password,
+		jumpUseAgent:       jump.UseAgent,
+		jumpPrompt:         jump.Prompt,
+		jumpHostKeyCheck:   jump.HostKeyCheck,
+		jumpKnownHostsFile: jump.KnownHostsFile,
 	}
 
 	config, err := ephemeralClient.buildJumpSSHConfig()
@@ -411,6 +414,21 @@ func (m *Module) sshScanHostKeys(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("ssh.scan_host_keys: 'hosts' is required and cannot be empty")
 	}
 
+	for _, h := range hosts {
+		if err := libkite.Check(thread, "ssh", "connect", "scan_host_keys", h); err != nil {
+			return nil, err
+		}
+	}
+	if p.Save {
+		expanded, err := expandPath(p.Path)
+		if err != nil {
+			return nil, fmt.Errorf("ssh.scan_host_keys: %w", err)
+		}
+		if err := libkite.Check(thread, "fs", "write", "scan_host_keys", libkite.CanonicalizePath(expanded)); err != nil {
+			return nil, err
+		}
+	}
+
 	var typeList []string
 	if p.Type != "" {
 		typeList = append(typeList, p.Type)
@@ -449,6 +467,11 @@ func (m *Module) sshScanHostKeys(thread *starlark.Thread, fn *starlark.Builtin, 
 		j, err := parseJumpDict(jumpDict, authConfig{})
 		if err != nil {
 			return nil, fmt.Errorf("ssh.scan_host_keys: %w", err)
+		}
+		if j.Host != "" {
+			if err := libkite.Check(thread, "ssh", "connect", "scan_host_keys", j.Host); err != nil {
+				return nil, err
+			}
 		}
 		jc = &j
 	}
@@ -544,6 +567,21 @@ func (c *SSHClient) scanHostKeys(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("ssh.client.scan_host_keys: no target hosts configured")
 	}
 
+	for _, h := range hosts {
+		if err := libkite.Check(thread, "ssh", "connect", "scan_host_keys", h); err != nil {
+			return nil, err
+		}
+	}
+	if p.Save {
+		expanded, err := expandPath(p.Path)
+		if err != nil {
+			return nil, fmt.Errorf("ssh.client.scan_host_keys: %w", err)
+		}
+		if err := libkite.Check(thread, "fs", "write", "scan_host_keys", libkite.CanonicalizePath(expanded)); err != nil {
+			return nil, err
+		}
+	}
+
 	var typeList []string
 	if p.Type != "" {
 		typeList = append(typeList, p.Type)
@@ -577,15 +615,20 @@ func (c *SSHClient) scanHostKeys(thread *starlark.Thread, fn *starlark.Builtin, 
 
 	var jc *jumpConfig
 	if c.jumpHost != "" {
+		if err := libkite.Check(thread, "ssh", "connect", "scan_host_keys", c.jumpHost); err != nil {
+			return nil, err
+		}
 		jc = &jumpConfig{
-			Host:       c.jumpHost,
-			Port:       c.jumpPort,
-			User:       c.jumpUser,
-			Key:        c.jumpKeyFile,
-			Passphrase: c.jumpKeyPassphrase,
-			Password:   c.jumpPassword,
-			UseAgent:   c.jumpUseAgent,
-			Prompt:     c.jumpPrompt,
+			Host:           c.jumpHost,
+			Port:           c.jumpPort,
+			User:           c.jumpUser,
+			Key:            c.jumpKeyFile,
+			Passphrase:     c.jumpKeyPassphrase,
+			Password:       c.jumpPassword,
+			UseAgent:       c.jumpUseAgent,
+			Prompt:         c.jumpPrompt,
+			HostKeyCheck:   c.jumpHostKeyCheck,
+			KnownHostsFile: c.jumpKnownHostsFile,
 		}
 	}
 

@@ -217,7 +217,20 @@ func resolveIdentity(manifest *libkite.ModuleManifest, sourceNamespace, asOpt st
 	if namespace == "" {
 		return "", "", fmt.Errorf("module %q has no namespace; declare it in mod.yaml or install with --as <namespace>/<name>", name)
 	}
+	if !isSafeModuleIdentifier(namespace) {
+		return "", "", fmt.Errorf("invalid module namespace %q: must not contain path separators or '..'", namespace)
+	}
+	if !isSafeModuleIdentifier(name) {
+		return "", "", fmt.Errorf("invalid module name %q: must not contain path separators or '..'", name)
+	}
 	return namespace, name, nil
+}
+
+func isSafeModuleIdentifier(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	return !strings.ContainsAny(s, "/\\@\x00") && !strings.Contains(s, "..")
 }
 
 func firstNonEmpty(vals ...string) string {
@@ -748,6 +761,9 @@ func copyDir(src, dst string) error {
 	for _, entry := range entries {
 		if entry.Name() == ".git" {
 			continue
+		}
+		if entry.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks are not permitted in modules: %s", entry.Name())
 		}
 		s := filepath.Join(src, entry.Name())
 		d := filepath.Join(dst, entry.Name())

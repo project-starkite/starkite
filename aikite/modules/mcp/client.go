@@ -11,6 +11,7 @@ import (
 	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 )
@@ -126,7 +127,7 @@ func (c *MCPClient) closeBuiltin(_ *starlark.Thread, _ *starlark.Builtin, _ star
 // callBuiltin implements client.call(name, **kwargs). We validate that the
 // named tool exists (via cached discovery) so the user gets a clean
 // "no such tool" error instead of a server-side MethodNotFound.
-func (c *MCPClient) callBuiltin(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (c *MCPClient) callBuiltin(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("mcp.Client.call: expected 1 positional argument (tool name), got %d", len(args))
 	}
@@ -140,15 +141,19 @@ func (c *MCPClient) callBuiltin(_ *starlark.Thread, _ *starlark.Builtin, args st
 	if _, ok := c.toolsByName[name]; !ok {
 		return nil, fmt.Errorf("mcp.Client.call: no such tool %q on server", name)
 	}
-	return c.invoke(name, kwargs)
+	return c.invoke(thread, name, kwargs)
 }
 
 // invoke is the shared tool-call path used by client.tools.X() and client.call(...).
 // Converts kwargs → map[string]any via startype, dispatches, and wraps the
 // result as *MCPResult.
-func (c *MCPClient) invoke(name string, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (c *MCPClient) invoke(thread *starlark.Thread, name string, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if c.closed.Load() {
 		return nil, errors.New("mcp client is closed")
+	}
+
+	if err := libkite.Check(thread, "mcp", "client", "tool_invoke", name); err != nil {
+		return nil, err
 	}
 
 	argMap := make(map[string]any, len(kwargs))
@@ -324,9 +329,9 @@ func (t *MCPTool) Attr(name string) (starlark.Value, error) {
 
 func (t *MCPTool) AttrNames() []string { return []string{"name", "description"} }
 
-func (t *MCPTool) CallInternal(_ *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (t *MCPTool) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 {
 		return nil, fmt.Errorf("mcp tool %q: takes only keyword arguments, got %d positional", t.cached.name, len(args))
 	}
-	return t.cached.client.invoke(t.cached.name, kwargs)
+	return t.cached.client.invoke(thread, t.cached.name, kwargs)
 }

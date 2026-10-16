@@ -76,26 +76,29 @@ func (u *URL) AttrNames() []string {
 }
 
 func (u *URL) getMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return u.doRequest("GET", false, args, kwargs)
+	return u.doRequest(thread, "GET", false, args, kwargs)
 }
 
 func (u *URL) postMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return u.doRequest("POST", true, args, kwargs)
+	return u.doRequest(thread, "POST", true, args, kwargs)
 }
 
 func (u *URL) putMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return u.doRequest("PUT", true, args, kwargs)
+	return u.doRequest(thread, "PUT", true, args, kwargs)
 }
 
 func (u *URL) patchMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return u.doRequest("PATCH", true, args, kwargs)
+	return u.doRequest(thread, "PATCH", true, args, kwargs)
 }
 
 func (u *URL) deleteMethod(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	return u.doRequest("DELETE", false, args, kwargs)
+	return u.doRequest(thread, "DELETE", false, args, kwargs)
 }
 
-func (u *URL) doRequest(method string, hasBody bool, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (u *URL) doRequest(thread *starlark.Thread, method string, hasBody bool, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if thread == nil {
+		thread = u.thread
+	}
 	var body starlark.Value = starlark.None
 	var headers *starlark.Dict
 	var timeoutStr string
@@ -130,7 +133,7 @@ func (u *URL) doRequest(method string, hasBody bool, args starlark.Tuple, kwargs
 	}
 
 	// Permission check
-	if err := libkite.Check(u.thread, "http", "client", method, u.rawURL); err != nil {
+	if err := libkite.Check(thread, "http", "client", method, u.rawURL); err != nil {
 		return nil, err
 	}
 
@@ -192,14 +195,25 @@ func (u *URL) doRequest(method string, hasBody bool, args starlark.Tuple, kwargs
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	// Create client with timeout override if specified
-	client := u.module.client
+	// Create client with redirect permission checks and optional timeout override
+	u.module.mu.RLock()
+	baseTimeout := u.module.timeout
+	u.module.mu.RUnlock()
 	if timeoutStr != "" {
 		d, err := time.ParseDuration(timeoutStr)
 		if err != nil {
 			return nil, fmt.Errorf("http.url.%s: invalid timeout %q: %w", strings.ToLower(method), timeoutStr, err)
 		}
-		client = &http.Client{Timeout: d}
+		baseTimeout = d
+	}
+	client := &http.Client{
+		Timeout: baseTimeout,
+		CheckRedirect: func(redirectReq *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return fmt.Errorf("stopped after 10 redirects")
+			}
+			return libkite.Check(thread, "http", "client", redirectReq.Method, redirectReq.URL.String())
+		},
 	}
 
 	// Execute request

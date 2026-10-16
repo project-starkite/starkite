@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 
 	"github.com/vladimirvivien/startype"
@@ -30,11 +31,14 @@ func (c *SSHClient) upload(thread *starlark.Thread, fn *starlark.Builtin, args s
 		p.Mode = "0644"
 	}
 
-	// Permission check for SSH upload - check each host
+	// Permission check for SSH upload - check each host and local source path
 	for _, host := range c.hosts {
 		if err := libkite.Check(thread, "ssh", "transfer", "upload", host+":"+p.Src+"->"+p.Dst); err != nil {
 			return nil, err
 		}
+	}
+	if err := libkite.Check(thread, "fs", "read", "upload", libkite.CanonicalizePath(p.Src)); err != nil {
+		return nil, err
 	}
 
 	if c.dryRun {
@@ -61,11 +65,14 @@ func (c *SSHClient) download(thread *starlark.Thread, fn *starlark.Builtin, args
 		return nil, err
 	}
 
-	// Permission check for SSH download - check each host
+	// Permission check for SSH download - check each host and local destination path
 	for _, host := range c.hosts {
 		if err := libkite.Check(thread, "ssh", "transfer", "download", host+":"+p.Src+"->"+p.Dst); err != nil {
 			return nil, err
 		}
+	}
+	if err := libkite.Check(thread, "fs", "write", "download", libkite.CanonicalizePath(p.Dst)); err != nil {
+		return nil, err
 	}
 
 	if c.dryRun {
@@ -181,6 +188,11 @@ func (c *SSHClient) transferOnHost(op, host, src, dst, mode string) (starlark.Va
 	}), nil
 }
 
+// scpShellQuote safely single-quotes a path for remote SCP invocation.
+func scpShellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
 // scpUploadToHost uploads a local file to a remote host using the SCP sink protocol.
 func (c *SSHClient) scpUploadToHost(host, localPath, remotePath, mode string) (int64, error) {
 	f, err := os.Open(localPath)
@@ -217,7 +229,7 @@ func (c *SSHClient) scpUploadToHost(host, localPath, remotePath, mode string) (i
 		return 0, fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
 
-	if err := session.Start(fmt.Sprintf("scp -t %s", remotePath)); err != nil {
+	if err := session.Start(fmt.Sprintf("scp -t -- %s", scpShellQuote(remotePath))); err != nil {
 		return 0, fmt.Errorf("failed to start scp: %w", err)
 	}
 
@@ -288,7 +300,7 @@ func (c *SSHClient) scpDownloadFromHost(host, remotePath, localPath string) (int
 		return 0, fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
 
-	if err := session.Start(fmt.Sprintf("scp -f %s", remotePath)); err != nil {
+	if err := session.Start(fmt.Sprintf("scp -f -- %s", scpShellQuote(remotePath))); err != nil {
 		return 0, fmt.Errorf("failed to start scp: %w", err)
 	}
 

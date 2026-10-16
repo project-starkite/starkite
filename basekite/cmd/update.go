@@ -213,10 +213,10 @@ func downloadAndReplace(url, checksumURL, dstPath, binaryName string) error {
 	}
 	tmpFile.Close()
 
-	// Verify checksum
+	// Verify checksum (fail closed)
 	actualHash := hex.EncodeToString(hasher.Sum(nil))
 	if err := verifyChecksumFromURL(checksumURL, actualHash, binaryName); err != nil {
-		fmt.Fprintf(os.Stderr, "warning: checksum verification skipped: %v\n", err)
+		return fmt.Errorf("checksum verification failed: %w", err)
 	}
 
 	if err := os.Chmod(tmpPath, 0755); err != nil {

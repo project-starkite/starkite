@@ -73,7 +73,10 @@ func TestBuildRequest(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer token123")
 	req.SetPathValue("id", "42")
 
-	r := buildRequest(req, "POST /api/users/{id}")
+	r, err := buildRequest(req, "POST /api/users/{id}")
+	if err != nil {
+		t.Fatalf("buildRequest failed: %v", err)
+	}
 
 	// method
 	assertRequestAttr(t, r, "method", "POST")

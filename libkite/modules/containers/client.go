@@ -120,6 +120,10 @@ func (c *Client) pingFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, err
 	}
 
+	if err := libkite.Check(thread, "containers", "read", "ping", c.socketPath); err != nil {
+		return starlark.False, err
+	}
+
 	ctx := c.getContext(thread)
 	ok, err := c.engine.Ping(ctx)
 	if err != nil {
@@ -131,6 +135,10 @@ func (c *Client) pingFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 // versionFn implements client.version() -> dict
 func (c *Client) versionFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs); err != nil {
+		return nil, err
+	}
+
+	if err := libkite.Check(thread, "containers", "read", "version", c.socketPath); err != nil {
 		return nil, err
 	}
 
@@ -177,7 +185,7 @@ func (c *Client) createFn(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, err
 	}
 
-	cfg, err := c.buildContainerConfig(image, commandVal, portsVal, volumesVal, envVal, network, cpuVal, memoryVal, autoRemove)
+	cfg, err := c.buildContainerConfig(thread, image, commandVal, portsVal, volumesVal, envVal, network, cpuVal, memoryVal, autoRemove)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +235,7 @@ func (c *Client) runFn(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		return nil, err
 	}
 
-	cfg, err := c.buildContainerConfig(image, commandVal, portsVal, volumesVal, envVal, network, cpuVal, memoryVal, autoRemove)
+	cfg, err := c.buildContainerConfig(thread, image, commandVal, portsVal, volumesVal, envVal, network, cpuVal, memoryVal, autoRemove)
 	if err != nil {
 		return nil, err
 	}
@@ -868,7 +876,7 @@ func (c *Client) imageRemoveFn(thread *starlark.Thread, fn *starlark.Builtin, ar
 		return nil, fmt.Errorf("containers: image cannot be empty")
 	}
 
-	if err := libkite.Check(thread, "containers", "delete", "image_remove", image); err != nil {
+	if err := libkite.Check(thread, "containers", "manage", "image_remove", image); err != nil {
 		return nil, err
 	}
 
@@ -918,6 +926,9 @@ func (c *Client) imageBuildFn(thread *starlark.Thread, fn *starlark.Builtin, arg
 	}
 
 	if err := libkite.Check(thread, "containers", "write", "image_build", dirPath); err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(thread, "fs", "read", "image_build", libkite.CanonicalizePath(dirPath)); err != nil {
 		return nil, err
 	}
 
@@ -980,6 +991,7 @@ func (c *Client) pruneFn(thread *starlark.Thread, fn *starlark.Builtin, args sta
 }
 
 func (c *Client) buildContainerConfig(
+	thread *starlark.Thread,
 	image string,
 	commandVal starlark.Value,
 	portsVal starlark.Value,
@@ -1077,8 +1089,8 @@ func (c *Client) buildContainerConfig(
 				} else {
 					hostPortStr = "" // 0 or empty means ephemeral port in Docker API
 				}
-			} else if s, ok := starlark.AsString(item[1]); ok {
-				hostPortStr = s
+			} else if s, ok := item[1].(starlark.String); ok {
+				hostPortStr = string(s)
 			} else {
 				return nil, fmt.Errorf("containers: port value must be int or string, got %s", item[1].Type())
 			}
@@ -1103,6 +1115,17 @@ func (c *Client) buildContainerConfig(
 			}
 			if !strings.Contains(containerPath, ":") {
 				containerPath += ":rw"
+			}
+			if strings.HasPrefix(hostPath, "/") || strings.HasPrefix(hostPath, "./") || strings.HasPrefix(hostPath, "../") || strings.HasPrefix(hostPath, "~") {
+				canonHost := libkite.CanonicalizePath(hostPath)
+				if err := libkite.Check(thread, "fs", "read", "volume", canonHost); err != nil {
+					return nil, err
+				}
+				if !strings.HasSuffix(containerPath, ":ro") && !strings.HasSuffix(containerPath, ":r") {
+					if err := libkite.Check(thread, "fs", "write", "volume", canonHost); err != nil {
+						return nil, err
+					}
+				}
 			}
 			cfg.HostConfig.Binds = append(cfg.HostConfig.Binds, fmt.Sprintf("%s:%s", hostPath, containerPath))
 		}
