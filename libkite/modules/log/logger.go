@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 )
@@ -43,6 +44,11 @@ func (l *Logger) Attr(name string) (starlark.Value, error) {
 	case "output":
 		return starlark.String(l.output), nil
 	}
+	if baseName, ok := strings.CutPrefix(name, "try_"); ok {
+		if method := l.methodBuiltin(baseName); method != nil {
+			return libkite.TryWrap("logger."+name, method), nil
+		}
+	}
 	if method := l.methodBuiltin(name); method != nil {
 		return method, nil
 	}
@@ -69,7 +75,15 @@ func (l *Logger) methodBuiltin(name string) *starlark.Builtin {
 
 // AttrNames implements starlark.HasAttrs.
 func (l *Logger) AttrNames() []string {
-	names := []string{"level", "format", "output", "debug", "info", "warn", "error", "attrs", "group"}
+	names := []string{
+		"level", "format", "output",
+		"debug", "try_debug",
+		"info", "try_info",
+		"warn", "try_warn",
+		"error", "try_error",
+		"attrs", "try_attrs",
+		"group", "try_group",
+	}
 	sort.Strings(names)
 	return names
 }

@@ -11,7 +11,6 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -50,10 +49,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"var_dict":  starlark.NewBuiltin("vars.var_dict", m.varDict),
 		}
 
-		m.module = &starlarkstruct.Module{
-			Name:    string(ModuleName),
-			Members: members,
-		}
+		m.module = libkite.NewTryModule(string(ModuleName), members)
 
 		// Create global aliases so var_str()/var_int()/etc. are available without module prefix
 		m.aliases = starlark.StringDict{

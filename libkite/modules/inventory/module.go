@@ -8,7 +8,6 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 	"gopkg.in/yaml.v3"
 
 	"github.com/project-starkite/starkite/libkite"
@@ -34,9 +33,9 @@ func (m *Module) Description() string {
 func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error) {
 	m.once.Do(func() {
 		m.config = config
-		m.module = &starlarkstruct.Module{
-			Name: string(ModuleName),
-			Members: starlark.StringDict{
+		m.module = libkite.NewTryModule(
+			string(ModuleName),
+			starlark.StringDict{
 				"file":      starlark.NewBuiltin("inventory.file", m.loadFile),
 				"list":      starlark.NewBuiltin("inventory.list", m.list),
 				"filter":    starlark.NewBuiltin("inventory.filter", m.filter),
@@ -44,7 +43,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 				"merge":     starlark.NewBuiltin("inventory.merge", m.merge),
 				"addresses": starlark.NewBuiltin("inventory.addresses", m.addresses),
 			},
-		}
+		)
 	})
 	return starlark.StringDict{string(ModuleName): m.module}, nil
 }
@@ -187,7 +186,7 @@ func (m *Module) filter(thread *starlark.Thread, fn *starlark.Builtin, args star
 				}
 				dict.SetKey(starlark.String(k), starVal)
 			}
-			result, err := starlark.Call(thread, filterFn, starlark.Tuple{dict}, nil)
+			result, err := libkite.CallSafe(thread, filterFn, starlark.Tuple{dict}, nil)
 			if err != nil {
 				return nil, err
 			}

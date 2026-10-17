@@ -9,7 +9,6 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -53,9 +52,9 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 
 		m.defaultLogger = newLogger(os.Stderr, level, m.format, m.output, m.levelVar)
 
-		m.module = &starlarkstruct.Module{
-			Name: string(ModuleName),
-			Members: starlark.StringDict{
+		m.module = libkite.NewTryModule(
+			string(ModuleName),
+			starlark.StringDict{
 				"debug":      starlark.NewBuiltin("log.debug", m.debug),
 				"info":       starlark.NewBuiltin("log.info", m.info),
 				"warn":       starlark.NewBuiltin("log.warn", m.warn),
@@ -65,7 +64,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 				"set_output": starlark.NewBuiltin("log.set_output", m.setOutput),
 				"logger":     starlark.NewBuiltin("log.logger", m.loggerFactory),
 			},
-		}
+		)
 	})
 	return starlark.StringDict{string(ModuleName): m.module}, nil
 }

@@ -289,8 +289,10 @@ func (c *SSHClient) dialHost(host string) (*ssh.Client, error) {
 	return ssh.NewClient(managed, chans, reqs), nil
 }
 
-// buildJumpSSHConfig creates an *ssh.ClientConfig for connecting to the jump host.
-func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
+func (c *SSHClient) toJumpConfig() JumpConfig {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
 	user := c.jumpUser
 	if user == "" {
 		user = c.user
@@ -303,12 +305,17 @@ func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
 	if password == "" {
 		password = c.password
 	}
-
-	config := &ssh.ClientConfig{
-		User:    user,
-		Timeout: c.timeout,
+	passphrase := c.jumpKeyPassphrase
+	if passphrase == "" {
+		passphrase = c.keyPassphrase
 	}
-
+	port := c.jumpPort
+	if port <= 0 {
+		port = c.port
+	}
+	if port <= 0 {
+		port = 22
+	}
 	hostKeyCheck := c.hostKeyCheck
 	knownHostsPath := c.knownHostsFile
 	if c.jumpHost != "" {
@@ -319,91 +326,37 @@ func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
 			knownHostsPath = c.jumpKnownHostsFile
 		}
 	}
-	hostKeyCallback, err := resolveHostKeyCallback(hostKeyCheck, knownHostsPath)
-	if err != nil {
-		return nil, fmt.Errorf("jump host key setup: %w", err)
+	return JumpConfig{
+		Host:           c.jumpHost,
+		Port:           port,
+		User:           user,
+		Key:            keyFile,
+		Passphrase:     passphrase,
+		Password:       password,
+		UseAgent:       c.jumpUseAgent,
+		Prompt:         c.jumpPrompt,
+		HostKeyCheck:   hostKeyCheck,
+		KnownHostsFile: knownHostsPath,
 	}
-	config.HostKeyCallback = hostKeyCallback
+}
 
-	var authMethods []ssh.AuthMethod
-	if c.jumpUseAgent {
-		socket := os.Getenv("SSH_AUTH_SOCK")
-		if socket != "" {
-			if authMethod, err := newAgentAuthMethod(socket); err == nil {
-				authMethods = append(authMethods, authMethod)
-			}
-		}
-	}
-	if keyFile != "" {
-		keyPath, err := expandPath(keyFile)
-		if err != nil {
-			return nil, err
-		}
-		key, err := os.ReadFile(keyPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read jump private key: %w", err)
-		}
-		c.mu.Lock()
-		jumpPass := c.jumpKeyPassphrase
-		if jumpPass == "" {
-			jumpPass = c.keyPassphrase
-		}
-		signer, usedPass, err := parsePrivateKeyWithPrompt(keyPath, key, jumpPass, c.jumpPrompt, c.jumpUseAgent)
-		if err != nil {
-			c.mu.Unlock()
-			return nil, fmt.Errorf("jump host key: %w", err)
-		}
-		if c.jumpKeyPassphrase == "" && usedPass != "" {
-			c.jumpKeyPassphrase = usedPass
-		}
-		c.mu.Unlock()
-		if signer != nil {
-			authMethods = append(authMethods, ssh.PublicKeys(signer))
-		}
-	}
-	if password != "" {
-		authMethods = append(authMethods, ssh.Password(password))
-	}
-	if len(authMethods) == 0 {
-		return nil, fmt.Errorf("no authentication method configured for jump host")
-	}
-
-	config.Auth = authMethods
-	return config, nil
+// buildJumpSSHConfig creates an *ssh.ClientConfig for connecting to the jump host.
+func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
+	return BuildJumpSSHConfig(c.toJumpConfig(), c.timeout)
 }
 
 // dialViaJump connects to a target host through a jump/bastion host.
 func (c *SSHClient) dialViaJump(targetAddr string, targetConfig *ssh.ClientConfig) (*ssh.Client, error) {
-	jumpConfig, err := c.buildJumpSSHConfig()
+	ctx := libkite.ThreadContext(c.thread)
+	jumpCfg := c.toJumpConfig()
+	jumpAddr := jumpCfg.Host
+	if _, _, err := net.SplitHostPort(jumpAddr); err != nil {
+		jumpAddr = fmt.Sprintf("%s:%d", jumpAddr, jumpCfg.Port)
+	}
+	jumpClient, err := DialBastion(ctx, &jumpCfg, c.timeout)
 	if err != nil {
 		return nil, err
 	}
-
-	jumpPort := c.jumpPort
-	if jumpPort <= 0 {
-		jumpPort = c.port
-	}
-	if jumpPort <= 0 {
-		jumpPort = 22
-	}
-
-	jumpAddr := c.jumpHost
-	if _, _, err := net.SplitHostPort(jumpAddr); err != nil {
-		jumpAddr = fmt.Sprintf("%s:%d", jumpAddr, jumpPort)
-	}
-
-	ctx := libkite.ThreadContext(c.thread)
-	dialer := net.Dialer{Timeout: c.timeout}
-	jumpRawConn, err := dialer.DialContext(ctx, "tcp", jumpAddr)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to jump host %s: %w", jumpAddr, err)
-	}
-	jumpConn, jumpChans, jumpReqs, err := ssh.NewClientConn(jumpRawConn, jumpAddr, jumpConfig)
-	if err != nil {
-		_ = jumpRawConn.Close()
-		return nil, fmt.Errorf("failed to connect to jump host %s: %w", jumpAddr, err)
-	}
-	jumpClient := ssh.NewClient(jumpConn, jumpChans, jumpReqs)
 
 	// Create a tunnel from jump host to target
 	type dialResult struct {

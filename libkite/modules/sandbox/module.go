@@ -12,7 +12,6 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/sandbox"
@@ -38,15 +37,15 @@ func (m *Module) Description() string {
 func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error) {
 	m.once.Do(func() {
 		m.config = config
-		m.module = &starlarkstruct.Module{
-			Name: string(ModuleName),
-			Members: starlark.StringDict{
+		m.module = libkite.NewTryModule(
+			string(ModuleName),
+			starlark.StringDict{
 				"config":         starlark.NewBuiltin("sandbox.config", m.sandboxConfig),
 				"run_script":     starlark.NewBuiltin("sandbox.run_script", m.runScript),
 				"list_drivers":   starlark.NewBuiltin("sandbox.list_drivers", m.listDrivers),
 				"default_driver": starlark.NewBuiltin("sandbox.default_driver", m.defaultDriver),
 			},
-		}
+		)
 	})
 	return starlark.StringDict{string(ModuleName): m.module}, nil
 }

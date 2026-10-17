@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"fmt"
 	"net"
@@ -241,40 +242,7 @@ func saveHostKeys(filePath string, keys []*HostKey, hash bool) error {
 
 // dialJumpClient connects to a bastion jump host and returns an authenticated client.
 func dialJumpClient(jump jumpConfig, timeout time.Duration) (*gossh.Client, error) {
-	jumpPort := jump.Port
-	if jumpPort <= 0 {
-		jumpPort = 22
-	}
-	jumpAddr := jump.Host
-	if _, _, err := net.SplitHostPort(jumpAddr); err != nil {
-		jumpAddr = fmt.Sprintf("%s:%d", jumpAddr, jumpPort)
-	}
-
-	ephemeralClient := &SSHClient{
-		timeout:            timeout,
-		hostKeyCheck:       false,
-		jumpHost:           jump.Host,
-		jumpPort:           jumpPort,
-		jumpUser:           jump.User,
-		jumpKeyFile:        jump.Key,
-		jumpKeyPassphrase:  jump.Passphrase,
-		jumpPassword:       jump.Password,
-		jumpUseAgent:       jump.UseAgent,
-		jumpPrompt:         jump.Prompt,
-		jumpHostKeyCheck:   jump.HostKeyCheck,
-		jumpKnownHostsFile: jump.KnownHostsFile,
-	}
-
-	config, err := ephemeralClient.buildJumpSSHConfig()
-	if err != nil {
-		return nil, err
-	}
-
-	jClient, err := gossh.Dial("tcp", jumpAddr, config)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect to jump host %s: %w", jumpAddr, err)
-	}
-	return jClient, nil
+	return DialBastion(context.Background(), &jump, timeout)
 }
 
 // runKeyscan executes the host key discovery workflow for given targets.

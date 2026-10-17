@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -32,13 +31,13 @@ func (m *Module) Description() string {
 func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error) {
 	m.once.Do(func() {
 		m.config = config
-		m.module = &starlarkstruct.Module{
-			Name: string(ModuleName),
-			Members: starlark.StringDict{
+		m.module = libkite.NewTryModule(
+			string(ModuleName),
+			starlark.StringDict{
 				"new":   starlark.NewBuiltin("table.new", m.newTable),
 				"print": starlark.NewBuiltin("table.print", m.printTable),
 			},
-		}
+		)
 	})
 	return starlark.StringDict{string(ModuleName): m.module}, nil
 }
@@ -65,8 +64,12 @@ func (t *TableValue) Attr(name string) (starlark.Value, error) {
 	switch name {
 	case "add_row":
 		return starlark.NewBuiltin("table.add_row", t.addRow), nil
+	case "try_add_row":
+		return libkite.TryWrap("table.try_add_row", starlark.NewBuiltin("table.add_row", t.addRow)), nil
 	case "render":
 		return starlark.NewBuiltin("table.render", t.render), nil
+	case "try_render":
+		return libkite.TryWrap("table.try_render", starlark.NewBuiltin("table.render", t.render)), nil
 	case "row_count":
 		return starlark.MakeInt(len(t.rows)), nil
 	default:
@@ -75,19 +78,26 @@ func (t *TableValue) Attr(name string) (starlark.Value, error) {
 }
 
 func (t *TableValue) AttrNames() []string {
-	return []string{"add_row", "render", "row_count"}
+	return []string{"add_row", "render", "row_count", "try_add_row", "try_render"}
 }
 
 func (t *TableValue) addRow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	row := make([]string, len(args))
-	for i, arg := range args {
-		s, ok := starlark.AsString(arg)
-		if !ok {
-			s = arg.String()
-		}
-		row[i] = s
-		if len(s) > t.widths[i] {
-			t.widths[i] = len(s)
+	if len(args) > len(t.headers) {
+		return nil, fmt.Errorf("table.add_row: too many values (%d) for table with %d columns", len(args), len(t.headers))
+	}
+	row := make([]string, len(t.headers))
+	for i := 0; i < len(t.headers); i++ {
+		if i < len(args) {
+			s, ok := starlark.AsString(args[i])
+			if !ok {
+				s = args[i].String()
+			}
+			row[i] = s
+			if len(s) > t.widths[i] {
+				t.widths[i] = len(s)
+			}
+		} else {
+			row[i] = ""
 		}
 	}
 	t.rows = append(t.rows, row)

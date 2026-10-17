@@ -6,6 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
+	"path"
+	"path/filepath"
 	"strings"
 
 	"github.com/vladimirvivien/startype"
@@ -434,26 +437,41 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		return nil, fmt.Errorf("k8s.cp: cannot copy between two pods")
 	}
 
-	clientset, err := c.getClientset()
-	if err != nil {
-		return nil, fmt.Errorf("k8s.cp: %w", err)
-	}
-
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
-	if err != nil {
-		return nil, fmt.Errorf("k8s.cp: %w", err)
-	}
-	defer cancel()
-
 	if isPodSrc {
-		// Copy from pod to local
+		localDst := libkite.CanonicalizePath(p.Dst)
+		if err := libkite.Check(thread, "fs", "write", "cp", localDst); err != nil {
+			return nil, err
+		}
+		if c.config != nil && c.config.DryRun {
+			return NewAttrDict(map[string]any{
+				"files":     0,
+				"bytes":     int64(0),
+				"direction": "from_pod",
+				"dry_run":   true,
+			}), nil
+		}
+
 		parts := strings.SplitN(p.Src, ":", 2)
-		if len(parts) != 2 {
+		if len(parts) != 2 || parts[1] == "" {
 			return nil, fmt.Errorf("k8s.cp: invalid source format, expected pod:path")
 		}
 		remotePath := parts[1]
 
-		cmd := []string{"tar", "cf", "-", "-C", remotePath, "."}
+		clientset, err := c.getClientset()
+		if err != nil {
+			return nil, fmt.Errorf("k8s.cp: %w", err)
+		}
+
+		ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("k8s.cp: %w", err)
+		}
+		defer cancel()
+
+		cleanRemote := path.Clean(remotePath)
+		remoteDir := path.Dir(cleanRemote)
+		remoteBase := path.Base(cleanRemote)
+		cmd := []string{"tar", "cf", "-", "-C", remoteDir, remoteBase}
 
 		execOpts := &corev1.PodExecOptions{
 			Command: cmd,
@@ -483,34 +501,55 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 			return nil, fmt.Errorf("k8s.cp: exec: %w (%s)", err, stderr.String())
 		}
 
-		// Parse tar to get content size
-		tr := tar.NewReader(&stdout)
-		count := 0
-		for {
-			_, err := tr.Next()
-			if err == io.EOF {
-				break
-			}
-			if err != nil {
-				break
-			}
-			count++
+		count, totalBytes, err := extractTarToLocal(&stdout, localDst)
+		if err != nil {
+			return nil, fmt.Errorf("k8s.cp: extract: %w", err)
 		}
 
 		return NewAttrDict(map[string]any{
 			"files":     count,
+			"bytes":     totalBytes,
 			"direction": "from_pod",
 		}), nil
 	}
 
 	if isPodDst {
+		localSrc := libkite.CanonicalizePath(p.Src)
+		if err := libkite.Check(thread, "fs", "read", "cp", localSrc); err != nil {
+			return nil, err
+		}
+		if _, err := os.Stat(localSrc); err != nil {
+			return nil, fmt.Errorf("k8s.cp: local source: %w", err)
+		}
+		if c.config != nil && c.config.DryRun {
+			return NewAttrDict(map[string]any{
+				"source":    p.Src,
+				"files":     0,
+				"bytes":     int64(0),
+				"direction": "to_pod",
+				"dry_run":   true,
+			}), nil
+		}
+
 		parts := strings.SplitN(p.Dst, ":", 2)
-		if len(parts) != 2 {
+		if len(parts) != 2 || parts[1] == "" {
 			return nil, fmt.Errorf("k8s.cp: invalid destination format, expected pod:path")
 		}
 		remotePath := parts[1]
 
-		cmd := []string{"tar", "xf", "-", "-C", remotePath}
+		clientset, err := c.getClientset()
+		if err != nil {
+			return nil, fmt.Errorf("k8s.cp: %w", err)
+		}
+
+		ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("k8s.cp: %w", err)
+		}
+		defer cancel()
+
+		cleanRemote := path.Clean(remotePath)
+		cmd := []string{"tar", "xf", "-", "-C", cleanRemote}
 
 		execOpts := &corev1.PodExecOptions{
 			Command: cmd,
@@ -527,18 +566,194 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 			SubResource("exec").
 			VersionedParams(execOpts, scheme.ParameterCodec)
 
-		_, err := remotecommand.NewSPDYExecutor(c.restCfg, "POST", req.URL())
+		exec, err := remotecommand.NewSPDYExecutor(c.restCfg, "POST", req.URL())
 		if err != nil {
 			return nil, fmt.Errorf("k8s.cp: %w", err)
 		}
 
+		pr, pw := io.Pipe()
+		var fileCount int
+		var totalBytes int64
+		go func() {
+			fc, tb, packErr := packLocalToTar(localSrc, pw)
+			fileCount = fc
+			totalBytes = tb
+			if packErr != nil {
+				_ = pw.CloseWithError(packErr)
+			} else {
+				_ = pw.Close()
+			}
+		}()
+
+		var stdout, stderr bytes.Buffer
+		err = exec.StreamWithContext(ctx, remotecommand.StreamOptions{
+			Stdin:  pr,
+			Stdout: &stdout,
+			Stderr: &stderr,
+		})
+		_ = pr.Close()
+		if err != nil {
+			return nil, fmt.Errorf("k8s.cp: exec upload: %w (%s)", err, stderr.String())
+		}
+
 		return NewAttrDict(map[string]any{
 			"source":    p.Src,
+			"files":     fileCount,
+			"bytes":     totalBytes,
 			"direction": "to_pod",
 		}), nil
 	}
 
 	return nil, fmt.Errorf("k8s.cp: source or destination must reference a pod (use pod:path format)")
+}
+
+// extractTarToLocal safely extracts a tar stream into localDst, preventing tar-slip attacks.
+func extractTarToLocal(r io.Reader, localDst string) (int, int64, error) {
+	tr := tar.NewReader(r)
+	count := 0
+	var totalBytes int64
+
+	dstClean := filepath.Clean(localDst)
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return count, totalBytes, fmt.Errorf("reading tar stream: %w", err)
+		}
+
+		cleanName := filepath.Clean(hdr.Name)
+		if cleanName == "." || cleanName == "/" {
+			continue
+		}
+		if strings.HasPrefix(cleanName, "..") || filepath.IsAbs(cleanName) {
+			return count, totalBytes, fmt.Errorf("insecure path in tar archive: %q", hdr.Name)
+		}
+
+		targetPath := filepath.Join(dstClean, cleanName)
+		rel, err := filepath.Rel(dstClean, targetPath)
+		if err != nil || strings.HasPrefix(rel, "..") {
+			return count, totalBytes, fmt.Errorf("insecure path escaping destination: %q", hdr.Name)
+		}
+
+		switch hdr.Typeflag {
+		case tar.TypeDir:
+			if err := os.MkdirAll(targetPath, 0755); err != nil {
+				return count, totalBytes, fmt.Errorf("creating directory %q: %w", targetPath, err)
+			}
+		case tar.TypeReg, tar.TypeRegA:
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+				return count, totalBytes, fmt.Errorf("creating parent directory for %q: %w", targetPath, err)
+			}
+			perm := hdr.FileInfo().Mode().Perm()
+			if perm == 0 {
+				perm = 0644
+			}
+			f, err := os.OpenFile(targetPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, perm)
+			if err != nil {
+				return count, totalBytes, fmt.Errorf("creating destination file %q: %w", targetPath, err)
+			}
+			written, err := io.Copy(f, tr)
+			f.Close()
+			if err != nil {
+				return count, totalBytes, fmt.Errorf("writing destination file %q: %w", targetPath, err)
+			}
+			count++
+			totalBytes += written
+		case tar.TypeSymlink, tar.TypeLink:
+			if filepath.IsAbs(hdr.Linkname) || strings.HasPrefix(filepath.Clean(hdr.Linkname), "..") {
+				return count, totalBytes, fmt.Errorf("insecure link in tar archive: %q -> %q", hdr.Name, hdr.Linkname)
+			}
+		}
+	}
+	return count, totalBytes, nil
+}
+
+// packLocalToTar streams the local file or directory at localSrc into pw as a tar archive.
+func packLocalToTar(localSrc string, pw *io.PipeWriter) (int, int64, error) {
+	tw := tar.NewWriter(pw)
+	srcClean := filepath.Clean(localSrc)
+
+	fi, err := os.Stat(srcClean)
+	if err != nil {
+		_ = tw.Close()
+		return 0, 0, fmt.Errorf("stat local source %q: %w", srcClean, err)
+	}
+
+	count := 0
+	var totalBytes int64
+
+	if !fi.IsDir() {
+		hdr, err := tar.FileInfoHeader(fi, "")
+		if err != nil {
+			_ = tw.Close()
+			return 0, 0, err
+		}
+		hdr.Name = filepath.Base(srcClean)
+		if err := tw.WriteHeader(hdr); err != nil {
+			_ = tw.Close()
+			return 0, 0, err
+		}
+		f, err := os.Open(srcClean)
+		if err != nil {
+			_ = tw.Close()
+			return 0, 0, err
+		}
+		written, copyErr := io.Copy(tw, f)
+		f.Close()
+		if copyErr != nil {
+			_ = tw.Close()
+			return 0, 0, copyErr
+		}
+		count++
+		totalBytes += written
+	} else {
+		walkErr := filepath.Walk(srcClean, func(p string, info os.FileInfo, err error) error {
+			if err != nil {
+				return err
+			}
+			rel, err := filepath.Rel(srcClean, p)
+			if err != nil {
+				return err
+			}
+			if rel == "." {
+				return nil
+			}
+			hdr, err := tar.FileInfoHeader(info, "")
+			if err != nil {
+				return err
+			}
+			hdr.Name = filepath.ToSlash(rel)
+			if err := tw.WriteHeader(hdr); err != nil {
+				return err
+			}
+			if info.Mode().IsRegular() {
+				f, err := os.Open(p)
+				if err != nil {
+					return err
+				}
+				written, copyErr := io.Copy(tw, f)
+				f.Close()
+				if copyErr != nil {
+					return copyErr
+				}
+				count++
+				totalBytes += written
+			}
+			return nil
+		})
+		if walkErr != nil {
+			_ = tw.Close()
+			return count, totalBytes, walkErr
+		}
+	}
+
+	if err := tw.Close(); err != nil {
+		return count, totalBytes, err
+	}
+	return count, totalBytes, nil
 }
 
 // describe returns a detailed description of a resource.

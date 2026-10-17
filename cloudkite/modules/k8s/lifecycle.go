@@ -51,7 +51,7 @@ func (m *Module) isDeleting(thread *starlark.Thread, fn *starlark.Builtin, args 
 	var dt any
 	switch v := objVal.(type) {
 	case *AttrDict:
-		if meta, ok := v.data["metadata"].(map[string]any); ok {
+		if meta, ok := v.ToMap()["metadata"].(map[string]any); ok {
 			dt = meta["deletionTimestamp"]
 		}
 	case *starlark.Dict:
@@ -280,7 +280,7 @@ func extractFinalizers(val starlark.Value) []string {
 	var list []string
 	switch v := val.(type) {
 	case *AttrDict:
-		if meta, ok := v.data["metadata"].(map[string]any); ok {
+		if meta, ok := v.ToMap()["metadata"].(map[string]any); ok {
 			if finList, ok := meta["finalizers"].([]any); ok {
 				for _, f := range finList {
 					if s, ok := f.(string); ok {

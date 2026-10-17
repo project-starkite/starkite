@@ -69,14 +69,14 @@ func TestEvict_SuccessAndDryRun(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *AttrDict, got %T", res)
 	}
-	if dict.data["evicted"] != true {
-		t.Errorf("expected evicted=true, got %v", dict.data["evicted"])
+	if dict.ToMap()["evicted"] != true {
+		t.Errorf("expected evicted=true, got %v", dict.ToMap()["evicted"])
 	}
-	if dict.data["name"] != "worker-pod" {
-		t.Errorf("expected name=worker-pod, got %v", dict.data["name"])
+	if dict.ToMap()["name"] != "worker-pod" {
+		t.Errorf("expected name=worker-pod, got %v", dict.ToMap()["name"])
 	}
-	if dict.data["dry_run"] != true {
-		t.Errorf("expected dry_run=true, got %v", dict.data["dry_run"])
+	if dict.ToMap()["dry_run"] != true {
+		t.Errorf("expected dry_run=true, got %v", dict.ToMap()["dry_run"])
 	}
 	if !evictionCalled {
 		t.Errorf("eviction subresource reactor was not called")
@@ -93,8 +93,8 @@ func TestEvict_SuccessAndDryRun(t *testing.T) {
 		t.Fatalf("evict error: %v", err)
 	}
 	dict2 := res2.(*AttrDict)
-	if dict2.data["dry_run"] != false {
-		t.Errorf("expected dry_run=false, got %v", dict2.data["dry_run"])
+	if dict2.ToMap()["dry_run"] != false {
+		t.Errorf("expected dry_run=false, got %v", dict2.ToMap()["dry_run"])
 	}
 	if len(recordedDryRun) != 0 {
 		t.Errorf("expected empty DryRun options, got %v", recordedDryRun)

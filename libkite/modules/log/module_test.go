@@ -140,7 +140,11 @@ func TestLoggerProperties(t *testing.T) {
 func TestLoggerAttrNames(t *testing.T) {
 	l, _ := newTestLogger(t, "info", "text")
 	names := l.AttrNames()
-	expected := []string{"attrs", "debug", "error", "format", "group", "info", "level", "output", "warn"}
+	expected := []string{
+		"attrs", "debug", "error", "format", "group", "info", "level", "output",
+		"try_attrs", "try_debug", "try_error", "try_group", "try_info", "try_warn",
+		"warn",
+	}
 	if len(names) != len(expected) {
 		t.Fatalf("AttrNames() returned %d items, want %d: %v", len(names), len(expected), names)
 	}

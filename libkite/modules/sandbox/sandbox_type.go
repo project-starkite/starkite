@@ -76,13 +76,15 @@ func (s *Sandbox) Attr(name string) (starlark.Value, error) {
 		return starlark.NewList(elems), nil
 	case "exec":
 		return starlark.NewBuiltin("Sandbox.exec", s.boxExec), nil
+	case "try_exec":
+		return libkite.TryWrap("Sandbox.try_exec", starlark.NewBuiltin("Sandbox.exec", s.boxExec)), nil
 	default:
 		return nil, nil
 	}
 }
 
 func (s *Sandbox) AttrNames() []string {
-	names := []string{"allowed_exec_paths", "cpus", "cwd", "driver", "exec", "image", "memory", "network", "no_exec", "timeout"}
+	names := []string{"allowed_exec_paths", "cpus", "cwd", "driver", "exec", "image", "memory", "network", "no_exec", "timeout", "try_exec"}
 	sort.Strings(names)
 	return names
 }

@@ -364,10 +364,8 @@ func (c *Client) startFn(thread *starlark.Thread, fn *starlark.Builtin, args sta
 	}
 
 	if ad, ok := target.(*AttrDict); ok {
-		ad.mu.Lock()
-		ad.data["status"] = "running"
-		ad.data["Status"] = "running"
-		ad.mu.Unlock()
+		_ = ad.Set("status", "running")
+		_ = ad.Set("Status", "running")
 	}
 
 	return starlark.None, nil
@@ -396,10 +394,8 @@ func (c *Client) stopFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 	}
 
 	if ad, ok := target.(*AttrDict); ok {
-		ad.mu.Lock()
-		ad.data["status"] = "exited"
-		ad.data["Status"] = "exited"
-		ad.mu.Unlock()
+		_ = ad.Set("status", "exited")
+		_ = ad.Set("Status", "exited")
 	}
 
 	return starlark.None, nil
@@ -428,10 +424,8 @@ func (c *Client) restartFn(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	if ad, ok := target.(*AttrDict); ok {
-		ad.mu.Lock()
-		ad.data["status"] = "running"
-		ad.data["Status"] = "running"
-		ad.mu.Unlock()
+		_ = ad.Set("status", "running")
+		_ = ad.Set("Status", "running")
 	}
 
 	return starlark.None, nil
@@ -462,10 +456,8 @@ func (c *Client) deleteFn(thread *starlark.Thread, fn *starlark.Builtin, args st
 	}
 
 	if ad, ok := target.(*AttrDict); ok {
-		ad.mu.Lock()
-		ad.data["status"] = "removed"
-		ad.data["Status"] = "removed"
-		ad.mu.Unlock()
+		_ = ad.Set("status", "removed")
+		_ = ad.Set("Status", "removed")
 	}
 
 	return starlark.None, nil
@@ -521,10 +513,8 @@ func (c *Client) inspectFn(thread *starlark.Thread, fn *starlark.Builtin, args s
 	if ad, ok := target.(*AttrDict); ok {
 		if state, ok := inspectData["State"].(map[string]any); ok {
 			if status, ok := state["Status"].(string); ok {
-				ad.mu.Lock()
-				ad.data["status"] = status
-				ad.data["Status"] = status
-				ad.mu.Unlock()
+				_ = ad.Set("status", status)
+				_ = ad.Set("Status", status)
 			}
 		}
 	}
@@ -657,11 +647,9 @@ func (c *Client) execFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 				env = append(env, fmt.Sprintf("%s=%s", k, v))
 			}
 		} else if envAttr, ok := envVal.(*AttrDict); ok {
-			envAttr.mu.RLock()
-			for k, v := range envAttr.data {
+			for k, v := range envAttr.ToMap() {
 				env = append(env, fmt.Sprintf("%s=%v", k, v))
 			}
-			envAttr.mu.RUnlock()
 		} else {
 			return nil, fmt.Errorf("containers: exec env must be a dictionary, got %s", envVal.Type())
 		}

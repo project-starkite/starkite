@@ -7,7 +7,6 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
 
 	"github.com/project-starkite/starkite/libkite"
@@ -48,10 +47,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"assert_false":     starlark.NewBuiltin("test.assert_false", m.assertFalse),
 		}
 
-		m.module = &starlarkstruct.Module{
-			Name:    string(ModuleName),
-			Members: members,
-		}
+		m.module = libkite.NewTryModule(string(ModuleName), members)
 
 		// Global aliases for common test functions
 		m.aliases = starlark.StringDict{

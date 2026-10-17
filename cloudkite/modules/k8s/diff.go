@@ -154,14 +154,14 @@ func (c *K8sClient) diff(thread *starlark.Thread, fn *starlark.Builtin, args sta
 			"diff":           diffText,
 		})
 		if live != nil {
-			report.data["live"] = unstructuredToAttrDict(live)
+			_ = report.Set("live", unstructuredToAttrDict(live))
 		} else {
-			report.data["live"] = starlark.None
+			_ = report.Set("live", starlark.None)
 		}
 		if applied != nil {
-			report.data["merged"] = unstructuredToAttrDict(applied)
+			_ = report.Set("merged", unstructuredToAttrDict(applied))
 		} else {
-			report.data["merged"] = starlark.None
+			_ = report.Set("merged", starlark.None)
 		}
 
 		results = append(results, report)

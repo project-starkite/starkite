@@ -11,7 +11,6 @@ import (
 	gohttp "net/http"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 	"time"
 
@@ -173,7 +172,7 @@ func (wh *webhookHandler) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) 
 		}
 	}
 
-	objectAttr := &AttrDict{data: object, mu: &sync.RWMutex{}}
+	objectAttr := NewAttrDict(object)
 
 	childThread := &starlark.Thread{Name: "webhook-handler"}
 	if wh.thread != nil {
@@ -278,7 +277,7 @@ func buildMutationResponse(uid string, original map[string]any, result starlark.
 	var modified map[string]any
 	switch v := result.(type) {
 	case *AttrDict:
-		modified = v.data
+		modified = v.ToMap()
 	case *starlark.Dict:
 		var goVal any
 		if convErr := startype.Starlark(v).Go(&goVal); convErr != nil {

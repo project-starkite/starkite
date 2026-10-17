@@ -543,3 +543,63 @@ func TestRetryResultFreeze(t *testing.T) {
 	rr := libkite.NewRetryResult(true, starlark.String("ok"), "", 1, time.Millisecond, nil)
 	rr.Freeze() // should not panic
 }
+
+func TestWithBackoffCustomFactor(t *testing.T) {
+	thread := testThread()
+	fn := makeCounterFunc(2, starlark.String("ok"))
+
+	mod := New()
+	mod.Load(&libkite.ModuleConfig{})
+	start := time.Now()
+	val, err := starlark.Call(thread, starlark.NewBuiltin("retry.with_backoff", mod.retryWithBackoff),
+		starlark.Tuple{fn}, []starlark.Tuple{
+			{starlark.String("max_attempts"), starlark.MakeInt(3)},
+			{starlark.String("delay"), starlark.String("20ms")},
+			{starlark.String("max_delay"), starlark.String("1s")},
+			{starlark.String("backoff_factor"), starlark.Float(3.0)},
+			{starlark.String("jitter"), starlark.False},
+		})
+	if err != nil {
+		t.Fatal(err)
+	}
+	elapsed := time.Since(start)
+
+	rr := asRetryResult(t, val)
+	if rr.Truth() != starlark.True {
+		t.Fatal("expected ok=True")
+	}
+	// 2 failures: delays 20ms + (20ms * 3 = 60ms) = 80ms minimum
+	if elapsed < 70*time.Millisecond {
+		t.Fatalf("elapsed = %v, expected >= 70ms for 3x backoff factor", elapsed)
+	}
+}
+
+func TestWithBackoffFactorValidation(t *testing.T) {
+	thread := testThread()
+	fn := makeFunc(libkite.ResultOK(starlark.String("ok")))
+
+	mod := New()
+	mod.Load(&libkite.ModuleConfig{})
+	_, err := starlark.Call(thread, starlark.NewBuiltin("retry.with_backoff", mod.retryWithBackoff),
+		starlark.Tuple{fn}, []starlark.Tuple{
+			{starlark.String("backoff_factor"), starlark.Float(0.5)},
+		})
+	if err == nil {
+		t.Fatal("expected error for backoff_factor < 1.0, got nil")
+	}
+}
+
+func TestRetryTryWrappers(t *testing.T) {
+	mod := New()
+	dict, err := mod.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m := dict[string(ModuleName)]
+	for _, member := range []string{"do", "try_do", "with_backoff", "try_with_backoff"} {
+		attr, err := m.(starlark.HasAttrs).Attr(member)
+		if err != nil || attr == nil {
+			t.Fatalf("missing expected member %q: %v", member, err)
+		}
+	}
+}

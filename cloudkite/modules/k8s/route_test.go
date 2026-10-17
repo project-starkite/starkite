@@ -62,7 +62,7 @@ func TestHighLevel_Route(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected *AttrDict result, got %T", res)
 	}
-	if name := attrDict.data["route"]; name != "web-route" {
+	if name := attrDict.ToMap()["route"]; name != "web-route" {
 		t.Errorf("expected route 'web-route', got %v", name)
 	}
 

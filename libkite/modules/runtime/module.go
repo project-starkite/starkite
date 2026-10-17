@@ -7,7 +7,6 @@ import (
 	"sync"
 
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -47,10 +46,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"go_version": starlark.NewBuiltin("runtime.go_version", m.goVersion),
 		}
 
-		m.module = &starlarkstruct.Module{
-			Name:    string(ModuleName),
-			Members: members,
-		}
+		m.module = libkite.NewTryModule(string(ModuleName), members)
 	})
 
 	return starlark.StringDict{string(ModuleName): m.module}, nil

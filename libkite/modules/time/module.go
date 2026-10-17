@@ -9,7 +9,6 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
 
 	"github.com/project-starkite/starkite/libkite"
@@ -35,9 +34,9 @@ func (m *Module) Description() string {
 func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error) {
 	m.once.Do(func() {
 		m.config = config
-		m.module = &starlarkstruct.Module{
-			Name: string(ModuleName),
-			Members: starlark.StringDict{
+		m.module = libkite.NewTryModule(
+			string(ModuleName),
+			starlark.StringDict{
 				// Functions
 				"now":      starlark.NewBuiltin("time.now", m.now),
 				"sleep":    starlark.NewBuiltin("time.sleep", m.sleep),
@@ -61,7 +60,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 				"DateOnly":    starlark.String(time.DateOnly),
 				"TimeOnly":    starlark.String(time.TimeOnly),
 			},
-		}
+		)
 	})
 	return starlark.StringDict{string(ModuleName): m.module}, nil
 }

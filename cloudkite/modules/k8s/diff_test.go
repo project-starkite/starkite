@@ -81,12 +81,12 @@ spec:
 		t.Fatalf("expected *AttrDict, got %T", res)
 	}
 
-	hasDrift, _ := report.data["has_drift"].(bool)
+	hasDrift, _ := report.ToMap()["has_drift"].(bool)
 	if !hasDrift {
 		t.Errorf("expected has_drift=true")
 	}
 
-	diffText, _ := report.data["diff"].(string)
+	diffText, _ := report.ToMap()["diff"].(string)
 	if diffText == "" {
 		t.Errorf("expected non-empty diff string")
 	}
@@ -131,12 +131,12 @@ spec:
 		t.Fatalf("expected *AttrDict, got %T", res)
 	}
 
-	hasDrift, _ := report.data["has_drift"].(bool)
+	hasDrift, _ := report.ToMap()["has_drift"].(bool)
 	if !hasDrift {
 		t.Errorf("expected has_drift=true for new resource")
 	}
 
-	liveVal := report.data["live"]
+	liveVal := report.ToMap()["live"]
 	if liveVal != starlark.None {
 		t.Errorf("expected live=None for new resource, got %v", liveVal)
 	}

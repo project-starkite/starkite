@@ -158,7 +158,7 @@ func (c *K8sClient) deployHighLevel(thread *starlark.Thread, fn *starlark.Builti
 		if err != nil {
 			return nil, fmt.Errorf("k8s.deploy: apply service: %w", err)
 		}
-		result.data["service"] = p.Name
+		_ = result.Set("service", p.Name)
 	}
 
 	return result, nil
@@ -279,9 +279,9 @@ done:
 	if err == nil {
 		var goLog any
 		if startype.Starlark(logVal).Go(&goLog) == nil {
-			result.data["logs"] = goLog
+			_ = result.Set("logs", goLog)
 		} else {
-			result.data["logs"] = logVal.String()
+			_ = result.Set("logs", logVal.String())
 		}
 	}
 
@@ -1029,9 +1029,10 @@ func (c *K8sClient) route(thread *starlark.Thread, b *starlark.Builtin, args sta
 			gatewayName = n
 		}
 	case *AttrDict:
-		if n := g.data["name"]; n != nil {
+		m := g.ToMap()
+		if n := m["name"]; n != nil {
 			gatewayName = fmt.Sprint(n)
-		} else if md, ok := g.data["metadata"].(map[string]any); ok && md["name"] != nil {
+		} else if md, ok := m["metadata"].(map[string]any); ok && md["name"] != nil {
 			gatewayName = fmt.Sprint(md["name"])
 		}
 	default:

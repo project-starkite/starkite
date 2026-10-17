@@ -799,9 +799,10 @@ func injectOwnerRef(obj *unstructuredObj, owner starlark.Value) error {
 
 	switch o := owner.(type) {
 	case *AttrDict:
-		apiVersion, _ = o.data["apiVersion"].(string)
-		kind, _ = o.data["kind"].(string)
-		if meta, ok := o.data["metadata"].(map[string]any); ok {
+		m := o.ToMap()
+		apiVersion, _ = m["apiVersion"].(string)
+		kind, _ = m["kind"].(string)
+		if meta, ok := m["metadata"].(map[string]any); ok {
 			name, _ = meta["name"].(string)
 			uid, _ = meta["uid"].(string)
 		}
@@ -887,8 +888,9 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 	var objKind, objName, objNs string
 	switch o := objValue.(type) {
 	case *AttrDict:
-		objKind, _ = o.data["kind"].(string)
-		if meta, ok := o.data["metadata"].(map[string]any); ok {
+		m := o.ToMap()
+		objKind, _ = m["kind"].(string)
+		if meta, ok := m["metadata"].(map[string]any); ok {
 			objName, _ = meta["name"].(string)
 			objNs, _ = meta["namespace"].(string)
 		}

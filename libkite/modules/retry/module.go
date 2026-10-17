@@ -10,7 +10,6 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
-	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -35,13 +34,13 @@ func (m *Module) Description() string {
 func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error) {
 	m.once.Do(func() {
 		m.config = config
-		m.module = &starlarkstruct.Module{
-			Name: string(ModuleName),
-			Members: starlark.StringDict{
+		m.module = libkite.NewTryModule(
+			string(ModuleName),
+			starlark.StringDict{
 				"do":           starlark.NewBuiltin("retry.do", m.retryDo),
 				"with_backoff": starlark.NewBuiltin("retry.with_backoff", m.retryWithBackoff),
 			},
-		}
+		)
 	})
 	return starlark.StringDict{string(ModuleName): m.module}, nil
 }
@@ -139,11 +138,11 @@ func (m *Module) retryDo(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		return nil, fmt.Errorf("invalid delay: %w", err)
 	}
 
-	return m.executeRetry(thread, callFn, retryOnFn, onRetryFn, p.MaxAttempts, delay, 0, p.Timeout, p.Jitter)
+	return m.executeRetry(thread, callFn, retryOnFn, onRetryFn, p.MaxAttempts, delay, 0, 1.0, p.Timeout, p.Jitter)
 }
 
 // retryWithBackoff retries a function with exponential backoff.
-// Usage: retry.with_backoff(func, max_attempts=5, delay="500ms", max_delay="30s", ...)
+// Usage: retry.with_backoff(func, max_attempts=5, delay="500ms", max_delay="30s", backoff_factor=2.0, ...)
 func (m *Module) retryWithBackoff(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Func          starlark.Value `name:"func" position:"0" required:"true"`
@@ -160,9 +159,13 @@ func (m *Module) retryWithBackoff(thread *starlark.Thread, fn *starlark.Builtin,
 	p.MaxAttempts = 5
 	p.Delay = "500ms"
 	p.MaxDelay = "30s"
+	p.BackoffFactor = 2.0
 	p.Jitter = true
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
+	}
+	if p.BackoffFactor < 1.0 {
+		return nil, fmt.Errorf("retry.with_backoff: backoff_factor must be >= 1.0, got %v", p.BackoffFactor)
 	}
 	if p.InitialDelay != "" {
 		p.Delay = p.InitialDelay
@@ -191,16 +194,17 @@ func (m *Module) retryWithBackoff(thread *starlark.Thread, fn *starlark.Builtin,
 		return nil, fmt.Errorf("invalid max_delay: %w", err)
 	}
 
-	return m.executeRetry(thread, callFn, retryOnFn, onRetryFn, p.MaxAttempts, delay, maxDelay, p.Timeout, p.Jitter)
+	return m.executeRetry(thread, callFn, retryOnFn, onRetryFn, p.MaxAttempts, delay, maxDelay, p.BackoffFactor, p.Timeout, p.Jitter)
 }
 
 // executeRetry is the core retry loop shared by retryDo and retryWithBackoff.
-// When maxDelay > 0, exponential backoff is used.
+// When maxDelay > 0, exponential backoff with backoffFactor is used.
 func (m *Module) executeRetry(
 	thread *starlark.Thread,
 	callFn, retryOnFn, onRetryFn starlark.Callable,
 	maxAttempts int,
 	delay, maxDelay time.Duration,
+	backoffFactor float64,
 	timeoutStr string,
 	jitter bool,
 ) (starlark.Value, error) {
@@ -222,7 +226,6 @@ func (m *Module) executeRetry(
 
 	var errors []string
 	currentDelay := delay
-	backoff := maxDelay > 0
 
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		// Check timeout
@@ -240,16 +243,7 @@ func (m *Module) executeRetry(
 			// Go-level error (Starlark evaluation error)
 			errors = append(errors, callErr.Error())
 			if attempt < maxAttempts {
-				if onRetryFn != nil {
-					starlark.Call(thread, onRetryFn, starlark.Tuple{starlark.MakeInt(attempt), starlark.String(callErr.Error())}, nil)
-				}
-				m.sleepWithJitter(ctx, currentDelay, jitter)
-				if backoff {
-					currentDelay *= 2
-					if currentDelay > maxDelay {
-						currentDelay = maxDelay
-					}
-				}
+				currentDelay = m.waitNextAttempt(ctx, thread, onRetryFn, attempt, callErr.Error(), currentDelay, maxDelay, backoffFactor, jitter)
 			}
 			continue
 		}
@@ -267,16 +261,7 @@ func (m *Module) executeRetry(
 				if predErr == nil && predResult == starlark.True {
 					errors = append(errors, "retry_on predicate triggered")
 					if attempt < maxAttempts {
-						if onRetryFn != nil {
-							starlark.Call(thread, onRetryFn, starlark.Tuple{starlark.MakeInt(attempt), starlark.String("retry_on predicate triggered")}, nil)
-						}
-						m.sleepWithJitter(ctx, currentDelay, jitter)
-						if backoff {
-							currentDelay *= 2
-							if currentDelay > maxDelay {
-								currentDelay = maxDelay
-							}
-						}
+						currentDelay = m.waitNextAttempt(ctx, thread, onRetryFn, attempt, "retry_on predicate triggered", currentDelay, maxDelay, backoffFactor, jitter)
 					}
 					continue
 				}
@@ -288,16 +273,7 @@ func (m *Module) executeRetry(
 		// Failure
 		errors = append(errors, errMsg)
 		if attempt < maxAttempts {
-			if onRetryFn != nil {
-				starlark.Call(thread, onRetryFn, starlark.Tuple{starlark.MakeInt(attempt), starlark.String(errMsg)}, nil)
-			}
-			m.sleepWithJitter(ctx, currentDelay, jitter)
-			if backoff {
-				currentDelay *= 2
-				if currentDelay > maxDelay {
-					currentDelay = maxDelay
-				}
-			}
+			currentDelay = m.waitNextAttempt(ctx, thread, onRetryFn, attempt, errMsg, currentDelay, maxDelay, backoffFactor, jitter)
 		}
 	}
 
@@ -307,6 +283,27 @@ func (m *Module) executeRetry(
 		lastErr = errors[len(errors)-1]
 	}
 	return libkite.NewRetryResult(false, starlark.None, lastErr, maxAttempts, time.Since(start), errors), nil
+}
+
+// waitNextAttempt invokes onRetry if non-nil, sleeps with optional jitter, and computes the next delay.
+func (m *Module) waitNextAttempt(
+	ctx context.Context,
+	thread *starlark.Thread,
+	onRetryFn starlark.Callable,
+	attempt int,
+	errMsg string,
+	currentDelay, maxDelay time.Duration,
+	backoffFactor float64,
+	jitter bool,
+) time.Duration {
+	if onRetryFn != nil {
+		starlark.Call(thread, onRetryFn, starlark.Tuple{starlark.MakeInt(attempt), starlark.String(errMsg)}, nil)
+	}
+	m.sleepWithJitter(ctx, currentDelay, jitter)
+	if maxDelay > 0 {
+		currentDelay = min(time.Duration(float64(currentDelay)*backoffFactor), maxDelay)
+	}
+	return currentDelay
 }
 
 // sleepWithJitter sleeps for the given duration, optionally applying ±25% jitter.

@@ -278,7 +278,7 @@ fi
 info "Test 13c2: sandbox flag aliases"
 
 # Conflicting sandbox selectors error at flag validation (before any platform check).
-if $KITE exec 'print(1)' --sandbox-opaque --sandbox-host 2>&1 | grep -q "only one sandbox flag"; then
+if $KITE exec 'print(1)' --sandbox-opaque --sandbox-host 2>&1 | grep -qE "only one sandbox (profile )?flag"; then
     pass "conflicting sandbox flags rejected"
 else
     fail "conflicting sandbox flags rejected"
