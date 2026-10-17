@@ -3,7 +3,6 @@ package sandbox
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -183,16 +182,11 @@ func (s *Sandbox) boxExec(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, err
 	}
 
-	netMode := s.network
-	if os.Getenv(sandbox.InsideEnvVar) == "1" && netMode == sandbox.NetworkHost {
-		netMode = sandbox.NetworkNone
-	}
-
 	spec := &sandbox.ExecutionSpec{
 		Command:          commandList,
 		Cwd:              execCwd,
 		Env:              envList,
-		Network:          netMode,
+		Network:          s.network,
 		Mounts:           s.mounts,
 		MaxMemoryMB:      s.maxMemoryMB,
 		MaxCPUs:          s.maxCPUs,

@@ -491,10 +491,20 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 		baseEnv = append([]string(nil), spec.Env...)
 	}
 
-	// When Landlock is supported by the host kernel, use self-reexec so the child
-	// process applies full in-process Landlock + Seccomp-BPF confinement (stacking
-	// on top of any parent domain) before executing the target binary.
-	useSelfReexec := d.Available() && os.Getenv(landlockExecEnvVar) == ""
+	if os.Getenv(InsideEnvVar) == "1" {
+		if policyErr := checkContainerExecPolicy(spec); policyErr != nil {
+			return &ExecResult{
+				Duration: time.Since(start),
+				Stderr:   policyErr.Error() + "\n",
+				ExitCode: 126,
+			}, nil
+		}
+	}
+
+	// When not already inside a sandbox and Landlock is supported by the host kernel,
+	// use self-reexec so the child process applies full in-process Landlock + Seccomp-BPF
+	// confinement before executing the target binary.
+	useSelfReexec := os.Getenv(InsideEnvVar) == "" && d.Available() && os.Getenv(landlockExecEnvVar) == ""
 	var selfBin string
 	var reexecEnv []string
 	if useSelfReexec {
@@ -601,7 +611,7 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 		return result, err
 	}
 
-	wantUserNS := os.Getenv(InsideEnvVar) != "1" && (spec.Network == NetworkNone || spec.Network == NetworkLoopback)
+	wantUserNS := spec.Network == NetworkNone || spec.Network == NetworkLoopback
 	result, err := runAttempt(wantUserNS)
 	if err != nil && wantUserNS && useSelfReexec {
 		var exitErr *exec.ExitError

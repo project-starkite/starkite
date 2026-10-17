@@ -225,6 +225,9 @@ func splitFuncsAndResource(inner string) ([]string, string) {
 	if !ok {
 		return nil, inner
 	}
+	if len(before) == 1 && len(after) > 0 && (after[0] == '/' || after[0] == '\\') {
+		return nil, inner
+	}
 	prefix := before
 	if !isFuncList(prefix) {
 		return nil, inner

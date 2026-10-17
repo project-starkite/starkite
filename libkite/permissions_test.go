@@ -599,3 +599,16 @@ func TestCanonicalizePath_SymlinkEscapeBlocked(t *testing.T) {
 		t.Fatalf("expected symlink escape %q -> %q to be blocked", filepath.Join(escapeLink, "pwned.txt"), escapedTarget)
 	}
 }
+
+func TestParseRule_WindowsDriveLetter(t *testing.T) {
+	rule, err := ParseRule("fs.write(C:/Users/alice/work/**)")
+	if err != nil {
+		t.Fatalf("ParseRule: %v", err)
+	}
+	if rule.Functions != nil {
+		t.Fatalf("expected Functions == nil for Windows drive path, got %v", rule.Functions)
+	}
+	if rule.Resource != "C:/Users/alice/work/**" {
+		t.Fatalf("expected Resource == %q, got %q", "C:/Users/alice/work/**", rule.Resource)
+	}
+}
