@@ -190,6 +190,28 @@ func TestTryModuleTryPrefix(t *testing.T) {
 	}
 }
 
+func TestTryModuleCachesTryBuiltin(t *testing.T) {
+	fn := starlark.NewBuiltin("test.get", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		return starlark.String("ok"), nil
+	})
+
+	m := NewTryModule("test", starlark.StringDict{
+		"get": fn,
+	})
+
+	v1, err := m.Attr("try_get")
+	if err != nil {
+		t.Fatal(err)
+	}
+	v2, err := m.Attr("try_get")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if v1 != v2 {
+		t.Fatal("expected TryModule.Attr(\"try_get\") to return the same cached *starlark.Builtin instance")
+	}
+}
+
 func TestTryModuleUnknownAttr(t *testing.T) {
 	m := NewTryModule("test", starlark.StringDict{
 		"get": starlark.NewBuiltin("test.get", nil),

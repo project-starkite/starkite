@@ -132,6 +132,16 @@ var builtinKinds = map[string]resolvedGVR{
 	"referencegrants": {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "referencegrants"}, namespaced: true},
 }
 
+// builtinQualifiedKinds indexes builtinKinds by "group/resource" for O(1) qualified lookups.
+var builtinQualifiedKinds = func() map[string]resolvedGVR {
+	m := make(map[string]resolvedGVR, len(builtinKinds))
+	for _, r := range builtinKinds {
+		key := r.gvr.Group + "/" + r.gvr.Resource
+		m[key] = r
+	}
+	return m
+}()
+
 // NewResolver creates a new Resolver with the given discovery client.
 func NewResolver(disc discovery.DiscoveryInterface) *Resolver {
 	return &Resolver{
@@ -170,12 +180,20 @@ func (r *Resolver) Resolve(kind string) (schema.GroupVersionResource, bool, erro
 
 // resolveQualified handles "group/resource" qualified form.
 func (r *Resolver) resolveQualified(group, resource string) (schema.GroupVersionResource, bool, error) {
-	// Check builtins first
-	for _, resolved := range builtinKinds {
-		if resolved.gvr.Group == group && resolved.gvr.Resource == resource {
-			return resolved.gvr, resolved.namespaced, nil
-		}
+	key := group + "/" + resource
+
+	// Check builtins first in O(1)
+	if resolved, ok := builtinQualifiedKinds[key]; ok {
+		return resolved.gvr, resolved.namespaced, nil
 	}
+
+	// Check cache
+	r.mu.RLock()
+	if resolved, ok := r.cache[key]; ok {
+		r.mu.RUnlock()
+		return resolved.gvr, resolved.namespaced, nil
+	}
+	r.mu.RUnlock()
 
 	// Fall back to discovery for qualified names
 	return r.discoverQualified(group, resource)
@@ -208,6 +226,7 @@ func (r *Resolver) discoverKind(kind string) (schema.GroupVersionResource, bool,
 				}
 				r.mu.Lock()
 				r.cache[kind] = resolved
+				r.cache[gv.Group+"/"+strings.ToLower(res.Name)] = resolved
 				r.mu.Unlock()
 				return resolved.gvr, resolved.namespaced, nil
 			}
@@ -238,7 +257,14 @@ func (r *Resolver) discoverQualified(group, resource string) (schema.GroupVersio
 		}
 		for _, res := range list.APIResources {
 			if res.Name == resource {
-				return schema.GroupVersionResource{Group: gv.Group, Version: gv.Version, Resource: res.Name}, res.Namespaced, nil
+				resolved := resolvedGVR{
+					gvr:        schema.GroupVersionResource{Group: gv.Group, Version: gv.Version, Resource: res.Name},
+					namespaced: res.Namespaced,
+				}
+				r.mu.Lock()
+				r.cache[group+"/"+resource] = resolved
+				r.mu.Unlock()
+				return resolved.gvr, resolved.namespaced, nil
 			}
 		}
 	}

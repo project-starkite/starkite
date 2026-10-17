@@ -255,28 +255,37 @@ func (a *Archive) writeMethod(_ *starlark.Thread, _ *starlark.Builtin, args star
 		return starlark.None, nil
 	}
 
-	content, err := os.ReadFile(sourcePath)
+	srcFile, err := os.Open(sourcePath)
 	if err != nil {
 		return nil, fmt.Errorf("zip.write: %w", err)
 	}
+	defer srcFile.Close()
 
 	outFile, err := os.Create(a.path)
 	if err != nil {
 		return nil, fmt.Errorf("zip.write: %w", err)
 	}
-	defer outFile.Close()
 
 	w := zip.NewWriter(outFile)
 	entry, err := w.Create(entryName)
 	if err != nil {
 		w.Close()
+		outFile.Close()
+		os.Remove(a.path)
 		return nil, fmt.Errorf("zip.write: %w", err)
 	}
-	if _, err := entry.Write(content); err != nil {
+	if _, err := io.Copy(entry, srcFile); err != nil {
 		w.Close()
+		outFile.Close()
+		os.Remove(a.path)
 		return nil, fmt.Errorf("zip.write: %w", err)
 	}
 	if err := w.Close(); err != nil {
+		outFile.Close()
+		os.Remove(a.path)
+		return nil, fmt.Errorf("zip.write: %w", err)
+	}
+	if err := outFile.Close(); err != nil {
 		return nil, fmt.Errorf("zip.write: %w", err)
 	}
 	return starlark.None, nil
@@ -337,7 +346,6 @@ func (a *Archive) writeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 	if err != nil {
 		return nil, fmt.Errorf("zip.write_all: %w", err)
 	}
-	defer outFile.Close()
 
 	w := zip.NewWriter(outFile)
 	if p.Level != flate.DefaultCompression {
@@ -347,12 +355,6 @@ func (a *Archive) writeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 	}
 
 	for _, sp := range sourcePaths {
-		content, err := os.ReadFile(sp)
-		if err != nil {
-			w.Close()
-			return nil, fmt.Errorf("zip.write_all: %w", err)
-		}
-
 		entryName := sp
 		if p.BaseDir != "" {
 			rel, err := filepath.Rel(p.BaseDir, sp)
@@ -361,21 +363,38 @@ func (a *Archive) writeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 			}
 		}
 
-		entry, err := w.Create(entryName)
-		if err != nil {
+		if err := copyFileToZip(w, sp, entryName); err != nil {
 			w.Close()
-			return nil, fmt.Errorf("zip.write_all: %w", err)
-		}
-		if _, err := entry.Write(content); err != nil {
-			w.Close()
+			outFile.Close()
+			os.Remove(a.path)
 			return nil, fmt.Errorf("zip.write_all: %w", err)
 		}
 	}
 
 	if err := w.Close(); err != nil {
+		outFile.Close()
+		os.Remove(a.path)
+		return nil, fmt.Errorf("zip.write_all: %w", err)
+	}
+	if err := outFile.Close(); err != nil {
 		return nil, fmt.Errorf("zip.write_all: %w", err)
 	}
 	return starlark.None, nil
+}
+
+func copyFileToZip(w *zip.Writer, srcPath, entryName string) error {
+	srcFile, err := os.Open(srcPath)
+	if err != nil {
+		return err
+	}
+	defer srcFile.Close()
+
+	entry, err := w.Create(entryName)
+	if err != nil {
+		return err
+	}
+	_, err = io.Copy(entry, srcFile)
+	return err
 }
 
 // resolveGlob expands a glob pattern into matching file paths.

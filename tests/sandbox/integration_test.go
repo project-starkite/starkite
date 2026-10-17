@@ -19,7 +19,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -267,21 +269,35 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	}
 }
 
-// buildKite builds the kite all-in-one binary into a
-// t.TempDir() and returns its path.
-func buildKite(t *testing.T) string {
-	t.Helper()
-
+var buildKiteOnce = sync.OnceValues(func() (string, error) {
 	repoRoot, err := filepath.Abs("../..")
 	if err != nil {
-		t.Fatalf("resolving repo root: %v", err)
+		return "", fmt.Errorf("resolving repo root: %w", err)
 	}
-	out := filepath.Join(t.TempDir(), "kite")
+	dir, err := os.MkdirTemp("", "kite-sandbox-bin-*")
+	if err != nil {
+		return "", fmt.Errorf("creating temp dir: %w", err)
+	}
+	binName := "kite"
+	if runtime.GOOS == "windows" {
+		binName = "kite.exe"
+	}
+	out := filepath.Join(dir, binName)
 
 	cmd := exec.Command("go", "build", "-o", out, ".")
 	cmd.Dir = filepath.Join(repoRoot, "kite")
 	if buildOut, err := cmd.CombinedOutput(); err != nil {
-		t.Fatalf("building kite: %v\n%s", err, buildOut)
+		return "", fmt.Errorf("building kite: %w\n%s", err, buildOut)
+	}
+	return out, nil
+})
+
+// buildKite builds the kite all-in-one binary once per test process and returns its path.
+func buildKite(t *testing.T) string {
+	t.Helper()
+	out, err := buildKiteOnce()
+	if err != nil {
+		t.Fatal(err)
 	}
 	return out
 }

@@ -93,10 +93,12 @@ func TryWrap(name string, fn *starlark.Builtin) *starlark.Builtin {
 
 // TryModule is a drop-in replacement for starlarkstruct.Module that supports
 // dynamic try_ prefix dispatch. Any attribute lookup for "try_X" where "X"
-// is a registered *starlark.Builtin will return a TryWrap'd version.
+// is a registered *starlark.Builtin will return a cached TryWrap'd version.
 type TryModule struct {
-	name    string
-	members starlark.StringDict
+	name       string
+	members    starlark.StringDict
+	tryMembers starlark.StringDict
+	attrNames  []string
 }
 
 var (
@@ -104,9 +106,26 @@ var (
 	_ starlark.HasAttrs = (*TryModule)(nil)
 )
 
-// NewTryModule creates a TryModule with the given name and members.
+// NewTryModule creates a TryModule with the given name and members,
+// pre-allocating TryWrap builtins and sorted attribute names at load time.
 func NewTryModule(name string, members starlark.StringDict) *TryModule {
-	return &TryModule{name: name, members: members}
+	tryMembers := make(starlark.StringDict, len(members))
+	names := make([]string, 0, len(members)*2)
+	for k, v := range members {
+		names = append(names, k)
+		if b, ok := v.(*starlark.Builtin); ok {
+			tryName := "try_" + k
+			tryMembers[tryName] = TryWrap(name+"."+tryName, b)
+			names = append(names, tryName)
+		}
+	}
+	sort.Strings(names)
+	return &TryModule{
+		name:       name,
+		members:    members,
+		tryMembers: tryMembers,
+		attrNames:  names,
+	}
 }
 
 func (m *TryModule) String() string        { return fmt.Sprintf("<module %q>", m.name) }
@@ -125,7 +144,13 @@ func (m *TryModule) Attr(name string) (starlark.Value, error) {
 	if v, ok := m.members[name]; ok {
 		return v, nil
 	}
-	// try_ prefix dispatch
+	// Cached try_ lookup
+	if m.tryMembers != nil {
+		if v, ok := m.tryMembers[name]; ok {
+			return v, nil
+		}
+	}
+	// Fallback try_ prefix dispatch if members was modified post-construction
 	if baseName, ok := strings.CutPrefix(name, "try_"); ok {
 		if v, ok := m.members[baseName]; ok {
 			if b, ok := v.(*starlark.Builtin); ok {
@@ -137,6 +162,9 @@ func (m *TryModule) Attr(name string) (starlark.Value, error) {
 }
 
 func (m *TryModule) AttrNames() []string {
+	if m.attrNames != nil {
+		return m.attrNames
+	}
 	names := make([]string, 0, len(m.members)*2)
 	for k, v := range m.members {
 		names = append(names, k)

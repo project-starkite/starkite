@@ -90,13 +90,15 @@ func (f *HashFile) hashMethod(algo string) func(*starlark.Thread, *starlark.Buil
 		if f.isDryRun() {
 			return starlark.String(strings.Repeat("0", hashHexLen(algo))), nil
 		}
-		data, err := os.ReadFile(f.path)
+		file, err := os.Open(f.path)
 		if err != nil {
 			return nil, fmt.Errorf("hash.file.%s: %w", algo, err)
 		}
-		h, err := computeHash(algo, data)
+		defer file.Close()
+
+		h, err := computeHashReader(algo, file)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("hash.file.%s: %w", algo, err)
 		}
 		return starlark.String(h), nil
 	}

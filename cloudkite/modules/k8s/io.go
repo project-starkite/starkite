@@ -15,7 +15,6 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/tools/remotecommand"
@@ -47,7 +46,7 @@ func (c *K8sClient) logs(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		ns = c.namespace
 	}
 
-	clientset, err := kubernetes.NewForConfig(c.restCfg)
+	clientset, err := c.getClientset()
 	if err != nil {
 		return nil, fmt.Errorf("k8s.logs: %w", err)
 	}
@@ -123,7 +122,7 @@ func (c *K8sClient) logsFollow(thread *starlark.Thread, fn *starlark.Builtin, ar
 		ns = c.namespace
 	}
 
-	clientset, err := kubernetes.NewForConfig(c.restCfg)
+	clientset, err := c.getClientset()
 	if err != nil {
 		return nil, fmt.Errorf("k8s.logs_follow: %w", err)
 	}
@@ -247,7 +246,7 @@ func (c *K8sClient) execCmd(thread *starlark.Thread, fn *starlark.Builtin, args 
 		return nil, fmt.Errorf("k8s.exec: command must be string or list, got %s", command.Type())
 	}
 
-	clientset, err := kubernetes.NewForConfig(c.restCfg)
+	clientset, err := c.getClientset()
 	if err != nil {
 		return nil, fmt.Errorf("k8s.exec: %w", err)
 	}
@@ -428,7 +427,7 @@ func (c *K8sClient) debug(thread *starlark.Thread, fn *starlark.Builtin, args st
 		}
 	}
 
-	clientset, err := kubernetes.NewForConfig(c.restCfg)
+	clientset, err := c.getClientset()
 	if err != nil {
 		return nil, fmt.Errorf("k8s.debug: %w", err)
 	}

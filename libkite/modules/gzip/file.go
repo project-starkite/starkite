@@ -1,7 +1,6 @@
 package gzip
 
 import (
-	"bytes"
 	"compress/gzip"
 	"fmt"
 	"io"
@@ -73,7 +72,7 @@ func (f *GzipFile) isDryRun() bool {
 	return f.config != nil && f.config.DryRun
 }
 
-// compressMethod reads source file and writes compressed data to f.path.
+// compressMethod streams source file and writes compressed data to f.path.
 // Usage: gzip.file("data.gz").compress("source.txt", level=-1)
 func (f *GzipFile) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
@@ -100,31 +99,42 @@ func (f *GzipFile) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 		return starlark.None, nil
 	}
 
-	data, err := os.ReadFile(p.Source)
+	srcFile, err := os.Open(p.Source)
+	if err != nil {
+		return nil, fmt.Errorf("gzip.file.compress: %w", err)
+	}
+	defer srcFile.Close()
+
+	dstFile, err := os.OpenFile(f.path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("gzip.file.compress: %w", err)
 	}
 
-	var buf bytes.Buffer
-	w, err := gzip.NewWriterLevel(&buf, p.Level)
+	w, err := gzip.NewWriterLevel(dstFile, p.Level)
 	if err != nil {
+		dstFile.Close()
+		os.Remove(f.path)
 		return nil, fmt.Errorf("gzip.file.compress: %w", err)
 	}
-	if _, err := w.Write(data); err != nil {
+
+	if _, err := io.Copy(w, srcFile); err != nil {
 		w.Close()
+		dstFile.Close()
+		os.Remove(f.path)
 		return nil, fmt.Errorf("gzip.file.compress: %w", err)
 	}
 	if err := w.Close(); err != nil {
+		dstFile.Close()
+		os.Remove(f.path)
 		return nil, fmt.Errorf("gzip.file.compress: %w", err)
 	}
-
-	if err := os.WriteFile(f.path, buf.Bytes(), 0644); err != nil {
+	if err := dstFile.Close(); err != nil {
 		return nil, fmt.Errorf("gzip.file.compress: %w", err)
 	}
 	return starlark.None, nil
 }
 
-// decompressMethod reads f.path and writes decompressed data to dest.
+// decompressMethod streams f.path and writes decompressed data to dest.
 // Usage: gzip.file("data.gz").decompress("output.txt") or gzip.file("data.gz").decompress()
 func (f *GzipFile) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
@@ -155,23 +165,34 @@ func (f *GzipFile) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, arg
 		return starlark.None, nil
 	}
 
-	data, err := os.ReadFile(f.path)
+	srcFile, err := os.Open(f.path)
 	if err != nil {
 		return nil, fmt.Errorf("gzip.file.decompress: %w", err)
 	}
+	defer srcFile.Close()
 
-	r, err := gzip.NewReader(bytes.NewReader(data))
+	r, err := gzip.NewReader(srcFile)
 	if err != nil {
 		return nil, fmt.Errorf("gzip.file.decompress: %w", err)
 	}
 	defer r.Close()
 
-	content, err := io.ReadAll(r)
+	dstFile, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
 	if err != nil {
 		return nil, fmt.Errorf("gzip.file.decompress: %w", err)
 	}
 
-	if err := os.WriteFile(dest, content, 0644); err != nil {
+	if _, err := io.Copy(dstFile, r); err != nil {
+		dstFile.Close()
+		os.Remove(dest)
+		return nil, fmt.Errorf("gzip.file.decompress: %w", err)
+	}
+	if err := r.Close(); err != nil {
+		dstFile.Close()
+		os.Remove(dest)
+		return nil, fmt.Errorf("gzip.file.decompress: %w", err)
+	}
+	if err := dstFile.Close(); err != nil {
 		return nil, fmt.Errorf("gzip.file.decompress: %w", err)
 	}
 	return starlark.None, nil

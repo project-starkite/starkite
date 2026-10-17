@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"sync"
-	"text/template"
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
@@ -124,7 +123,7 @@ func (m *Module) render(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, fmt.Errorf("render: first argument must be a string, got %s", args[0].Type())
 	}
 
-	tmpl, err := template.New("tmpl").Parse(tmplStr)
+	tmpl, err := getOrParseTemplate(tmplStr, "", "")
 	if err != nil {
 		return nil, err
 	}

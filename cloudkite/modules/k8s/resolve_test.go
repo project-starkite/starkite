@@ -1,8 +1,23 @@
 package k8s
 
 import (
+	"sync/atomic"
 	"testing"
+
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/discovery"
 )
+
+type mockDiscovery struct {
+	discovery.DiscoveryInterface
+	resources []*metav1.APIResourceList
+	calls     atomic.Int32
+}
+
+func (m *mockDiscovery) ServerPreferredResources() ([]*metav1.APIResourceList, error) {
+	m.calls.Add(1)
+	return m.resources, nil
+}
 
 func TestResolveBuiltinKinds(t *testing.T) {
 	resolver := NewResolver(nil) // nil discovery — only builtins
@@ -132,5 +147,48 @@ func TestResolveWhitespace(t *testing.T) {
 	}
 	if gvr.Resource != "pods" {
 		t.Errorf("Resource = %q, want %q", gvr.Resource, "pods")
+	}
+}
+
+func TestResolveQualifiedDiscoveryCaching(t *testing.T) {
+	disc := &mockDiscovery{
+		resources: []*metav1.APIResourceList{
+			{
+				GroupVersion: "custom.example.com/v1alpha1",
+				APIResources: []metav1.APIResource{
+					{
+						Name:         "widgets",
+						SingularName: "widget",
+						Kind:         "Widget",
+						Namespaced:   true,
+					},
+				},
+			},
+		},
+	}
+	resolver := NewResolver(disc)
+
+	// First qualified lookup triggers discovery
+	gvr, ns, err := resolver.Resolve("custom.example.com/widgets")
+	if err != nil {
+		t.Fatalf("Resolve(custom.example.com/widgets) error: %v", err)
+	}
+	if gvr.Group != "custom.example.com" || gvr.Version != "v1alpha1" || gvr.Resource != "widgets" || !ns {
+		t.Fatalf("unexpected resolved GVR: %+v (ns=%v)", gvr, ns)
+	}
+	if got := disc.calls.Load(); got != 1 {
+		t.Fatalf("discovery calls = %d, want 1", got)
+	}
+
+	// Second qualified lookup hits cache without invoking discovery
+	gvr2, ns2, err := resolver.Resolve("custom.example.com/widgets")
+	if err != nil {
+		t.Fatalf("second Resolve(custom.example.com/widgets) error: %v", err)
+	}
+	if gvr2 != gvr || ns2 != ns {
+		t.Fatalf("cached result mismatch: %+v vs %+v", gvr2, gvr)
+	}
+	if got := disc.calls.Load(); got != 1 {
+		t.Fatalf("discovery calls after cached lookup = %d, want 1", got)
 	}
 }

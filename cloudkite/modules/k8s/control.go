@@ -22,7 +22,6 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/client-go/util/workqueue"
@@ -460,7 +459,7 @@ func (c *controller) startWorkers(wg *sync.WaitGroup) {
 // runWithLeaderElection wraps worker startup in leader election.
 // Watches run always (warm cache on standbys); workers run only when leader.
 func (c *controller) runWithLeaderElection(wg *sync.WaitGroup) {
-	clientset, err := kubernetes.NewForConfig(c.client.restCfg)
+	clientset, err := c.client.getClientset()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "k8s.control: leader election: failed to create clientset: %v\n", err)
 		c.cancel()

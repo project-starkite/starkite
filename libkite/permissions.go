@@ -74,7 +74,7 @@ func NewPermissionChecker(config *PermissionConfig) (*PermissionChecker, error) 
 		if err != nil {
 			return nil, fmt.Errorf("invalid allow rule %q: %w", pattern, err)
 		}
-		rule.Resource = canonicalizePattern(expandPathVariables(rule.Resource, cwd, home))
+		rule.setResource(canonicalizePattern(expandPathVariables(rule.Resource, cwd, home)))
 		checker.allow = append(checker.allow, *rule)
 	}
 
@@ -83,7 +83,7 @@ func NewPermissionChecker(config *PermissionConfig) (*PermissionChecker, error) 
 		if err != nil {
 			return nil, fmt.Errorf("invalid deny rule %q: %w", pattern, err)
 		}
-		rule.Resource = canonicalizePattern(expandPathVariables(rule.Resource, cwd, home))
+		rule.setResource(canonicalizePattern(expandPathVariables(rule.Resource, cwd, home)))
 		checker.deny = append(checker.deny, *rule)
 	}
 
@@ -165,6 +165,40 @@ type Rule struct {
 	Functions []string // Optional function-name filter; nil = any function in category
 	Resource  string   // Resource glob pattern or ""
 	Raw       string   // Original pattern string
+
+	// Pre-computed fields for fast resource matching when Resource has not been mutated after setResource.
+	compiledSrc   string
+	slashPattern  string
+	isAbsPattern  bool
+	hasDoublestar bool
+	patSegs       []string
+}
+
+func (r *Rule) setResource(res string) {
+	r.Resource = res
+	if res == "" {
+		r.compiledSrc = ""
+		r.slashPattern = ""
+		r.isAbsPattern = false
+		r.hasDoublestar = false
+		r.patSegs = nil
+		return
+	}
+	p := filepath.ToSlash(res)
+	isAbs := filepath.IsAbs(p)
+	if isAbs {
+		p = canonicalizePattern(p)
+	}
+	hasDS := strings.Contains(p, "**")
+	var segs []string
+	if hasDS && p != "**" {
+		segs = strings.Split(p, "/")
+	}
+	r.compiledSrc = res
+	r.slashPattern = p
+	r.isAbsPattern = isAbs
+	r.hasDoublestar = hasDS
+	r.patSegs = segs
 }
 
 // ParseRule parses a permission pattern string.
@@ -198,7 +232,7 @@ func ParseRule(pattern string) (*Rule, error) {
 
 		funcs, resource := splitFuncsAndResource(inner)
 		rule.Functions = funcs
-		rule.Resource = resource
+		rule.setResource(resource)
 	}
 
 	parts := strings.SplitN(pattern, ".", 2)
@@ -288,15 +322,30 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 		if resource == "" {
 			return false
 		}
-		pattern := filepath.ToSlash(r.Resource)
+		var pattern string
+		var isAbs, hasDS bool
+		var patSegs []string
+		if r.compiledSrc == r.Resource && r.slashPattern != "" {
+			pattern = r.slashPattern
+			isAbs = r.isAbsPattern
+			hasDS = r.hasDoublestar
+			patSegs = r.patSegs
+		} else {
+			pattern = filepath.ToSlash(r.Resource)
+			isAbs = filepath.IsAbs(pattern)
+			if isAbs {
+				pattern = canonicalizePattern(pattern)
+			}
+			hasDS = strings.Contains(pattern, "**")
+		}
+
 		// Bare "*" or "**" matches any non-empty resource (filepath.Match
 		// treats "*" as not crossing path separators, which surprises users).
 		if pattern == "*" || pattern == "**" {
 			return true
 		}
 		res := filepath.ToSlash(resource)
-		if filepath.IsAbs(pattern) {
-			pattern = canonicalizePattern(pattern)
+		if isAbs {
 			res = filepath.ToSlash(CanonicalizePath(resource))
 		}
 		matched, err := filepath.Match(pattern, res)
@@ -308,8 +357,12 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 		}
 
 		// Handle ** patterns (match any directory depth)
-		if !matched && strings.Contains(pattern, "**") {
-			matched = matchDoublestar(pattern, res)
+		if !matched && hasDS {
+			if patSegs != nil {
+				matched = matchDoublestarPrecompiled(pattern, patSegs, res)
+			} else {
+				matched = matchDoublestar(pattern, res)
+			}
 		}
 
 		if !matched {
@@ -399,6 +452,14 @@ func matchDoublestar(pattern, path string) bool {
 	}
 
 	patSegs := strings.Split(pattern, "/")
+	pathSegs := strings.Split(path, "/")
+	return matchSegments(patSegs, pathSegs)
+}
+
+func matchDoublestarPrecompiled(pattern string, patSegs []string, path string) bool {
+	if before, ok := strings.CutSuffix(pattern, "**"); ok && !strings.HasSuffix(before, "/") && !strings.ContainsAny(before, "*?[") {
+		return strings.HasPrefix(path, before)
+	}
 	pathSegs := strings.Split(path, "/")
 	return matchSegments(patSegs, pathSegs)
 }
@@ -582,14 +643,29 @@ func AllowLocalPermissions() *PermissionConfig {
 	return &PermissionConfig{Allow: append([]string{}, allowLocalRules...), Default: DefaultDeny}
 }
 
-// suggestProfile returns the lowest built-in profile on the capability ladder
-// that would actually grant this specific call, for prescriptive denial
-// messages. It tests the real profiles (resource-scoped rules included), so
-// e.g. exec of a $CWD binary suggests allow-local while exec of a system
-// binary suggests allow-all. The names match the built-in profile constants in
-// libkite/permissions.
-func suggestProfile(module, category, function, resource string) string {
-	ladder := []struct {
+type ladderEntry struct {
+	name    string
+	checker *PermissionChecker
+}
+
+var (
+	suggestCacheMu      sync.RWMutex
+	suggestCacheCwd     string
+	suggestCacheEntries []ladderEntry
+)
+
+func getSuggestLadder() []ladderEntry {
+	cwd, _ := os.Getwd()
+
+	suggestCacheMu.RLock()
+	if len(suggestCacheEntries) > 0 && suggestCacheCwd == cwd {
+		entries := suggestCacheEntries
+		suggestCacheMu.RUnlock()
+		return entries
+	}
+	suggestCacheMu.RUnlock()
+
+	profiles := []struct {
 		name string
 		cfg  *PermissionConfig
 	}{
@@ -598,10 +674,32 @@ func suggestProfile(module, category, function, resource string) string {
 		{"allow-local", AllowLocalPermissions()},
 		{"allow-all", AllowAllPermissions()},
 	}
-	for _, p := range ladder {
-		c, err := NewPermissionChecker(p.cfg)
-		if err == nil && c.allows(module, category, function, resource) {
-			return p.name
+
+	built := make([]ladderEntry, 0, len(profiles))
+	for _, p := range profiles {
+		if c, err := NewPermissionChecker(p.cfg); err == nil {
+			built = append(built, ladderEntry{name: p.name, checker: c})
+		}
+	}
+
+	suggestCacheMu.Lock()
+	suggestCacheCwd = cwd
+	suggestCacheEntries = built
+	suggestCacheMu.Unlock()
+
+	return built
+}
+
+// suggestProfile returns the lowest built-in profile on the capability ladder
+// that would actually grant this specific call, for prescriptive denial
+// messages. It tests the real profiles (resource-scoped rules included), so
+// e.g. exec of a $CWD binary suggests allow-local while exec of a system
+// binary suggests allow-all. The names match the built-in profile constants in
+// libkite/permissions.
+func suggestProfile(module, category, function, resource string) string {
+	for _, entry := range getSuggestLadder() {
+		if entry.checker.allows(module, category, function, resource) {
+			return entry.name
 		}
 	}
 	return "allow-all"

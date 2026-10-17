@@ -8,6 +8,8 @@ import (
 	"crypto/sha512"
 	"encoding/hex"
 	"fmt"
+	stdhash "hash"
+	"io"
 	"sync"
 
 	"github.com/vladimirvivien/startype"
@@ -111,6 +113,27 @@ func computeHash(algo string, data []byte) (string, error) {
 	default:
 		return "", fmt.Errorf("unknown hash algorithm: %s", algo)
 	}
+}
+
+// computeHashReader streams data from r through the named hash algorithm without buffering the full payload in memory.
+func computeHashReader(algo string, r io.Reader) (string, error) {
+	var h stdhash.Hash
+	switch algo {
+	case "md5":
+		h = md5.New()
+	case "sha1":
+		h = sha1.New()
+	case "sha256":
+		h = sha256.New()
+	case "sha512":
+		h = sha512.New()
+	default:
+		return "", fmt.Errorf("unknown hash algorithm: %s", algo)
+	}
+	if _, err := io.Copy(h, r); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
 // hashHexLen returns the hex string length for a given algorithm.

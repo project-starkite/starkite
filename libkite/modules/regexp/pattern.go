@@ -5,6 +5,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 
 	"go.starlark.net/starlark"
 
@@ -157,13 +158,40 @@ func (p *Pattern) splitMethod(_ *starlark.Thread, _ *starlark.Builtin, args star
 	return starlark.NewList(elems), nil
 }
 
-// compilePattern compiles a pattern with optional flags.
+const maxRegexCacheEntries = 1024
+
+var (
+	regexCacheMu sync.RWMutex
+	regexCache   = make(map[string]*regexp.Regexp)
+)
+
+// compilePattern compiles a pattern with optional flags, reusing cached *regexp.Regexp instances.
 func compilePattern(pattern, flags string) (*regexp.Regexp, error) {
 	resolved, err := resolvePattern(pattern, flags)
 	if err != nil {
 		return nil, err
 	}
-	return regexp.Compile(resolved)
+
+	regexCacheMu.RLock()
+	if re, ok := regexCache[resolved]; ok {
+		regexCacheMu.RUnlock()
+		return re, nil
+	}
+	regexCacheMu.RUnlock()
+
+	re, err := regexp.Compile(resolved)
+	if err != nil {
+		return nil, err
+	}
+
+	regexCacheMu.Lock()
+	if len(regexCache) >= maxRegexCacheEntries {
+		clear(regexCache)
+	}
+	regexCache[resolved] = re
+	regexCacheMu.Unlock()
+
+	return re, nil
 }
 
 // resolvePattern prepends inline flags to a pattern string.

@@ -101,6 +101,40 @@ func (s *Source) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		return nil, fmt.Errorf("gzip.compress: invalid compression level %d (must be -2 to 9)", level)
 	}
 
+	if p.Dest != "" {
+		if err := libkite.Check(s.thread, "fs", "write", "write", p.Dest); err != nil {
+			return nil, err
+		}
+		if s.isDryRun() {
+			return starlark.None, nil
+		}
+		dstFile, err := os.OpenFile(p.Dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return nil, fmt.Errorf("gzip.compress: %w", err)
+		}
+		w, err := gzip.NewWriterLevel(dstFile, level)
+		if err != nil {
+			dstFile.Close()
+			os.Remove(p.Dest)
+			return nil, fmt.Errorf("gzip.compress: %w", err)
+		}
+		if _, err := w.Write(s.data); err != nil {
+			w.Close()
+			dstFile.Close()
+			os.Remove(p.Dest)
+			return nil, fmt.Errorf("gzip.compress: %w", err)
+		}
+		if err := w.Close(); err != nil {
+			dstFile.Close()
+			os.Remove(p.Dest)
+			return nil, fmt.Errorf("gzip.compress: %w", err)
+		}
+		if err := dstFile.Close(); err != nil {
+			return nil, fmt.Errorf("gzip.compress: %w", err)
+		}
+		return starlark.None, nil
+	}
+
 	var buf bytes.Buffer
 	w, err := gzip.NewWriterLevel(&buf, level)
 	if err != nil {
@@ -112,19 +146,6 @@ func (s *Source) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	}
 	if err := w.Close(); err != nil {
 		return nil, fmt.Errorf("gzip.compress: %w", err)
-	}
-
-	if p.Dest != "" {
-		if err := libkite.Check(s.thread, "fs", "write", "write", p.Dest); err != nil {
-			return nil, err
-		}
-		if s.isDryRun() {
-			return starlark.None, nil
-		}
-		if err := os.WriteFile(p.Dest, buf.Bytes(), 0644); err != nil {
-			return nil, fmt.Errorf("gzip.compress: %w", err)
-		}
-		return starlark.None, nil
 	}
 
 	return starlark.Bytes(buf.String()), nil
@@ -147,11 +168,6 @@ func (s *Source) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 	}
 	defer r.Close()
 
-	content, err := io.ReadAll(r)
-	if err != nil {
-		return nil, fmt.Errorf("gzip.decompress: %w", err)
-	}
-
 	if p.Dest != "" {
 		if err := libkite.Check(s.thread, "fs", "write", "write", p.Dest); err != nil {
 			return nil, err
@@ -159,10 +175,29 @@ func (s *Source) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 		if s.isDryRun() {
 			return starlark.None, nil
 		}
-		if err := os.WriteFile(p.Dest, content, 0644); err != nil {
+		dstFile, err := os.OpenFile(p.Dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+		if err != nil {
+			return nil, fmt.Errorf("gzip.decompress: %w", err)
+		}
+		if _, err := io.Copy(dstFile, r); err != nil {
+			dstFile.Close()
+			os.Remove(p.Dest)
+			return nil, fmt.Errorf("gzip.decompress: %w", err)
+		}
+		if err := r.Close(); err != nil {
+			dstFile.Close()
+			os.Remove(p.Dest)
+			return nil, fmt.Errorf("gzip.decompress: %w", err)
+		}
+		if err := dstFile.Close(); err != nil {
 			return nil, fmt.Errorf("gzip.decompress: %w", err)
 		}
 		return starlark.None, nil
+	}
+
+	content, err := io.ReadAll(r)
+	if err != nil {
+		return nil, fmt.Errorf("gzip.decompress: %w", err)
 	}
 
 	return starlark.Bytes(content), nil

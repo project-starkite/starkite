@@ -120,8 +120,12 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 }
 
 func (w *Writer) writeListRows(path, sep string) (starlark.Value, error) {
-	var buf strings.Builder
-	writer := csv.NewWriter(&buf)
+	outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("csv.writer.write_file: %w", err)
+	}
+
+	writer := csv.NewWriter(outFile)
 	if len(sep) > 0 {
 		writer.Comma = rune(sep[0])
 	}
@@ -129,26 +133,37 @@ func (w *Writer) writeListRows(path, sep string) (starlark.Value, error) {
 	iter := w.data.Iterate()
 	defer iter.Done()
 	var row starlark.Value
+	var record []string
 	for iter.Next(&row) {
 		rowList, ok := row.(*starlark.List)
 		if !ok {
+			outFile.Close()
+			os.Remove(path)
 			return nil, fmt.Errorf("csv.writer.write_file: expected list of lists, got %s", row.Type())
 		}
-		record := make([]string, rowList.Len())
-		for i := 0; i < rowList.Len(); i++ {
+		n := rowList.Len()
+		if cap(record) < n {
+			record = make([]string, n)
+		} else {
+			record = record[:n]
+		}
+		for i := range n {
 			record[i] = stringValue(rowList.Index(i))
 		}
 		if err := writer.Write(record); err != nil {
+			outFile.Close()
+			os.Remove(path)
 			return nil, fmt.Errorf("csv.writer.write_file: %w", err)
 		}
 	}
 
 	writer.Flush()
 	if err := writer.Error(); err != nil {
+		outFile.Close()
+		os.Remove(path)
 		return nil, fmt.Errorf("csv.writer.write_file: %w", err)
 	}
-
-	if err := os.WriteFile(path, []byte(buf.String()), 0644); err != nil {
+	if err := outFile.Close(); err != nil {
 		return nil, fmt.Errorf("csv.writer.write_file: %w", err)
 	}
 	return starlark.None, nil
@@ -172,14 +187,25 @@ func (w *Writer) writeDictRows(path, sep string, headersList *starlark.List) (st
 		}
 	}
 
-	var buf strings.Builder
-	writer := csv.NewWriter(&buf)
+	headerKeys := make([]starlark.String, len(headers))
+	for i, h := range headers {
+		headerKeys[i] = starlark.String(h)
+	}
+
+	outFile, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return nil, fmt.Errorf("csv.writer.write_file: %w", err)
+	}
+
+	writer := csv.NewWriter(outFile)
 	if len(sep) > 0 {
 		writer.Comma = rune(sep[0])
 	}
 
 	// Write header row
 	if err := writer.Write(headers); err != nil {
+		outFile.Close()
+		os.Remove(path)
 		return nil, fmt.Errorf("csv.writer.write_file: %w", err)
 	}
 
@@ -187,28 +213,35 @@ func (w *Writer) writeDictRows(path, sep string, headersList *starlark.List) (st
 	iter := w.data.Iterate()
 	defer iter.Done()
 	var record starlark.Value
+	row := make([]string, len(headerKeys))
 	for iter.Next(&record) {
 		dict, ok := record.(*starlark.Dict)
 		if !ok {
+			outFile.Close()
+			os.Remove(path)
 			return nil, fmt.Errorf("csv.writer.write_file: expected dict, got %s", record.Type())
 		}
-		row := make([]string, len(headers))
-		for i, header := range headers {
-			if val, found, _ := dict.Get(starlark.String(header)); found {
+		for i, key := range headerKeys {
+			if val, found, _ := dict.Get(key); found {
 				row[i] = stringValue(val)
+			} else {
+				row[i] = ""
 			}
 		}
 		if err := writer.Write(row); err != nil {
+			outFile.Close()
+			os.Remove(path)
 			return nil, fmt.Errorf("csv.writer.write_file: %w", err)
 		}
 	}
 
 	writer.Flush()
 	if err := writer.Error(); err != nil {
+		outFile.Close()
+		os.Remove(path)
 		return nil, fmt.Errorf("csv.writer.write_file: %w", err)
 	}
-
-	if err := os.WriteFile(path, []byte(buf.String()), 0644); err != nil {
+	if err := outFile.Close(); err != nil {
 		return nil, fmt.Errorf("csv.writer.write_file: %w", err)
 	}
 	return starlark.None, nil

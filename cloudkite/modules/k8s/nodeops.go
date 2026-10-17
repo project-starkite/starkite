@@ -15,7 +15,6 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
 )
@@ -435,7 +434,7 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		return nil, fmt.Errorf("k8s.cp: cannot copy between two pods")
 	}
 
-	clientset, err := kubernetes.NewForConfig(c.restCfg)
+	clientset, err := c.getClientset()
 	if err != nil {
 		return nil, fmt.Errorf("k8s.cp: %w", err)
 	}

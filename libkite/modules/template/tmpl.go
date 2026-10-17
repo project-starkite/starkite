@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 	"text/template"
 
 	"github.com/vladimirvivien/startype"
@@ -12,6 +13,53 @@ import (
 
 	"github.com/project-starkite/starkite/libkite"
 )
+
+const maxTemplateCacheEntries = 512
+
+type templateCacheKey struct {
+	source     string
+	leftDelim  string
+	rightDelim string
+}
+
+var (
+	templateCacheMu sync.RWMutex
+	templateCache   = make(map[templateCacheKey]*template.Template)
+)
+
+// getOrParseTemplate retrieves a cached *template.Template or parses and caches a new one.
+func getOrParseTemplate(source, leftDelim, rightDelim string) (*template.Template, error) {
+	key := templateCacheKey{
+		source:     source,
+		leftDelim:  leftDelim,
+		rightDelim: rightDelim,
+	}
+
+	templateCacheMu.RLock()
+	if cached, ok := templateCache[key]; ok {
+		templateCacheMu.RUnlock()
+		return cached, nil
+	}
+	templateCacheMu.RUnlock()
+
+	t := template.New("tmpl")
+	if leftDelim != "" && rightDelim != "" {
+		t = t.Delims(leftDelim, rightDelim)
+	}
+	parsed, err := t.Parse(source)
+	if err != nil {
+		return nil, err
+	}
+
+	templateCacheMu.Lock()
+	if len(templateCache) >= maxTemplateCacheEntries {
+		clear(templateCache)
+	}
+	templateCache[key] = parsed
+	templateCacheMu.Unlock()
+
+	return parsed, nil
+}
 
 // Template is a Starlark value wrapping a parsed Go text/template.
 type Template struct {
@@ -126,11 +174,7 @@ func (t *Template) renderMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 
 // parseTemplate creates a Template from source text with optional delimiters.
 func parseTemplate(source, leftDelim, rightDelim string, thread *starlark.Thread, config *libkite.ModuleConfig) (*Template, error) {
-	t := template.New("tmpl")
-	if leftDelim != "" && rightDelim != "" {
-		t = t.Delims(leftDelim, rightDelim)
-	}
-	parsed, err := t.Parse(source)
+	parsed, err := getOrParseTemplate(source, leftDelim, rightDelim)
 	if err != nil {
 		return nil, err
 	}

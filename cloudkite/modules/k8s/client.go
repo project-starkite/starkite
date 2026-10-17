@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"go.starlark.net/starlark"
@@ -23,17 +24,18 @@ import (
 // K8sClient wraps a Kubernetes dynamic client and exposes Tier 1 + Tier 2
 // operations as Starlark HasAttrs methods.
 type K8sClient struct {
-	dynClient dynamic.Interface
-	clientset kubernetes.Interface
-	disc      discovery.DiscoveryInterface
-	resolver  *Resolver
-	restCfg   *rest.Config
-	namespace string
-	context   string
-	timeout   string
-	config    *libkite.ModuleConfig
-	thread    *starlark.Thread
-	dialer    *ssh.TunnelDialer
+	dynClient   dynamic.Interface
+	clientset   kubernetes.Interface
+	clientsetMu sync.Mutex
+	disc        discovery.DiscoveryInterface
+	resolver    *Resolver
+	restCfg     *rest.Config
+	namespace   string
+	context     string
+	timeout     string
+	config      *libkite.ModuleConfig
+	thread      *starlark.Thread
+	dialer      *ssh.TunnelDialer
 }
 
 // Starlark value interface
@@ -348,6 +350,8 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, opts cl
 
 // getClientset returns the kubernetes.Interface, creating it from restCfg if needed.
 func (c *K8sClient) getClientset() (kubernetes.Interface, error) {
+	c.clientsetMu.Lock()
+	defer c.clientsetMu.Unlock()
 	if c.clientset != nil {
 		return c.clientset, nil
 	}

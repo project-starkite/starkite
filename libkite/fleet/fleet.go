@@ -94,6 +94,26 @@ func (f *Fleet) filterBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 		}
 	}
 
+	type kwFilter struct {
+		key      string
+		expected string
+	}
+	var filters []kwFilter
+	if predicateFn == nil && len(kwargs) > 0 {
+		filters = make([]kwFilter, len(kwargs))
+		for i, kv := range kwargs {
+			k := string(kv[0].(starlark.String))
+			var expectedVal any
+			if err := startype.Starlark(kv[1]).Go(&expectedVal); err != nil {
+				expectedVal = kv[1].String()
+			}
+			filters[i] = kwFilter{
+				key:      k,
+				expected: fmt.Sprintf("%v", expectedVal),
+			}
+		}
+	}
+
 	var filtered []Resource
 
 	for _, r := range f.resources {
@@ -106,20 +126,13 @@ func (f *Fleet) filterBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 				return nil, fmt.Errorf("fleet.filter: predicate execution failed: %w", err)
 			}
 			include = bool(res.Truth())
-		} else if len(kwargs) > 0 {
-			for _, kv := range kwargs {
-				k := string(kv[0].(starlark.String))
-				var expectedVal any
-				if err := startype.Starlark(kv[1]).Go(&expectedVal); err != nil {
-					expectedVal = kv[1].String()
-				}
-				expectedStr := fmt.Sprintf("%v", expectedVal)
-
+		} else if len(filters) > 0 {
+			for _, kf := range filters {
 				// Match against primary struct fields or labels or data
 				var actualVal string
 				var found bool
 
-				switch k {
+				switch kf.key {
 				case "name":
 					actualVal = r.Name
 					found = true
@@ -133,16 +146,16 @@ func (f *Fleet) filterBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 					actualVal = r.Kind
 					found = true
 				default:
-					if val, ok := r.Labels[k]; ok {
+					if val, ok := r.Labels[kf.key]; ok {
 						actualVal = val
 						found = true
-					} else if val, ok := r.Data[k]; ok {
+					} else if val, ok := r.Data[kf.key]; ok {
 						actualVal = fmt.Sprintf("%v", val)
 						found = true
 					}
 				}
 
-				if !found || actualVal != expectedStr {
+				if !found || actualVal != kf.expected {
 					include = false
 					break
 				}

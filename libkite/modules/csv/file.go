@@ -3,6 +3,7 @@ package csv
 import (
 	"encoding/csv"
 	"fmt"
+	"io"
 	"os"
 	"sort"
 	"strings"
@@ -67,7 +68,7 @@ func (f *CsvFile) isDryRun() bool {
 	return f.config != nil && f.config.DryRun
 }
 
-// readMethod reads and parses the CSV file.
+// readMethod streams and parses the CSV file.
 // Usage: csv.file(path).read(sep=",", comment="", skip=0, header=false)
 func (f *CsvFile) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
@@ -89,12 +90,13 @@ func (f *CsvFile) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starl
 		return starlark.NewList(nil), nil
 	}
 
-	data, err := os.ReadFile(f.path)
+	file, err := os.Open(f.path)
 	if err != nil {
 		return nil, fmt.Errorf("csv.file.read: %w", err)
 	}
+	defer file.Close()
 
-	reader := csv.NewReader(strings.NewReader(string(data)))
+	reader := csv.NewReader(file)
 	if len(p.Sep) > 0 {
 		reader.Comma = rune(p.Sep[0])
 	}
@@ -102,56 +104,76 @@ func (f *CsvFile) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starl
 		reader.Comment = rune(p.Comment[0])
 	}
 	reader.FieldsPerRecord = -1
+	reader.ReuseRecord = true
 
-	records, err := reader.ReadAll()
-	if err != nil {
-		return nil, fmt.Errorf("csv.file.read: %w", err)
-	}
-
-	// Skip rows if requested
-	if p.Skip > 0 && p.Skip < len(records) {
-		records = records[p.Skip:]
-	} else if p.Skip >= len(records) {
-		return starlark.NewList(nil), nil
+	// Skip rows if requested without allocating record slices or Starlark values.
+	for i := 0; i < p.Skip; i++ {
+		_, err := reader.Read()
+		if err == io.EOF {
+			return starlark.NewList(nil), nil
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv.file.read: %w", err)
+		}
 	}
 
 	if p.Header {
-		return f.parseAsDict(records)
+		return f.readStreamAsDict(reader)
 	}
-	return f.parseAsList(records), nil
+	return f.readStreamAsList(reader)
 }
 
-func (f *CsvFile) parseAsList(records [][]string) starlark.Value {
-	rows := make([]starlark.Value, len(records))
-	for i, record := range records {
+func (f *CsvFile) readStreamAsList(reader *csv.Reader) (starlark.Value, error) {
+	var rows []starlark.Value
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv.file.read: %w", err)
+		}
 		cols := make([]starlark.Value, len(record))
 		for j, field := range record {
 			cols[j] = starlark.String(field)
 		}
-		rows[i] = starlark.NewList(cols)
+		rows = append(rows, starlark.NewList(cols))
 	}
-	return starlark.NewList(rows)
+	return starlark.NewList(rows), nil
 }
 
-func (f *CsvFile) parseAsDict(records [][]string) (starlark.Value, error) {
-	if len(records) < 1 {
+func (f *CsvFile) readStreamAsDict(reader *csv.Reader) (starlark.Value, error) {
+	headerRecord, err := reader.Read()
+	if err == io.EOF {
 		return starlark.NewList(nil), nil
 	}
+	if err != nil {
+		return nil, fmt.Errorf("csv.file.read: %w", err)
+	}
 
-	headers := records[0]
-	dataRows := records[1:]
+	headerKeys := make([]starlark.String, len(headerRecord))
+	for i, h := range headerRecord {
+		headerKeys[i] = starlark.String(h)
+	}
 
-	rows := make([]starlark.Value, len(dataRows))
-	for i, record := range dataRows {
-		dict := starlark.NewDict(len(headers))
-		for j, header := range headers {
+	var rows []starlark.Value
+	for {
+		record, err := reader.Read()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("csv.file.read: %w", err)
+		}
+		dict := starlark.NewDict(len(headerKeys))
+		for j, key := range headerKeys {
 			value := ""
 			if j < len(record) {
 				value = record[j]
 			}
-			dict.SetKey(starlark.String(header), starlark.String(value))
+			dict.SetKey(key, starlark.String(value))
 		}
-		rows[i] = dict
+		rows = append(rows, dict)
 	}
 	return starlark.NewList(rows), nil
 }

@@ -610,45 +610,58 @@ func (c *EngineClient) InspectImage(ctx context.Context, image string) (map[stri
 // BuildImage builds a container image from a context directory using tar upload.
 // Endpoint: POST /{version}/build?t={tag}&dockerfile={dockerfile}
 func (c *EngineClient) BuildImage(ctx context.Context, contextDir, tag, dockerfile string) (string, error) {
-	buf := new(bytes.Buffer)
-	tw := tar.NewWriter(buf)
+	if _, err := os.Stat(contextDir); err != nil {
+		return "", fmt.Errorf("containers: package build context: %w", err)
+	}
 
-	err := filepath.Walk(contextDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return err
-		}
-		relPath, err := filepath.Rel(contextDir, path)
-		if err != nil {
-			return err
-		}
-		if relPath == "." {
-			return nil
-		}
-		hdr, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return err
-		}
-		hdr.Name = filepath.ToSlash(relPath)
-		if err := tw.WriteHeader(hdr); err != nil {
-			return err
-		}
-		if !info.IsDir() {
-			data, err := os.ReadFile(path)
+	pr, pw := io.Pipe()
+	defer pr.Close()
+
+	go func() {
+		tw := tar.NewWriter(pw)
+		walkErr := filepath.Walk(contextDir, func(path string, info os.FileInfo, err error) error {
 			if err != nil {
 				return err
 			}
-			if _, err := tw.Write(data); err != nil {
+			relPath, err := filepath.Rel(contextDir, path)
+			if err != nil {
 				return err
 			}
+			if relPath == "." {
+				return nil
+			}
+			hdr, err := tar.FileInfoHeader(info, "")
+			if err != nil {
+				return err
+			}
+			hdr.Name = filepath.ToSlash(relPath)
+			if err := tw.WriteHeader(hdr); err != nil {
+				return err
+			}
+			if info.Mode().IsRegular() {
+				f, err := os.Open(path)
+				if err != nil {
+					return err
+				}
+				_, copyErr := io.Copy(tw, f)
+				f.Close()
+				if copyErr != nil {
+					return copyErr
+				}
+			}
+			return nil
+		})
+		if walkErr != nil {
+			tw.Close()
+			pw.CloseWithError(fmt.Errorf("containers: package build context: %w", walkErr))
+			return
 		}
-		return nil
-	})
-	if err != nil {
-		return "", fmt.Errorf("containers: package build context: %w", err)
-	}
-	if err := tw.Close(); err != nil {
-		return "", fmt.Errorf("containers: close build context tar: %w", err)
-	}
+		if closeErr := tw.Close(); closeErr != nil {
+			pw.CloseWithError(fmt.Errorf("containers: close build context tar: %w", closeErr))
+			return
+		}
+		pw.Close()
+	}()
 
 	query := url.Values{}
 	if tag != "" {
@@ -658,7 +671,7 @@ func (c *EngineClient) BuildImage(ctx context.Context, contextDir, tag, dockerfi
 		query.Set("dockerfile", dockerfile)
 	}
 
-	resp, err := c.do(ctx, http.MethodPost, "/build", query, buf, "application/x-tar")
+	resp, err := c.do(ctx, http.MethodPost, "/build", query, pr, "application/x-tar")
 	if err != nil {
 		return "", fmt.Errorf("containers: build request: %w", err)
 	}
