@@ -153,6 +153,9 @@ func inferParamSchema(def starlark.Value) map[string]any {
 func buildToolHandler(t *Tool, rt *libkite.Runtime) func(context.Context, *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 	return func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		toolThread := rt.NewThread("mcp-tool-" + t.Name())
+		libkite.SetThreadContext(toolThread, ctx)
+		stopWatch := libkite.WatchContext(ctx, toolThread)
+		defer stopWatch()
 
 		if err := libkite.Check(toolThread, "mcp", "server", "tool_invoke", t.Name()); err != nil {
 			return errorResult(err), nil
@@ -173,7 +176,7 @@ func buildToolHandler(t *Tool, rt *libkite.Runtime) func(context.Context, *mcpsd
 			kwargs = append(kwargs, starlark.Tuple{starlark.String(k), sv})
 		}
 
-		result, err := starlark.Call(toolThread, t.Fn(), starlark.Tuple{}, kwargs)
+		result, err := libkite.CallSafe(toolThread, t.Fn(), starlark.Tuple{}, kwargs)
 		if err != nil {
 			return errorResult(err), nil
 		}

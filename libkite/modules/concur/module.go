@@ -152,7 +152,17 @@ func (m *Module) concurMap(thread *starlark.Thread, fn *starlark.Builtin, args s
 	results := make([]starlark.Value, n)
 	errors := make([]error, n)
 
-	ctx := context.Background()
+	// Freeze the callable (including any defined module globals) and all input
+	// elements before concurrent execution so worker goroutines cannot race on
+	// shared mutable closures, globals, or arguments.
+	freezeCallable(p.Func)
+	for _, item := range items {
+		if item != nil {
+			item.Freeze()
+		}
+	}
+
+	ctx := libkite.ThreadContext(thread)
 	var cancel context.CancelFunc
 	if timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -194,10 +204,20 @@ func (m *Module) concurMap(thread *starlark.Thread, fn *starlark.Builtin, args s
 			}
 
 			childThread := newChildThread(thread, fmt.Sprintf("concur.map-%d", idx))
+			libkite.SetThreadContext(childThread, ctx)
+			stopWatch := libkite.WatchContext(ctx, childThread)
 			result, err := starlark.Call(childThread, p.Func, starlark.Tuple{items[idx]}, nil)
+			stopWatch()
 			if err != nil {
-				errors[idx] = err
+				if ctx.Err() != nil {
+					errors[idx] = fmt.Errorf("timeout exceeded: %w", err)
+				} else {
+					errors[idx] = err
+				}
 				return
+			}
+			if result != nil {
+				result.Freeze()
 			}
 			results[idx] = result
 		}(i)
@@ -263,7 +283,14 @@ func (m *Module) concurEach(thread *starlark.Thread, fn *starlark.Builtin, args 
 	n := len(items)
 	errors := make([]error, n)
 
-	ctx := context.Background()
+	freezeCallable(p.Func)
+	for _, item := range items {
+		if item != nil {
+			item.Freeze()
+		}
+	}
+
+	ctx := libkite.ThreadContext(thread)
 	var cancel context.CancelFunc
 	if timeout > 0 {
 		ctx, cancel = context.WithTimeout(ctx, timeout)
@@ -302,9 +329,16 @@ func (m *Module) concurEach(thread *starlark.Thread, fn *starlark.Builtin, args 
 			}
 
 			childThread := newChildThread(thread, fmt.Sprintf("concur.each-%d", idx))
+			libkite.SetThreadContext(childThread, ctx)
+			stopWatch := libkite.WatchContext(ctx, childThread)
 			_, err := starlark.Call(childThread, p.Func, starlark.Tuple{items[idx]}, nil)
+			stopWatch()
 			if err != nil {
-				errors[idx] = err
+				if ctx.Err() != nil {
+					errors[idx] = fmt.Errorf("timeout exceeded: %w", err)
+				} else {
+					errors[idx] = err
+				}
 			}
 		}(i)
 	}
@@ -363,6 +397,7 @@ func (m *Module) concurExec(thread *starlark.Thread, fn *starlark.Builtin, args 
 		if !ok {
 			return nil, fmt.Errorf("concur.exec: argument %d is not callable, got %s", i, arg.Type())
 		}
+		freezeCallable(callable)
 		fns[i] = callable
 	}
 
@@ -379,7 +414,7 @@ func (m *Module) concurExec(thread *starlark.Thread, fn *starlark.Builtin, args 
 	results := make([]starlark.Value, n)
 	errors := make([]error, n)
 
-	ctx := context.Background()
+	ctx := libkite.ThreadContext(thread)
 	var cancel context.CancelFunc
 	if dur > 0 {
 		ctx, cancel = context.WithTimeout(ctx, dur)
@@ -403,10 +438,20 @@ func (m *Module) concurExec(thread *starlark.Thread, fn *starlark.Builtin, args 
 			}
 
 			childThread := newChildThread(thread, fmt.Sprintf("concur.exec-%d", idx))
+			libkite.SetThreadContext(childThread, ctx)
+			stopWatch := libkite.WatchContext(ctx, childThread)
 			result, err := starlark.Call(childThread, fns[idx], nil, nil)
+			stopWatch()
 			if err != nil {
-				errors[idx] = err
+				if ctx.Err() != nil {
+					errors[idx] = fmt.Errorf("timeout exceeded: %w", err)
+				} else {
+					errors[idx] = err
+				}
 				return
+			}
+			if result != nil {
+				result.Freeze()
 			}
 			results[idx] = result
 		}(i)
@@ -436,4 +481,14 @@ func (m *Module) concurExec(thread *starlark.Thread, fn *starlark.Builtin, args 
 	tuple := make(starlark.Tuple, n)
 	copy(tuple, results)
 	return tuple, nil
+}
+
+func freezeCallable(c starlark.Callable) {
+	if c == nil {
+		return
+	}
+	c.Freeze()
+	if fn, ok := c.(*starlark.Function); ok {
+		fn.Globals().Freeze()
+	}
 }

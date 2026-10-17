@@ -1,12 +1,13 @@
 package sql
 
 import (
-	"context"
 	"fmt"
 	"strings"
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+
+	"github.com/project-starkite/starkite/libkite"
 )
 
 // --- managed transaction: db.tx(fn, retry=N) ---
@@ -24,7 +25,7 @@ func (c *Connection) tx(thread *starlark.Thread, fn *starlark.Builtin, args star
 	if c.dryRun {
 		return starlark.Call(thread, callback, starlark.Tuple{&Transaction{conn: c, dryRun: true}}, nil)
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.tx: connection is closed")
 	}
 
@@ -46,7 +47,7 @@ func (c *Connection) tx(thread *starlark.Thread, fn *starlark.Builtin, args star
 // clean return, rollback on error. If the callback committed or rolled back
 // itself, that decision is honored.
 func (c *Connection) runManaged(thread *starlark.Thread, callback starlark.Callable) (starlark.Value, error) {
-	sqlTx, err := c.db.BeginTx(context.Background(), nil)
+	sqlTx, err := c.db.BeginTx(libkite.ThreadContext(thread), nil)
 	if err != nil {
 		return nil, fmt.Errorf("sql.tx: %w", err)
 	}
@@ -54,14 +55,12 @@ func (c *Connection) runManaged(thread *starlark.Thread, callback starlark.Calla
 
 	v, callErr := starlark.Call(thread, callback, starlark.Tuple{txv}, nil)
 	if callErr != nil {
-		if !txv.done {
-			txv.done = true
-			sqlTx.Rollback()
+		if txv.markDone() {
+			_ = sqlTx.Rollback()
 		}
 		return nil, callErr
 	}
-	if !txv.done {
-		txv.done = true
+	if txv.markDone() {
 		if err := sqlTx.Commit(); err != nil {
 			return nil, fmt.Errorf("sql.tx: commit failed: %w", err)
 		}
@@ -104,19 +103,20 @@ func (c *Connection) batch(thread *starlark.Thread, fn *starlark.Builtin, args s
 		}
 		return assembleBatch(stmts, out, allNamed), nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.batch: connection is closed")
 	}
 
-	sqlTx, err := c.db.BeginTx(context.Background(), nil)
+	ctx := libkite.ThreadContext(thread)
+	sqlTx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("sql.batch: %w", err)
 	}
 	results := make([]*starlarkstruct.Struct, len(stmts))
 	for i, s := range stmts {
-		res, err := sqlTx.ExecContext(context.Background(), s.sql, s.params...)
+		res, err := sqlTx.ExecContext(ctx, s.sql, s.params...)
 		if err != nil {
-			sqlTx.Rollback()
+			_ = sqlTx.Rollback()
 			return nil, fmt.Errorf("sql.batch: statement %s failed: %w (all statements rolled back)", stmtLabel(s, i), err)
 		}
 		results[i] = execResult(res)
@@ -175,10 +175,10 @@ func (c *Connection) queryValue(thread *starlark.Thread, fn *starlark.Builtin, a
 	if c.dryRun {
 		return starlark.None, nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.query_value: connection is closed")
 	}
-	rows, err := c.db.QueryContext(context.Background(), q, params...)
+	rows, err := c.db.QueryContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, c.queryErr("query_value", q, err)
 	}
@@ -194,10 +194,10 @@ func (c *Connection) queryColumn(thread *starlark.Thread, fn *starlark.Builtin, 
 	if c.dryRun {
 		return starlark.NewList(nil), nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.query_column: connection is closed")
 	}
-	rows, err := c.db.QueryContext(context.Background(), q, params...)
+	rows, err := c.db.QueryContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, c.queryErr("query_column", q, err)
 	}
@@ -228,10 +228,10 @@ func (c *Connection) queryEach(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if c.dryRun {
 		return starlark.None, nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.query_each: connection is closed")
 	}
-	rows, err := c.db.QueryContext(context.Background(), q, params...)
+	rows, err := c.db.QueryContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, c.queryErr("query_each", q, err)
 	}
@@ -267,17 +267,18 @@ func (c *Connection) execMany(thread *starlark.Thread, fn *starlark.Builtin, arg
 	if c.dryRun {
 		return dryRunResult(), nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.exec_many: connection is closed")
 	}
 
-	sqlTx, err := c.db.BeginTx(context.Background(), nil)
+	ctx := libkite.ThreadContext(thread)
+	sqlTx, err := c.db.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, fmt.Errorf("sql.exec_many: %w", err)
 	}
-	prepared, err := sqlTx.PrepareContext(context.Background(), q)
+	prepared, err := sqlTx.PrepareContext(ctx, q)
 	if err != nil {
-		sqlTx.Rollback()
+		_ = sqlTx.Rollback()
 		return nil, c.queryErr("exec_many", q, err)
 	}
 	defer prepared.Close()
@@ -286,12 +287,12 @@ func (c *Connection) execMany(thread *starlark.Thread, fn *starlark.Builtin, arg
 	for i := 0; i < sets.Len(); i++ {
 		params, err := paramList(sets.Index(i))
 		if err != nil {
-			sqlTx.Rollback()
+			_ = sqlTx.Rollback()
 			return nil, fmt.Errorf("sql.exec_many: set %d: %w", i, err)
 		}
-		res, err := prepared.ExecContext(context.Background(), params...)
+		res, err := prepared.ExecContext(ctx, params...)
 		if err != nil {
-			sqlTx.Rollback()
+			_ = sqlTx.Rollback()
 			return nil, fmt.Errorf("sql.exec_many: set %d: %w (rolled back)", i, err)
 		}
 		if n, err := res.RowsAffected(); err == nil {

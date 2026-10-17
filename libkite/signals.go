@@ -9,10 +9,14 @@ import (
 	"go.starlark.net/starlark"
 )
 
-// setupSignalHandling sets up signal handlers.
+// setupSignalHandling sets up signal handlers idempotently.
 func (rt *Runtime) setupSignalHandling() {
-	ch := make(chan os.Signal, 1)
 	rt.signalMu.Lock()
+	if rt.signalChan != nil {
+		rt.signalMu.Unlock()
+		return
+	}
+	ch := make(chan os.Signal, 1)
 	rt.signalChan = ch
 	rt.signalMu.Unlock()
 	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM, syscall.SIGHUP)
@@ -43,8 +47,8 @@ func (rt *Runtime) handleSignal(sig os.Signal) {
 	rt.signalMu.RUnlock()
 
 	if ok {
-		// Call the registered handler
-		starlark.Call(rt.thread, handler, starlark.Tuple{starlark.String(sig.String())}, nil)
+		sigThread := rt.NewThread("signal:" + sig.String())
+		_, _ = CallSafe(sigThread, handler, starlark.Tuple{starlark.String(sig.String())}, nil)
 	}
 
 	// Run deferred functions
@@ -90,8 +94,11 @@ func (rt *Runtime) runDeferred() {
 	rt.deferMu.Unlock()
 
 	// Run in LIFO order
-	for _, fn := range slices.Backward(fns) {
-		starlark.Call(rt.thread, fn, nil, nil)
+	if len(fns) > 0 {
+		deferThread := rt.NewThread("defer")
+		for _, fn := range slices.Backward(fns) {
+			_, _ = CallSafe(deferThread, fn, nil, nil)
+		}
 	}
 	rt.runGoCleanups()
 }

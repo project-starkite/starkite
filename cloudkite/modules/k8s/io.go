@@ -365,10 +365,12 @@ func (c *K8sClient) portForward(thread *starlark.Thread, fn *starlark.Builtin, a
 		return nil, fmt.Errorf("k8s.port_forward: %w", err)
 	}
 
-	return &PortForwardHandle{
+	handle := &PortForwardHandle{
 		localPort: localPort,
 		stopCh:    stopCh,
-	}, nil
+	}
+	libkite.RegisterCleanup(thread, handle.Stop)
+	return handle, nil
 }
 
 // debug attaches or executes commands in a pod using an ephemeral container (zero-shell diagnostics).

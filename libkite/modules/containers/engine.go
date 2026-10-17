@@ -22,10 +22,14 @@ type EngineClient struct {
 	httpClient *http.Client
 	endpoint   Endpoint
 	version    string
+	timeout    time.Duration
 }
 
 // NewEngineClient creates a new EngineClient for the given endpoint.
 func NewEngineClient(ep Endpoint, timeout time.Duration) (*EngineClient, error) {
+	if timeout <= 0 {
+		timeout = DefaultTimeout
+	}
 	cli, err := newHTTPClient(ep, timeout)
 	if err != nil {
 		return nil, err
@@ -34,7 +38,17 @@ func NewEngineClient(ep Endpoint, timeout time.Duration) (*EngineClient, error) 
 		httpClient: cli,
 		endpoint:   ep,
 		version:    DefaultAPIVersion,
+		timeout:    timeout,
 	}, nil
+}
+
+// withDefaultTimeout applies the client's default timeout if ctx does not
+// already carry a deadline. Used for non-streaming metadata/control calls.
+func (c *EngineClient) withDefaultTimeout(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, hasDeadline := ctx.Deadline(); !hasDeadline && c.timeout > 0 {
+		return context.WithTimeout(ctx, c.timeout)
+	}
+	return ctx, func() {}
 }
 
 // Endpoint returns the configured endpoint.
@@ -50,6 +64,8 @@ func (c *EngineClient) VersionTag() string {
 // Ping checks if the container daemon is responsive.
 // Endpoint: GET /_ping
 func (c *EngineClient) Ping(ctx context.Context) (bool, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint.URL+"/_ping", nil)
 	if err != nil {
 		return false, fmt.Errorf("containers: ping request: %w", err)
@@ -71,6 +87,8 @@ func (c *EngineClient) Ping(ctx context.Context) (bool, error) {
 // Version queries the daemon system version information.
 // Endpoint: GET /{version}/version
 func (c *EngineClient) Version(ctx context.Context) (map[string]any, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	resp, err := c.do(ctx, http.MethodGet, "/version", nil, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("containers: version: %w", err)
@@ -91,6 +109,8 @@ func (c *EngineClient) Version(ctx context.Context) (map[string]any, error) {
 // CreateContainer creates a container on the daemon.
 // Endpoint: POST /{version}/containers/create?name={name}
 func (c *EngineClient) CreateContainer(ctx context.Context, name string, config *ContainerConfig) (*CreateContainerResponse, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	bodyBytes, err := json.Marshal(config)
 	if err != nil {
 		return nil, fmt.Errorf("containers: marshal create config: %w", err)
@@ -121,6 +141,8 @@ func (c *EngineClient) CreateContainer(ctx context.Context, name string, config 
 // StartContainer starts an existing container.
 // Endpoint: POST /{version}/containers/{id}/start
 func (c *EngineClient) StartContainer(ctx context.Context, id string) error {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	path := fmt.Sprintf("/containers/%s/start", url.PathEscape(id))
 	resp, err := c.do(ctx, http.MethodPost, path, nil, nil, "")
 	if err != nil {
@@ -141,6 +163,8 @@ func (c *EngineClient) StartContainer(ctx context.Context, id string) error {
 // StopContainer stops a running container.
 // Endpoint: POST /{version}/containers/{id}/stop?t={timeout}
 func (c *EngineClient) StopContainer(ctx context.Context, id string, timeoutSeconds int) error {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	path := fmt.Sprintf("/containers/%s/stop", url.PathEscape(id))
 	query := url.Values{}
 	if timeoutSeconds > 0 {
@@ -166,6 +190,8 @@ func (c *EngineClient) StopContainer(ctx context.Context, id string, timeoutSeco
 // RestartContainer restarts a container.
 // Endpoint: POST /{version}/containers/{id}/restart?t={timeout}
 func (c *EngineClient) RestartContainer(ctx context.Context, id string, timeoutSeconds int) error {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	path := fmt.Sprintf("/containers/%s/restart", url.PathEscape(id))
 	query := url.Values{}
 	if timeoutSeconds > 0 {
@@ -217,6 +243,8 @@ func (c *EngineClient) WaitContainer(ctx context.Context, id string, condition s
 // RemoveContainer removes a container from the daemon.
 // Endpoint: DELETE /{version}/containers/{id}?force={force}&v={volumes}
 func (c *EngineClient) RemoveContainer(ctx context.Context, id string, force, volumes bool) error {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	path := fmt.Sprintf("/containers/%s", url.PathEscape(id))
 	query := url.Values{}
 	if force {
@@ -241,6 +269,8 @@ func (c *EngineClient) RemoveContainer(ctx context.Context, id string, force, vo
 // InspectContainer retrieves detailed state and config of a container.
 // Endpoint: GET /{version}/containers/{id}/json
 func (c *EngineClient) InspectContainer(ctx context.Context, id string) (map[string]any, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	path := fmt.Sprintf("/containers/%s/json", url.PathEscape(id))
 	resp, err := c.do(ctx, http.MethodGet, path, nil, nil, "")
 	if err != nil {
@@ -262,6 +292,8 @@ func (c *EngineClient) InspectContainer(ctx context.Context, id string) (map[str
 // ListContainers queries containers on the daemon.
 // Endpoint: GET /{version}/containers/json?all={all}
 func (c *EngineClient) ListContainers(ctx context.Context, all bool) ([]ContainerSummary, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	query := url.Values{}
 	if all {
 		query.Set("all", "true")
@@ -287,6 +319,8 @@ func (c *EngineClient) ListContainers(ctx context.Context, all bool) ([]Containe
 // CreateExec creates an exec instance inside a container.
 // Endpoint: POST /{version}/containers/{id}/exec
 func (c *EngineClient) CreateExec(ctx context.Context, id string, cfg ExecConfig) (string, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	data, err := json.Marshal(cfg)
 	if err != nil {
 		return "", fmt.Errorf("containers: marshal exec config: %w", err)
@@ -332,6 +366,8 @@ func (c *EngineClient) StartExec(ctx context.Context, execID string, stdout, std
 // InspectExec checks the status and exit code of an exec instance.
 // Endpoint: GET /{version}/exec/{id}/json
 func (c *EngineClient) InspectExec(ctx context.Context, execID string) (ExecInspectResponse, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
 	path := fmt.Sprintf("/exec/%s/json", url.PathEscape(execID))
 
 	resp, err := c.do(ctx, http.MethodGet, path, nil, nil, "")
@@ -445,6 +481,9 @@ func (c *EngineClient) Logs(ctx context.Context, containerID string, opts LogsOp
 // ListImages returns the list of images available on the daemon.
 // Endpoint: GET /{version}/images/json?all={all}
 func (c *EngineClient) ListImages(ctx context.Context, all bool) ([]ImageSummary, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
+
 	query := url.Values{}
 	if all {
 		query.Set("all", "true")
@@ -523,6 +562,9 @@ func (c *EngineClient) PullImage(ctx context.Context, image string, authEncoded 
 // RemoveImage deletes an image from the daemon.
 // Endpoint: DELETE /{version}/images/{image}?force={force}
 func (c *EngineClient) RemoveImage(ctx context.Context, image string, force bool) error {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
+
 	path := fmt.Sprintf("/images/%s", url.PathEscape(image))
 	query := url.Values{}
 	if force {
@@ -544,6 +586,9 @@ func (c *EngineClient) RemoveImage(ctx context.Context, image string, force bool
 // InspectImage retrieves detailed metadata of an image.
 // Endpoint: GET /{version}/images/{image}/json
 func (c *EngineClient) InspectImage(ctx context.Context, image string) (map[string]any, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
+
 	path := fmt.Sprintf("/images/%s/json", url.PathEscape(image))
 	resp, err := c.do(ctx, http.MethodGet, path, nil, nil, "")
 	if err != nil {
@@ -653,6 +698,9 @@ func (c *EngineClient) BuildImage(ctx context.Context, contextDir, tag, dockerfi
 // PruneContainers deletes stopped containers.
 // Endpoint: POST /{version}/containers/prune
 func (c *EngineClient) PruneContainers(ctx context.Context) (*ContainersPruneReport, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
+
 	resp, err := c.do(ctx, http.MethodPost, "/containers/prune", nil, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("containers: prune containers request: %w", err)
@@ -673,6 +721,9 @@ func (c *EngineClient) PruneContainers(ctx context.Context) (*ContainersPruneRep
 // PruneVolumes deletes unused volumes.
 // Endpoint: POST /{version}/volumes/prune
 func (c *EngineClient) PruneVolumes(ctx context.Context) (*VolumesPruneReport, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
+
 	resp, err := c.do(ctx, http.MethodPost, "/volumes/prune", nil, nil, "")
 	if err != nil {
 		return nil, fmt.Errorf("containers: prune volumes request: %w", err)
@@ -693,6 +744,9 @@ func (c *EngineClient) PruneVolumes(ctx context.Context) (*VolumesPruneReport, e
 // PruneImages deletes unused dangling images.
 // Endpoint: POST /{version}/images/prune?filters={"dangling":["true"]}
 func (c *EngineClient) PruneImages(ctx context.Context) (*ImagesPruneReport, error) {
+	ctx, cancel := c.withDefaultTimeout(ctx)
+	defer cancel()
+
 	query := url.Values{}
 	query.Set("filters", `{"dangling":["true"]}`)
 

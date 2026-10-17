@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"sort"
@@ -24,12 +23,18 @@ type Connection struct {
 	closed bool
 }
 
+func (c *Connection) isClosed() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.closed
+}
+
 // --- starlark.Value ---
 
 func (c *Connection) String() string        { return fmt.Sprintf("<sql.connection %s>", c.driver) }
 func (c *Connection) Type() string          { return "sql.connection" }
 func (c *Connection) Freeze()               {} // no-op: callable from deferred cleanup after globals freeze
-func (c *Connection) Truth() starlark.Bool  { return starlark.Bool(!c.closed) }
+func (c *Connection) Truth() starlark.Bool  { return starlark.Bool(!c.isClosed()) }
 func (c *Connection) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: sql.connection") }
 
 // --- starlark.HasAttrs ---
@@ -117,10 +122,10 @@ func (c *Connection) query(thread *starlark.Thread, fn *starlark.Builtin, args s
 	if c.dryRun {
 		return starlark.NewList(nil), nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.query: connection is closed")
 	}
-	rows, err := c.db.QueryContext(context.Background(), q, params...)
+	rows, err := c.db.QueryContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, c.queryErr("query", q, err)
 	}
@@ -136,10 +141,10 @@ func (c *Connection) queryRow(thread *starlark.Thread, fn *starlark.Builtin, arg
 	if c.dryRun {
 		return starlark.None, nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.query_row: connection is closed")
 	}
-	rows, err := c.db.QueryContext(context.Background(), q, params...)
+	rows, err := c.db.QueryContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, c.queryErr("query_row", q, err)
 	}
@@ -155,10 +160,10 @@ func (c *Connection) execMethod(thread *starlark.Thread, fn *starlark.Builtin, a
 	if c.dryRun {
 		return dryRunResult(), nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.exec: connection is closed")
 	}
-	res, err := c.db.ExecContext(context.Background(), q, params...)
+	res, err := c.db.ExecContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, c.queryErr("exec", q, err)
 	}
@@ -169,10 +174,10 @@ func (c *Connection) begin(thread *starlark.Thread, fn *starlark.Builtin, args s
 	if c.dryRun {
 		return &Transaction{conn: c, dryRun: true}, nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.begin: connection is closed")
 	}
-	tx, err := c.db.BeginTx(context.Background(), nil)
+	tx, err := c.db.BeginTx(libkite.ThreadContext(thread), nil)
 	if err != nil {
 		return nil, fmt.Errorf("sql.begin: %w", err)
 	}
@@ -183,10 +188,10 @@ func (c *Connection) ping(thread *starlark.Thread, fn *starlark.Builtin, args st
 	if c.dryRun {
 		return starlark.None, nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.ping: connection is closed")
 	}
-	if err := c.db.PingContext(context.Background()); err != nil {
+	if err := c.db.PingContext(libkite.ThreadContext(thread)); err != nil {
 		return nil, fmt.Errorf("sql.ping: %w", err)
 	}
 	return starlark.None, nil

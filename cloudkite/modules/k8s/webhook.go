@@ -82,14 +82,25 @@ func (m *Module) webhookBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		MaxHeaderBytes:    1 << 20,
 	}
 
-	// Signal handler for graceful shutdown
+	// Signal and context handler for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
+
+	doneCh := make(chan struct{})
+	defer close(doneCh)
+
+	threadCtx := libkite.ThreadContext(thread)
 	go func() {
-		<-sigCh
+		select {
+		case <-sigCh:
+		case <-threadCtx.Done():
+		case <-doneCh:
+			return
+		}
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		server.Shutdown(shutdownCtx)
+		_ = server.Shutdown(shutdownCtx)
 	}()
 
 	if _, port, err := net.SplitHostPort(ln.Addr().String()); err == nil {
@@ -171,13 +182,17 @@ func (wh *webhookHandler) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) 
 	if perms := libkite.GetPermissions(wh.thread); perms != nil {
 		libkite.SetPermissions(childThread, perms)
 	}
+	reqCtx := r.Context()
+	libkite.SetThreadContext(childThread, reqCtx)
+	stopWatch := libkite.WatchContext(reqCtx, childThread)
+	defer stopWatch()
 
 	// Dispatch to the appropriate handler.
 	// If both validate and mutate are set, validate runs first — rejection skips mutation.
 	var response map[string]any
 
 	if wh.validateFn != nil {
-		result, callErr := starlark.Call(childThread, wh.validateFn, starlark.Tuple{objectAttr}, nil)
+		result, callErr := libkite.CallSafe(childThread, wh.validateFn, starlark.Tuple{objectAttr}, nil)
 		response = buildValidationResponse(uid, result, callErr)
 		if allowed, ok := response["allowed"].(bool); ok && !allowed {
 			// Validation rejected — skip mutation, return immediately
@@ -187,7 +202,7 @@ func (wh *webhookHandler) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) 
 	}
 
 	if wh.mutateFn != nil {
-		result, callErr := starlark.Call(childThread, wh.mutateFn, starlark.Tuple{objectAttr}, nil)
+		result, callErr := libkite.CallSafe(childThread, wh.mutateFn, starlark.Tuple{objectAttr}, nil)
 		response = buildMutationResponse(uid, originalSnapshot, result, callErr)
 	}
 

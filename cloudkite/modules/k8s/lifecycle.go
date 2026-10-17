@@ -1,7 +1,6 @@
 package k8s
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"slices"
@@ -572,7 +571,11 @@ func (c *K8sClient) event(thread *starlark.Thread, fn *starlark.Builtin, args st
 		},
 	}
 
-	ctx := context.Background()
+	ctx, cancel, err := c.contextWithTimeout("")
+	if err != nil {
+		return nil, fmt.Errorf("k8s.event: %w", err)
+	}
+	defer cancel()
 	created, err := cs.CoreV1().Events(ns).Create(ctx, ev, metav1.CreateOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("k8s.event: create event: %w", err)

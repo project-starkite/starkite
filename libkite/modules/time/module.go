@@ -367,8 +367,18 @@ func (m *Module) sleep(thread *starlark.Thread, fn *starlark.Builtin, args starl
 	if err != nil {
 		return nil, err
 	}
-	time.Sleep(d)
-	return starlark.None, nil
+	if d <= 0 {
+		return starlark.None, nil
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	ctx := libkite.ThreadContext(thread)
+	select {
+	case <-timer.C:
+		return starlark.None, nil
+	case <-ctx.Done():
+		return nil, fmt.Errorf("time.sleep: %w", ctx.Err())
+	}
 }
 
 func (m *Module) parse(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

@@ -107,11 +107,7 @@ func (c *Client) Attr(name string) (starlark.Value, error) {
 }
 
 func (c *Client) getContext(thread *starlark.Thread) context.Context {
-	ctx := context.Background()
-	if rt := libkite.GetRuntime(thread); rt != nil {
-		ctx = rt.Context()
-	}
-	return ctx
+	return libkite.ThreadContext(thread)
 }
 
 // pingFn implements client.ping() -> bool

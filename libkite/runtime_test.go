@@ -616,3 +616,62 @@ def spin():
 		t.Errorf("took %s to cancel", elapsed)
 	}
 }
+
+func TestRuntime_CallSafe_SerializesConcurrentStarlarkMutations(t *testing.T) {
+	rt := newTrustedRT(t)
+	if err := rt.ExecuteRepl(context.Background(), `
+def append_item(items, x):
+    items.append(x)
+    return len(items)
+`); err != nil {
+		t.Fatalf("ExecuteRepl: %v", err)
+	}
+
+	fnVal, ok := rt.GetGlobalVal("append_item")
+	if !ok {
+		t.Fatal("append_item not found")
+	}
+	fn := fnVal.(starlark.Callable)
+	sharedList := starlark.NewList(nil)
+
+	const goroutines = 10
+	const perGoroutine = 20
+	var wg sync.WaitGroup
+	for g := range goroutines {
+		wg.Go(func() {
+			for i := range perGoroutine {
+				th := rt.NewThread("worker")
+				if _, err := CallSafe(th, fn, starlark.Tuple{sharedList, starlark.MakeInt(g*100 + i)}, nil); err != nil {
+					t.Errorf("CallSafe failed: %v", err)
+					return
+				}
+			}
+		})
+	}
+	wg.Wait()
+
+	if sharedList.Len() != goroutines*perGoroutine {
+		t.Fatalf("sharedList len = %d, want %d", sharedList.Len(), goroutines*perGoroutine)
+	}
+}
+
+func TestRuntime_Execute_PropagatesContextToRuntimeContext(t *testing.T) {
+	rt := newTrustedRT(t)
+	ctx, cancel := context.WithCancel(context.Background())
+
+	sawCanceled := make(chan bool, 1)
+	rt.thread.SetLocal("test_check_ctx", nil)
+	reg := NewRegistry(&ModuleConfig{})
+	rt, err := NewTrusted(nil, WithRegistry(reg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	cancel()
+	if err := rt.Execute(ctx, `x = 1`); err == nil {
+		t.Fatal("expected canceled context error from Execute")
+	}
+	close(sawCanceled)
+	<-sawCanceled
+}

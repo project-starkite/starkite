@@ -115,6 +115,9 @@ func starlarkDoc(callable starlark.Callable) string {
 func buildResourceHandler(r *resourceEntry, rt *libkite.Runtime) func(context.Context, *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
 	return func(ctx context.Context, req *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
 		thread := rt.NewThread("mcp-resource-" + r.name)
+		libkite.SetThreadContext(thread, ctx)
+		stopWatch := libkite.WatchContext(ctx, thread)
+		defer stopWatch()
 
 		if err := libkite.Check(thread, "mcp", "server", "resource_read", r.name); err != nil {
 			return nil, err
@@ -125,7 +128,7 @@ func buildResourceHandler(r *resourceEntry, rt *libkite.Runtime) func(context.Co
 			args = starlark.Tuple{starlark.String(req.Params.URI)}
 		}
 
-		result, err := starlark.Call(thread, r.fn, args, nil)
+		result, err := libkite.CallSafe(thread, r.fn, args, nil)
 		if err != nil {
 			return nil, fmt.Errorf("resource %q: %w", r.name, err)
 		}

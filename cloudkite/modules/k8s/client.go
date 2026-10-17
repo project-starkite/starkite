@@ -150,20 +150,21 @@ func (c *K8sClient) AttrNames() []string {
 }
 
 // contextWithTimeout returns a context with timeout using fallback logic:
-// per-call timeout → client default → no timeout (context.Background).
+// per-call timeout → client default → thread context.
 func (c *K8sClient) contextWithTimeout(perCallTimeout string) (context.Context, context.CancelFunc, error) {
+	baseCtx := libkite.ThreadContext(c.thread)
 	timeout := perCallTimeout
 	if timeout == "" {
 		timeout = c.timeout
 	}
 	if timeout == "" {
-		return context.Background(), func() {}, nil
+		return baseCtx, func() {}, nil
 	}
 	d, err := time.ParseDuration(timeout)
 	if err != nil {
 		return nil, nil, fmt.Errorf("invalid timeout %q: %w", timeout, err)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), d)
+	ctx, cancel := context.WithTimeout(baseCtx, d)
 	return ctx, cancel, nil
 }
 
@@ -324,7 +325,7 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, opts cl
 
 	clientset, _ := kubernetes.NewForConfig(restCfg)
 
-	return &K8sClient{
+	client := &K8sClient{
 		dynClient: dynClient,
 		clientset: clientset,
 		disc:      disc,
@@ -336,7 +337,13 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, opts cl
 		config:    config,
 		thread:    thread,
 		dialer:    tunnelDialer,
-	}, nil
+	}
+	if tunnelDialer != nil {
+		libkite.RegisterCleanup(thread, func() {
+			_ = client.Close()
+		})
+	}
+	return client, nil
 }
 
 // getClientset returns the kubernetes.Interface, creating it from restCfg if needed.

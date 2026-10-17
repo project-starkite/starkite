@@ -22,6 +22,9 @@ import (
 // runtimeKey is the thread.Local key for the Runtime reference.
 const runtimeKey = "libkite.runtime"
 
+// threadCtxKey is the thread.Local key for a per-thread context override.
+const threadCtxKey = "libkite.ctx"
+
 // Runtime executes Starlark code with configured modules and permissions.
 type Runtime struct {
 	config      *Config
@@ -29,6 +32,10 @@ type Runtime struct {
 	permissions *PermissionChecker
 	globals     starlark.StringDict
 	mu          sync.RWMutex
+
+	// callMu serializes concurrent Starlark function callbacks (e.g., HTTP,
+	// webhook, controller, and MCP handlers) that share mutable interpreter state.
+	callMu sync.Mutex
 
 	// Thread and predeclared symbols
 	thread  *starlark.Thread
@@ -49,8 +56,10 @@ type Runtime struct {
 	cleanupMu  sync.Mutex
 
 	// Context for cancellation
-	ctx    context.Context
-	cancel context.CancelFunc
+	ctx     context.Context
+	cancel  context.CancelFunc
+	execCtx context.Context
+	ctxMu   sync.RWMutex
 
 	// Module cache for external modules
 	moduleCache *ModuleCache
@@ -319,16 +328,108 @@ func RegisterCleanup(thread *starlark.Thread, fn func()) {
 
 // Context returns the execution context for this runtime session, or context.Background() if nil.
 func (rt *Runtime) Context() context.Context {
-	if rt != nil && rt.ctx != nil {
-		return rt.ctx
+	if rt == nil {
+		return context.Background()
+	}
+	rt.ctxMu.RLock()
+	execCtx := rt.execCtx
+	baseCtx := rt.ctx
+	rt.ctxMu.RUnlock()
+	if execCtx != nil {
+		return execCtx
+	}
+	if baseCtx != nil {
+		return baseCtx
 	}
 	return context.Background()
+}
+
+// bindExecContext derives an execution context that cancels when either the
+// caller's ctx or the runtime's base context is canceled, and stores it as the
+// active runtime context for the duration of the execution.
+func (rt *Runtime) bindExecContext(ctx context.Context) (context.Context, func()) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	mergedCtx, cancel := context.WithCancel(ctx)
+	var stopAfter func() bool
+	if rt.ctx != nil {
+		stopAfter = context.AfterFunc(rt.ctx, cancel)
+	}
+
+	rt.ctxMu.Lock()
+	prev := rt.execCtx
+	rt.execCtx = mergedCtx
+	rt.ctxMu.Unlock()
+
+	return mergedCtx, func() {
+		if stopAfter != nil {
+			stopAfter()
+		}
+		cancel()
+		rt.ctxMu.Lock()
+		rt.execCtx = prev
+		rt.ctxMu.Unlock()
+	}
+}
+
+// SetThreadContext binds a context to a specific Starlark thread.
+func SetThreadContext(thread *starlark.Thread, ctx context.Context) {
+	if thread == nil {
+		return
+	}
+	thread.SetLocal(threadCtxKey, ctx)
+}
+
+// ThreadContext returns the context bound to thread, falling back to the
+// thread's Runtime.Context() or context.Background().
+func ThreadContext(thread *starlark.Thread) context.Context {
+	if thread != nil {
+		if ctx, ok := thread.Local(threadCtxKey).(context.Context); ok && ctx != nil {
+			return ctx
+		}
+		if rt := GetRuntime(thread); rt != nil {
+			return rt.Context()
+		}
+	}
+	return context.Background()
+}
+
+// WatchContext wires ctx.Done() to thread.Cancel. Returns a stop func that must
+// be called when Starlark execution completes so the watcher goroutine exits
+// cleanly.
+func WatchContext(ctx context.Context, thread *starlark.Thread) func() {
+	return watchCtx(ctx, thread)
+}
+
+var fallbackCallMu sync.Mutex
+
+// CallSafe invokes a Starlark callable on thread, serializing non-Builtin
+// callables via the runtime's callMu so concurrent callbacks (such as HTTP,
+// webhook, controller, or MCP handlers) cannot race on shared Starlark state.
+func CallSafe(thread *starlark.Thread, fn starlark.Callable, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if _, isBuiltin := fn.(*starlark.Builtin); !isBuiltin {
+		if rt := GetRuntime(thread); rt != nil {
+			rt.callMu.Lock()
+			defer rt.callMu.Unlock()
+		} else {
+			fallbackCallMu.Lock()
+			defer fallbackCallMu.Unlock()
+		}
+	}
+	return starlark.Call(thread, fn, args, kwargs)
 }
 
 // Execute runs a script. The ctx parameter cancels a running script: when
 // ctx.Done() fires, the Starlark thread receives Cancel() and execution exits
 // at the next safe point.
 func (rt *Runtime) Execute(ctx context.Context, code string) error {
+	rt.setupSignalHandling()
+	defer rt.stopSignalHandling()
+
+	execCtx, releaseCtx := rt.bindExecContext(ctx)
+	defer releaseCtx()
+
 	scriptPath := rt.config.ScriptPath
 	if scriptPath == "" {
 		scriptPath = "<script>"
@@ -352,7 +453,7 @@ func (rt *Runtime) Execute(ctx context.Context, code string) error {
 		}
 	}
 
-	stop := watchCtx(ctx, rt.thread)
+	stop := watchCtx(execCtx, rt.thread)
 	defer stop()
 
 	prog, err := starlark.FileProgram(file, rt.predecl.Has)
@@ -441,7 +542,10 @@ func unwrapExit(err error) (int, bool) {
 // ExecuteRepl runs code in REPL mode, preserving state between calls.
 // An exit() call inside the REPL fragment surfaces as *ExitError.
 func (rt *Runtime) ExecuteRepl(ctx context.Context, code string) error {
-	stop := watchCtx(ctx, rt.thread)
+	execCtx, releaseCtx := rt.bindExecContext(ctx)
+	defer releaseCtx()
+
+	stop := watchCtx(execCtx, rt.thread)
 	defer stop()
 
 	globals, err := starlark.ExecFileOptions(
@@ -508,9 +612,12 @@ func (rt *Runtime) Call(ctx context.Context, name string, args []any, kwargs map
 		}
 	}
 	thread := rt.NewThread("call:" + name)
+	if ctx != nil {
+		SetThreadContext(thread, ctx)
+	}
 	stop := watchCtx(ctx, thread)
 	defer stop()
-	return starlark.Call(thread, fn, pos, kw)
+	return CallSafe(thread, fn, pos, kw)
 }
 
 // Eval evaluates src as a single Starlark expression against the runtime's
@@ -529,6 +636,9 @@ func (rt *Runtime) Eval(ctx context.Context, src string) (starlark.Value, error)
 	maps.Copy(env, rt.predecl)
 	rt.mu.RUnlock()
 	thread := rt.NewThread("eval")
+	if ctx != nil {
+		SetThreadContext(thread, ctx)
+	}
 	stop := watchCtx(ctx, thread)
 	defer stop()
 	return starlark.EvalOptions(&syntax.FileOptions{}, thread, "<eval>", src, env)
@@ -555,9 +665,12 @@ func (rt *Runtime) CallFn(ctx context.Context, fn starlark.Callable, args []any,
 		}
 	}
 	thread := rt.NewThread("callfn:" + fn.Name())
+	if ctx != nil {
+		SetThreadContext(thread, ctx)
+	}
 	stop := watchCtx(ctx, thread)
 	defer stop()
-	return starlark.Call(thread, fn, pos, kw)
+	return CallSafe(thread, fn, pos, kw)
 }
 
 // GetGlobalVal returns the starlark.Value bound to `name` in the runtime's
@@ -573,7 +686,11 @@ func (rt *Runtime) GetGlobalVal(name string) (starlark.Value, bool) {
 // be called when Starlark execution completes so the watcher goroutine exits
 // cleanly.
 func watchCtx(ctx context.Context, thread *starlark.Thread) func() {
-	if ctx == nil || ctx.Done() == nil {
+	if ctx == nil || thread == nil || ctx.Done() == nil {
+		return func() {}
+	}
+	if err := ctx.Err(); err != nil {
+		thread.Cancel(err.Error())
 		return func() {}
 	}
 	done := make(chan struct{})
@@ -629,12 +746,16 @@ func (rt *Runtime) ExecuteTests(ctx context.Context, code string) ([]TestResult,
 // A module-level exit() returns *ExitError to the caller. An exit() inside a
 // test function fails that test with a visible message (not a silent exit).
 func (rt *Runtime) ExecuteTestsWithConfig(ctx context.Context, code string, cfg TestConfig) ([]TestResult, error) {
+	execCtx, releaseCtx := rt.bindExecContext(ctx)
+	defer releaseCtx()
+	defer rt.runDeferred()
+
 	scriptPath := rt.config.ScriptPath
 	if scriptPath == "" {
 		scriptPath = "<test>"
 	}
 
-	stop := watchCtx(ctx, rt.thread)
+	stop := watchCtx(execCtx, rt.thread)
 	globals, err := starlark.ExecFileOptions(
 		&syntax.FileOptions{},
 		rt.thread,
@@ -685,7 +806,7 @@ func (rt *Runtime) ExecuteTestsWithConfig(ctx context.Context, code string, cfg 
 	var results []TestResult
 	for _, name := range testNames {
 		fn := testFuncs[name]
-		result := rt.runTest(ctx, name, fn, setupFn, teardownFn)
+		result := rt.runTest(execCtx, name, fn, setupFn, teardownFn)
 		results = append(results, result)
 	}
 
@@ -709,6 +830,7 @@ func (rt *Runtime) runTest(ctx context.Context, name string, fn, setupFn, teardo
 
 	// Run the test with ctx wired so a runaway or canceled test stops promptly.
 	testThread := rt.NewThread("test:" + name)
+	SetThreadContext(testThread, ctx)
 	stopWatch := watchCtx(ctx, testThread)
 	_, err := starlark.Call(testThread, fn, nil, nil)
 	stopWatch()

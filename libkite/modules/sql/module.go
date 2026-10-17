@@ -120,7 +120,7 @@ func (m *Module) open(thread *starlark.Thread, fn *starlark.Builtin, args starla
 	db.SetConnMaxLifetime(time.Duration(pool.intOr("max_lifetime", 300)) * time.Second)
 	db.SetConnMaxIdleTime(time.Duration(pool.intOr("max_idle_time", 60)) * time.Second)
 
-	if err := db.Ping(); err != nil {
+	if err := db.PingContext(libkite.ThreadContext(thread)); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("sql.open: connection failed: %w", err)
 	}

@@ -546,7 +546,7 @@ func (m *Module) executeParams(thread *starlark.Thread, callerPrefix string, p e
 		cmd.Stdin = inputReader
 	}
 
-	var stdout, stderr bytes.Buffer
+	var stdout, stderr syncBuffer
 	if stdoutWriter != nil {
 		cmd.Stdout = stdoutWriter
 	} else {
@@ -554,19 +554,40 @@ func (m *Module) executeParams(thread *starlark.Thread, callerPrefix string, p e
 	}
 	cmd.Stderr = &stderr
 
+	if err := cmd.Start(); err != nil {
+		return &cmdResult{err: err}, nil
+	}
+
 	done := make(chan error, 1)
 	go func() {
-		done <- cmd.Run()
+		done <- cmd.Wait()
 	}()
+
+	threadCtx := libkite.ThreadContext(thread)
+	timer := time.NewTimer(p.timeout)
+	defer timer.Stop()
 
 	var runErr error
 	select {
 	case runErr = <-done:
-	case <-time.After(p.timeout):
+	case <-timer.C:
 		if cmd.Process != nil {
-			cmd.Process.Kill()
+			_ = cmd.Process.Kill()
+		}
+		select {
+		case <-done:
+		case <-time.After(100 * time.Millisecond):
 		}
 		runErr = fmt.Errorf("command timed out after %v", p.timeout)
+	case <-threadCtx.Done():
+		if cmd.Process != nil {
+			_ = cmd.Process.Kill()
+		}
+		select {
+		case <-done:
+		case <-time.After(100 * time.Millisecond):
+		}
+		runErr = fmt.Errorf("command canceled: %w", threadCtx.Err())
 	}
 
 	res := &cmdResult{
@@ -581,6 +602,25 @@ func (m *Module) executeParams(thread *starlark.Thread, callerPrefix string, p e
 		}
 	}
 	return res, nil
+}
+
+// syncBuffer is a goroutine-safe bytes.Buffer wrapper so stdout/stderr reads on
+// timeout or cancellation never race with background pipe draining.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (b *syncBuffer) Write(p []byte) (int, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.Write(p)
+}
+
+func (b *syncBuffer) String() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	return b.buf.String()
 }
 
 // resolveExecTarget returns the filesystem path that a command's permission

@@ -1,6 +1,8 @@
 package k8s
 
 import (
+	"sync"
+
 	"go.starlark.net/starlark"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 )
@@ -38,6 +40,7 @@ type ExecResult struct {
 type PortForwardHandle struct {
 	localPort int
 	stopCh    chan struct{}
+	stopOnce  sync.Once
 }
 
 func (h *PortForwardHandle) String() string        { return "<port_forward>" }
@@ -46,13 +49,22 @@ func (h *PortForwardHandle) Freeze()               {}
 func (h *PortForwardHandle) Truth() starlark.Bool  { return starlark.True }
 func (h *PortForwardHandle) Hash() (uint32, error) { return 0, nil }
 
+// Stop closes the port-forward stopCh at most once.
+func (h *PortForwardHandle) Stop() {
+	if h.stopCh != nil {
+		h.stopOnce.Do(func() {
+			close(h.stopCh)
+		})
+	}
+}
+
 func (h *PortForwardHandle) Attr(name string) (starlark.Value, error) {
 	switch name {
 	case "local_port":
 		return starlark.MakeInt(h.localPort), nil
 	case "stop":
 		return starlark.NewBuiltin("port_forward.stop", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-			close(h.stopCh)
+			h.Stop()
 			return starlark.None, nil
 		}), nil
 	}

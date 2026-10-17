@@ -36,6 +36,7 @@ type MCPClient struct {
 	// reference so close() can terminate the process regardless of what the
 	// session's Close() does with the pipe.
 	cmd    *exec.Cmd
+	thread *starlark.Thread
 	closed atomic.Bool
 
 	// Lazy-discovery state, guarded by toolsOnce. toolsErr is non-nil if
@@ -169,7 +170,11 @@ func (c *MCPClient) invoke(thread *starlark.Thread, name string, kwargs []starla
 		argMap[string(key)] = v
 	}
 
-	res, err := c.session.CallTool(context.Background(), &mcpsdk.CallToolParams{
+	callCtx := libkite.ThreadContext(thread)
+	if thread == nil {
+		callCtx = libkite.ThreadContext(c.thread)
+	}
+	res, err := c.session.CallTool(callCtx, &mcpsdk.CallToolParams{
 		Name:      name,
 		Arguments: argMap,
 	})
@@ -188,7 +193,7 @@ func (c *MCPClient) ensureDiscovered() error {
 			c.toolsErr = errors.New("mcp client is closed")
 			return
 		}
-		ctx, cancel := context.WithTimeout(context.Background(), defaultDiscoveryTimeout)
+		ctx, cancel := context.WithTimeout(libkite.ThreadContext(c.thread), defaultDiscoveryTimeout)
 		defer cancel()
 		list, err := c.session.ListTools(ctx, nil)
 		if err != nil {

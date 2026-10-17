@@ -210,7 +210,7 @@ func newPlatformClient(ep Endpoint, timeout time.Duration) (*http.Client, error)
 		}
 	case "tcp", "unix":
 		dialContext = func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, ep.Scheme, ep.Address)
+			return (&net.Dialer{Timeout: timeout}).DialContext(ctx, ep.Scheme, ep.Address)
 		}
 	default:
 		return nil, fmt.Errorf("containers: unsupported scheme %q on Windows", ep.Scheme)
@@ -225,6 +225,5 @@ func newPlatformClient(ep Endpoint, timeout time.Duration) (*http.Client, error)
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   timeout,
 	}, nil
 }

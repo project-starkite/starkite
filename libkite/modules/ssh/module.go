@@ -705,6 +705,7 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 
 // SSHClient represents a configured SSH client for remote execution.
 type SSHClient struct {
+	mu                 sync.RWMutex
 	thread             *starlark.Thread
 	dryRun             bool
 	debug              bool
@@ -804,10 +805,13 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		}
 		return starlark.None, nil
 	case "auth":
+		c.mu.RLock()
+		keyPassphrase := c.keyPassphrase
+		c.mu.RUnlock()
 		d := starlark.NewDict(6)
 		d.SetKey(starlark.String("user"), starlark.String(c.user))
 		d.SetKey(starlark.String("key"), starlark.String(c.keyFile))
-		d.SetKey(starlark.String("passphrase"), starlark.String(c.keyPassphrase))
+		d.SetKey(starlark.String("passphrase"), starlark.String(keyPassphrase))
 		d.SetKey(starlark.String("password"), starlark.String(c.password))
 		d.SetKey(starlark.String("use_agent"), starlark.Bool(c.useAgent))
 		d.SetKey(starlark.String("prompt"), starlark.Bool(c.prompt))
@@ -816,12 +820,15 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		if c.jumpHost == "" {
 			return starlark.None, nil
 		}
+		c.mu.RLock()
+		jumpKeyPassphrase := c.jumpKeyPassphrase
+		c.mu.RUnlock()
 		d := starlark.NewDict(10)
 		d.SetKey(starlark.String("host"), starlark.String(c.jumpHost))
 		d.SetKey(starlark.String("port"), starlark.MakeInt(c.jumpPort))
 		d.SetKey(starlark.String("user"), starlark.String(c.jumpUser))
 		d.SetKey(starlark.String("key"), starlark.String(c.jumpKeyFile))
-		d.SetKey(starlark.String("passphrase"), starlark.String(c.jumpKeyPassphrase))
+		d.SetKey(starlark.String("passphrase"), starlark.String(jumpKeyPassphrase))
 		d.SetKey(starlark.String("password"), starlark.String(c.jumpPassword))
 		d.SetKey(starlark.String("use_agent"), starlark.Bool(c.jumpUseAgent))
 		d.SetKey(starlark.String("prompt"), starlark.Bool(c.jumpPrompt))

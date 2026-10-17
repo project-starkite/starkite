@@ -47,8 +47,9 @@ type Server struct {
 	config      *libkite.ModuleConfig
 
 	// Synchronization
-	mu   sync.Mutex
-	done chan struct{}
+	mu        sync.Mutex
+	handlerMu sync.Mutex
+	done      chan struct{}
 }
 
 // newServer creates a Server with default config.
@@ -208,8 +209,14 @@ func (s *Server) serveMethod(thread *starlark.Thread, fn *starlark.Builtin,
 		}
 	}
 
-	// Block until server stops
-	<-s.done
+	// Block until server stops or runtime context is canceled
+	ctx := libkite.ThreadContext(thread)
+	select {
+	case <-s.done:
+	case <-ctx.Done():
+		s.shutdownInternal()
+		<-s.done
+	}
 
 	// Clean up default handlers we installed
 	if s.runtime != nil {
@@ -389,6 +396,8 @@ func (s *Server) startInternal(thread *starlark.Thread, kwargs []starlark.Tuple)
 	s.done = make(chan struct{})
 	s.running = true
 
+	libkite.RegisterCleanup(thread, s.shutdownInternal)
+
 	go func() {
 		defer close(s.done)
 		s.server.Serve(ln)
@@ -404,6 +413,17 @@ func (s *Server) startInternal(thread *starlark.Thread, kwargs []starlark.Tuple)
 // with thread-per-request concurrency.
 func (s *Server) makeGoHandler(pattern string, handler starlark.Callable,
 	middlewares []starlark.Callable) gohttp.HandlerFunc {
+
+	hasStarlarkFn := false
+	if _, ok := handler.(*starlark.Builtin); !ok {
+		hasStarlarkFn = true
+	}
+	for _, mw := range middlewares {
+		if _, ok := mw.(*starlark.Builtin); !ok {
+			hasStarlarkFn = true
+			break
+		}
+	}
 
 	return func(w gohttp.ResponseWriter, r *gohttp.Request) {
 		defer func() {
@@ -425,8 +445,16 @@ func (s *Server) makeGoHandler(pattern string, handler starlark.Callable,
 			return
 		}
 
-		// Thread-per-request: new thread, shared frozen globals
+		// Thread-per-request: new thread bound to the request context
 		thread := s.runtime.NewThread("http-handler")
+		libkite.SetThreadContext(thread, r.Context())
+		stopWatch := libkite.WatchContext(r.Context(), thread)
+		defer stopWatch()
+
+		if hasStarlarkFn {
+			s.handlerMu.Lock()
+			defer s.handlerMu.Unlock()
+		}
 
 		result, err := callChain(thread, middlewares, handler, reqObj)
 		if err != nil {

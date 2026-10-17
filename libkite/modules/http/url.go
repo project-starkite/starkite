@@ -166,8 +166,8 @@ func (u *URL) doRequest(thread *starlark.Thread, method string, hasBody bool, ar
 		}
 	}
 
-	// Create request
-	req, err := http.NewRequest(method, u.rawURL, reqBody)
+	// Create request bound to the thread's execution context
+	req, err := http.NewRequestWithContext(libkite.ThreadContext(thread), method, u.rawURL, reqBody)
 	if err != nil {
 		return nil, err
 	}
@@ -222,5 +222,7 @@ func (u *URL) doRequest(thread *starlark.Thread, method string, hasBody bool, ar
 		return nil, err
 	}
 
-	return newResponse(resp), nil
+	respObj := newResponse(resp)
+	libkite.RegisterCleanup(thread, respObj.closeBody)
+	return respObj, nil
 }

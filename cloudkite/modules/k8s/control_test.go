@@ -1235,3 +1235,101 @@ func TestK8sClientEvent(t *testing.T) {
 		t.Fatalf("unexpected involvedObject: %+v", e.InvolvedObject)
 	}
 }
+
+func TestPortForwardHandle_StopIdempotent(t *testing.T) {
+	h := &PortForwardHandle{
+		localPort: 8080,
+		stopCh:    make(chan struct{}),
+	}
+
+	// Multiple Stop() calls and Starlark builtin stop() calls must not panic.
+	h.Stop()
+	h.Stop()
+
+	stopAttr, err := h.Attr("stop")
+	if err != nil {
+		t.Fatalf("Attr(stop): %v", err)
+	}
+	stopFn := stopAttr.(*starlark.Builtin)
+	thread := &starlark.Thread{Name: "test-pf-stop"}
+	if _, err := starlark.Call(thread, stopFn, nil, nil); err != nil {
+		t.Fatalf("stop() builtin failed: %v", err)
+	}
+	if _, err := starlark.Call(thread, stopFn, nil, nil); err != nil {
+		t.Fatalf("second stop() builtin failed: %v", err)
+	}
+}
+
+func TestControllerConcurrentDispatch_NoRace(t *testing.T) {
+	scheme := runtime.NewScheme()
+	gvr := schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: "testapps"}
+	fakeDyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{
+		gvr: "TestAppList",
+	})
+	fakeClientset := fake.NewSimpleClientset()
+
+	thread := &starlark.Thread{Name: "test-concurrent-dispatch"}
+	globals, err := starlark.ExecFile(thread, "reconcile.star", `
+seen = []
+def reconcile(event, obj):
+    seen.append(obj.metadata.name)
+    obj.metadata["mutated"] = "yes"
+    return None
+`, nil)
+	if err != nil {
+		t.Fatalf("ExecFile: %v", err)
+	}
+
+	reconcileFn := globals["reconcile"].(starlark.Callable)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := &controller{
+		gvr:         gvr,
+		kind:        "TestApp",
+		namespaced:  true,
+		namespace:   "default",
+		reconcileFn: reconcileFn,
+		client: &K8sClient{
+			dynClient: fakeDyn,
+			clientset: fakeClientset,
+			namespace: "default",
+		},
+		thread:      thread,
+		cache:       make(map[string]*unstructured.Unstructured),
+		echoKeys:    make(map[string]time.Time),
+		watchedGVRs: make(map[schema.GroupVersionResource]context.CancelFunc),
+		ctx:         ctx,
+		cancel:      cancel,
+	}
+
+	baseObj := &unstructured.Unstructured{
+		Object: map[string]any{
+			"apiVersion": "example.io/v1",
+			"kind":       "TestApp",
+			"metadata": map[string]any{
+				"name":      "shared-app",
+				"namespace": "default",
+				"uid":       "uid-1",
+			},
+		},
+	}
+	c.cache["default/shared-app"] = baseObj.DeepCopy()
+
+	done := make(chan struct{})
+	for range 4 {
+		go func() {
+			defer func() { done <- struct{}{} }()
+			for range 10 {
+				_ = c.dispatch(queueItem{
+					key:       "default/shared-app",
+					eventType: string(watch.Modified),
+					old:       baseObj,
+				})
+			}
+		}()
+	}
+	for range 4 {
+		<-done
+	}
+}

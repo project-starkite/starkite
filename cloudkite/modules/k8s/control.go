@@ -374,7 +374,7 @@ type controller struct {
 
 // run starts the controller and blocks until stopped.
 func (c *controller) run() (starlark.Value, error) {
-	c.ctx, c.cancel = context.WithCancel(context.Background())
+	c.ctx, c.cancel = context.WithCancel(libkite.ThreadContext(c.thread))
 	defer c.cancel()
 
 	c.queue = workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(c.backoff, 5*time.Minute))
@@ -383,9 +383,13 @@ func (c *controller) run() (starlark.Value, error) {
 	// Install signal handler for graceful shutdown
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 	go func() {
-		<-sigCh
-		c.cancel()
+		select {
+		case <-sigCh:
+			c.cancel()
+		case <-c.ctx.Done():
+		}
 	}()
 
 	// Start watch goroutine with reconnect
@@ -599,7 +603,10 @@ func (c *controller) doWatch() error {
 
 			// Save previous version before updating cache (for on_update old/new)
 			c.cacheMu.Lock()
-			old := c.cache[key]
+			var old *unstructured.Unstructured
+			if prev := c.cache[key]; prev != nil {
+				old = prev.DeepCopy()
+			}
 			c.cache[key] = obj.DeepCopy()
 			c.cacheMu.Unlock()
 
@@ -964,10 +971,13 @@ func (c *controller) doWatchRelated(r relatedWatcher) error {
 			if perms := libkite.GetPermissions(c.thread); perms != nil {
 				libkite.SetPermissions(childThread, perms)
 			}
+			if c.ctx != nil {
+				libkite.SetThreadContext(childThread, c.ctx)
+			}
 			childThread.SetLocal(ActiveControllerKey, c)
 
-			attrDict := unstructuredToAttrDict(obj)
-			res, err := starlark.Call(childThread, r.mapFn, starlark.Tuple{attrDict}, nil)
+			attrDict := unstructuredToAttrDict(obj.DeepCopy())
+			res, err := libkite.CallSafe(childThread, r.mapFn, starlark.Tuple{attrDict}, nil)
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "k8s.control: map_func error for %s on %s/%s: %v\n", r.kind, obj.GetNamespace(), obj.GetName(), err)
 				continue
@@ -1191,7 +1201,11 @@ func (c *controller) processNextItem() bool {
 func (c *controller) dispatch(item queueItem) error {
 	// Get object from cache
 	c.cacheMu.RLock()
-	obj, exists := c.cache[item.key]
+	cached, exists := c.cache[item.key]
+	var obj *unstructured.Unstructured
+	if cached != nil {
+		obj = cached.DeepCopy()
+	}
 	c.cacheMu.RUnlock()
 
 	if !exists && item.eventType != string(watch.Deleted) {
@@ -1213,7 +1227,7 @@ func (c *controller) dispatch(item queueItem) error {
 		return nil // nothing to reconcile
 	}
 
-	attrDict := unstructuredToAttrDict(obj)
+	attrDict := unstructuredToAttrDict(obj.DeepCopy())
 
 	// Create a child thread for the handler call
 	childThread := &starlark.Thread{Name: "controller-worker"}
@@ -1223,6 +1237,11 @@ func (c *controller) dispatch(item queueItem) error {
 	// Copy permissions from parent thread
 	if perms := libkite.GetPermissions(c.thread); perms != nil {
 		libkite.SetPermissions(childThread, perms)
+	}
+	if c.ctx != nil {
+		libkite.SetThreadContext(childThread, c.ctx)
+		stopWatch := libkite.WatchContext(c.ctx, childThread)
+		defer stopWatch()
 	}
 	childThread.SetLocal(ActiveControllerKey, c)
 
@@ -1254,7 +1273,7 @@ func (c *controller) dispatch(item queueItem) error {
 			if err := c.addFinalizer(obj); err != nil {
 				return fmt.Errorf("add finalizer %q on %s: %w", c.finalizerName, item.key, err)
 			}
-			attrDict = unstructuredToAttrDict(obj)
+			attrDict = unstructuredToAttrDict(obj.DeepCopy())
 		}
 	}
 
@@ -1264,7 +1283,7 @@ func (c *controller) dispatch(item queueItem) error {
 	switch item.eventType {
 	case string(watch.Added):
 		if c.onCreateFn != nil {
-			ret, err = starlark.Call(childThread, c.onCreateFn, starlark.Tuple{attrDict}, nil)
+			ret, err = libkite.CallSafe(childThread, c.onCreateFn, starlark.Tuple{attrDict}, nil)
 		} else if c.reconcileFn != nil {
 			ret, err = c.callReconcile(childThread, "ADDED", attrDict)
 		}
@@ -1273,10 +1292,10 @@ func (c *controller) dispatch(item queueItem) error {
 		if c.onUpdateFn != nil {
 			oldDict := attrDict // fallback if no previous version
 			if item.old != nil {
-				oldDict = unstructuredToAttrDict(item.old)
+				oldDict = unstructuredToAttrDict(item.old.DeepCopy())
 			}
 			newDict := attrDict
-			ret, err = starlark.Call(childThread, c.onUpdateFn, starlark.Tuple{oldDict, newDict}, nil)
+			ret, err = libkite.CallSafe(childThread, c.onUpdateFn, starlark.Tuple{oldDict, newDict}, nil)
 		} else if c.reconcileFn != nil {
 			ret, err = c.callReconcile(childThread, "MODIFIED", attrDict)
 		}
@@ -1288,7 +1307,7 @@ func (c *controller) dispatch(item queueItem) error {
 		c.cacheMu.Unlock()
 
 		if c.onDeleteFn != nil {
-			ret, err = starlark.Call(childThread, c.onDeleteFn, starlark.Tuple{attrDict}, nil)
+			ret, err = libkite.CallSafe(childThread, c.onDeleteFn, starlark.Tuple{attrDict}, nil)
 		} else if c.reconcileFn != nil {
 			ret, err = c.callReconcile(childThread, "DELETED", attrDict)
 		}
@@ -1336,13 +1355,13 @@ func (c *controller) dispatch(item queueItem) error {
 func (c *controller) callFinalize(thread *starlark.Thread, attrDict *AttrDict) error {
 	if fn, ok := c.finalizeFn.(*starlark.Function); ok {
 		if fn.NumParams() == 1 {
-			_, err := starlark.Call(thread, c.finalizeFn, starlark.Tuple{attrDict}, nil)
+			_, err := libkite.CallSafe(thread, c.finalizeFn, starlark.Tuple{attrDict}, nil)
 			return err
 		}
 	}
-	_, err := starlark.Call(thread, c.finalizeFn, starlark.Tuple{attrDict}, nil)
+	_, err := libkite.CallSafe(thread, c.finalizeFn, starlark.Tuple{attrDict}, nil)
 	if err != nil && strings.Contains(err.Error(), "got 1 arguments, want 2") {
-		_, err = starlark.Call(thread, c.finalizeFn, starlark.Tuple{starlark.String("DELETING"), attrDict}, nil)
+		_, err = libkite.CallSafe(thread, c.finalizeFn, starlark.Tuple{starlark.String("DELETING"), attrDict}, nil)
 	}
 	return err
 }
@@ -1505,12 +1524,12 @@ func (c *controller) updateReadyCondition(obj *unstructured.Unstructured, ready 
 func (c *controller) callReconcile(thread *starlark.Thread, eventType string, attrDict *AttrDict) (starlark.Value, error) {
 	if fn, ok := c.reconcileFn.(*starlark.Function); ok {
 		if fn.NumParams() == 1 {
-			return starlark.Call(thread, c.reconcileFn, starlark.Tuple{attrDict}, nil)
+			return libkite.CallSafe(thread, c.reconcileFn, starlark.Tuple{attrDict}, nil)
 		}
 	}
-	res, err := starlark.Call(thread, c.reconcileFn, starlark.Tuple{starlark.String(eventType), attrDict}, nil)
+	res, err := libkite.CallSafe(thread, c.reconcileFn, starlark.Tuple{starlark.String(eventType), attrDict}, nil)
 	if err != nil && strings.Contains(err.Error(), "got 2 arguments, want 1") {
-		return starlark.Call(thread, c.reconcileFn, starlark.Tuple{attrDict}, nil)
+		return libkite.CallSafe(thread, c.reconcileFn, starlark.Tuple{attrDict}, nil)
 	}
 	return res, err
 }
@@ -1682,8 +1701,11 @@ func (c *controller) applyPredicate(eventType string, obj *unstructuredObj) bool
 			libkite.SetPermissions(filterThread, perms)
 		}
 	}
-	attrDict := unstructuredToAttrDict(obj)
-	result, err := starlark.Call(filterThread, c.predicateFn, starlark.Tuple{
+	if c.ctx != nil {
+		libkite.SetThreadContext(filterThread, c.ctx)
+	}
+	attrDict := unstructuredToAttrDict(obj.DeepCopy())
+	result, err := libkite.CallSafe(filterThread, c.predicateFn, starlark.Tuple{
 		starlark.String(eventType),
 		attrDict,
 	}, nil)

@@ -10,7 +10,6 @@ import (
 	"time"
 
 	gossh "golang.org/x/crypto/ssh"
-	"golang.org/x/crypto/ssh/agent"
 )
 
 // TunnelDialer establishes in-memory TCP connections through an SSH bastion.
@@ -149,10 +148,8 @@ func BuildJumpSSHConfig(jump JumpConfig, timeout time.Duration) (*gossh.ClientCo
 	if jump.UseAgent {
 		socket := os.Getenv("SSH_AUTH_SOCK")
 		if socket != "" {
-			conn, err := net.Dial("unix", socket)
-			if err == nil {
-				agentClient := agent.NewClient(conn)
-				authMethods = append(authMethods, gossh.PublicKeysCallback(agentClient.Signers))
+			if authMethod, err := newAgentAuthMethod(socket); err == nil {
+				authMethods = append(authMethods, authMethod)
 			}
 		}
 	}

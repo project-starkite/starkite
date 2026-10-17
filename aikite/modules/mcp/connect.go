@@ -64,7 +64,7 @@ func (m *Module) connectBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		}
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(libkite.ThreadContext(thread), timeout)
 	defer cancel()
 
 	sdkClient := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "starkite", Version: "0.1.0"}, nil)
@@ -78,7 +78,12 @@ func (m *Module) connectBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		}
 		return nil, fmt.Errorf("mcp.connect: %w", err)
 	}
-	return newMCPClient(session, subproc), nil
+	client := newMCPClient(session, subproc)
+	client.thread = thread
+	libkite.RegisterCleanup(thread, func() {
+		_ = client.doClose()
+	})
+	return client, nil
 }
 
 // inferTransport picks an MCP transport based on the Starlark arg's type.

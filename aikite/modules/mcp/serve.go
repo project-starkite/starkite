@@ -129,8 +129,9 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 		return nil, err
 	}
 
+	threadCtx := libkite.ThreadContext(thread)
 	if p.Port > 0 {
-		return starlark.None, runHTTPServer(server, httpOpts{
+		return starlark.None, runHTTPServer(threadCtx, server, httpOpts{
 			host:    firstNonEmpty(p.Host, defaultHTTPHost),
 			port:    p.Port,
 			path:    firstNonEmpty(p.Path, defaultHTTPPath),
@@ -138,7 +139,7 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 			tlsKey:  p.TLSKey,
 		})
 	}
-	return starlark.None, runStdioServer(server)
+	return starlark.None, runStdioServer(threadCtx, server)
 }
 
 // buildServer constructs an MCP server from the resolved inputs and registers
@@ -181,8 +182,11 @@ func buildServer(name, version string, tools []*Tool, resources []*resourceEntry
 
 // runStdioServer blocks on server.Run(&StdioTransport{}) with signal-driven
 // graceful shutdown. Follows the pattern from libkite/modules/http/server.go.
-func runStdioServer(server *mcpsdk.Server) error {
-	ctx, cancel := context.WithCancel(context.Background())
+func runStdioServer(parentCtx context.Context, server *mcpsdk.Server) error {
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
 	sigCh := make(chan os.Signal, 1)
@@ -190,8 +194,11 @@ func runStdioServer(server *mcpsdk.Server) error {
 	defer signal.Stop(sigCh)
 
 	go func() {
-		<-sigCh
-		cancel()
+		select {
+		case <-sigCh:
+			cancel()
+		case <-ctx.Done():
+		}
 	}()
 
 	if err := server.Run(ctx, &mcpsdk.StdioTransport{}); err != nil && !errors.Is(err, context.Canceled) {
@@ -208,8 +215,11 @@ type httpOpts struct {
 
 // runHTTPServer is the production HTTP entry: wires SIGINT/SIGTERM to a cancel
 // context, then delegates to runHTTPServerCtx for the actual listen loop.
-func runHTTPServer(server *mcpsdk.Server, opts httpOpts) error {
-	ctx, cancel := context.WithCancel(context.Background())
+func runHTTPServer(parentCtx context.Context, server *mcpsdk.Server, opts httpOpts) error {
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parentCtx)
 	defer cancel()
 
 	sigCh := make(chan os.Signal, 1)
@@ -217,8 +227,11 @@ func runHTTPServer(server *mcpsdk.Server, opts httpOpts) error {
 	defer signal.Stop(sigCh)
 
 	go func() {
-		<-sigCh
-		cancel()
+		select {
+		case <-sigCh:
+			cancel()
+		case <-ctx.Done():
+		}
 	}()
 
 	return runHTTPServerCtx(ctx, server, opts)

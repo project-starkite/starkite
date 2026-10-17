@@ -95,6 +95,9 @@ func buildPromptEntry(name string, callable starlark.Callable) (*promptEntry, er
 func buildPromptHandler(p *promptEntry, rt *libkite.Runtime) func(context.Context, *mcpsdk.GetPromptRequest) (*mcpsdk.GetPromptResult, error) {
 	return func(ctx context.Context, req *mcpsdk.GetPromptRequest) (*mcpsdk.GetPromptResult, error) {
 		thread := rt.NewThread("mcp-prompt-" + p.name)
+		libkite.SetThreadContext(thread, ctx)
+		stopWatch := libkite.WatchContext(ctx, thread)
+		defer stopWatch()
 
 		if err := libkite.Check(thread, "mcp", "server", "prompt_render", p.name); err != nil {
 			return nil, err
@@ -110,7 +113,7 @@ func buildPromptHandler(p *promptEntry, rt *libkite.Runtime) func(context.Contex
 			}
 		}
 
-		result, err := starlark.Call(thread, p.fn, starlark.Tuple{}, kwargs)
+		result, err := libkite.CallSafe(thread, p.fn, starlark.Tuple{}, kwargs)
 		if err != nil {
 			return nil, fmt.Errorf("prompt %q: %w", p.name, err)
 		}

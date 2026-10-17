@@ -17,7 +17,7 @@ func newPlatformClient(ep Endpoint, timeout time.Duration) (*http.Client, error)
 
 	transport := &http.Transport{
 		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			return (&net.Dialer{}).DialContext(ctx, ep.Scheme, ep.Address)
+			return (&net.Dialer{Timeout: timeout}).DialContext(ctx, ep.Scheme, ep.Address)
 		},
 		DisableKeepAlives: false,
 		MaxIdleConns:      10,
@@ -26,6 +26,5 @@ func newPlatformClient(ep Endpoint, timeout time.Duration) (*http.Client, error)
 
 	return &http.Client{
 		Transport: transport,
-		Timeout:   timeout,
 	}, nil
 }

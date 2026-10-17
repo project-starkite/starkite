@@ -1,7 +1,6 @@
 package sql
 
 import (
-	"context"
 	"database/sql"
 	"errors"
 	"fmt"
@@ -10,6 +9,8 @@ import (
 
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
+
+	"github.com/project-starkite/starkite/libkite"
 )
 
 // placeholderStyle maps a driver to its parameter placeholder style. The style
@@ -87,10 +88,10 @@ func (c *Connection) insert(thread *starlark.Thread, fn *starlark.Builtin, args 
 	if c.dryRun {
 		return dryRunResult(), nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.insert: connection is closed")
 	}
-	res, err := c.db.ExecContext(context.Background(), query, params...)
+	res, err := c.db.ExecContext(libkite.ThreadContext(thread), query, params...)
 	if err != nil {
 		return nil, fmt.Errorf("sql.insert: %w", err)
 	}
@@ -223,11 +224,11 @@ func (c *Connection) migrate(thread *starlark.Thread, fn *starlark.Builtin, args
 		printMigratePlan(stmts)
 		return migrateSummary(nil, nil), nil
 	}
-	if c.closed {
+	if c.isClosed() {
 		return nil, fmt.Errorf("sql.migrate: connection is closed")
 	}
 
-	ctx := context.Background()
+	ctx := libkite.ThreadContext(thread)
 	// VARCHAR(255) PK works across sqlite/postgres/mysql (TEXT cannot be a PK in MySQL).
 	if _, err := c.db.ExecContext(ctx,
 		"CREATE TABLE IF NOT EXISTS schema_migrations (name VARCHAR(255) PRIMARY KEY, applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)"); err != nil {

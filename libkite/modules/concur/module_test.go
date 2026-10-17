@@ -714,3 +714,46 @@ func TestModuleName(t *testing.T) {
 		t.Fatalf("expected module name 'concur', got %q", m.Name())
 	}
 }
+
+func TestMapFreezesClosureAndItems_NoRace(t *testing.T) {
+	reg := libkite.NewRegistry(&libkite.ModuleConfig{})
+	reg.Register(New())
+	rt, err := libkite.NewTrusted(nil, libkite.WithRegistry(reg))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+
+	// Mutating a captured outer list inside concur.map must fail cleanly with a
+	// frozen-list error rather than triggering a Go data race under -race.
+	err = rt.Execute(t.Context(), `
+shared = []
+def bad_worker(x):
+    shared.append(x)
+    return x
+
+concur.map([1, 2, 3, 4], bad_worker)
+`)
+	if err == nil {
+		t.Fatal("expected error when mutating captured list inside concur.map worker")
+	}
+	if !strings.Contains(err.Error(), "frozen") {
+		t.Fatalf("expected frozen error, got: %v", err)
+	}
+
+	// Pure Starlark workers reading captured state and returning new dicts run concurrently without races.
+	err = rt.Execute(t.Context(), `
+prefix = {"tag": "v1"}
+def pure_worker(item):
+    return {"id": item["id"], "tag": prefix["tag"]}
+
+def check():
+    res = concur.map([{"id": 1}, {"id": 2}, {"id": 3}, {"id": 4}], pure_worker, workers=4)
+    if len(res) != 4:
+        fail("expected 4 results")
+check()
+`)
+	if err != nil {
+		t.Fatalf("unexpected error in pure concur.map: %v", err)
+	}
+}

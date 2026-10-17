@@ -24,6 +24,7 @@ func (p *Path) getReaderMethod(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if err != nil {
 		return nil, err
 	}
+	libkite.RegisterCleanup(thread, func() { _ = file.Close() })
 
 	return iomod.NewReader(file, p.path), nil
 }
@@ -45,6 +46,7 @@ func (p *Path) getWriterMethod(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if err != nil {
 		return nil, err
 	}
+	libkite.RegisterCleanup(thread, func() { _ = file.Close() })
 
 	return iomod.NewWriter(file, p.path), nil
 }

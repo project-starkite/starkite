@@ -206,17 +206,18 @@ func (m *Module) executeRetry(
 ) (starlark.Value, error) {
 	start := time.Now()
 
-	var ctx context.Context
+	parentCtx := libkite.ThreadContext(thread)
+	ctx := parentCtx
 	var cancel context.CancelFunc
 	if timeoutStr != "" {
 		timeout, err := time.ParseDuration(timeoutStr)
 		if err != nil {
 			return nil, fmt.Errorf("invalid timeout: %w", err)
 		}
-		ctx, cancel = context.WithTimeout(context.Background(), timeout)
+		ctx, cancel = context.WithTimeout(parentCtx, timeout)
 		defer cancel()
-	} else {
-		ctx = context.Background()
+		libkite.SetThreadContext(thread, ctx)
+		defer libkite.SetThreadContext(thread, parentCtx)
 	}
 
 	var errors []string
@@ -314,8 +315,13 @@ func (m *Module) sleepWithJitter(ctx context.Context, d time.Duration, jitter bo
 	if jitter {
 		d = applyJitter(d)
 	}
+	if d <= 0 {
+		return
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
 	select {
 	case <-ctx.Done():
-	case <-time.After(d):
+	case <-timer.C:
 	}
 }

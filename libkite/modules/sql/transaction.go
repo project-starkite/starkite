@@ -1,11 +1,11 @@
 package sql
 
 import (
-	"context"
 	"database/sql"
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"go.starlark.net/starlark"
 
@@ -17,8 +17,27 @@ import (
 type Transaction struct {
 	tx     *sql.Tx
 	conn   *Connection
+	mu     sync.Mutex
 	done   bool
 	dryRun bool
+}
+
+func (t *Transaction) isDone() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.done
+}
+
+// markDone transitions done from false to true under lock and returns true if
+// the caller was the first to finish the transaction.
+func (t *Transaction) markDone() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.done {
+		return false
+	}
+	t.done = true
+	return true
 }
 
 // --- starlark.Value ---
@@ -26,7 +45,7 @@ type Transaction struct {
 func (t *Transaction) String() string       { return "<sql.transaction>" }
 func (t *Transaction) Type() string         { return "sql.transaction" }
 func (t *Transaction) Freeze()              {}
-func (t *Transaction) Truth() starlark.Bool { return starlark.Bool(!t.done) }
+func (t *Transaction) Truth() starlark.Bool { return starlark.Bool(!t.isDone()) }
 func (t *Transaction) Hash() (uint32, error) {
 	return 0, fmt.Errorf("unhashable type: sql.transaction")
 }
@@ -85,10 +104,10 @@ func (t *Transaction) query(thread *starlark.Thread, fn *starlark.Builtin, args 
 	if t.dryRun {
 		return starlark.NewList(nil), nil
 	}
-	if t.done {
+	if t.isDone() {
 		return nil, fmt.Errorf("sql.query: transaction already finished")
 	}
-	rows, err := t.tx.QueryContext(context.Background(), q, params...)
+	rows, err := t.tx.QueryContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, t.conn.queryErr("query", q, err)
 	}
@@ -104,10 +123,10 @@ func (t *Transaction) queryRow(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if t.dryRun {
 		return starlark.None, nil
 	}
-	if t.done {
+	if t.isDone() {
 		return nil, fmt.Errorf("sql.query_row: transaction already finished")
 	}
-	rows, err := t.tx.QueryContext(context.Background(), q, params...)
+	rows, err := t.tx.QueryContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, t.conn.queryErr("query_row", q, err)
 	}
@@ -123,10 +142,10 @@ func (t *Transaction) queryValue(thread *starlark.Thread, fn *starlark.Builtin, 
 	if t.dryRun {
 		return starlark.None, nil
 	}
-	if t.done {
+	if t.isDone() {
 		return nil, fmt.Errorf("sql.query_value: transaction already finished")
 	}
-	rows, err := t.tx.QueryContext(context.Background(), q, params...)
+	rows, err := t.tx.QueryContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, t.conn.queryErr("query_value", q, err)
 	}
@@ -142,10 +161,10 @@ func (t *Transaction) queryColumn(thread *starlark.Thread, fn *starlark.Builtin,
 	if t.dryRun {
 		return starlark.NewList(nil), nil
 	}
-	if t.done {
+	if t.isDone() {
 		return nil, fmt.Errorf("sql.query_column: transaction already finished")
 	}
-	rows, err := t.tx.QueryContext(context.Background(), q, params...)
+	rows, err := t.tx.QueryContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, t.conn.queryErr("query_column", q, err)
 	}
@@ -161,10 +180,10 @@ func (t *Transaction) execMethod(thread *starlark.Thread, fn *starlark.Builtin, 
 	if t.dryRun {
 		return dryRunResult(), nil
 	}
-	if t.done {
+	if t.isDone() {
 		return nil, fmt.Errorf("sql.exec: transaction already finished")
 	}
-	res, err := t.tx.ExecContext(context.Background(), q, params...)
+	res, err := t.tx.ExecContext(libkite.ThreadContext(thread), q, params...)
 	if err != nil {
 		return nil, t.conn.queryErr("exec", q, err)
 	}
@@ -172,10 +191,9 @@ func (t *Transaction) execMethod(thread *starlark.Thread, fn *starlark.Builtin, 
 }
 
 func (t *Transaction) commit(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if t.done || t.dryRun {
+	if t.dryRun || !t.markDone() {
 		return starlark.None, nil
 	}
-	t.done = true
 	if err := t.tx.Commit(); err != nil {
 		return nil, fmt.Errorf("sql.commit: %w", err)
 	}
@@ -183,10 +201,9 @@ func (t *Transaction) commit(thread *starlark.Thread, fn *starlark.Builtin, args
 }
 
 func (t *Transaction) rollback(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if t.done || t.dryRun {
+	if t.dryRun || !t.markDone() {
 		return starlark.None, nil // no-op if already committed/rolled back
 	}
-	t.done = true
 	if err := t.tx.Rollback(); err != nil {
 		return nil, fmt.Errorf("sql.rollback: %w", err)
 	}
