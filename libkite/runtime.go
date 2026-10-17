@@ -38,8 +38,9 @@ type Runtime struct {
 	callMu sync.Mutex
 
 	// Thread and predeclared symbols
-	thread  *starlark.Thread
-	predecl starlark.StringDict
+	thread          *starlark.Thread
+	threadCancelled bool
+	predecl         starlark.StringDict
 
 	// Signal handling
 	signalHandlers map[string]starlark.Callable
@@ -284,6 +285,8 @@ func (rt *Runtime) NewThread(name string) *starlark.Thread {
 
 // Thread returns the primary Starlark thread of the runtime.
 func (rt *Runtime) Thread() *starlark.Thread {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
 	return rt.thread
 }
 
@@ -453,7 +456,15 @@ func (rt *Runtime) Execute(ctx context.Context, code string) error {
 		}
 	}
 
-	stop := watchCtx(execCtx, rt.thread)
+	rt.mu.Lock()
+	if rt.threadCancelled {
+		rt.thread = rt.NewThread("libkite")
+		rt.threadCancelled = false
+	}
+	thread := rt.thread
+	rt.mu.Unlock()
+
+	stop := watchCtx(execCtx, thread)
 	defer stop()
 
 	prog, err := starlark.FileProgram(file, rt.predecl.Has)
@@ -462,7 +473,7 @@ func (rt *Runtime) Execute(ctx context.Context, code string) error {
 	}
 
 	// Init runs the top-level code and returns the (unfrozen) globals.
-	globals, err := prog.Init(rt.thread, rt.predecl)
+	globals, err := prog.Init(thread, rt.predecl)
 
 	// Auto-invoke the entry point before the globals freeze, so it observes the
 	// same mutable top-level state an explicit call would. Skipped when the
@@ -474,7 +485,7 @@ func (rt *Runtime) Execute(ctx context.Context, code string) error {
 				rt.logger.Info("skipping automatic entry-point invocation: script calls it at top level",
 					"entrypoint", rt.config.EntryPoint, "script", scriptPath)
 			} else {
-				_, err = starlark.Call(rt.thread, fn, nil, nil)
+				_, err = starlark.Call(thread, fn, nil, nil)
 			}
 		}
 	}
@@ -545,12 +556,20 @@ func (rt *Runtime) ExecuteRepl(ctx context.Context, code string) error {
 	execCtx, releaseCtx := rt.bindExecContext(ctx)
 	defer releaseCtx()
 
-	stop := watchCtx(execCtx, rt.thread)
+	rt.mu.Lock()
+	if rt.threadCancelled {
+		rt.thread = rt.NewThread("libkite")
+		rt.threadCancelled = false
+	}
+	thread := rt.thread
+	rt.mu.Unlock()
+
+	stop := watchCtx(execCtx, thread)
 	defer stop()
 
 	globals, err := starlark.ExecFileOptions(
 		&syntax.FileOptions{},
-		rt.thread,
+		thread,
 		"<repl>",
 		code,
 		rt.predecl,
@@ -691,17 +710,41 @@ func watchCtx(ctx context.Context, thread *starlark.Thread) func() {
 	}
 	if err := ctx.Err(); err != nil {
 		thread.Cancel(err.Error())
+		if rt := GetRuntime(thread); rt != nil {
+			rt.mu.Lock()
+			rt.threadCancelled = true
+			rt.mu.Unlock()
+		}
 		return func() {}
 	}
 	done := make(chan struct{})
+	exited := make(chan struct{})
 	go func() {
+		defer close(exited)
 		select {
-		case <-ctx.Done():
-			thread.Cancel(ctx.Err().Error())
 		case <-done:
+			return
+		case <-ctx.Done():
+			select {
+			case <-done:
+				return
+			default:
+				thread.Cancel(ctx.Err().Error())
+				if rt := GetRuntime(thread); rt != nil {
+					rt.mu.Lock()
+					rt.threadCancelled = true
+					rt.mu.Unlock()
+				}
+			}
 		}
 	}()
-	return func() { close(done) }
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			close(done)
+			<-exited
+		})
+	}
 }
 
 // convertArgs converts a Go positional-arg slice to starlark.Tuple.
@@ -755,10 +798,18 @@ func (rt *Runtime) ExecuteTestsWithConfig(ctx context.Context, code string, cfg 
 		scriptPath = "<test>"
 	}
 
-	stop := watchCtx(execCtx, rt.thread)
+	rt.mu.Lock()
+	if rt.threadCancelled {
+		rt.thread = rt.NewThread("libkite")
+		rt.threadCancelled = false
+	}
+	thread := rt.thread
+	rt.mu.Unlock()
+
+	stop := watchCtx(execCtx, thread)
 	globals, err := starlark.ExecFileOptions(
 		&syntax.FileOptions{},
-		rt.thread,
+		thread,
 		scriptPath,
 		code,
 		rt.predecl,

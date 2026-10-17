@@ -2,6 +2,7 @@ package osmod
 
 import (
 	"context"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -10,6 +11,10 @@ import (
 )
 
 func TestRunCommandTimeout_NoStdoutBufferRace(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping POSIX /bin/sh test on Windows")
+	}
+
 	reg := libkite.NewRegistry(&libkite.ModuleConfig{})
 	reg.Register(New())
 	rt, err := libkite.NewTrusted(nil, libkite.WithRegistry(reg))
@@ -32,6 +37,9 @@ os.sh().try_exec("while true; do echo stdout_line; echo stderr_line >&2; done", 
 }
 
 func TestRunCommand_ContextCancellation(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping POSIX sleep cancellation test on Windows")
+	}
 	reg := libkite.NewRegistry(&libkite.ModuleConfig{})
 	reg.Register(New())
 	rt, err := libkite.NewTrusted(nil, libkite.WithRegistry(reg))
