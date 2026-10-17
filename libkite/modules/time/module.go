@@ -7,7 +7,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 	"go.starlark.net/syntax"
 
@@ -148,25 +147,41 @@ func (tv *TimeValue) Attr(name string) (starlark.Value, error) {
 		return starlark.MakeInt(tv.t.Minute()), nil
 	case "second":
 		return starlark.MakeInt(tv.t.Second()), nil
+	case "nanosecond":
+		return starlark.MakeInt(tv.t.Nanosecond()), nil
 	case "weekday":
 		return starlark.MakeInt(int(tv.t.Weekday())), nil
+	case "utc":
+		return &TimeValue{t: tv.t.UTC()}, nil
 	case "unix":
 		return starlark.MakeInt64(tv.t.Unix()), nil
+	case "unix_milli":
+		return starlark.MakeInt64(tv.t.UnixMilli()), nil
 	case "unix_nano":
 		return starlark.MakeInt64(tv.t.UnixNano()), nil
 	case "string":
 		return starlark.NewBuiltin("time.string", tv.stringMethod), nil
+	case "try_string":
+		return libkite.TryWrap("time.try_string", starlark.NewBuiltin("time.string", tv.stringMethod)), nil
 	case "add":
 		return starlark.NewBuiltin("time.add", tv.addMethod), nil
+	case "try_add":
+		return libkite.TryWrap("time.try_add", starlark.NewBuiltin("time.add", tv.addMethod)), nil
 	case "sub":
 		return starlark.NewBuiltin("time.sub", tv.subMethod), nil
+	case "try_sub":
+		return libkite.TryWrap("time.try_sub", starlark.NewBuiltin("time.sub", tv.subMethod)), nil
 	default:
 		return nil, nil
 	}
 }
 
 func (tv *TimeValue) AttrNames() []string {
-	return []string{"year", "month", "day", "hour", "minute", "second", "weekday", "unix", "unix_nano", "string", "add", "sub"}
+	return []string{
+		"add", "day", "hour", "minute", "month", "nanosecond",
+		"second", "string", "sub", "try_add", "try_string", "try_sub",
+		"unix", "unix_milli", "unix_nano", "utc", "weekday", "year",
+	}
 }
 
 // CompareSameType implements starlark.Comparable.
@@ -226,27 +241,36 @@ func (tv *TimeValue) stringMethod(_ *starlark.Thread, fn *starlark.Builtin, args
 	return starlark.String(tv.t.Format(layout)), nil
 }
 
-// addMethod implements t.add(duration_string) → TimeValue
+// addMethod implements t.add(duration) → TimeValue
 func (tv *TimeValue) addMethod(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var durStr string
-	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "duration", &durStr); err != nil {
-		return nil, err
+	if len(kwargs) > 0 {
+		return nil, fmt.Errorf("time.add: unexpected keyword arguments")
 	}
-	d, err := time.ParseDuration(durStr)
-	if err != nil {
-		return nil, err
+	if len(args) != 1 {
+		return nil, fmt.Errorf("time.add: got %d arguments, want 1", len(args))
 	}
-	return &TimeValue{t: tv.t.Add(d)}, nil
+	switch v := args[0].(type) {
+	case starlark.String:
+		dur, err := time.ParseDuration(string(v))
+		if err != nil {
+			return nil, fmt.Errorf("time.add: invalid duration %q: %w", string(v), err)
+		}
+		return &TimeValue{t: tv.t.Add(dur)}, nil
+	case *DurationValue:
+		return &TimeValue{t: tv.t.Add(v.d)}, nil
+	default:
+		return nil, fmt.Errorf("time.add: got %s, want string or duration", args[0].Type())
+	}
 }
 
 // subMethod implements t.sub(other_time) → DurationValue
 func (tv *TimeValue) subMethod(_ *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) != 1 {
-		return nil, fmt.Errorf("sub: expected 1 argument (time), got %d", len(args))
+		return nil, fmt.Errorf("time.sub: expected 1 argument (time), got %d", len(args))
 	}
 	other, ok := args[0].(*TimeValue)
 	if !ok {
-		return nil, fmt.Errorf("sub: argument must be a time value, got %s", args[0].Type())
+		return nil, fmt.Errorf("time.sub: argument must be a time value, got %s", args[0].Type())
 	}
 	return &DurationValue{d: tv.t.Sub(other.t)}, nil
 }
@@ -283,13 +307,15 @@ func (dv *DurationValue) Attr(name string) (starlark.Value, error) {
 		return starlark.Float(dv.d.Hours()), nil
 	case "string":
 		return starlark.NewBuiltin("duration.string", dv.stringMethod), nil
+	case "try_string":
+		return libkite.TryWrap("duration.try_string", starlark.NewBuiltin("duration.string", dv.stringMethod)), nil
 	default:
 		return nil, nil
 	}
 }
 
 func (dv *DurationValue) AttrNames() []string {
-	return []string{"seconds", "milliseconds", "nanoseconds", "minutes", "hours", "string"}
+	return []string{"hours", "milliseconds", "minutes", "nanoseconds", "seconds", "string", "try_string"}
 }
 
 // CompareSameType implements starlark.Comparable.
@@ -356,19 +382,41 @@ func (m *Module) now(thread *starlark.Thread, fn *starlark.Builtin, args starlar
 }
 
 func (m *Module) sleep(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var p struct {
-		Duration string `name:"duration" position:"0" required:"true"`
+	if len(kwargs) > 0 {
+		return nil, fmt.Errorf("time.sleep: unexpected keyword arguments")
 	}
-	if err := startype.Args(args, kwargs).Go(&p); err != nil {
-		return nil, err
+	if len(args) != 1 {
+		return nil, fmt.Errorf("time.sleep: expected 1 argument (duration), got %d", len(args))
 	}
-	d, err := time.ParseDuration(p.Duration)
-	if err != nil {
-		return nil, err
+	var d time.Duration
+	switch v := args[0].(type) {
+	case starlark.String:
+		parsed, err := time.ParseDuration(string(v))
+		if err != nil {
+			return nil, fmt.Errorf("time.sleep: %w", err)
+		}
+		d = parsed
+	case *DurationValue:
+		d = v.d
+	case starlark.Int:
+		sec, ok := v.Int64()
+		if !ok {
+			return nil, fmt.Errorf("time.sleep: integer overflow")
+		}
+		d = time.Duration(sec) * time.Second
+	case starlark.Float:
+		d = time.Duration(float64(v) * float64(time.Second))
+	default:
+		return nil, fmt.Errorf("time.sleep: expected string, number, or duration, got %s", args[0].Type())
 	}
-	if d <= 0 {
+
+	if d < 0 {
+		return nil, fmt.Errorf("time.sleep: negative duration: %v", d)
+	}
+	if d == 0 {
 		return starlark.None, nil
 	}
+
 	timer := time.NewTimer(d)
 	defer timer.Stop()
 	ctx := libkite.ThreadContext(thread)
@@ -381,14 +429,41 @@ func (m *Module) sleep(thread *starlark.Thread, fn *starlark.Builtin, args starl
 }
 
 func (m *Module) parse(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var p struct {
-		Layout string `name:"layout" position:"0" required:"true"`
-		Value  string `name:"value" position:"1" required:"true"`
+	if len(kwargs) > 0 {
+		return nil, fmt.Errorf("time.parse: unexpected keyword arguments")
 	}
-	if err := startype.Args(args, kwargs).Go(&p); err != nil {
-		return nil, err
+	if len(args) == 0 || len(args) > 2 {
+		return nil, fmt.Errorf("time.parse: expected 1 or 2 arguments, got %d", len(args))
 	}
-	t, err := time.Parse(p.Layout, p.Value)
+	if len(args) == 1 {
+		valStr, ok := starlark.AsString(args[0])
+		if !ok {
+			return nil, fmt.Errorf("time.parse: expected string value, got %s", args[0].Type())
+		}
+		t, err := time.Parse(time.RFC3339, valStr)
+		if err != nil {
+			return nil, err
+		}
+		return &TimeValue{t: t}, nil
+	}
+
+	arg0, ok0 := starlark.AsString(args[0])
+	arg1, ok1 := starlark.AsString(args[1])
+	if !ok0 || !ok1 {
+		return nil, fmt.Errorf("time.parse: expected string arguments")
+	}
+
+	layout0 := resolveFormat(arg0)
+	if t, err := time.Parse(layout0, arg1); err == nil {
+		return &TimeValue{t: t}, nil
+	}
+
+	layout1 := resolveFormat(arg1)
+	if t, err := time.Parse(layout1, arg0); err == nil {
+		return &TimeValue{t: t}, nil
+	}
+
+	t, err := time.Parse(layout0, arg1)
 	if err != nil {
 		return nil, err
 	}
@@ -396,34 +471,46 @@ func (m *Module) parse(thread *starlark.Thread, fn *starlark.Builtin, args starl
 }
 
 func (m *Module) format(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	// format requires a TimeValue which startype can't handle directly
-	// Extract it manually from args
 	if len(args) < 2 {
-		return nil, fmt.Errorf("format: expected 2 arguments (time, layout), got %d", len(args))
+		return nil, fmt.Errorf("time.format: expected 2 arguments (time, layout), got %d", len(args))
 	}
 	tv, ok := args[0].(*TimeValue)
 	if !ok {
-		return nil, fmt.Errorf("format: first argument must be a time value, got %s", args[0].Type())
+		return nil, fmt.Errorf("time.format: first argument must be a time value, got %s", args[0].Type())
 	}
-	layout, ok := starlark.AsString(args[1])
+	rawLayout, ok := starlark.AsString(args[1])
 	if !ok {
-		return nil, fmt.Errorf("format: second argument must be a string, got %s", args[1].Type())
+		return nil, fmt.Errorf("time.format: second argument must be a string, got %s", args[1].Type())
 	}
+	layout := resolveFormat(rawLayout)
 	return starlark.String(tv.t.Format(layout)), nil
 }
 
 func (m *Module) duration(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	var p struct {
-		Value string `name:"value" position:"0" required:"true"`
+	if len(kwargs) > 0 {
+		return nil, fmt.Errorf("time.duration: unexpected keyword arguments")
 	}
-	if err := startype.Args(args, kwargs).Go(&p); err != nil {
-		return nil, err
+	if len(args) != 1 {
+		return nil, fmt.Errorf("time.duration: expected 1 argument, got %d", len(args))
 	}
-	d, err := time.ParseDuration(p.Value)
-	if err != nil {
-		return nil, err
+	switch v := args[0].(type) {
+	case starlark.String:
+		d, err := time.ParseDuration(string(v))
+		if err != nil {
+			return nil, err
+		}
+		return &DurationValue{d: d}, nil
+	case starlark.Int:
+		sec, ok := v.Int64()
+		if !ok {
+			return nil, fmt.Errorf("time.duration: integer overflow")
+		}
+		return &DurationValue{d: time.Duration(sec) * time.Second}, nil
+	case starlark.Float:
+		return &DurationValue{d: time.Duration(float64(v) * float64(time.Second))}, nil
+	default:
+		return nil, fmt.Errorf("time.duration: expected string, int, or float, got %s", args[0].Type())
 	}
-	return &DurationValue{d: d}, nil
 }
 
 func (m *Module) since(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

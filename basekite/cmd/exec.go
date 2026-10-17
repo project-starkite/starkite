@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/spf13/cobra"
 )
 
@@ -61,7 +62,7 @@ func execCode(cmd *cobra.Command, args []string) error {
 	// Create registry with all modules
 	registry := NewRegistry(moduleConfig)
 
-	perms, err := GetPermissions()
+	perms, err := permissions.Resolve(permissionsMode, varStore.Permissions)
 	if err != nil {
 		return err
 	}

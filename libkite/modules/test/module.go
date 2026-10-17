@@ -112,30 +112,14 @@ func (m *Module) assert_(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		return starlark.None, nil
 	}
 
-	// Build error message
-	if len(args) < 2 {
+	msg, err := formatMsg(args, 1)
+	if err != nil {
+		return nil, fmt.Errorf("assert: %w", err)
+	}
+	if msg == "" {
 		return nil, fmt.Errorf("assertion failed")
 	}
-
-	msgStr, ok := starlark.AsString(args[1])
-	if !ok {
-		return nil, fmt.Errorf("assert: message must be a string")
-	}
-
-	if len(args) > 2 {
-		goArgs := make([]any, len(args)-2)
-		for i, arg := range args[2:] {
-			var goVal any
-			if err := startype.Starlark(arg).Go(&goVal); err != nil {
-				goArgs[i] = arg.String()
-				continue
-			}
-			goArgs[i] = goVal
-		}
-		msgStr = fmt.Sprintf(msgStr, goArgs...)
-	}
-
-	return nil, fmt.Errorf("assertion failed: %s", msgStr)
+	return nil, fmt.Errorf("assertion failed: %s", msg)
 }
 
 // formatMsg builds an error message from optional msg + printf args starting at the given

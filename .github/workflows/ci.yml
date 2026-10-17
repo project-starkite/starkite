@@ -103,6 +103,13 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
+          cache-dependency-path: |
+            libkite/go.sum
+            basekite/go.sum
+            cloudkite/go.sum
+            aikite/go.sum
+            kite/go.sum
+            tests/sandbox/go.sum
 
       - name: Run macOS Seatbelt sandbox integration tests
         env:
@@ -129,6 +136,7 @@ jobs:
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
+            tests/sandbox/go.sum
 
       - name: Build kite.exe on Windows
         run: |

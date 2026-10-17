@@ -11,7 +11,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
 )
@@ -111,7 +113,12 @@ func runTests(cmd *cobra.Command, args []string) error {
 		return runTestFilesInSandbox(testFiles)
 	}
 
-	perms, err := GetPermissions()
+	varStore, err := loadVarStore()
+	if err != nil {
+		return err
+	}
+
+	perms, err := permissions.Resolve(permissionsMode, varStore.Permissions)
 	if err != nil {
 		return err
 	}
@@ -125,11 +132,11 @@ func runTests(cmd *cobra.Command, args []string) error {
 
 	if testParallel > 1 && len(testFiles) > 1 {
 		// Run test files in parallel
-		results = runTestFilesParallel(testFiles, testParallel, perms)
+		results = runTestFilesParallel(testFiles, testParallel, perms, varStore)
 	} else {
 		// Run test files sequentially
 		for _, testFile := range testFiles {
-			fileResults := runTestFile(testFile, perms)
+			fileResults := runTestFile(testFile, perms, varStore)
 			results = append(results, fileResults...)
 		}
 	}
@@ -148,7 +155,7 @@ func runTests(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runTestFilesParallel(testFiles []string, workers int, perms *libkite.PermissionConfig) []testResult {
+func runTestFilesParallel(testFiles []string, workers int, perms *libkite.PermissionConfig, varStore *varstore.Vars) []testResult {
 	// Create work channel
 	work := make(chan string, len(testFiles))
 	for _, f := range testFiles {
@@ -164,7 +171,7 @@ func runTestFilesParallel(testFiles []string, workers int, perms *libkite.Permis
 	for range workers {
 		wg.Go(func() {
 			for testFile := range work {
-				fileResults := runTestFile(testFile, perms)
+				fileResults := runTestFile(testFile, perms, varStore)
 				resultsChan <- fileResults
 			}
 		})
@@ -215,7 +222,7 @@ func findTestFiles(path string) ([]string, error) {
 	return files, err
 }
 
-func runTestFile(testFile string, perms *libkite.PermissionConfig) []testResult {
+func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *varstore.Vars) []testResult {
 	if testVerbose {
 		fmt.Printf("Running %s\n", testFile)
 	}
@@ -231,15 +238,17 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig) []testResult 
 		}}
 	}
 
-	// Create and populate variable store
-	varStore, err := loadVarStore()
-	if err != nil {
-		return []testResult{{
-			Name:   testFile,
-			File:   testFile,
-			Passed: false,
-			Error:  err.Error(),
-		}}
+	if varStore == nil {
+		vs, err := loadVarStore()
+		if err != nil {
+			return []testResult{{
+				Name:   testFile,
+				File:   testFile,
+				Passed: false,
+				Error:  err.Error(),
+			}}
+		}
+		varStore = vs
 	}
 
 	// Create module config
@@ -400,9 +409,13 @@ func runTestFilesInSandbox(testFiles []string) error {
 
 func runOneTestFileInSandbox(kiteBin, file, sandboxValue string) bool {
 	fmt.Printf("\n--- %s ---\n", file)
-	args := childTestArgs(file)
+	absFile, err := filepath.Abs(file)
+	if err != nil {
+		absFile = file
+	}
+	args := childTestArgs(absFile)
 	cmd := exec.Command(kiteBin, args...)
-	cmd.Dir = filepath.Dir(file)
+	cmd.Dir = filepath.Dir(absFile)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.Env = append(os.Environ(), sandbox.ProfileEnvVar+"="+sandboxValue)
@@ -441,7 +454,11 @@ func childTestArgs(file string) []string {
 		args = append(args, "--var="+v)
 	}
 	for _, vf := range varFiles {
-		args = append(args, "--var-file="+vf)
+		absVF, err := filepath.Abs(vf)
+		if err != nil {
+			absVF = vf
+		}
+		args = append(args, "--var-file="+absVF)
 	}
 	return args
 }

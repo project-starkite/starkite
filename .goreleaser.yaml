@@ -21,6 +21,7 @@ builds:
       - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
       - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
       - -X github.com/project-starkite/starkite/basekite/version.Edition=all
+      - -X github.com/project-starkite/starkite/libkite/modules/runtime.Version={{.Version}}
 
 archives:
 

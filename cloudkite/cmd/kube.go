@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -113,7 +114,7 @@ func runGenArtifacts(cmd *cobra.Command, args []string) error {
 	// If --resource provided, execute it to extract CRD YAML
 	crdYAML := ""
 	if genResource != "" {
-		yaml, err := extractCRDYAML(genResource)
+		yaml, err := extractCRDYAML(cmd.Context(), genResource)
 		if err != nil {
 			return fmt.Errorf("failed to process resource file %q: %w", genResource, err)
 		}
@@ -145,9 +146,10 @@ func runGenArtifacts(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create runtime: %w", err)
 	}
+	defer rt.Close()
 
 	// Execute the generator script
-	if err := rt.Execute(context.Background(), scriptSource); err != nil {
+	if err := rt.Execute(cmd.Context(), scriptSource); err != nil {
 		return fmt.Errorf("generator failed: %w", err)
 	}
 
@@ -164,7 +166,7 @@ func runGenArtifacts(cmd *cobra.Command, args []string) error {
 
 // extractCRDYAML executes a resource.star file and extracts CRD YAML from it.
 // It runs the script, captures all print output, and returns it as the CRD YAML.
-func extractCRDYAML(resourceFile string) (string, error) {
+func extractCRDYAML(ctx context.Context, resourceFile string) (string, error) {
 	data, err := os.ReadFile(resourceFile)
 	if err != nil {
 		return "", fmt.Errorf("read %s: %w", resourceFile, err)
@@ -187,8 +189,9 @@ func extractCRDYAML(resourceFile string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("runtime: %w", err)
 	}
+	defer rt.Close()
 
-	if err := rt.Execute(context.Background(), string(data)); err != nil {
+	if err := rt.Execute(ctx, string(data)); err != nil {
 		return "", fmt.Errorf("execute %s: %w", resourceFile, err)
 	}
 
@@ -196,13 +199,16 @@ func extractCRDYAML(resourceFile string) (string, error) {
 }
 
 func writeDockerfile(filename string) error {
+	if strings.ContainsAny(genController, "\r\n\"") || (genResource != "" && strings.ContainsAny(genResource, "\r\n\"")) {
+		return fmt.Errorf("invalid script path for Dockerfile")
+	}
 	var b strings.Builder
 	b.WriteString("FROM ghcr.io/project-starkite/starkite:latest\n")
-	b.WriteString(fmt.Sprintf("COPY %s /app/\n", genController))
+	b.WriteString(fmt.Sprintf("COPY %s /app/%s\n", genController, filepath.Base(genController)))
 	if genResource != "" {
-		b.WriteString(fmt.Sprintf("COPY %s /app/\n", genResource))
+		b.WriteString(fmt.Sprintf("COPY %s /app/%s\n", genResource, filepath.Base(genResource)))
 	}
-	b.WriteString(fmt.Sprintf("CMD [\"kite\", \"run\", \"/app/%s\"]\n", genController))
+	b.WriteString(fmt.Sprintf("CMD [\"kite\", \"run\", \"/app/%s\"]\n", filepath.Base(genController)))
 	return os.WriteFile(filename, []byte(b.String()), 0644)
 }
 
@@ -313,17 +319,21 @@ func runGenWebhookArtifacts(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create runtime: %w", err)
 	}
+	defer rt.Close()
 
-	if err := rt.Execute(context.Background(), scriptSource); err != nil {
+	if err := rt.Execute(cmd.Context(), scriptSource); err != nil {
 		return fmt.Errorf("generator failed: %w", err)
 	}
 
 	// Dockerfile
 	if whDockerfile != "" {
+		if strings.ContainsAny(whWebhook, "\r\n\"") {
+			return fmt.Errorf("invalid script path for Dockerfile: %q", whWebhook)
+		}
 		var b strings.Builder
 		b.WriteString("FROM ghcr.io/project-starkite/starkite:latest\n")
-		b.WriteString(fmt.Sprintf("COPY %s /app/\n", whWebhook))
-		b.WriteString(fmt.Sprintf("CMD [\"kite\", \"run\", \"/app/%s\"]\n", whWebhook))
+		b.WriteString(fmt.Sprintf("COPY %s /app/%s\n", whWebhook, filepath.Base(whWebhook)))
+		b.WriteString(fmt.Sprintf("CMD [\"kite\", \"run\", \"/app/%s\"]\n", filepath.Base(whWebhook)))
 		if err := os.WriteFile(whDockerfile, []byte(b.String()), 0644); err != nil {
 			return err
 		}

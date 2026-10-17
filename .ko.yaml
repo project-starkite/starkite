@@ -27,3 +27,4 @@ builds:
       - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Env.BUILD_TIME}}
       - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Env.GIT_COMMIT}}
       - -X github.com/project-starkite/starkite/basekite/version.Edition=all
+      - -X github.com/project-starkite/starkite/libkite/modules/runtime.Version={{.Env.VERSION}}

@@ -3,12 +3,14 @@ package cmd
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
 
 	"github.com/project-starkite/starkite/basekite/version"
 	"github.com/project-starkite/starkite/libkite"
+	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/spf13/cobra"
 )
 
@@ -63,7 +65,7 @@ func startRepl(cmd *cobra.Command, args []string) error {
 	// Create registry with all modules
 	registry := NewRegistry(moduleConfig)
 
-	perms, err := GetPermissions()
+	perms, err := permissions.Resolve(permissionsMode, varStore.Permissions)
 	if err != nil {
 		return err
 	}
@@ -160,6 +162,9 @@ func startRepl(cmd *cobra.Command, args []string) error {
 				err := rt.ExecuteRepl(ctx, code)
 				cancel()
 				if err != nil {
+					if exitErr, ok := errors.AsType[*libkite.ExitError](err); ok {
+						return exitErr
+					}
 					fmt.Printf("Error: %v\n", err)
 				}
 				continue
@@ -174,6 +179,9 @@ func startRepl(cmd *cobra.Command, args []string) error {
 		err = rt.ExecuteRepl(ctx, line)
 		cancel()
 		if err != nil {
+			if exitErr, ok := errors.AsType[*libkite.ExitError](err); ok {
+				return exitErr
+			}
 			fmt.Printf("Error: %v\n", err)
 		}
 	}

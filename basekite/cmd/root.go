@@ -12,6 +12,7 @@ import (
 	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/basekite/version"
 	"github.com/project-starkite/starkite/libkite"
+	runtimemod "github.com/project-starkite/starkite/libkite/modules/runtime"
 	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
@@ -131,6 +132,10 @@ Examples:
 }
 
 func init() {
+	if runtimemod.Version == "dev" && version.Version != "" && version.Version != "0.0.1" {
+		runtimemod.Version = version.Version
+	}
+
 	// Persistent flags (available to all commands)
 	rootCmd.PersistentFlags().StringVarP(&outputFormat, "output", "o", "text", "Output format (text, json, yaml)")
 	rootCmd.PersistentFlags().BoolVar(&debugMode, "debug", false, "Enable debug mode with detailed logging")

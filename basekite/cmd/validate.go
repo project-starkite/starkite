@@ -2,10 +2,12 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
 
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/spf13/cobra"
 	"go.starlark.net/syntax"
 )
@@ -63,12 +65,16 @@ func init() {
 func runValidate(cmd *cobra.Command, args []string) error {
 	var results []ValidationResult
 	hasErrors := false
+	hasFileErr := false
 
 	for _, path := range args {
-		result := validateScript(path)
+		result, isFileErr := validateScript(path)
 		results = append(results, result)
 		if !result.Valid {
 			hasErrors = true
+			if isFileErr {
+				hasFileErr = true
+			}
 		}
 	}
 
@@ -94,12 +100,19 @@ func runValidate(cmd *cobra.Command, args []string) error {
 	}
 
 	if hasErrors {
-		return fmt.Errorf("validation failed")
+		exitCode := libkite.ExitScriptError
+		if hasFileErr {
+			exitCode = libkite.ExitFileError
+		}
+		return &libkite.ScriptError{
+			Message:  "validation failed",
+			ExitCode: exitCode,
+		}
 	}
 	return nil
 }
 
-func validateScript(path string) ValidationResult {
+func validateScript(path string) (ValidationResult, bool) {
 	result := ValidationResult{
 		File:  path,
 		Valid: true,
@@ -115,50 +128,62 @@ func validateScript(path string) ValidationResult {
 			Column:  0,
 			Message: fmt.Sprintf("failed to read file: %v", err),
 		})
-		return result
+		return result, true
 	}
 
 	// Parse the script (syntax check only)
-	_, err = syntax.Parse(path, content, 0)
+	fileOpt := &syntax.FileOptions{}
+	_, err = fileOpt.Parse(path, content, 0)
 	if err != nil {
 		result.Valid = false
 		result.Errors = parseStarlarkErrors(path, err)
 	}
 
-	return result
+	return result, false
 }
+
+var starlarkErrRe = regexp.MustCompile(`^(.+):(\d+):(\d+): (.+)$`)
 
 // parseStarlarkErrors extracts location info from Starlark syntax errors
 func parseStarlarkErrors(file string, err error) []SyntaxError {
-	var errors []SyntaxError
+	if err == nil {
+		return nil
+	}
+
+	if synErr, ok := errors.AsType[syntax.Error](err); ok {
+		fn := synErr.Pos.Filename()
+		if fn == "" || fn == "<invalid>" {
+			fn = file
+		}
+		return []SyntaxError{{
+			File:    fn,
+			Line:    int(synErr.Pos.Line),
+			Column:  int(synErr.Pos.Col),
+			Message: synErr.Msg,
+		}}
+	}
 
 	// Starlark error format: "file:line:col: message"
 	errStr := err.Error()
 
 	// Try to parse location from error message
-	// Pattern: "filename:line:col: message"
-	re := regexp.MustCompile(`^([^:]+):(\d+):(\d+): (.+)$`)
-	matches := re.FindStringSubmatch(errStr)
-
-	if len(matches) == 5 {
+	if matches := starlarkErrRe.FindStringSubmatch(errStr); len(matches) == 5 {
 		var line, col int
 		fmt.Sscanf(matches[2], "%d", &line)
 		fmt.Sscanf(matches[3], "%d", &col)
-		errors = append(errors, SyntaxError{
+		return []SyntaxError{{
 			File:    matches[1],
 			Line:    line,
 			Column:  col,
 			Message: matches[4],
-		})
-	} else {
-		// Fallback: use error message as-is
-		errors = append(errors, SyntaxError{
-			File:    file,
-			Line:    1,
-			Column:  1,
-			Message: errStr,
-		})
+		}}
 	}
 
-	return errors
+	// Fallback: use error message as-is
+	return []SyntaxError{{
+		File:    file,
+		Line:    1,
+		Column:  1,
+		Message: errStr,
+	}}
 }

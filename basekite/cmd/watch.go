@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/fsnotify/fsnotify"
+	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/spf13/cobra"
@@ -55,7 +56,7 @@ func watchScript(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to resolve path: %w", err)
 	}
 
-	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+	if handled, err := MaybeHandoffToSandboxWithScript(cmd.Context(), absPath); handled || err != nil {
 		return err
 	}
 
@@ -72,7 +73,12 @@ func watchScript(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to watch directory: %w", err)
 	}
 
-	perms, err := permissions.Resolve(permissionsMode, configPermissions())
+	varStore, err := loadVarStore()
+	if err != nil {
+		return err
+	}
+
+	perms, err := permissions.Resolve(permissionsMode, varStore.Permissions)
 	if err != nil {
 		return err
 	}
@@ -82,14 +88,25 @@ func watchScript(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Run script initially
-	runWatchedScript(absPath, perms, isModule)
+	ctx := cmd.Context()
+	runWatchedScript(ctx, absPath, perms, isModule, varStore)
 
 	// Debounce timer
 	var debounceTimer *time.Timer
+	var debounceCh <-chan time.Time
 	debounceDelay := 200 * time.Millisecond
 
 	for {
 		select {
+		case <-ctx.Done():
+			if debounceTimer != nil {
+				debounceTimer.Stop()
+			}
+			return nil
+		case <-debounceCh:
+			debounceCh = nil
+			fmt.Println("\n--- File changed, re-executing ---")
+			runWatchedScript(ctx, absPath, perms, isModule, varStore)
 		case event, ok := <-watcher.Events:
 			if !ok {
 				return nil
@@ -100,19 +117,17 @@ func watchScript(cmd *cobra.Command, args []string) error {
 				continue
 			}
 
-			// Only react to write events
-			if event.Op&fsnotify.Write != fsnotify.Write {
-				continue
+			// React to write, create, or rename events (for atomic-save editors)
+			if event.Op&(fsnotify.Write|fsnotify.Create|fsnotify.Rename) != 0 {
+				if event.Op&fsnotify.Rename != 0 {
+					_ = watcher.Add(dir)
+				}
+				if debounceTimer != nil {
+					debounceTimer.Stop()
+				}
+				debounceTimer = time.NewTimer(debounceDelay)
+				debounceCh = debounceTimer.C
 			}
-
-			// Debounce rapid events
-			if debounceTimer != nil {
-				debounceTimer.Stop()
-			}
-			debounceTimer = time.AfterFunc(debounceDelay, func() {
-				fmt.Println("\n--- File changed, re-executing ---")
-				runWatchedScript(absPath, perms, isModule)
-			})
 
 		case err, ok := <-watcher.Errors:
 			if !ok {
@@ -123,7 +138,7 @@ func watchScript(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func runWatchedScript(scriptPath string, perms *libkite.PermissionConfig, isModule bool) {
+func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.PermissionConfig, isModule bool, varStore *varstore.Vars) {
 	// Read script content
 	content, err := os.ReadFile(scriptPath)
 	if err != nil {
@@ -131,11 +146,13 @@ func runWatchedScript(scriptPath string, perms *libkite.PermissionConfig, isModu
 		return
 	}
 
-	// Create and populate variable store
-	varStore, err := loadVarStore()
-	if err != nil {
-		fmt.Printf("Error loading variables: %v\n", err)
-		return
+	if varStore == nil {
+		vs, err := loadVarStore()
+		if err != nil {
+			fmt.Printf("Error loading variables: %v\n", err)
+			return
+		}
+		varStore = vs
 	}
 
 	// Create module config
@@ -167,14 +184,15 @@ func runWatchedScript(scriptPath string, perms *libkite.PermissionConfig, isModu
 		fmt.Printf("Error creating runtime: %v\n", err)
 		return
 	}
+	defer rt.Close()
 	defer rt.Cleanup()
 
-	ctx, cancel := execContext(timeout)
+	execCtx, cancel := execContext(timeout)
 	defer cancel()
 
 	// Execute the script
 	startTime := time.Now()
-	if err := rt.Execute(ctx, string(content)); err != nil {
+	if err := rt.Execute(execCtx, string(content)); err != nil {
 		fmt.Printf("Error: %v\n", err)
 	}
 	elapsed := time.Since(startTime)
