@@ -143,3 +143,69 @@ def test_try_truth_shorthand():
         fail("error result should be falsy")
     else:
         pass  # expected path
+
+# ===========================================================================
+# Stdlib and Dynamic Value-Type try_ contracts (v0.9.5)
+# ===========================================================================
+
+def test_try_stdlib_modules():
+    """Verify universal try_ contract on stdlib modules"""
+    res1 = strings.try_ljust("a", 3, fillchar="xy")
+    assert(not res1.ok, "fillchar > 1 rune should return ok=False")
+
+    res2 = strings.try_cut("a=b", "=")
+    assert(res2.ok, "strings.try_cut should return ok=True")
+    assert(res2.value.before == "a", "before should be 'a'")
+    assert(res2.value.after == "b", "after should be 'b'")
+
+    res3 = time.try_parse("date", "not-a-date")
+    assert(not res3.ok, "invalid date parse should return ok=False")
+
+    res4 = time.try_now()
+    assert(res4.ok, "time.try_now should return ok=True")
+
+    res5 = fmt.try_sprintf("%s %d", "num", 42)
+    assert(res5.ok, "fmt.try_sprintf should return ok=True")
+    assert(res5.value == "num 42", "formatted output mismatch")
+
+    res6 = runtime.try_version()
+    assert(res6.ok, "runtime.try_version should return ok=True")
+
+def test_try_time_and_duration_values():
+    """Verify try_ methods and accessors on TimeValue and DurationValue"""
+    t = time.now()
+    t_add = t.try_add("1h")
+    assert(t_add.ok, "try_add('1h') should succeed")
+
+    t_add_bad = t.try_add("invalid-duration-format")
+    assert(not t_add_bad.ok, "try_add invalid duration should return ok=False")
+
+    t_str = t.try_string()
+    assert(t_str.ok, "try_string on TimeValue should succeed")
+    assert(len(t_str.value) > 0, "try_string should produce non-empty representation")
+
+    d = time.duration(10)
+    d_str = d.try_string()
+    assert(d_str.ok, "try_string on DurationValue should succeed")
+    assert(d_str.value == "10s", "duration value should be '10s', got '%s'" % d_str.value)
+
+    assert(t.unix_milli > 0, "unix_milli accessor should return positive integer")
+    assert(t.nanosecond >= 0, "nanosecond accessor should return non-negative integer")
+    assert(t.utc != None, "utc accessor should return TimeValue")
+
+def test_try_table_and_log_values():
+    """Verify try_ methods on TableValue and Logger"""
+    tbl = table.new(["col1", "col2"])
+    tbl_bad = tbl.try_add_row("a", "b", "c")
+    assert(not tbl_bad.ok, "too many values in row should return ok=False")
+
+    tbl_ok = tbl.try_add_row("a")
+    assert(tbl_ok.ok, "auto-padded row should return ok=True")
+
+    tbl_rnd = tbl.try_render()
+    assert(tbl_rnd.ok, "try_render should return ok=True")
+    assert("col1" in tbl_rnd.value, "rendered table should contain col1")
+
+    l = log.logger()
+    l_info = l.try_info("test message")
+    assert(l_info.ok, "logger.try_info should return ok=True")

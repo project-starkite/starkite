@@ -746,6 +746,200 @@ else
 fi
 
 # --------------------------------------------
+# Test 16: CLI version and validate exit codes
+# --------------------------------------------
+info "Test 16: CLI version and validate exit codes"
+
+TEST16_PASSED=true
+
+# version subcommand formats
+if ! $KITE version 2>&1 | grep -qE "Starkite|kite"; then
+    TEST16_PASSED=false
+fi
+
+if ! $KITE version --short 2>&1 | grep -qE "^v[0-9]|dev"; then
+    TEST16_PASSED=false
+fi
+
+if ! $KITE version --json 2>&1 | grep -q '"version"'; then
+    TEST16_PASSED=false
+fi
+
+# validate subcommand exit code contract
+V_VALID=$(mktemp /tmp/kite_val_valid_XXXXXX.star)
+printf 'x = 1 + 2\n' > "$V_VALID"
+if ! $KITE validate "$V_VALID" >/dev/null 2>&1; then
+    TEST16_PASSED=false
+fi
+rm -f "$V_VALID"
+
+V_BAD=$(mktemp /tmp/kite_val_bad_XXXXXX.star)
+printf 'x = (\n' > "$V_BAD"
+set +e
+$KITE validate "$V_BAD" >/dev/null 2>&1
+V_BAD_STATUS=$?
+set -e
+if [ "$V_BAD_STATUS" -ne 1 ]; then
+    TEST16_PASSED=false
+fi
+rm -f "$V_BAD"
+
+set +e
+$KITE validate "/nonexistent/path/file_never_exists.star" >/dev/null 2>&1
+V_MISS_STATUS=$?
+set -e
+if [ "$V_MISS_STATUS" -ne 2 ]; then
+    TEST16_PASSED=false
+fi
+
+if [ "$TEST16_PASSED" = true ]; then
+    pass "CLI version and validate exit codes (0=valid, 1=syntax, 2=missing)"
+else
+    fail "CLI version and validate exit codes (0=valid, 1=syntax, 2=missing)"
+fi
+
+# --------------------------------------------
+# Test 17: Universal try_ contract across stdlib and value types
+# --------------------------------------------
+info "Test 17: Universal try_ contract across stdlib and value types"
+
+TRY_SCRIPT='
+r1 = strings.try_cut("a:b", ":")
+assert(r1.ok == True and r1.value.before == "a" and r1.value.after == "b" and r1.value.found == True)
+
+r2 = strings.try_cut(123, ":")
+assert(r2.ok == False and r2.value == None and r2.error != None)
+
+r3 = time.try_now()
+assert(r3.ok == True and r3.value.year >= 2026)
+
+r4 = time.try_duration("invalid")
+assert(r4.ok == False and r4.error != None)
+
+t = time.now()
+r5 = t.try_add(time.duration("1s"))
+assert(r5.ok == True)
+
+r6 = uuid.try_v4()
+assert(r6.ok == True and len(r6.value) == 36)
+
+r7 = table.try_new(["col1"])
+assert(r7.ok == True)
+
+r8 = table.try_new(123)
+assert(r8.ok == False and r8.error != None)
+
+print("TRY_CONTRACT_VERIFIED")
+'
+
+if $KITE exec "$TRY_SCRIPT" 2>&1 | grep -q "TRY_CONTRACT_VERIFIED"; then
+    pass "Universal try_ contract across stdlib and value types"
+else
+    fail "Universal try_ contract across stdlib and value types"
+fi
+
+# --------------------------------------------
+# Test 18: Stdlib value-type completeness
+# --------------------------------------------
+info "Test 18: Stdlib value-type completeness"
+
+VALUE_SCRIPT='
+d = time.duration("2h30m")
+assert(d.seconds == 9000.0)
+assert(d.nanoseconds == 9000000000000)
+
+cut = strings.cut("k=v", "=")
+assert(cut.before == "k" and cut.after == "v" and cut.found == True)
+
+assert(strings.has_any("apple", ["z", "pl"]) == True)
+assert(strings.has_any("apple", ["z", "x"]) == False)
+
+u = uuid.v4()
+assert(len(u) == 36 and u[8] == "-" and u[13] == "-")
+
+print("VALUE_TYPES_VERIFIED")
+'
+
+if $KITE exec "$VALUE_SCRIPT" 2>&1 | grep -q "VALUE_TYPES_VERIFIED"; then
+    pass "Stdlib value-type completeness (duration, strings.cut, has_any, uuid)"
+else
+    fail "Stdlib value-type completeness (duration, strings.cut, has_any, uuid)"
+fi
+
+# --------------------------------------------
+# Test 19: Security invariants (deny-all defaults & symlink boundary enforcement)
+# --------------------------------------------
+info "Test 19: Security invariants"
+
+SEC_PASSED=true
+
+# Default deny-all blocks fs.write
+if $KITE exec 'write_text("/tmp/should_fail.txt", "x")' 2>&1 | grep -q "permission denied"; then
+    :
+else
+    SEC_PASSED=false
+fi
+
+# allow-fs blocks write outside CWD (including via symlink traversal)
+TARGET_OUTSIDE="/tmp/kite_outside_target_$$"
+touch "$TARGET_OUTSIDE"
+SYMLINK_TMP="./test_symlink_out_$$"
+ln -sf "$TARGET_OUTSIDE" "$SYMLINK_TMP"
+set +e
+$KITE exec "write_text(\"$SYMLINK_TMP\", \"x\")" --allow-fs >/dev/null 2>&1
+SYM_STATUS=$?
+set -e
+rm -f "$SYMLINK_TMP" "$TARGET_OUTSIDE"
+if [ "$SYM_STATUS" -eq 0 ]; then
+    SEC_PASSED=false
+fi
+
+# os.shell exec check under allow-fs is denied
+if $KITE exec 'sh = os.shell(); sh.exec("echo 1")' --allow-fs 2>&1 | grep -q "permission denied"; then
+    :
+else
+    SEC_PASSED=false
+fi
+
+if [ "$SEC_PASSED" = true ]; then
+    pass "Security invariants (deny-all defaults, symlink boundary, shell permissions)"
+else
+    fail "Security invariants (deny-all defaults, symlink boundary, shell permissions)"
+fi
+
+# --------------------------------------------
+# Test 20: Multi-edition binary smoke checks
+# --------------------------------------------
+info "Test 20: Multi-edition binary smoke checks"
+
+EDITIONS_PASSED=true
+KITE_DIR=$(dirname "$KITE")
+
+# Verify current binary executes
+if ! $KITE exec 'print("kite-main-smoke-ok")' 2>&1 | grep -q "kite-main-smoke-ok"; then
+    EDITIONS_PASSED=false
+fi
+
+# Check sibling edition binaries if present in the same directory
+for ed in kitecmd kitecloud kiteai; do
+    ED_BIN="$KITE_DIR/$ed"
+    if [ -x "$ED_BIN" ]; then
+        if ! "$ED_BIN" version --json 2>&1 | grep -q '"edition"'; then
+            EDITIONS_PASSED=false
+        fi
+        if ! "$ED_BIN" exec 'print("edition-smoke-ok")' 2>&1 | grep -q "edition-smoke-ok"; then
+            EDITIONS_PASSED=false
+        fi
+    fi
+done
+
+if [ "$EDITIONS_PASSED" = true ]; then
+    pass "Multi-edition binary smoke checks"
+else
+    fail "Multi-edition binary smoke checks"
+fi
+
+# --------------------------------------------
 # Summary
 # --------------------------------------------
 echo ""

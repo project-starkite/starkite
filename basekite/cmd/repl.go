@@ -5,7 +5,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/project-starkite/starkite/basekite/version"
@@ -93,7 +92,7 @@ func startRepl(cmd *cobra.Command, args []string) error {
 	fmt.Println("Type .help for help, .exit to quit")
 	fmt.Println()
 
-	reader := bufio.NewReader(os.Stdin)
+	reader := bufio.NewReader(cmd.InOrStdin())
 	var multilineBuffer strings.Builder
 	inMultiline := false
 

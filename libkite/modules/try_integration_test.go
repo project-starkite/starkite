@@ -9,15 +9,37 @@ import (
 	"go.starlark.net/starlark"
 
 	"github.com/project-starkite/starkite/libkite"
+	argsmod "github.com/project-starkite/starkite/libkite/modules/args"
 	b64 "github.com/project-starkite/starkite/libkite/modules/base64"
+	concurmod "github.com/project-starkite/starkite/libkite/modules/concur"
+	containersmod "github.com/project-starkite/starkite/libkite/modules/containers"
 	csvmod "github.com/project-starkite/starkite/libkite/modules/csv"
+	fleetmod "github.com/project-starkite/starkite/libkite/modules/fleet"
+	fmtmod "github.com/project-starkite/starkite/libkite/modules/fmt"
 	"github.com/project-starkite/starkite/libkite/modules/fs"
+	gzipmod "github.com/project-starkite/starkite/libkite/modules/gzip"
+	hashmod "github.com/project-starkite/starkite/libkite/modules/hash"
 	"github.com/project-starkite/starkite/libkite/modules/http"
+	invmod "github.com/project-starkite/starkite/libkite/modules/inventory"
 	iomod "github.com/project-starkite/starkite/libkite/modules/io"
 	jsonmod "github.com/project-starkite/starkite/libkite/modules/json"
+	logmod "github.com/project-starkite/starkite/libkite/modules/log"
 	osmod "github.com/project-starkite/starkite/libkite/modules/os"
+	regexmod "github.com/project-starkite/starkite/libkite/modules/regexp"
+	retrymod "github.com/project-starkite/starkite/libkite/modules/retry"
+	runtimemod "github.com/project-starkite/starkite/libkite/modules/runtime"
+	sbxmod "github.com/project-starkite/starkite/libkite/modules/sandbox"
+	sqlmod "github.com/project-starkite/starkite/libkite/modules/sql"
 	"github.com/project-starkite/starkite/libkite/modules/ssh"
+	stringsmod "github.com/project-starkite/starkite/libkite/modules/strings"
+	tablemod "github.com/project-starkite/starkite/libkite/modules/table"
+	tmplmod "github.com/project-starkite/starkite/libkite/modules/template"
+	testmod "github.com/project-starkite/starkite/libkite/modules/test"
+	timemod "github.com/project-starkite/starkite/libkite/modules/time"
+	uuidmod "github.com/project-starkite/starkite/libkite/modules/uuid"
+	varsmod "github.com/project-starkite/starkite/libkite/modules/vars"
 	yamlmod "github.com/project-starkite/starkite/libkite/modules/yaml"
+	zipmod "github.com/project-starkite/starkite/libkite/modules/zip"
 )
 
 // =============================================================================
@@ -695,4 +717,238 @@ func TestJSONTryFileDecodeSuccess(t *testing.T) {
 	if string(keyVal.(starlark.String)) != "value" {
 		t.Fatalf("key = %v, want 'value'", keyVal)
 	}
+}
+
+// =============================================================================
+// Comprehensive registry try_ contract verification (Phase 1, v0.9.5)
+// =============================================================================
+
+func TestAllStdlibModulesTryAttr(t *testing.T) {
+	// 1. fmt
+	fmtM := loadModule(t, fmtmod.New(), "fmt")
+	assertTryAttrs(t, fmtM, "fmt", []string{"sprintf", "printf", "println"})
+
+	// 2. runtime
+	rtM := loadModule(t, runtimemod.New(), "runtime")
+	assertTryAttrs(t, rtM, "runtime", []string{"platform", "arch", "cpu_count", "uname", "version", "go_version"})
+
+	// 3. strings
+	strM := loadModule(t, stringsmod.New(), "strings")
+	assertTryAttrs(t, strM, "strings", []string{
+		"ljust", "rjust", "center", "cut", "equal", "has_any", "quote", "unquote",
+	})
+
+	// 4. time
+	timeM := loadModule(t, timemod.New(), "time")
+	assertTryAttrs(t, timeM, "time", []string{
+		"now", "sleep", "parse", "format", "since", "until", "duration",
+	})
+
+	// 5. uuid
+	uuidM := loadModule(t, uuidmod.New(), "uuid")
+	assertTryAttrs(t, uuidM, "uuid", []string{"v4"})
+
+	// 6. vars
+	varsM := loadModule(t, varsmod.New(), "vars")
+	assertTryAttrs(t, varsM, "vars", []string{
+		"var_str", "var_int", "var_bool", "var_float", "var_names", "var_list", "var_dict",
+	})
+
+	// 7. retry
+	retryM := loadModule(t, retrymod.New(), "retry")
+	assertTryAttrs(t, retryM, "retry", []string{"do", "with_backoff"})
+
+	// 8. table
+	tableM := loadModule(t, tablemod.New(), "table")
+	assertTryAttrs(t, tableM, "table", []string{"new", "print"})
+
+	// 9. log
+	logM := loadModule(t, logmod.New(), "log")
+	assertTryAttrs(t, logM, "log", []string{
+		"debug", "info", "warn", "error", "set_level", "set_format", "set_output", "logger",
+	})
+
+	// 10. inventory
+	invM := loadModule(t, invmod.New(), "inventory")
+	assertTryAttrs(t, invM, "inventory", []string{
+		"file", "list", "filter", "group_by", "merge", "addresses",
+	})
+
+	// 11. sandbox
+	sbxM := loadModule(t, sbxmod.New(), "sandbox")
+	assertTryAttrs(t, sbxM, "sandbox", []string{
+		"config", "run_script", "list_drivers", "default_driver",
+	})
+
+	// 12. test
+	testM := loadModule(t, testmod.New(), "test")
+	assertTryAttrs(t, testM, "test", []string{
+		"skip", "fail", "assert", "assert_equal", "assert_not_equal", "assert_contains", "assert_true", "assert_false",
+	})
+
+	// 13. concur
+	concurM := loadModule(t, concurmod.New(), "concur")
+	assertTryAttrs(t, concurM, "concur", []string{"map", "each", "exec"})
+
+	// 14. regexp
+	regexM := loadModule(t, regexmod.New(), "regexp")
+	assertTryAttrs(t, regexM, "regexp", []string{"match", "find", "find_all", "replace", "split", "compile"})
+
+	// 15. template
+	tmplM := loadModule(t, tmplmod.New(), "template")
+	assertTryAttrs(t, tmplM, "template", []string{"text", "file", "bytes", "render"})
+
+	// 16. hash
+	hashM := loadModule(t, hashmod.New(), "hash")
+	assertTryAttrs(t, hashM, "hash", []string{"file", "text", "bytes"})
+
+	// 17. gzip
+	gzipM := loadModule(t, gzipmod.New(), "gzip")
+	assertTryAttrs(t, gzipM, "gzip", []string{"file", "text", "bytes"})
+
+	// 18. zip
+	zipM := loadModule(t, zipmod.New(), "zip")
+	assertTryAttrs(t, zipM, "zip", []string{"file"})
+
+	// 19. sql
+	sqlM := loadModule(t, sqlmod.New(), "sql")
+	assertTryAttrs(t, sqlM, "sql", []string{"open", "stmt"})
+
+	// 20. fleet
+	fleetM := loadModule(t, fleetmod.New(), "fleet")
+	assertTryAttrs(t, fleetM, "fleet", []string{"new", "file", "hosts_file", "host_file"})
+
+	// 21. containers
+	containersM := loadModule(t, containersmod.New(), "containers")
+	assertTryAttrs(t, containersM, "containers", []string{
+		"config", "run", "exec", "stop", "delete", "remove",
+		"image_pull", "image_build", "image_list", "image_inspect", "image_remove",
+		"inspect", "list",
+	})
+
+	// 22. args
+	argsM := loadModule(t, argsmod.New(), "args")
+	assertTryAttrs(t, argsM, "args", []string{"string", "int", "bool", "float", "list", "positional", "parse"})
+}
+
+func TestDynamicValueTypesTryContract(t *testing.T) {
+	thread := trustedThread()
+
+	// 1. TimeValue & DurationValue
+	timeM := loadModule(t, timemod.New(), "time")
+	nowFn, err := timeM.Attr("now")
+	if err != nil || nowFn == nil {
+		t.Fatalf("time.now lookup failed: %v", err)
+	}
+	tvObj, err := starlark.Call(thread, nowFn, nil, nil)
+	if err != nil {
+		t.Fatalf("time.now() call failed: %v", err)
+	}
+	tv, ok := tvObj.(starlark.HasAttrs)
+	if !ok {
+		t.Fatalf("expected HasAttrs for TimeValue, got %T", tvObj)
+	}
+	assertTryAttrs(t, tv, "TimeValue", []string{"add", "sub", "string"})
+
+	// Check accessors
+	for _, attr := range []string{"utc", "unix_milli", "nanosecond"} {
+		v, err := tv.Attr(attr)
+		if err != nil || v == nil {
+			t.Errorf("TimeValue.%s missing: %v", attr, err)
+		}
+	}
+
+	// Try_string call
+	tryStrFn, _ := tv.Attr("try_string")
+	resVal, err := starlark.Call(thread, tryStrFn, nil, nil)
+	if err != nil {
+		t.Fatalf("TimeValue.try_string error: %v", err)
+	}
+	res := resVal.(*libkite.Result)
+	if okAttr, _ := res.Attr("ok"); okAttr != starlark.True {
+		t.Fatalf("TimeValue.try_string ok != True")
+	}
+
+	// Try_add call (success & failure)
+	tryAddFn, _ := tv.Attr("try_add")
+	addResVal, _ := starlark.Call(thread, tryAddFn, starlark.Tuple{starlark.String("1h")}, nil)
+	if okAttr, _ := addResVal.(*libkite.Result).Attr("ok"); okAttr != starlark.True {
+		t.Fatalf("TimeValue.try_add('1h') ok != True")
+	}
+	badAddResVal, _ := starlark.Call(thread, tryAddFn, starlark.Tuple{starlark.String("invalid-duration")}, nil)
+	if okAttr, _ := badAddResVal.(*libkite.Result).Attr("ok"); okAttr != starlark.False {
+		t.Fatalf("TimeValue.try_add('invalid') ok != False")
+	}
+
+	// DurationValue
+	durFn, _ := timeM.Attr("duration")
+	durObj, err := starlark.Call(thread, durFn, starlark.Tuple{starlark.MakeInt(10)}, nil)
+	if err != nil {
+		t.Fatalf("time.duration(10) failed: %v", err)
+	}
+	dv := durObj.(starlark.HasAttrs)
+	assertTryAttrs(t, dv, "DurationValue", []string{"string"})
+
+	durTryStrFn, _ := dv.Attr("try_string")
+	durResVal, err := starlark.Call(thread, durTryStrFn, nil, nil)
+	if err != nil {
+		t.Fatalf("DurationValue.try_string error: %v", err)
+	}
+	durRes := durResVal.(*libkite.Result)
+	if okAttr, _ := durRes.Attr("ok"); okAttr != starlark.True {
+		t.Fatalf("DurationValue.try_string ok != True")
+	}
+	if vAttr, _ := durRes.Attr("value"); vAttr != starlark.String("10s") {
+		t.Fatalf("DurationValue.try_string value = %v, want '10s'", vAttr)
+	}
+
+	// 2. TableValue
+	tableM := loadModule(t, tablemod.New(), "table")
+	newTableFn, _ := tableM.Attr("new")
+	tableObj, err := starlark.Call(thread, newTableFn, starlark.Tuple{
+		starlark.NewList([]starlark.Value{starlark.String("C1"), starlark.String("C2")}),
+	}, nil)
+	if err != nil {
+		t.Fatalf("table.new failed: %v", err)
+	}
+	tbl := tableObj.(starlark.HasAttrs)
+	assertTryAttrs(t, tbl, "TableValue", []string{"add_row", "render"})
+
+	// Call try_add_row with too many values -> failure Result
+	tryAddRowFn, _ := tbl.Attr("try_add_row")
+	rowFailRes, _ := starlark.Call(thread, tryAddRowFn, starlark.Tuple{
+		starlark.String("a"), starlark.String("b"), starlark.String("c"),
+	}, nil)
+	if okAttr, _ := rowFailRes.(*libkite.Result).Attr("ok"); okAttr != starlark.False {
+		t.Fatalf("TableValue.try_add_row(too many) ok != False")
+	}
+
+	// Call try_add_row with 1 value -> auto-padded, success Result
+	rowOkRes, _ := starlark.Call(thread, tryAddRowFn, starlark.Tuple{starlark.String("a")}, nil)
+	if okAttr, _ := rowOkRes.(*libkite.Result).Attr("ok"); okAttr != starlark.True {
+		t.Fatalf("TableValue.try_add_row(padded) ok != True")
+	}
+
+	// 3. Logger
+	logM := loadModule(t, logmod.New(), "log")
+	loggerFn, err := logM.Attr("logger")
+	if err != nil || loggerFn == nil {
+		t.Fatalf("log.logger lookup failed: %v", err)
+	}
+	loggerObj, err := starlark.Call(thread, loggerFn, nil, nil)
+	if err != nil {
+		t.Fatalf("log.logger() failed: %v", err)
+	}
+	l := loggerObj.(starlark.HasAttrs)
+	assertTryAttrs(t, l, "Logger", []string{"info", "warn", "error", "debug"})
+
+	// 4. Sandbox
+	sbxM := loadModule(t, sbxmod.New(), "sandbox")
+	configFn, _ := sbxM.Attr("config")
+	sbxObj, err := starlark.Call(thread, configFn, nil, nil)
+	if err != nil {
+		t.Fatalf("sandbox.config failed: %v", err)
+	}
+	sb := sbxObj.(starlark.HasAttrs)
+	assertTryAttrs(t, sb, "Sandbox", []string{"exec"})
 }

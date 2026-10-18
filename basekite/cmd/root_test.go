@@ -161,6 +161,14 @@ func buildSandboxFlagSet(t *testing.T, args []string) *pflag.FlagSet {
 }
 
 func TestSandboxFlagsAndAliases(t *testing.T) {
+	origSandboxed := sandboxed
+	origProfile := sandboxProfile
+	origDriver := sandboxDriver
+	defer func() {
+		sandboxed = origSandboxed
+		sandboxProfile = origProfile
+		sandboxDriver = origDriver
+	}()
 	t.Run("sandboxed boolean switch", func(t *testing.T) {
 		fs := buildSandboxFlagSet(t, []string{"--sandboxed"})
 		if err := checkSandboxFlagConflict(fs); err != nil {
@@ -300,6 +308,14 @@ func TestSandboxFlagsAndAliases(t *testing.T) {
 }
 
 func TestGetSandbox(t *testing.T) {
+	origSandboxed := sandboxed
+	origProfile := sandboxProfile
+	origDriver := sandboxDriver
+	defer func() {
+		sandboxed = origSandboxed
+		sandboxProfile = origProfile
+		sandboxDriver = origDriver
+	}()
 	t.Run("empty returns zero profile", func(t *testing.T) {
 		sandboxed = false
 		sandboxProfile = ""

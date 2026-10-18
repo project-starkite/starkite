@@ -19,8 +19,9 @@ var versionCmd = &cobra.Command{
 	Short: "Print version information",
 	Long:  `Print detailed version information including commit hash, build time, and Go version.`,
 	Run: func(cmd *cobra.Command, args []string) {
+		out := cmd.OutOrStdout()
 		if versionShort {
-			fmt.Println(version.Version)
+			fmt.Fprintln(out, version.Version)
 			return
 		}
 
@@ -42,20 +43,20 @@ var versionCmd = &cobra.Command{
 				info["edition"] = edition
 			}
 			data, _ := json.MarshalIndent(info, "", "  ")
-			fmt.Println(string(data))
+			fmt.Fprintln(out, string(data))
 			return
 		}
 
 		if lean {
-			fmt.Printf("kite version %s (%s)\n", version.Version, edition)
-			fmt.Printf("  edition: %s\n", edition)
+			fmt.Fprintf(out, "kite version %s (%s)\n", version.Version, edition)
+			fmt.Fprintf(out, "  edition: %s\n", edition)
 		} else {
-			fmt.Printf("kite version %s\n", version.Version)
+			fmt.Fprintf(out, "kite version %s\n", version.Version)
 		}
-		fmt.Printf("  commit:  %s\n", version.GitCommit)
-		fmt.Printf("  built:   %s\n", version.BuildTime)
-		fmt.Printf("  go:      %s\n", runtime.Version())
-		fmt.Printf("  os/arch: %s/%s\n", runtime.GOOS, runtime.GOARCH)
+		fmt.Fprintf(out, "  commit:  %s\n", version.GitCommit)
+		fmt.Fprintf(out, "  built:   %s\n", version.BuildTime)
+		fmt.Fprintf(out, "  go:      %s\n", runtime.Version())
+		fmt.Fprintf(out, "  os/arch: %s/%s\n", runtime.GOOS, runtime.GOARCH)
 	},
 }
 

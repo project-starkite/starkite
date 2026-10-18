@@ -46,14 +46,14 @@ jobs:
       - name: Run staticcheck
         run: staticcheck ./libkite/... ./basekite/... ./cloudkite/... ./aikite/... ./kite/... ./tests/sandbox/...
 
-      - name: Build all workspace modules and kite binary
+      - name: Build all workspace modules and kite binaries
         run: |
           mkdir -p bin
           for dir in libkite basekite cloudkite aikite tests/sandbox; do
             echo "=== Building $dir ==="
             (cd "$dir" && go build -v ./...)
           done
-          (cd kite && go build -v -o ../bin/kite .)
+          make all
 
       - name: Run Go unit tests with race detection
         run: |
@@ -71,6 +71,9 @@ jobs:
             echo "--- Testing $f ---"
             ./bin/kite test "$f" --permissions=allow-all || exit 1
           done
+
+      - name: Run backward compatibility verification suite
+        run: ./tests/verify_backward_compat.sh ./bin/kite
 
       - name: Run Linux native Landlock sandbox tests
         env:
