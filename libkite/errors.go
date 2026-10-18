@@ -50,7 +50,7 @@ func (e *PermissionError) Error() string {
 		fmt.Fprintf(&b, "%s %s - %s", target, e.Function, e.Reason)
 	}
 	if e.Suggest != "" {
-		fmt.Fprintf(&b, "\n  grant %q with --permissions=%s (or higher), or an allow rule in ~/.starkite/config.yaml",
+		fmt.Fprintf(&b, "\n  grant %q with --sandbox-profile=%s (or higher), or in the sandbox: section of config.yaml",
 			target, e.Suggest)
 	}
 	return b.String()

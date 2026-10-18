@@ -49,7 +49,7 @@ func TestLoadedModule_BoundByRuntimePermission(t *testing.T) {
 		"def reach():\n    return exec(\"echo hi\")\n",
 		"load(\"./mod.star\", \"mod\")\nmod.reach()\n",
 	)
-	err := runEntry(t, libkite.AllowFSPermissions(), entryPath, entry)
+	err := runEntry(t, libkite.SandboxPathPermissions(), entryPath, entry)
 	if err == nil {
 		t.Fatal("expected permission denial from loaded module, got nil")
 	}
@@ -65,7 +65,7 @@ func TestLoadedModule_DenialAttributed(t *testing.T) {
 		"def reach():\n    return exec(\"echo hi\")\n",
 		"load(\"./mod.star\", \"mod\")\nmod.reach()\n",
 	)
-	err := runEntry(t, libkite.AllowFSPermissions(), entryPath, entry)
+	err := runEntry(t, libkite.SandboxPathPermissions(), entryPath, entry)
 	if err == nil {
 		t.Fatal("expected denial, got nil")
 	}
@@ -82,7 +82,7 @@ func TestEntryScriptDenial_NoModuleAttribution(t *testing.T) {
 	if err := os.WriteFile(entryPath, []byte(entry), 0o644); err != nil {
 		t.Fatalf("write entry: %v", err)
 	}
-	err := runEntry(t, libkite.AllowFSPermissions(), entryPath, entry)
+	err := runEntry(t, libkite.SandboxPathPermissions(), entryPath, entry)
 	if err == nil {
 		t.Fatal("expected denial, got nil")
 	}

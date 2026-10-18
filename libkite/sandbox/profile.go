@@ -1,83 +1,154 @@
 package sandbox
 
 import (
+	"bytes"
 	"embed"
 	"errors"
 	"fmt"
+	"maps"
 	"os"
+	osexec "os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
+
+	"github.com/project-starkite/starkite/libkite"
 )
 
 //go:embed profiles/opaque.yaml profiles/net-access.yaml profiles/host.yaml
 var builtinProfiles embed.FS
 
 // UserConfigFile is the default location for user-defined sandbox
-// profiles, relative to the user's home directory. The "sandbox:" section
-// of the unified config file holds a map of profile name → profile.
+// profiles, relative to the user's home directory.
 const UserConfigFile = ".starkite/config.yaml"
 
-// errProfileNotFound reports that a named profile is not defined in any
-// config file (as opposed to a parse or validation error). LoadProfile
-// uses it to fall back to the opaque rung for the reserved "default" name.
+// errProfileNotFound reports that a named profile is not defined in any config file.
 var errProfileNotFound = errors.New("sandbox: profile not found")
 
-// securityFile is the on-disk schema of the sections this package consumes
-// from config.yaml. Other sections (config:, permissions:) are parsed
-// elsewhere and ignored here.
-type securityFile struct {
-	Sandbox map[string]profileSpec `yaml:"sandbox"`
-	// Permissions is parsed but unused — declared so strict decoders
-	// don't reject documents that include it.
-	Permissions map[string]any `yaml:"permissions,omitempty"`
+// SandboxConfig is the in-memory representation of the unified sandbox: section.
+type SandboxConfig struct {
+	Enabled  bool                   `yaml:"enabled"`
+	Profiles map[string]ProfileBody `yaml:"-"`
 }
 
-// profileSpec is one value in config.yaml's "sandbox:" map. Three YAML
-// forms are accepted:
-//
-//	ci: net-access                      # scalar — shorthand for {base: net-access}
-//	ci: { network: ..., mounts: ... }   # self-contained body
-//	ci: { base: host, mounts: ... }     # composed body — start from a rung
-//
-// The map form is captured as a raw node and re-decoded strictly in
-// profileFromSpec, so unknown fields inside a profile error loudly even
-// though the outer config file is parsed leniently.
-type profileSpec struct {
-	Base string
-	Node yaml.Node
+// ProfileBody is the YAML schema of a capability profile definition.
+type ProfileBody struct {
+	Enabled          *bool           `yaml:"enabled,omitempty"`
+	Base             string          `yaml:"base,omitempty"`
+	Driver           string          `yaml:"driver,omitempty"`
+	Image            string          `yaml:"image,omitempty"`
+	Network          networkSpec     `yaml:"network,omitempty"`
+	MaxMemory        string          `yaml:"max_memory,omitempty"`
+	Timeout          string          `yaml:"timeout,omitempty"`
+	Paths            PathsSpec       `yaml:"paths,omitempty"`
+	Mounts           []mountSpec     `yaml:"mounts,omitempty"`
+	Exec             ExecPolicySpec  `yaml:"exec,omitempty"`
+	Calls            CallsPolicySpec `yaml:"calls,omitempty"`
+	Env              envSpec         `yaml:"env,omitempty"`
+	NoExec           *bool           `yaml:"no_exec,omitempty"`
+	AllowedExecPaths []string        `yaml:"allowed_exec_paths,omitempty"`
 }
 
-// UnmarshalYAML accepts either a scalar (shorthand for {base: <rung>}) or a
-// profile map.
-func (ps *profileSpec) UnmarshalYAML(node *yaml.Node) error {
-	if node.Kind == yaml.ScalarNode {
-		return node.Decode(&ps.Base)
+// Validate checks that the profile body has valid network and limit specifications.
+func (b *ProfileBody) Validate() error {
+	hasCapabilities := len(b.Paths.Read) > 0 || len(b.Paths.Write) > 0 ||
+		len(b.Exec.Allow) > 0 || len(b.Exec.Deny) > 0 ||
+		len(b.Calls.Allow) > 0 || len(b.Calls.Deny) > 0
+
+	if (b.Enabled == nil || *b.Enabled) && b.Base == "" && b.Network.Mode == "" && len(b.Network.Allow) == 0 && !hasCapabilities {
+		return fmt.Errorf("network mode is required")
 	}
-	ps.Node = *node
+	if b.Network.Mode != "" {
+		switch NetworkMode(b.Network.Mode) {
+		case NetworkNone, NetworkHost, NetworkLoopback:
+		default:
+			return fmt.Errorf("unknown network mode %q (want %q, %q, or %q)",
+				b.Network.Mode, NetworkNone, NetworkHost, NetworkLoopback)
+		}
+	}
+	if b.MaxMemory != "" {
+		if _, err := parseMemoryMB(b.MaxMemory); err != nil {
+			return err
+		}
+	}
+	if b.Timeout != "" {
+		if _, err := parseDuration(b.Timeout); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
-// profileBody is the strict YAML schema of a full profile definition. The
-// shape matches what users write under config.yaml's "sandbox:" map, so
-// the same decoder parses both embedded and user-defined profiles. Base,
-// when set, names a built-in rung the body composes on top of.
-type profileBody struct {
-	Base             string      `yaml:"base,omitempty"`
-	Driver           string      `yaml:"driver,omitempty"`
-	Image            string      `yaml:"image,omitempty"`
-	Network          string      `yaml:"network,omitempty"`
-	MaxMemory        string      `yaml:"max_memory,omitempty"`
-	Timeout          string      `yaml:"timeout,omitempty"`
-	NoExec           *bool       `yaml:"no_exec,omitempty"`
-	AllowedExecPaths []string    `yaml:"allowed_exec_paths,omitempty"`
-	Mounts           []mountSpec `yaml:"mounts,omitempty"`
+func isBuiltinProfile(name string) bool {
+	switch name {
+	case ProfileDenyAll, ProfileOpaque, ProfileNetAccess, ProfileHost,
+		ProfileSandboxPath, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined,
+		"allow-fs", "allow-local", "allow-net", "allow-all":
+		return true
+	default:
+		return false
+	}
 }
 
-// mountSpec is the YAML form of a single mount entry. Defaults applied
-// during decode-to-Mount: Type=bind, Mode=ro (rw for tmpfs).
+type networkSpec struct {
+	Mode  string   `yaml:"mode,omitempty"`
+	Allow []string `yaml:"allow,omitempty"`
+}
+
+func (ns *networkSpec) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind == yaml.ScalarNode {
+		ns.Mode = node.Value
+		return nil
+	}
+	type plain networkSpec
+	var p plain
+	if err := node.Decode(&p); err != nil {
+		return err
+	}
+	*ns = networkSpec(p)
+	if ns.Mode == "" && len(ns.Allow) > 0 {
+		ns.Mode = string(NetworkHost)
+	}
+	return nil
+}
+
+type envSpec struct {
+	Inherit bool
+	Vars    map[string]*string
+}
+
+func (es *envSpec) UnmarshalYAML(node *yaml.Node) error {
+	if node.Kind != yaml.MappingNode {
+		return fmt.Errorf("env must be a mapping")
+	}
+	es.Vars = make(map[string]*string)
+	for i := 0; i < len(node.Content); i += 2 {
+		kNode := node.Content[i]
+		vNode := node.Content[i+1]
+		key := kNode.Value
+		if key == "inherit" {
+			if err := vNode.Decode(&es.Inherit); err != nil {
+				return fmt.Errorf("env.inherit must be a boolean: %w", err)
+			}
+			continue
+		}
+		if vNode.Tag == "!!null" || (vNode.Kind == yaml.ScalarNode && vNode.Value == "" && vNode.Style == 0) {
+			es.Vars[key] = nil
+		} else {
+			var val string
+			if err := vNode.Decode(&val); err != nil {
+				return fmt.Errorf("env.%s must be a string or empty: %w", key, err)
+			}
+			es.Vars[key] = &val
+		}
+	}
+	return nil
+}
+
+// mountSpec is the YAML form of a single mount entry.
 type mountSpec struct {
 	Source      string `yaml:"source,omitempty"`
 	Destination string `yaml:"destination"`
@@ -85,16 +156,77 @@ type mountSpec struct {
 	Mode        string `yaml:"mode,omitempty"`
 }
 
-// loadBuiltin reads an embedded rung YAML and returns a fully-validated
-// Profile. Bind mounts whose host source is absent are dropped — the
-// rungs reference host-support files (/etc/ssl/certs, /lib, …) that
-// minimal hosts may not have, and a built-in must work everywhere.
+// DecodeConfigNode decodes the YAML node of a "sandbox:" section into SandboxConfig.
+func DecodeConfigNode(node *yaml.Node) (*SandboxConfig, error) {
+	if node == nil || node.Kind == 0 {
+		return nil, nil
+	}
+	if node.Kind != yaml.MappingNode {
+		return nil, fmt.Errorf("sandbox section must be a mapping")
+	}
+	cfg := &SandboxConfig{
+		Enabled:  true,
+		Profiles: make(map[string]ProfileBody),
+	}
+	for i := 0; i < len(node.Content); i += 2 {
+		kNode := node.Content[i]
+		vNode := node.Content[i+1]
+		key := kNode.Value
+		if key == "enabled" {
+			if err := vNode.Decode(&cfg.Enabled); err != nil {
+				return nil, fmt.Errorf("sandbox.enabled must be a boolean: %w", err)
+			}
+			continue
+		}
+		if key == "profiles" && vNode.Kind == yaml.MappingNode {
+			for j := 0; j < len(vNode.Content); j += 2 {
+				pkNode := vNode.Content[j]
+				pvNode := vNode.Content[j+1]
+				pKey := pkNode.Value
+				var pBody ProfileBody
+				if pvNode.Kind == yaml.ScalarNode {
+					pBody.Base = pvNode.Value
+				} else {
+					dec := yaml.NewDecoder(strings.NewReader(encodeNode(pvNode)))
+					dec.KnownFields(true)
+					if err := dec.Decode(&pBody); err != nil {
+						return nil, fmt.Errorf("sandbox profile %q: %w", pKey, err)
+					}
+				}
+				cfg.Profiles[pKey] = pBody
+			}
+			continue
+		}
+		var body ProfileBody
+		if vNode.Kind == yaml.ScalarNode {
+			body.Base = vNode.Value
+		} else {
+			dec := yaml.NewDecoder(strings.NewReader(encodeNode(vNode)))
+			dec.KnownFields(true)
+			if err := dec.Decode(&body); err != nil {
+				return nil, fmt.Errorf("sandbox profile %q: %w", key, err)
+			}
+		}
+		cfg.Profiles[key] = body
+	}
+	return cfg, nil
+}
+
+func encodeNode(node *yaml.Node) string {
+	var buf bytes.Buffer
+	enc := yaml.NewEncoder(&buf)
+	_ = enc.Encode(node)
+	_ = enc.Close()
+	return buf.String()
+}
+
+// loadBuiltin reads an embedded rung YAML and returns a fully-validated Profile.
 func loadBuiltin(name string) (Profile, error) {
 	data, err := builtinProfiles.ReadFile("profiles/" + name + ".yaml")
 	if err != nil {
 		return Profile{}, fmt.Errorf("sandbox: built-in profile %q: %w", name, err)
 	}
-	p, err := decodeProfile(name, data, "")
+	p, err := decodeProfileYAML(name, data, "")
 	if err != nil {
 		return Profile{}, err
 	}
@@ -111,35 +243,91 @@ func loadBuiltin(name string) (Profile, error) {
 	return p, nil
 }
 
-// decodeProfile parses YAML bytes into a Profile, applying defaults,
-// expanding $CWD and $HOME in mount paths, and validating the result.
-//
-// origin is a short label used in error messages: a file path, etc.
-// Empty origin omits the suffix.
-func decodeProfile(name string, data []byte, origin string) (Profile, error) {
-	var body profileBody
+func decodeProfileYAML(name string, data []byte, origin string) (Profile, error) {
+	var body ProfileBody
 	dec := yaml.NewDecoder(strings.NewReader(string(data)))
 	dec.KnownFields(true)
 	if err := dec.Decode(&body); err != nil {
 		return Profile{}, fmt.Errorf("sandbox: profile %q: %w", name, errWithOrigin(err, origin))
 	}
-	if body.Base != "" {
-		return composeProfile(name, body, origin)
-	}
+	return profileFromBody(name, body, origin)
+}
 
+func decodeProfile(name string, data []byte, origin string) (Profile, error) {
+	return decodeProfileYAML(name, data, origin)
+}
+
+func profileFromBody(name string, body ProfileBody, origin string) (Profile, error) {
 	cwd, err := os.Getwd()
 	if err != nil {
 		return Profile{}, fmt.Errorf("sandbox: profile %q: getwd: %w", name, err)
 	}
-	home, _ := os.UserHomeDir() // empty home leaves $HOME unexpanded → abs-path validation fails closed
+	home, _ := os.UserHomeDir()
+
+	if body.Base == DefaultProfileName {
+		return Profile{}, fmt.Errorf("sandbox: profile %q%s: base cannot chain to reserved %q", name, fmtOrigin(origin), DefaultProfileName)
+	}
+	if err := body.Validate(); err != nil {
+		return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
+	}
+
+	var base Profile
+	if body.Base != "" {
+		if !isBuiltinProfile(body.Base) {
+			return Profile{}, fmt.Errorf("sandbox: profile %q%s: base %q must name a built-in profile", name, fmtOrigin(origin), body.Base)
+		}
+		loadedBase, err := loadProfileResolved(body.Base)
+		if err != nil {
+			return Profile{}, fmt.Errorf("sandbox: profile %q%s: base %q: %w",
+				name, fmtOrigin(origin), body.Base, err)
+		}
+		base = loadedBase
+	}
 
 	p := Profile{
-		Name:   name,
-		Driver: body.Driver,
-		Image:  body.Image,
+		Name:             name,
+		Enabled:          true,
+		Driver:           base.Driver,
+		Image:            base.Image,
+		Network:          base.Network,
+		NetworkAllow:     append([]string(nil), base.NetworkAllow...),
+		MaxMemoryMB:      base.MaxMemoryMB,
+		Timeout:          base.Timeout,
+		NoExec:           base.NoExec,
+		AllowedExecPaths: append([]string(nil), base.AllowedExecPaths...),
+		Paths: PathsSpec{
+			Read:  append([]string(nil), base.Paths.Read...),
+			Write: append([]string(nil), base.Paths.Write...),
+		},
+		Exec: ExecPolicySpec{
+			Allow: append([]string(nil), base.Exec.Allow...),
+			Deny:  append([]string(nil), base.Exec.Deny...),
+		},
+		Calls: CallsPolicySpec{
+			Allow: append([]string(nil), base.Calls.Allow...),
+			Deny:  append([]string(nil), base.Calls.Deny...),
+		},
+		Env: EnvPolicySpec{
+			Inherit: base.Env.Inherit,
+			Vars:    make(map[string]*string),
+		},
+	}
+	maps.Copy(p.Env.Vars, base.Env.Vars)
+
+	if body.Enabled != nil {
+		p.Enabled = *body.Enabled
+	} else if body.Base != "" {
+		p.Enabled = base.Enabled
+	}
+
+	if body.Driver != "" {
+		p.Driver = body.Driver
 	}
 	if p.Driver == "" {
 		p.Driver = DriverDefault
+	}
+	if body.Image != "" {
+		p.Image = body.Image
 	}
 
 	if body.MaxMemory != "" {
@@ -158,8 +346,70 @@ func decodeProfile(name string, data []byte, origin string) (Profile, error) {
 		p.Timeout = dur
 	}
 
+	if body.Network.Mode != "" {
+		switch body.Network.Mode {
+		case string(NetworkHost):
+			p.Network = NetworkHost
+		case string(NetworkLoopback):
+			p.Network = NetworkLoopback
+		case string(NetworkNone):
+			p.Network = NetworkNone
+		default:
+			return Profile{}, fmt.Errorf("sandbox: profile %q%s: unknown network mode %q",
+				name, fmtOrigin(origin), body.Network.Mode)
+		}
+	} else if p.Network == "" {
+		if len(body.Network.Allow) > 0 {
+			p.Network = NetworkHost
+		} else {
+			p.Network = NetworkNone
+		}
+	}
+	if len(body.Network.Allow) > 0 {
+		p.NetworkAllow = append(p.NetworkAllow, body.Network.Allow...)
+	}
+
+	// Paths
+	p.Paths.Read = append(p.Paths.Read, body.Paths.Read...)
+	p.Paths.Write = append(p.Paths.Write, body.Paths.Write...)
+
+	// Mounts synthesis
+	mounts, err := compilePaths(cwd, home, p.Paths, body.Mounts, base.Mounts)
+	if err != nil {
+		return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
+	}
+	p.Mounts = mounts
+
+	// Exec & W^X
+	p.Exec.Allow = append(p.Exec.Allow, body.Exec.Allow...)
+	p.Exec.Deny = append(p.Exec.Deny, body.Exec.Deny...)
+
 	if body.NoExec != nil {
 		p.NoExec = *body.NoExec
+	} else if len(p.Exec.Allow) == 0 && (len(p.Exec.Deny) == 0 || slices.Contains(p.Exec.Deny, "*")) {
+		if body.Base == "" {
+			p.NoExec = true
+		}
+	} else if len(p.Exec.Allow) > 0 {
+		if slices.Contains(p.Exec.Allow, "*") {
+			p.NoExec = false
+		} else {
+			p.NoExec = false
+			for _, bin := range p.Exec.Allow {
+				if strings.Contains(bin, "/") {
+					exp := expandPath(bin, cwd, home)
+					if isHostAbs(exp) && !slices.Contains(p.AllowedExecPaths, exp) {
+						p.AllowedExecPaths = append(p.AllowedExecPaths, exp)
+					}
+				} else {
+					if path, err := osexec.LookPath(bin); err == nil {
+						if !slices.Contains(p.AllowedExecPaths, path) {
+							p.AllowedExecPaths = append(p.AllowedExecPaths, path)
+						}
+					}
+				}
+			}
+		}
 	}
 
 	for i, rawPath := range body.AllowedExecPaths {
@@ -168,33 +418,136 @@ func decodeProfile(name string, data []byte, origin string) (Profile, error) {
 			return Profile{}, fmt.Errorf("sandbox: profile %q%s: allowed_exec_paths[%d]: %q must be an absolute path",
 				name, fmtOrigin(origin), i, rawPath)
 		}
-		p.AllowedExecPaths = append(p.AllowedExecPaths, expanded)
-	}
-
-	switch body.Network {
-	case string(NetworkHost):
-		p.Network = NetworkHost
-	case string(NetworkLoopback):
-		p.Network = NetworkLoopback
-	case string(NetworkNone):
-		p.Network = NetworkNone
-	case "":
-		return Profile{}, fmt.Errorf("sandbox: profile %q%s: network mode is required (one of %q, %q)",
-			name, fmtOrigin(origin), NetworkHost, NetworkLoopback)
-	default:
-		return Profile{}, fmt.Errorf("sandbox: profile %q%s: unknown network mode %q (want %q or %q)",
-			name, fmtOrigin(origin), body.Network, NetworkHost, NetworkLoopback)
-	}
-
-	for i, m := range body.Mounts {
-		mount, err := decodeMount(m, cwd, home)
-		if err != nil {
-			return Profile{}, fmt.Errorf("sandbox: profile %q%s: mount[%d]: %w", name, fmtOrigin(origin), i, err)
+		if !slices.Contains(p.AllowedExecPaths, expanded) {
+			p.AllowedExecPaths = append(p.AllowedExecPaths, expanded)
 		}
-		p.Mounts = append(p.Mounts, mount)
 	}
+
+	// Calls
+	p.Calls.Allow = append(p.Calls.Allow, body.Calls.Allow...)
+	p.Calls.Deny = append(p.Calls.Deny, body.Calls.Deny...)
+
+	// Env
+	if body.Env.Inherit {
+		p.Env.Inherit = true
+	}
+	maps.Copy(p.Env.Vars, body.Env.Vars)
 
 	return p, nil
+}
+
+func compilePaths(cwd, home string, paths PathsSpec, explicitMounts []mountSpec, baseMounts []Mount) ([]Mount, error) {
+	writeSet := make(map[string]bool)
+	var writes []string
+	for _, p := range paths.Write {
+		exp := expandPath(p, cwd, home)
+		if exp == "" {
+			continue
+		}
+		clean := filepath.Clean(exp)
+		if !writeSet[clean] {
+			writeSet[clean] = true
+			writes = append(writes, clean)
+		}
+	}
+
+	var reads []string
+	readSet := make(map[string]bool)
+	for _, p := range paths.Read {
+		exp := expandPath(p, cwd, home)
+		if exp == "" {
+			continue
+		}
+		clean := filepath.Clean(exp)
+		if writeSet[clean] {
+			continue
+		}
+		if !readSet[clean] {
+			readSet[clean] = true
+			reads = append(reads, clean)
+		}
+	}
+
+	type pathEntry struct {
+		path string
+		mode MountMode
+	}
+	allPaths := make([]pathEntry, 0, len(writes)+len(reads))
+	for _, w := range writes {
+		allPaths = append(allPaths, pathEntry{path: w, mode: MountRW})
+	}
+	for _, r := range reads {
+		allPaths = append(allPaths, pathEntry{path: r, mode: MountRO})
+	}
+
+	slices.SortFunc(allPaths, func(a, b pathEntry) int {
+		if len(a.path) != len(b.path) {
+			return len(a.path) - len(b.path)
+		}
+		return strings.Compare(a.path, b.path)
+	})
+
+	var mounts []Mount
+	for _, ap := range allPaths {
+		mounts = append(mounts, Mount{
+			Source:      ap.path,
+			Destination: ap.path,
+			Type:        MountBind,
+			Mode:        ap.mode,
+		})
+	}
+
+	// Base mounts
+	for _, bm := range baseMounts {
+		replaced := false
+		for i, m := range mounts {
+			if m.Destination == bm.Destination {
+				mounts[i] = m // child/paths override base
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			mounts = append(mounts, bm)
+		}
+	}
+
+	// Explicit mounts
+	for i, m := range explicitMounts {
+		decM, err := decodeMount(m, cwd, home)
+		if err != nil {
+			return nil, fmt.Errorf("mount[%d]: %w", i, err)
+		}
+		replaced := false
+		for j, em := range mounts {
+			if em.Destination == decM.Destination {
+				mounts[j] = decM
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			mounts = append(mounts, decM)
+		}
+	}
+
+	// Always ensure /tmp tmpfs mount is present if not already declared
+	hasTmp := false
+	for _, m := range mounts {
+		if m.Destination == "/tmp" {
+			hasTmp = true
+			break
+		}
+	}
+	if !hasTmp {
+		mounts = append(mounts, Mount{
+			Destination: "/tmp",
+			Type:        MountTmpfs,
+			Mode:        MountRW,
+		})
+	}
+
+	return mounts, nil
 }
 
 func decodeMount(m mountSpec, cwd, home string) (Mount, error) {
@@ -228,8 +581,6 @@ func decodeMount(m mountSpec, cwd, home string) (Mount, error) {
 	case string(MountRW):
 		out.Mode = MountRW
 	case "":
-		// Default: ro for binds (safer; user must opt into writes), rw
-		// for tmpfs (a read-only tmpfs is useless).
 		if out.Type == MountTmpfs {
 			out.Mode = MountRW
 		} else {
@@ -257,129 +608,6 @@ func isHostAbs(p string) bool {
 	return filepath.IsAbs(p) || filepath.VolumeName(p) != "" || strings.HasPrefix(p, "/") || strings.HasPrefix(p, "\\")
 }
 
-// composeProfile builds a profile on top of a built-in rung: the rung's
-// network unless the body overrides it, and the rung's mounts with the
-// body's mounts appended — a body mount replaces a rung mount with the
-// same destination. Composition can widen OR narrow a rung (e.g. remount
-// $HOME rw over host's ro); the result is the author's responsibility,
-// like any user profile.
-func composeProfile(name string, body profileBody, origin string) (Profile, error) {
-	switch body.Base {
-	case ProfileOpaque, ProfileNetAccess, ProfileHost:
-	default:
-		return Profile{}, fmt.Errorf(
-			"sandbox: profile %q%s: base %q must name a built-in profile (%s, %s, %s)",
-			name, fmtOrigin(origin), body.Base, ProfileOpaque, ProfileNetAccess, ProfileHost)
-	}
-	base, err := loadBuiltin(body.Base)
-	if err != nil {
-		return Profile{}, err
-	}
-
-	p := Profile{
-		Name:             name,
-		Driver:           base.Driver,
-		Image:            base.Image,
-		Network:          base.Network,
-		MaxMemoryMB:      base.MaxMemoryMB,
-		Timeout:          base.Timeout,
-		NoExec:           base.NoExec,
-		AllowedExecPaths: append([]string(nil), base.AllowedExecPaths...),
-	}
-
-	if body.Driver != "" {
-		p.Driver = body.Driver
-	}
-	if p.Driver == "" {
-		p.Driver = DriverDefault
-	}
-	if body.Image != "" {
-		p.Image = body.Image
-	}
-	if body.MaxMemory != "" {
-		mem, err := parseMemoryMB(body.MaxMemory)
-		if err != nil {
-			return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
-		}
-		p.MaxMemoryMB = mem
-	}
-	if body.Timeout != "" {
-		dur, err := parseDuration(body.Timeout)
-		if err != nil {
-			return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
-		}
-		p.Timeout = dur
-	}
-	if body.NoExec != nil {
-		p.NoExec = *body.NoExec
-	}
-
-	switch body.Network {
-	case "":
-	case string(NetworkHost):
-		p.Network = NetworkHost
-	case string(NetworkLoopback):
-		p.Network = NetworkLoopback
-	case string(NetworkNone):
-		p.Network = NetworkNone
-	default:
-		return Profile{}, fmt.Errorf("sandbox: profile %q%s: unknown network mode %q (want %q or %q)",
-			name, fmtOrigin(origin), body.Network, NetworkHost, NetworkLoopback)
-	}
-
-	cwd, err := os.Getwd()
-	if err != nil {
-		return Profile{}, fmt.Errorf("sandbox: profile %q: getwd: %w", name, err)
-	}
-	home, _ := os.UserHomeDir()
-
-	if len(body.AllowedExecPaths) > 0 {
-		p.AllowedExecPaths = nil
-		for i, rawPath := range body.AllowedExecPaths {
-			expanded := expandPath(rawPath, cwd, home)
-			if expanded == "" || !isHostAbs(expanded) {
-				return Profile{}, fmt.Errorf("sandbox: profile %q%s: allowed_exec_paths[%d]: %q must be an absolute path",
-					name, fmtOrigin(origin), i, rawPath)
-			}
-			p.AllowedExecPaths = append(p.AllowedExecPaths, expanded)
-		}
-	}
-
-	var added []Mount
-	for i, m := range body.Mounts {
-		mount, err := decodeMount(m, cwd, home)
-		if err != nil {
-			return Profile{}, fmt.Errorf("sandbox: profile %q%s: mount[%d]: %w", name, fmtOrigin(origin), i, err)
-		}
-		added = append(added, mount)
-	}
-	// User-authored mounts must exist on the host (the rung's own mounts
-	// were already filtered at loadBuiltin).
-	if err := validateSources(Profile{Name: name, Mounts: added}, origin); err != nil {
-		return Profile{}, err
-	}
-
-	override := make(map[string]int, len(added))
-	for i, m := range added {
-		override[m.Destination] = i
-	}
-	used := make(map[string]bool, len(added))
-	for _, m := range base.Mounts {
-		if i, ok := override[m.Destination]; ok {
-			p.Mounts = append(p.Mounts, added[i])
-			used[m.Destination] = true
-			continue
-		}
-		p.Mounts = append(p.Mounts, m)
-	}
-	for _, m := range added {
-		if !used[m.Destination] {
-			p.Mounts = append(p.Mounts, m)
-		}
-	}
-	return p, nil
-}
-
 func parseMemoryMB(s string) (int64, error) {
 	if s == "" {
 		return 0, nil
@@ -387,15 +615,15 @@ func parseMemoryMB(s string) (int64, error) {
 	s = strings.TrimSpace(s)
 	multiplier := int64(1)
 	upper := strings.ToUpper(s)
-	if strings.HasSuffix(upper, "GB") || strings.HasSuffix(upper, "G") {
+	if strings.HasSuffix(upper, "GIB") || strings.HasSuffix(upper, "GI") || strings.HasSuffix(upper, "GB") || strings.HasSuffix(upper, "G") {
 		multiplier = 1024
-		s = strings.TrimRight(s, "gGbB")
-	} else if strings.HasSuffix(upper, "MB") || strings.HasSuffix(upper, "M") {
+		s = strings.TrimRight(s, "gGbBiI")
+	} else if strings.HasSuffix(upper, "MIB") || strings.HasSuffix(upper, "MI") || strings.HasSuffix(upper, "MB") || strings.HasSuffix(upper, "M") {
 		multiplier = 1
-		s = strings.TrimRight(s, "mMbB")
-	} else if strings.HasSuffix(upper, "KB") || strings.HasSuffix(upper, "K") {
+		s = strings.TrimRight(s, "mMbBiI")
+	} else if strings.HasSuffix(upper, "KIB") || strings.HasSuffix(upper, "KI") || strings.HasSuffix(upper, "KB") || strings.HasSuffix(upper, "K") {
 		multiplier = 0
-		s = strings.TrimRight(s, "kKbB")
+		s = strings.TrimRight(s, "kKbBiI")
 	}
 	var val int64
 	_, err := fmt.Sscanf(s, "%d", &val)
@@ -412,9 +640,6 @@ func parseDuration(s string) (time.Duration, error) {
 	return time.ParseDuration(s)
 }
 
-// validateSources checks that every bind-mount source exists on the host.
-// User-profile mounts fail loudly on a missing path (fail-closed on
-// misconfiguration); built-in rungs are filtered instead (loadBuiltin).
 func validateSources(p Profile, origin string) error {
 	for _, m := range p.Mounts {
 		if m.Type != MountBind {
@@ -428,26 +653,27 @@ func validateSources(p Profile, origin string) error {
 	return nil
 }
 
-// expandPath resolves $CWD and $HOME substitutions. Sources/destinations
-// may use "$CWD"/"$CWD/sub" for the directory `kite` was invoked from and
-// "$HOME"/"$HOME/sub" for the invoking user's home directory. Other
-// shell-style expansions (~, env vars) are intentionally NOT supported —
-// broad expansion makes profiles harder to audit.
 func expandPath(p, cwd, home string) string {
 	if p == "" {
 		return ""
 	}
-	if p == "$CWD" {
+	if p == "." || p == "$CWD" {
 		return cwd
+	}
+	if after, ok := strings.CutPrefix(p, "./"); ok {
+		return filepath.Join(cwd, after)
 	}
 	if rest, ok := strings.CutPrefix(p, "$CWD/"); ok {
 		return filepath.Join(cwd, rest)
 	}
 	if home != "" {
-		if p == "$HOME" {
+		if p == "$HOME" || p == "~" {
 			return home
 		}
 		if rest, ok := strings.CutPrefix(p, "$HOME/"); ok {
+			return filepath.Join(home, rest)
+		}
+		if rest, ok := strings.CutPrefix(p, "~/"); ok {
 			return filepath.Join(home, rest)
 		}
 	}
@@ -468,9 +694,271 @@ func errWithOrigin(err error, origin string) error {
 	return fmt.Errorf("%s: %w", origin, err)
 }
 
-// loadNamed resolves a profile name against the "sandbox:" maps of
-// ./config.yaml and ~/.starkite/config.yaml; the project-local file wins.
-// A name defined in neither file returns errProfileNotFound (wrapped).
+// CompilePermissions compiles a sandbox.Profile into a *libkite.PermissionConfig.
+func (p Profile) CompilePermissions() *libkite.PermissionConfig {
+	if !p.Enabled {
+		return &libkite.PermissionConfig{
+			Allow:   []string{"*.*"},
+			Deny:    append(slices.Clone(p.Calls.Deny), libkite.ExecDenyRules(p.Exec.Deny)...),
+			Default: libkite.DefaultAllow,
+		}
+	}
+
+	cfg := &libkite.PermissionConfig{
+		Default: libkite.DefaultDeny,
+	}
+
+	if p.Name == ProfileDenyAll || p.Name == ProfileOpaque {
+		if len(p.Paths.Read) == 0 && len(p.Paths.Write) == 0 && len(p.Exec.Allow) == 0 && len(p.Calls.Allow) == 0 {
+			for _, m := range p.Mounts {
+				if m.Destination == "/tmp" && m.Mode == MountRW {
+					cfg.Allow = append(cfg.Allow, libkite.PathWriteRules([]string{"/tmp"})...)
+				}
+			}
+			cfg.Allow = append(cfg.Allow, p.Calls.Allow...)
+			cfg.Deny = append(cfg.Deny, p.Calls.Deny...)
+			return cfg
+		}
+	}
+
+	if len(p.Paths.Read) > 0 {
+		cfg.Allow = append(cfg.Allow, libkite.PathReadRules(p.Paths.Read)...)
+	}
+	if len(p.Paths.Write) > 0 {
+		cfg.Allow = append(cfg.Allow, libkite.PathWriteRules(p.Paths.Write)...)
+	}
+
+	for _, m := range p.Mounts {
+		if m.Destination == "/tmp" {
+			if m.Mode == MountRW {
+				cfg.Allow = append(cfg.Allow, libkite.PathWriteRules([]string{"/tmp"})...)
+			} else {
+				cfg.Allow = append(cfg.Allow, libkite.PathReadRules([]string{"/tmp"})...)
+			}
+			continue
+		}
+		if m.Mode == MountRW {
+			cfg.Allow = append(cfg.Allow, libkite.PathWriteRules([]string{m.Destination})...)
+			if m.Type == MountBind && m.Source != "" && m.Source != m.Destination {
+				cfg.Allow = append(cfg.Allow, libkite.PathWriteRules([]string{m.Source})...)
+			}
+		} else {
+			cfg.Allow = append(cfg.Allow, libkite.PathReadRules([]string{m.Destination})...)
+			if m.Type == MountBind && m.Source != "" && m.Source != m.Destination {
+				cfg.Allow = append(cfg.Allow, libkite.PathReadRules([]string{m.Source})...)
+			}
+		}
+	}
+
+	if len(p.Paths.Read) > 0 || len(p.Paths.Write) > 0 || len(p.Mounts) > 0 {
+		if !slices.Contains(p.Calls.Deny, "os.env") {
+			cfg.Allow = append(cfg.Allow, "os.env")
+		}
+		if !slices.Contains(p.Calls.Deny, "io.prompt") {
+			cfg.Allow = append(cfg.Allow, "io.prompt")
+		}
+	}
+
+	if len(p.Exec.Allow) > 0 {
+		cfg.Allow = append(cfg.Allow, libkite.ExecAllowRules(p.Exec.Allow)...)
+	}
+	if len(p.Exec.Deny) > 0 {
+		cfg.Deny = append(cfg.Deny, libkite.ExecDenyRules(p.Exec.Deny)...)
+	}
+	if !p.NoExec && len(p.AllowedExecPaths) > 0 && len(p.Exec.Allow) == 0 {
+		cfg.Allow = append(cfg.Allow, libkite.ExecAllowRules(p.AllowedExecPaths)...)
+	}
+
+	if p.Network != "" || len(p.NetworkAllow) > 0 {
+		netRules := libkite.NetworkAllowRules(string(p.Network), p.NetworkAllow)
+		cfg.Allow = append(cfg.Allow, netRules...)
+	}
+
+	cfg.Allow = append(cfg.Allow, p.Calls.Allow...)
+	cfg.Deny = append(cfg.Deny, p.Calls.Deny...)
+
+	return cfg
+}
+
+// CompileEnv compiles the execution environment based on the profile's Env policy.
+func (p Profile) CompileEnv(hostEnv []string) []string {
+	envMap := make(map[string]string)
+	if p.Env.Inherit {
+		for _, e := range hostEnv {
+			k, v, ok := strings.Cut(e, "=")
+			if ok {
+				envMap[k] = v
+			}
+		}
+	} else {
+		baselineKeys := []string{"PATH", "TERM", "LANG", "TZ"}
+		for _, e := range hostEnv {
+			k, v, ok := strings.Cut(e, "=")
+			if ok && slices.Contains(baselineKeys, k) {
+				envMap[k] = v
+			}
+		}
+		envMap["HOME"] = "/tmp"
+		envMap["TMPDIR"] = "/tmp"
+	}
+
+	for k, vPtr := range p.Env.Vars {
+		if vPtr == nil {
+			for _, e := range hostEnv {
+				hk, hv, ok := strings.Cut(e, "=")
+				if ok && hk == k {
+					envMap[k] = hv
+					break
+				}
+			}
+		} else {
+			envMap[k] = *vPtr
+		}
+	}
+
+	res := make([]string, 0, len(envMap))
+	for k, v := range envMap {
+		res = append(res, fmt.Sprintf("%s=%s", k, v))
+	}
+	slices.Sort(res)
+	return res
+}
+
+// ResolvePermissions resolves a profile name against SandboxConfig or built-in ladder profiles.
+func ResolvePermissions(profileName string, cfg *SandboxConfig) (*libkite.PermissionConfig, error) {
+	if profileName == "" {
+		if cfg != nil {
+			if body, ok := cfg.Profiles[DefaultProfileName]; ok {
+				p, err := profileFromBody(DefaultProfileName, body, "config")
+				if err != nil {
+					return nil, err
+				}
+				return p.CompilePermissions(), nil
+			}
+		}
+		return libkite.DenyAllPermissions(), nil
+	}
+
+	switch profileName {
+	case "allow-fs":
+		return libkite.SandboxPathPermissions(), nil
+	case "allow-local":
+		return libkite.SandboxExecPermissions(), nil
+	case "allow-net":
+		return libkite.SandboxNetPermissions(), nil
+	case "allow-all":
+		return libkite.AllowAllPermissions(), nil
+	}
+
+	switch profileName {
+	case ProfileDenyAll:
+		return libkite.DenyAllPermissions(), nil
+	case ProfileSandboxPath:
+		return libkite.SandboxPathPermissions(), nil
+	case ProfileSandboxExec:
+		return libkite.SandboxExecPermissions(), nil
+	case ProfileSandboxNet:
+		return libkite.SandboxNetPermissions(), nil
+	case ProfileUnconfined:
+		return libkite.AllowAllPermissions(), nil
+	}
+
+	if cfg != nil {
+		if body, ok := cfg.Profiles[profileName]; ok {
+			p, err := profileFromBody(profileName, body, "config")
+			if err != nil {
+				return nil, err
+			}
+			return p.CompilePermissions(), nil
+		}
+	}
+
+	p, err := LoadProfile(profileName)
+	if err == nil {
+		return p.CompilePermissions(), nil
+	}
+
+	return nil, fmt.Errorf("unknown profile %q", profileName)
+}
+
+func loadProfileResolved(value string) (Profile, error) {
+	if value == "" {
+		return Profile{}, nil
+	}
+
+	switch value {
+	case ProfileDenyAll, ProfileOpaque:
+		return loadBuiltin(ProfileOpaque)
+	case ProfileNetAccess:
+		return loadBuiltin(ProfileNetAccess)
+	case ProfileHost:
+		return loadBuiltin(ProfileHost)
+	case ProfileSandboxPath, "allow-fs":
+		cwd, _ := os.Getwd()
+		return Profile{
+			Name:    value,
+			Enabled: true,
+			Driver:  DriverDefault,
+			Paths:   PathsSpec{Read: []string{cwd}, Write: []string{cwd}},
+			Exec:    ExecPolicySpec{Deny: []string{"*"}},
+			NoExec:  true,
+			Network: NetworkNone,
+			Mounts: []Mount{
+				{Source: cwd, Destination: cwd, Type: MountBind, Mode: MountRW},
+				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
+			},
+		}, nil
+	case ProfileSandboxExec, "allow-local":
+		cwd, _ := os.Getwd()
+		return Profile{
+			Name:    value,
+			Enabled: true,
+			Driver:  DriverDefault,
+			Paths:   PathsSpec{Read: []string{cwd}, Write: []string{cwd}},
+			Exec:    ExecPolicySpec{Allow: []string{"*"}},
+			NoExec:  false,
+			Network: NetworkNone,
+			Mounts: []Mount{
+				{Source: cwd, Destination: cwd, Type: MountBind, Mode: MountRW},
+				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
+			},
+		}, nil
+	case ProfileSandboxNet, "allow-net":
+		cwd, _ := os.Getwd()
+		return Profile{
+			Name:    value,
+			Enabled: true,
+			Driver:  DriverDefault,
+			Paths:   PathsSpec{Read: []string{cwd}, Write: []string{cwd}},
+			Exec:    ExecPolicySpec{Allow: []string{"*"}},
+			NoExec:  false,
+			Network: NetworkHost,
+			Mounts: []Mount{
+				{Source: cwd, Destination: cwd, Type: MountBind, Mode: MountRW},
+				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
+			},
+		}, nil
+	case ProfileUnconfined, "allow-all":
+		return Profile{
+			Name:    ProfileUnconfined,
+			Enabled: false,
+			Driver:  DriverDefault,
+			Network: NetworkHost,
+			NoExec:  false,
+		}, nil
+	}
+
+	if value == DefaultProfileName {
+		p, err := loadNamed(DefaultProfileName)
+		if errors.Is(err, errProfileNotFound) {
+			return loadBuiltin(ProfileOpaque)
+		}
+		return p, err
+	}
+
+	return loadNamed(value)
+}
+
 func loadNamed(name string) (Profile, error) {
 	paths := []string{"config.yaml"}
 	if home, err := os.UserHomeDir(); err == nil {
@@ -480,7 +968,7 @@ func loadNamed(name string) (Profile, error) {
 	var defined []string
 	var searched []string
 	for _, path := range paths {
-		sf, err := readSecurityFile(path)
+		cfg, err := readConfigFile(path)
 		if err != nil {
 			var pathErr *os.PathError
 			if errors.As(err, &pathErr) && errors.Is(pathErr.Err, os.ErrNotExist) {
@@ -488,11 +976,21 @@ func loadNamed(name string) (Profile, error) {
 			}
 			return Profile{}, err
 		}
-		searched = append(searched, path)
-		if spec, ok := sf.Sandbox[name]; ok {
-			return profileFromSpec(name, spec, path)
+		if cfg == nil {
+			continue
 		}
-		for n := range sf.Sandbox {
+		searched = append(searched, path)
+		if body, ok := cfg.Profiles[name]; ok {
+			p, err := profileFromBody(name, body, path)
+			if err != nil {
+				return Profile{}, err
+			}
+			if err := validateSources(p, path); err != nil {
+				return Profile{}, err
+			}
+			return p, nil
+		}
+		for n := range cfg.Profiles {
 			defined = append(defined, n)
 		}
 	}
@@ -508,48 +1006,44 @@ func loadNamed(name string) (Profile, error) {
 		ProfileOpaque, ProfileNetAccess, ProfileHost)
 }
 
-// readSecurityFile parses path's "sandbox:" section.
-func readSecurityFile(path string) (*securityFile, error) {
+func readConfigFile(path string) (*SandboxConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("sandbox: %w", err)
 	}
-	var sf securityFile
-	dec := yaml.NewDecoder(strings.NewReader(string(data)))
-	// Note: KnownFields off here. The file legitimately contains other
-	// sections (config:, permissions:). Schema strictness is applied
-	// per-profile via profileFromSpec.
-	if err := dec.Decode(&sf); err != nil {
-		// Empty file is fine; treat as no sandbox section.
-		if strings.Contains(err.Error(), "EOF") {
-			return &sf, nil
-		}
-		return nil, fmt.Errorf("sandbox: parse %s: %w", path, err)
-	}
-	return &sf, nil
+	return ParseConfigFileData(data, path)
 }
 
-// profileFromSpec builds a Profile from one "sandbox:" map value. A scalar
-// (shorthand for {base: <rung>}) resolves to its built-in rung; a map body
-// is re-decoded strictly (unknown fields error), composed on its base when
-// one is named, and its own bind sources must exist on the host.
-func profileFromSpec(name string, spec profileSpec, origin string) (Profile, error) {
-	if spec.Base != "" {
-		return composeProfile(name, profileBody{Base: spec.Base}, origin)
+// ParseConfigFileData parses configuration bytes, strictly rejecting legacy permissions:.
+func ParseConfigFileData(data []byte, origin string) (*SandboxConfig, error) {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
+		return nil, fmt.Errorf("sandbox: parse %s: %w", origin, err)
+	}
+	if len(root.Content) == 0 {
+		return nil, nil
+	}
+	top := root.Content[0]
+	if top.Kind != yaml.MappingNode {
+		return nil, nil
 	}
 
-	raw, err := yaml.Marshal(&spec.Node)
-	if err != nil {
-		return Profile{}, fmt.Errorf("sandbox: profile %q: re-marshal: %w", name, err)
+	var sandboxNode *yaml.Node
+	for i := 0; i < len(top.Content); i += 2 {
+		key := top.Content[i].Value
+		val := top.Content[i+1]
+		if key == "permissions" {
+			if val.Kind != 0 && (val.Kind != yaml.ScalarNode || val.Tag != "!!null") {
+				return nil, fmt.Errorf("top-level \"permissions:\" section is no longer supported; define capabilities in \"sandbox:\"")
+			}
+		}
+		if key == "sandbox" {
+			sandboxNode = val
+		}
 	}
-	p, err := decodeProfile(name, raw, origin)
-	if err != nil {
-		return Profile{}, err
+
+	if sandboxNode == nil {
+		return nil, nil
 	}
-	// Composed profiles re-validate harmlessly: the base's mounts were
-	// filtered to existing sources and the additions already validated.
-	if err := validateSources(p, origin); err != nil {
-		return Profile{}, err
-	}
-	return p, nil
+	return DecodeConfigNode(sandboxNode)
 }

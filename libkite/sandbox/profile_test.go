@@ -3,9 +3,12 @@ package sandbox
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/project-starkite/starkite/libkite"
 )
 
 func TestLoadProfile_empty(t *testing.T) {
@@ -505,9 +508,6 @@ func TestLoadProfile_fromNamed_userConfig(t *testing.T) {
 	writeFile(t, filepath.Join(cfgDir, "config.yaml"), `
 config:
   environment: dev
-permissions:
-  ci:
-    allow: [fs.read]
 sandbox:
   hometest:
     network: host
@@ -855,5 +855,226 @@ sandbox:
 
 	if _, err := LoadProfile("bad-exec-path"); err == nil || !strings.Contains(err.Error(), "must be an absolute path") {
 		t.Errorf("expected relative allowed_exec_paths to fail validation, got: %v", err)
+	}
+}
+
+func TestPermissionsSectionRejected(t *testing.T) {
+	work := t.TempDir()
+	cfgPath := filepath.Join(work, "config.yaml")
+	writeFile(t, cfgPath, `
+permissions:
+  legacy:
+    allow: [fs.read]
+sandbox:
+  enabled: true
+`)
+	_, err := readConfigFile(cfgPath)
+	if err == nil {
+		t.Fatal("expected rejection of legacy permissions: section, got nil")
+	}
+	want := `top-level "permissions:" section is no longer supported; define capabilities in "sandbox:"`
+	if !strings.Contains(err.Error(), want) {
+		t.Errorf("error = %q, want substring %q", err.Error(), want)
+	}
+}
+
+func TestUnifiedSandboxSchema(t *testing.T) {
+	work := t.TempDir()
+	cfgPath := filepath.Join(work, "config.yaml")
+	writeFile(t, cfgPath, `
+sandbox:
+  enabled: true
+
+  default:
+    paths:
+      read: ["."]
+      write: []
+    exec:
+      deny: ["*"]
+    network: none
+    env:
+      inherit: false
+
+  ci-builder:
+    driver: auto
+    max_memory: 2Gi
+    timeout: 15m
+    paths:
+      read:
+        - .
+        - /etc/ssl/certs
+      write:
+        - ./dist
+        - /tmp
+    exec:
+      allow:
+        - git
+        - go
+        - docker
+      deny:
+        - rm
+        - dd
+    network:
+      allow:
+        - "*.golang.org:443"
+        - "ghcr.io:443"
+    calls:
+      allow:
+        - "os.*"
+      deny:
+        - "os.exit"
+    env:
+      inherit: false
+      GITHUB_TOKEN:
+      GOPROXY: "https://proxy.golang.org,direct"
+
+  unconfined:
+    enabled: false
+`)
+	t.Chdir(work)
+	cfg, err := readConfigFile(cfgPath)
+	if err != nil {
+		t.Fatalf("readConfigFile: %v", err)
+	}
+	if !cfg.Enabled {
+		t.Error("expected sandbox.enabled = true")
+	}
+	if len(cfg.Profiles) != 3 {
+		t.Fatalf("got %d profiles, want 3", len(cfg.Profiles))
+	}
+
+	// Verify unconfined
+	pUnconfined, err := profileFromBody("unconfined", cfg.Profiles["unconfined"], cfgPath)
+	if err != nil {
+		t.Fatalf("profileFromBody(unconfined): %v", err)
+	}
+	if pUnconfined.Enabled {
+		t.Error("unconfined should have Enabled=false")
+	}
+	unconfinedPerms := pUnconfined.CompilePermissions()
+	if unconfinedPerms.Default != libkite.DefaultAllow {
+		t.Errorf("unconfined default = %v, want DefaultAllow", unconfinedPerms.Default)
+	}
+
+	// Verify ci-builder
+	pCI, err := profileFromBody("ci-builder", cfg.Profiles["ci-builder"], cfgPath)
+	if err != nil {
+		t.Fatalf("profileFromBody(ci-builder): %v", err)
+	}
+	if pCI.MaxMemoryMB != 2048 {
+		t.Errorf("MaxMemoryMB = %d, want 2048", pCI.MaxMemoryMB)
+	}
+	if pCI.Timeout != 15*time.Minute {
+		t.Errorf("Timeout = %v, want 15m", pCI.Timeout)
+	}
+	if pCI.Network != NetworkHost {
+		t.Errorf("Network = %v, want host", pCI.Network)
+	}
+	if len(pCI.NetworkAllow) != 2 {
+		t.Errorf("len(NetworkAllow) = %d, want 2", len(pCI.NetworkAllow))
+	}
+	if pCI.NoExec {
+		t.Error("ci-builder has exec.allow, NoExec must be false")
+	}
+
+	// Mount synthesis and conflict resolution
+	// . is read, but ./dist is write -> both should be present, dist rw and . ro
+	var hasDistRW, hasDotRO, hasTmpRW bool
+	for _, m := range pCI.Mounts {
+		if m.Destination == filepath.Join(work, "dist") && m.Mode == MountRW {
+			hasDistRW = true
+		}
+		if m.Destination == work && m.Mode == MountRO {
+			hasDotRO = true
+		}
+		if m.Destination == "/tmp" && m.Mode == MountRW {
+			hasTmpRW = true
+		}
+	}
+	if !hasDistRW {
+		t.Errorf("missing dist RW mount in %+v", pCI.Mounts)
+	}
+	if !hasDotRO {
+		t.Errorf("missing . RO mount in %+v", pCI.Mounts)
+	}
+	if !hasTmpRW {
+		t.Errorf("missing /tmp RW tmpfs mount in %+v", pCI.Mounts)
+	}
+
+	// Dual-engine compilation to libkite.PermissionConfig
+	ciPerms := pCI.CompilePermissions()
+	if ciPerms.Default != libkite.DefaultDeny {
+		t.Errorf("ci-builder default = %v, want DefaultDeny", ciPerms.Default)
+	}
+	// Calls allow/deny
+	if !slices.Contains(ciPerms.Allow, "os.*") {
+		t.Errorf("ciPerms missing os.* in Allow: %v", ciPerms.Allow)
+	}
+	if !slices.Contains(ciPerms.Deny, "os.exit") {
+		t.Errorf("ciPerms missing os.exit in Deny: %v", ciPerms.Deny)
+	}
+	// Exec allow/deny
+	if !slices.Contains(ciPerms.Allow, "os.exec(git)") {
+		t.Errorf("ciPerms missing os.exec(git) in Allow: %v", ciPerms.Allow)
+	}
+	if !slices.Contains(ciPerms.Deny, "os.exec(rm)") {
+		t.Errorf("ciPerms missing os.exec(rm) in Deny: %v", ciPerms.Deny)
+	}
+
+	// Env compilation
+	hostEnv := []string{
+		"PATH=/usr/bin:/bin",
+		"GITHUB_TOKEN=secret123",
+		"SUPER_SECRET=ignoreme",
+		"TERM=xterm-256color",
+	}
+	compiledEnv := pCI.CompileEnv(hostEnv)
+	if !slices.Contains(compiledEnv, "GITHUB_TOKEN=secret123") {
+		t.Errorf("CompileEnv missing forwarded GITHUB_TOKEN: %v", compiledEnv)
+	}
+	if !slices.Contains(compiledEnv, "GOPROXY=https://proxy.golang.org,direct") {
+		t.Errorf("CompileEnv missing static GOPROXY: %v", compiledEnv)
+	}
+	for _, e := range compiledEnv {
+		if strings.HasPrefix(e, "SUPER_SECRET=") {
+			t.Errorf("CompileEnv leaked uninherited SUPER_SECRET: %v", e)
+		}
+	}
+}
+
+func TestResolvePermissions(t *testing.T) {
+	cfg := &SandboxConfig{
+		Profiles: map[string]ProfileBody{
+			"custom": {
+				Paths: PathsSpec{Read: []string{"/custom/read"}},
+			},
+		},
+	}
+
+	// Built-in ladder resolution
+	pPath, err := ResolvePermissions("sandbox-path", cfg)
+	if err != nil {
+		t.Fatalf("ResolvePermissions(sandbox-path): %v", err)
+	}
+	if pPath == nil || pPath.Default != libkite.DefaultDeny {
+		t.Errorf("unexpected pPath: %+v", pPath)
+	}
+
+	// Legacy alias resolution
+	pLegacy, err := ResolvePermissions("allow-fs", cfg)
+	if err != nil {
+		t.Fatalf("ResolvePermissions(allow-fs): %v", err)
+	}
+	if pLegacy == nil || pLegacy.Default != libkite.DefaultDeny {
+		t.Errorf("unexpected pLegacy: %+v", pLegacy)
+	}
+
+	// Custom profile resolution
+	pCustom, err := ResolvePermissions("custom", cfg)
+	if err != nil {
+		t.Fatalf("ResolvePermissions(custom): %v", err)
+	}
+	if !slices.Contains(pCustom.Allow, "fs.read(/custom/read/**)") {
+		t.Errorf("pCustom missing fs.read(/custom/read/**): %v", pCustom.Allow)
 	}
 }

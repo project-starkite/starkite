@@ -13,7 +13,6 @@ import (
 
 	"github.com/project-starkite/starkite/basekite/varstore"
 	"github.com/project-starkite/starkite/libkite"
-	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
 )
@@ -118,7 +117,7 @@ func runTests(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	perms, err := permissions.Resolve(permissionsMode, varStore.Permissions)
+	perms, err := sandbox.ResolvePermissions(permissionsMode, varStore.Sandbox)
 	if err != nil {
 		return err
 	}

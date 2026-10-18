@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/project-starkite/starkite/libkite"
-	"github.com/project-starkite/starkite/libkite/permissions"
+	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"go.starlark.net/syntax"
@@ -185,7 +185,7 @@ func runScript(cmd *cobra.Command, args []string) error {
 	// Create registry with all modules
 	registry := NewRegistry(moduleConfig)
 
-	perms, err := permissions.Resolve(permissionsMode, varStore.Permissions)
+	perms, err := sandbox.ResolvePermissions(permissionsMode, varStore.Sandbox)
 	if err != nil {
 		return err
 	}

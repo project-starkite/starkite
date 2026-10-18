@@ -126,7 +126,7 @@ def test():
 def test():
     return os.exec("id", userid=%q)
 `, currUser.Username),
-			permissions: libkite.AllowLocalPermissions(),
+			permissions: libkite.SandboxPathPermissions(),
 			wantErr:     "permission denied",
 			skipWindows: true,
 		},

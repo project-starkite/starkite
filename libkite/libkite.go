@@ -46,11 +46,11 @@
 // The permission system controls which operations scripts can perform. The
 // built-in profiles form a capability ladder, each a superset of the prior:
 //
-//   - DenyAllPermissions()   - pure compute only; no fs, net, or exec
-//   - AllowFSPermissions()   - read any file; write within $CWD; env
-//   - AllowNetPermissions()  - adds http.client and ssh
-//   - AllowLocalPermissions()- adds serve, $CWD-scoped exec, ai/k8s/mcp
-//   - AllowAllPermissions()  - unrestricted, including arbitrary exec
+//   - DenyAllPermissions()     - pure compute only; no fs, net, or exec
+//   - SandboxPathPermissions() - read/write within scoped paths ($CWD); env
+//   - SandboxExecPermissions() - adds process and shell execution
+//   - SandboxNetPermissions()  - adds http, ssh, db, k8s, mcp, containers
+//   - AllowAllPermissions()    - unrestricted (unconfined)
 //   - Custom PermissionConfig - fine-grained control with allow/deny rules
 //
 // Permission rules use the format: "module.function" or "module.function(resource)"

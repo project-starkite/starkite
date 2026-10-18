@@ -599,48 +599,195 @@ func DenyAllPermissions() *PermissionConfig {
 // superset of the one below. All use DefaultDeny (allow-list semantics) — a
 // capability is granted only if it appears in the allow set.
 
-// allow-fs: read any file; create/modify/delete only within the working tree
-// ($CWD); environment and interactive prompts. No network or exec.
-var allowFSRules = []string{
-	"fs.read",
+// sandboxPathRules are the capabilities granted at Level 1 (sandbox-path):
+// workspace filesystem read/write/delete, interactive prompt, environment read,
+// and local SQLite databases under $CWD.
+var sandboxPathRules = []string{
+	"fs.read($CWD/**)",
 	"fs.write($CWD/**)",
 	"fs.delete($CWD/**)",
 	"os.env",
 	"io.prompt",
-	"sql.open(sqlite:**)", // SQLite is file I/O
+	"sql.open(sqlite:$CWD/**)",
+	"sql.open(sqlite::memory:)",
 }
 
-// allow-net: allow-fs plus low-level protocol networking.
-var allowNetRules = append(append([]string{}, allowFSRules...),
+// sandboxExecRules are the capabilities added at Level 2 (sandbox-exec):
+// process and shell execution.
+var sandboxExecRules = []string{
+	"os.exec",
+	"os.shell",
+}
+
+// sandboxNetRules are the capabilities added at Level 3 (sandbox-net):
+// outbound/inbound HTTP, SSH, networked SQL drivers, Kubernetes, MCP, and containers.
+var sandboxNetRules = []string{
 	"http.client",
-	"ssh.connect", "ssh.transfer",
-	"sql.open(postgres:**)", "sql.open(mysql:**)", // networked databases
-)
-
-// allow-local: allow-net plus serve, $CWD-scoped exec, and higher-level
-// networked services (k8s, mcp). Withholds unrestricted exec, k8s.exec,
-// and process control — that is the line to allow-all.
-var allowLocalRules = append(append([]string{}, allowNetRules...),
 	"http.server",
-	"os.exec($CWD/**)",
-	"k8s.read", "k8s.write", "k8s.config",
-	"mcp.client", "mcp.server",
-	"containers.connect", "containers.read", "containers.write", "containers.manage",
-)
+	"ssh.connect",
+	"ssh.transfer",
+	"sql.open(postgres:**)",
+	"sql.open(mysql:**)",
+	"k8s.read",
+	"k8s.write",
+	"k8s.config",
+	"mcp.client",
+	"mcp.server",
+	"containers.*",
+}
 
-// AllowFSPermissions returns the allow-fs profile.
+// SandboxPathPermissions returns the Level 1 sandbox-path profile.
+func SandboxPathPermissions() *PermissionConfig {
+	return &PermissionConfig{Allow: slices.Clone(sandboxPathRules), Default: DefaultDeny}
+}
+
+// SandboxExecPermissions returns the Level 2 sandbox-exec profile.
+func SandboxExecPermissions() *PermissionConfig {
+	return &PermissionConfig{Allow: slices.Concat(sandboxPathRules, sandboxExecRules), Default: DefaultDeny}
+}
+
+// SandboxNetPermissions returns the Level 3 sandbox-net profile.
+func SandboxNetPermissions() *PermissionConfig {
+	return &PermissionConfig{Allow: slices.Concat(sandboxPathRules, sandboxExecRules, sandboxNetRules), Default: DefaultDeny}
+}
+
+// AllowFSPermissions returns the sandbox-path profile.
 func AllowFSPermissions() *PermissionConfig {
-	return &PermissionConfig{Allow: append([]string{}, allowFSRules...), Default: DefaultDeny}
+	return SandboxPathPermissions()
 }
 
-// AllowNetPermissions returns the allow-net profile.
-func AllowNetPermissions() *PermissionConfig {
-	return &PermissionConfig{Allow: append([]string{}, allowNetRules...), Default: DefaultDeny}
-}
-
-// AllowLocalPermissions returns the allow-local profile.
+// AllowLocalPermissions returns the sandbox-exec profile.
 func AllowLocalPermissions() *PermissionConfig {
-	return &PermissionConfig{Allow: append([]string{}, allowLocalRules...), Default: DefaultDeny}
+	return SandboxExecPermissions()
+}
+
+// AllowNetPermissions returns the sandbox-net profile.
+func AllowNetPermissions() *PermissionConfig {
+	return SandboxNetPermissions()
+}
+
+// PathReadRules generates fs.read and sqlite read rules for the provided paths.
+func PathReadRules(paths []string) []string {
+	var rules []string
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if p == "." || p == "./" {
+			p = "$CWD"
+		} else if after, ok := strings.CutPrefix(p, "./"); ok {
+			p = "$CWD/" + after
+		}
+		if p != "/" {
+			p = strings.TrimRight(p, "/")
+		}
+		if p == "/" {
+			rules = append(rules, "fs.read(/**)", "sql.open(sqlite:/**)")
+		} else {
+			rules = append(rules,
+				fmt.Sprintf("fs.read(%s/**)", p),
+				fmt.Sprintf("fs.read(%s)", p),
+				fmt.Sprintf("sql.open(sqlite:%s/**)", p),
+			)
+		}
+	}
+	return rules
+}
+
+// PathWriteRules generates fs.read, fs.write, fs.delete, and sqlite rules for the provided paths.
+func PathWriteRules(paths []string) []string {
+	var rules []string
+	for _, p := range paths {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		if p == "." || p == "./" {
+			p = "$CWD"
+		} else if after, ok := strings.CutPrefix(p, "./"); ok {
+			p = "$CWD/" + after
+		}
+		if p != "/" {
+			p = strings.TrimRight(p, "/")
+		}
+		rules = append(rules, PathReadRules([]string{p})...)
+		if p == "/" {
+			rules = append(rules,
+				"fs.write(/**)",
+				"fs.delete(/**)",
+				"sql.open(sqlite::memory:)",
+			)
+		} else {
+			rules = append(rules,
+				fmt.Sprintf("fs.write(%s/**)", p),
+				fmt.Sprintf("fs.write(%s)", p),
+				fmt.Sprintf("fs.delete(%s/**)", p),
+				fmt.Sprintf("fs.delete(%s)", p),
+				"sql.open(sqlite::memory:)",
+			)
+		}
+	}
+	return rules
+}
+
+// ExecAllowRules generates os.exec and os.shell allow rules for the given binaries.
+func ExecAllowRules(bins []string) []string {
+	var rules []string
+	for _, b := range bins {
+		b = strings.TrimSpace(b)
+		if b == "" {
+			continue
+		}
+		if b == "*" {
+			rules = append(rules, "os.exec", "os.shell")
+		} else {
+			rules = append(rules, fmt.Sprintf("os.exec(%s)", b))
+			if !strings.HasPrefix(b, "/") && !strings.HasPrefix(b, ".") && !strings.HasPrefix(b, "$") {
+				rules = append(rules, fmt.Sprintf("os.exec(/**/%s)", b))
+			}
+		}
+	}
+	return rules
+}
+
+// ExecDenyRules generates os.exec and os.shell deny rules for the given binaries.
+func ExecDenyRules(bins []string) []string {
+	var rules []string
+	for _, b := range bins {
+		b = strings.TrimSpace(b)
+		if b == "" {
+			continue
+		}
+		if b == "*" {
+			rules = append(rules, "os.exec", "os.shell")
+		} else {
+			rules = append(rules, fmt.Sprintf("os.exec(%s)", b))
+			if !strings.HasPrefix(b, "/") && !strings.HasPrefix(b, ".") && !strings.HasPrefix(b, "$") {
+				rules = append(rules, fmt.Sprintf("os.exec(/**/%s)", b))
+			}
+		}
+	}
+	return rules
+}
+
+// NetworkAllowRules returns the network capability rules for the given mode and allowed endpoints.
+func NetworkAllowRules(mode string, allowEndpoints []string) []string {
+	if mode == "none" && len(allowEndpoints) == 0 {
+		return nil
+	}
+	if mode == "loopback" && len(allowEndpoints) == 0 {
+		return []string{
+			"http.client(http://localhost*)",
+			"http.client(http://127.0.0.1*)",
+			"http.client(http://[::1]*)",
+			"http.server",
+		}
+	}
+	if mode == "host" || len(allowEndpoints) > 0 {
+		return slices.Clone(sandboxNetRules)
+	}
+	return nil
 }
 
 type ladderEntry struct {
@@ -669,10 +816,10 @@ func getSuggestLadder() []ladderEntry {
 		name string
 		cfg  *PermissionConfig
 	}{
-		{"allow-fs", AllowFSPermissions()},
-		{"allow-net", AllowNetPermissions()},
-		{"allow-local", AllowLocalPermissions()},
-		{"allow-all", AllowAllPermissions()},
+		{"sandbox-path", SandboxPathPermissions()},
+		{"sandbox-exec", SandboxExecPermissions()},
+		{"sandbox-net", SandboxNetPermissions()},
+		{"unconfined", AllowAllPermissions()},
 	}
 
 	built := make([]ladderEntry, 0, len(profiles))
@@ -692,17 +839,14 @@ func getSuggestLadder() []ladderEntry {
 
 // suggestProfile returns the lowest built-in profile on the capability ladder
 // that would actually grant this specific call, for prescriptive denial
-// messages. It tests the real profiles (resource-scoped rules included), so
-// e.g. exec of a $CWD binary suggests allow-local while exec of a system
-// binary suggests allow-all. The names match the built-in profile constants in
-// libkite/permissions.
+// messages.
 func suggestProfile(module, category, function, resource string) string {
 	for _, entry := range getSuggestLadder() {
 		if entry.checker.allows(module, category, function, resource) {
 			return entry.name
 		}
 	}
-	return "allow-all"
+	return "unconfined"
 }
 
 // AllowPermissions creates a permissive config with specific denials.

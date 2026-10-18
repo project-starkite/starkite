@@ -10,7 +10,6 @@ package sandbox
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"runtime"
 	"time"
@@ -130,35 +129,73 @@ type Mount struct {
 	Mode        MountMode // rw | ro
 }
 
+// PathsSpec declares readable and writable host paths for a sandbox profile.
+type PathsSpec struct {
+	Read  []string `yaml:"read,omitempty"`
+	Write []string `yaml:"write,omitempty"`
+}
+
+// ExecPolicySpec declares allowed and denied binaries for process execution.
+type ExecPolicySpec struct {
+	Allow []string `yaml:"allow,omitempty"`
+	Deny  []string `yaml:"deny,omitempty"`
+}
+
+// CallsPolicySpec declares allowed and denied Starlark module.category(resource) calls.
+type CallsPolicySpec struct {
+	Allow []string `yaml:"allow,omitempty"`
+	Deny  []string `yaml:"deny,omitempty"`
+}
+
+// EnvPolicySpec declares environment variable inheritance and explicit/passthrough vars.
+type EnvPolicySpec struct {
+	Inherit bool               `yaml:"inherit,omitempty"`
+	Vars    map[string]*string `yaml:"-"`
+}
+
 // Profile is the resolved sandbox configuration: the platform-agnostic
 // description that the runtime backend translates to a driver execution spec.
-//
-// Profile is loaded by LoadProfile from one of the built-in YAML files
-// embedded into the binary, or from a config.yaml "sandbox:" entry. Both
-// built-ins live as .yaml files in libkite/sandbox/profiles/ and are
-// embedded via go:embed.
 type Profile struct {
-	Name             string        // empty for "no sandbox"
-	Driver           string        // driver name: "default", "podman", "docker", "landlock", "seatbelt", etc.
-	Image            string        // container image (for container/podman/docker drivers)
-	Network          NetworkMode   // none | host | loopback
-	Mounts           []Mount       // filesystem mount list
-	MaxMemoryMB      int64         // memory limit in megabytes (0 = unconstrained)
-	Timeout          time.Duration // execution timeout (0 = unconstrained)
-	NoExec           bool          // disable subprocess execution inside the sandbox
-	AllowedExecPaths []string      // explicit allowlist of executable paths
+	Name             string          // empty for "no sandbox"
+	Enabled          bool            // true when OS sandbox confinement is active; false for unconfined
+	Driver           string          // driver name: "default", "podman", "docker", "landlock", "seatbelt", etc.
+	Image            string          // container image (for container/podman/docker drivers)
+	Network          NetworkMode     // none | host | loopback
+	NetworkAllow     []string        // allowed network endpoints
+	Mounts           []Mount         // filesystem mount list
+	Paths            PathsSpec       // readable and writable host paths
+	Exec             ExecPolicySpec  // process execution policy
+	Calls            CallsPolicySpec // Starlark API call policy
+	Env              EnvPolicySpec   // environment policy
+	MaxMemoryMB      int64           // memory limit in megabytes (0 = unconstrained)
+	Timeout          time.Duration   // execution timeout (0 = unconstrained)
+	NoExec           bool            // disable subprocess execution inside the sandbox
+	AllowedExecPaths []string        // explicit allowlist of executable paths
 }
 
 // IsZero reports whether the profile is the empty value, i.e. the caller
 // did not request a sandbox. Backends use this to short-circuit.
 func (p Profile) IsZero() bool {
-	return p.Name == ""
+	return p.Name == "" && !p.Enabled && p.Driver == "" && p.Image == "" &&
+		p.Network == "" && len(p.NetworkAllow) == 0 &&
+		len(p.Mounts) == 0 && len(p.Paths.Read) == 0 && len(p.Paths.Write) == 0 &&
+		len(p.Exec.Allow) == 0 && len(p.Exec.Deny) == 0 &&
+		len(p.Calls.Allow) == 0 && len(p.Calls.Deny) == 0 &&
+		!p.Env.Inherit && len(p.Env.Vars) == 0 &&
+		p.MaxMemoryMB == 0 && p.Timeout == 0 &&
+		!p.NoExec && len(p.AllowedExecPaths) == 0
 }
 
 // Built-in profile names — the capability ladder, each rung a superset of
-// the prior. Must match the basenames of the embedded YAML files under
-// libkite/sandbox/profiles/.
+// the prior.
 const (
+	ProfileDenyAll     = "deny-all"
+	ProfileSandboxPath = "sandbox-path"
+	ProfileSandboxExec = "sandbox-exec"
+	ProfileSandboxNet  = "sandbox-net"
+	ProfileUnconfined  = "unconfined"
+
+	// Existing rungs kept as aliases/built-ins
 	ProfileOpaque    = "opaque"
 	ProfileNetAccess = "net-access"
 	ProfileHost      = "host"
@@ -169,27 +206,10 @@ const (
 const DefaultProfileName = "default"
 
 // LoadProfile resolves a --sandbox value to a Profile. An empty value
-// returns the zero Profile (no sandbox). A value is a profile name only:
-//
-//  1. "default" (what a bare --sandbox sends): the "default" profile from
-//     config.yaml's sandbox: map when defined, else the opaque rung.
-//  2. A built-in rung: "opaque", "net-access", "host".
-//  3. A user profile defined under the "sandbox:" map in ./config.yaml or
-//     ~/.starkite/config.yaml (the project-local file wins).
+// returns the zero Profile (no sandbox).
 func LoadProfile(value string) (Profile, error) {
 	if value == "" {
 		return Profile{}, nil
 	}
-	if value == DefaultProfileName {
-		p, err := loadNamed(DefaultProfileName)
-		if errors.Is(err, errProfileNotFound) {
-			return loadBuiltin(ProfileOpaque)
-		}
-		return p, err
-	}
-	switch value {
-	case ProfileOpaque, ProfileNetAccess, ProfileHost:
-		return loadBuiltin(value)
-	}
-	return loadNamed(value)
+	return loadProfileResolved(value)
 }

@@ -147,19 +147,19 @@ func TestPermissionLadder(t *testing.T) {
 		}
 	})
 
-	t.Run("allow-fs permits sqlite", func(t *testing.T) {
-		th := threadWith(t, libkite.AllowFSPermissions())
+	t.Run("sandbox-path permits sqlite", func(t *testing.T) {
+		th := threadWith(t, libkite.SandboxPathPermissions())
 		v, err := m.open(th, nil, starlark.Tuple{starlark.String("sqlite"), starlark.String(":memory:")}, nil)
 		if err != nil {
-			t.Fatalf("allow-fs should permit sqlite: %v", err)
+			t.Fatalf("sandbox-path should permit sqlite: %v", err)
 		}
 		v.(*Connection).db.Close()
 	})
 
-	t.Run("allow-fs denies postgres", func(t *testing.T) {
-		th := threadWith(t, libkite.AllowFSPermissions())
+	t.Run("sandbox-path denies postgres", func(t *testing.T) {
+		th := threadWith(t, libkite.SandboxPathPermissions())
 		if _, err := m.open(th, nil, starlark.Tuple{starlark.String("postgres"), starlark.String("postgres://u:p@h/db")}, nil); err == nil {
-			t.Error("expected permission denial for postgres under allow-fs")
+			t.Error("expected permission denial for postgres under sandbox-path")
 		}
 	})
 }

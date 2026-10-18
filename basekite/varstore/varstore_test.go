@@ -5,40 +5,52 @@ import (
 	"testing"
 )
 
-func TestParseConfigFile_Permissions(t *testing.T) {
+func TestParseConfigFile_Sandbox(t *testing.T) {
 	v := New()
-	cfg := []byte(`permissions:
-  default:
-    allow: [fs.read, os.env]
-  deploy:
-    allow: [fs.read, fs.write, "os.exec($CWD/**)"]
-    deny: [fs.delete]
+	cfg := []byte(`sandbox:
+  enabled: true
+  profiles:
+    default:
+      paths:
+        read: [$CWD/**]
+      exec:
+        allow: [/bin/**]
+    deploy:
+      paths:
+        read: [$CWD/**]
+        write: [$CWD/dist/**]
+      exec:
+        allow: [$CWD/**]
 `)
 	if err := v.parseConfigFile(cfg); err != nil {
 		t.Fatalf("parseConfigFile: %v", err)
 	}
 
-	def, ok := v.Permissions["default"]
+	if v.Sandbox == nil {
+		t.Fatal("sandbox section not parsed")
+	}
+	if !v.Sandbox.Enabled {
+		t.Error("expected sandbox.enabled == true")
+	}
+
+	def, ok := v.Sandbox.Profiles["default"]
 	if !ok {
 		t.Fatal("default profile not parsed")
 	}
-	if !reflect.DeepEqual(def.Allow, []string{"fs.read", "os.env"}) {
-		t.Errorf("default.allow = %v", def.Allow)
+	if !reflect.DeepEqual(def.Paths.Read, []string{"$CWD/**"}) {
+		t.Errorf("default.paths.read = %v", def.Paths.Read)
 	}
 
-	deploy, ok := v.Permissions["deploy"]
+	deploy, ok := v.Sandbox.Profiles["deploy"]
 	if !ok {
 		t.Fatal("deploy profile not parsed")
 	}
-	if !reflect.DeepEqual(deploy.Allow, []string{"fs.read", "fs.write", "os.exec($CWD/**)"}) {
-		t.Errorf("deploy.allow = %v", deploy.Allow)
-	}
-	if !reflect.DeepEqual(deploy.Deny, []string{"fs.delete"}) {
-		t.Errorf("deploy.deny = %v", deploy.Deny)
+	if !reflect.DeepEqual(deploy.Paths.Write, []string{"$CWD/dist/**"}) {
+		t.Errorf("deploy.paths.write = %v", deploy.Paths.Write)
 	}
 }
 
-func TestParseConfigFile_ThreeSections(t *testing.T) {
+func TestParseConfigFile_TwoSections(t *testing.T) {
 	v := New()
 	cfg := []byte(`config:
   project:
@@ -51,12 +63,12 @@ func TestParseConfigFile_ThreeSections(t *testing.T) {
   environment: dev
   labels:
     app: myapp
-permissions:
-  ci:
-    allow: [fs.read]
 sandbox:
-  mybox:
-    network: host
+  enabled: true
+  profiles:
+    ci:
+      paths:
+        read: [$CWD/**]
 `)
 	if err := v.parseConfigFile(cfg); err != nil {
 		t.Fatalf("parseConfigFile: %v", err)
@@ -81,33 +93,27 @@ sandbox:
 		t.Errorf("labels.app var = %v", got)
 	}
 
-	// permissions: parsed; sandbox: tolerated (consumed elsewhere).
-	if _, ok := v.Permissions["ci"]; !ok {
-		t.Error("permissions.ci not parsed")
+	// sandbox: parsed
+	if v.Sandbox == nil || !v.Sandbox.Enabled {
+		t.Error("sandbox section not parsed or not enabled")
+	}
+	if _, ok := v.Sandbox.Profiles["ci"]; !ok {
+		t.Error("sandbox profile ci not parsed")
 	}
 }
 
-func TestParseConfigFile_PermissionBase(t *testing.T) {
+func TestParseConfigFile_PermissionsRejected(t *testing.T) {
 	v := New()
 	cfg := []byte(`permissions:
   default: allow-all
-  ci:
-    allow: [fs.read]
-  carved:
-    base: allow-all
-    deny: [os.exec]
 `)
-	if err := v.parseConfigFile(cfg); err != nil {
-		t.Fatalf("parseConfigFile: %v", err)
+	err := v.parseConfigFile(cfg)
+	if err == nil {
+		t.Fatal("expected error for top-level permissions: section, got nil")
 	}
-	if v.Permissions["default"].Base != "allow-all" {
-		t.Errorf("default.Base = %q, want allow-all (scalar shorthand)", v.Permissions["default"].Base)
-	}
-	if len(v.Permissions["ci"].Allow) != 1 {
-		t.Errorf("ci profile not parsed: %+v", v.Permissions["ci"])
-	}
-	if v.Permissions["carved"].Base != "allow-all" || len(v.Permissions["carved"].Deny) != 1 {
-		t.Errorf("carved profile = %+v", v.Permissions["carved"])
+	expected := `top-level "permissions:" section is no longer supported; define capabilities in "sandbox:"`
+	if err.Error() != expected {
+		t.Errorf("error = %q, want %q", err.Error(), expected)
 	}
 }
 

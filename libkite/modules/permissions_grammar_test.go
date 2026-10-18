@@ -242,41 +242,65 @@ func TestCategoryRule_TrustedAllowsEverything(t *testing.T) {
 	}
 }
 
-// TestCategoryRule_AllowNetLadder: allow-net grants fs/env and low-level
-// protocol networking, but blocks the higher-tier capabilities that only
-// allow-local/allow-all confer (serve, higher-level services, exec).
-func TestCategoryRule_AllowNetLadder(t *testing.T) {
-	thread := &starlark.Thread{Name: "test"}
-	checker, _ := libkite.NewPermissionChecker(libkite.AllowNetPermissions())
-	libkite.SetPermissions(thread, checker)
+// TestCategoryRule_CapabilityLadder: verify capabilities across the reordered ladder rungs.
+func TestCategoryRule_CapabilityLadder(t *testing.T) {
+	cwd, _ := os.Getwd()
 
-	// allow-net grants fs/env and low-level protocols.
-	for _, c := range []struct{ mod, cat, fn, res string }{
-		{"fs", "read", "read_file", "/etc/passwd"},
-		{"os", "env", "env", "PATH"},
-		{"http", "client", "get", "https://x"},
-		{"ssh", "connect", "config", ""},
-		{"ssh", "transfer", "upload", ""},
-	} {
-		if err := libkite.Check(thread, c.mod, c.cat, c.fn, c.res); err != nil {
-			t.Errorf("allow-net should allow %s.%s.%s: %v", c.mod, c.cat, c.fn, err)
+	// Level 2: sandbox-exec grants fs/env in $CWD and os.exec, but blocks network/k8s/mcp.
+	{
+		thread := &starlark.Thread{Name: "test-exec"}
+		checker, _ := libkite.NewPermissionChecker(libkite.SandboxExecPermissions())
+		libkite.SetPermissions(thread, checker)
+
+		for _, c := range []struct{ mod, cat, fn, res string }{
+			{"fs", "read", "read_file", filepath.Join(cwd, "test.txt")},
+			{"os", "env", "env", "PATH"},
+			{"os", "exec", "exec", "echo"},
+		} {
+			if err := libkite.Check(thread, c.mod, c.cat, c.fn, c.res); err != nil {
+				t.Errorf("sandbox-exec should allow %s.%s.%s: %v", c.mod, c.cat, c.fn, err)
+			}
+		}
+
+		for _, c := range []struct{ mod, cat, fn string }{
+			{"http", "client", "get"},
+			{"ssh", "connect", "config"},
+			{"k8s", "read", "read"},
+			{"mcp", "client", "connect"},
+		} {
+			if err := libkite.Check(thread, c.mod, c.cat, c.fn, "anything"); err == nil {
+				t.Errorf("sandbox-exec should block %s.%s.%s", c.mod, c.cat, c.fn)
+			}
 		}
 	}
 
-	// Higher-tier capabilities are blocked at allow-net.
-	for _, c := range []struct{ mod, cat, fn string }{
-		{"os", "exec", "exec"},
-		{"os", "process", "chdir"},
-		{"http", "server", "serve"},
-		{"k8s", "read", "read"},
-		{"k8s", "write", "write"},
-		{"k8s", "exec", "exec"},
-		{"ai", "generate", "generate"},
-		{"mcp", "client", "connect"},
-		{"mcp", "server", "serve"},
-	} {
-		if err := libkite.Check(thread, c.mod, c.cat, c.fn, "anything"); err == nil {
-			t.Errorf("allow-net should block %s.%s.%s", c.mod, c.cat, c.fn)
+	// Level 3: sandbox-net adds network, database, k8s, mcp, and containers.
+	{
+		thread := &starlark.Thread{Name: "test-net"}
+		checker, _ := libkite.NewPermissionChecker(libkite.SandboxNetPermissions())
+		libkite.SetPermissions(thread, checker)
+
+		for _, c := range []struct{ mod, cat, fn, res string }{
+			{"fs", "read", "read_file", filepath.Join(cwd, "test.txt")},
+			{"os", "exec", "exec", "echo"},
+			{"http", "client", "get", "https://example.com"},
+			{"ssh", "connect", "config", ""},
+			{"k8s", "read", "read", ""},
+			{"mcp", "client", "connect", ""},
+		} {
+			if err := libkite.Check(thread, c.mod, c.cat, c.fn, c.res); err != nil {
+				t.Errorf("sandbox-net should allow %s.%s.%s: %v", c.mod, c.cat, c.fn, err)
+			}
+		}
+
+		for _, c := range []struct{ mod, cat, fn string }{
+			{"os", "process", "chdir"},
+			{"k8s", "exec", "exec"},
+			{"ai", "generate", "generate"},
+		} {
+			if err := libkite.Check(thread, c.mod, c.cat, c.fn, "anything"); err == nil {
+				t.Errorf("sandbox-net should block %s.%s.%s", c.mod, c.cat, c.fn)
+			}
 		}
 	}
 }

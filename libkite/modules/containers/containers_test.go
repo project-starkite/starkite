@@ -313,32 +313,32 @@ client = containers.config(host="unix:///tmp/fake.sock")
 		t.Fatal("expected permission denial under deny-all, got nil")
 	}
 
-	// 2. allow-fs blocks containers.config()
+	// 2. sandbox-path blocks containers.config()
 	rtFS, err := libkite.New(&libkite.Config{
 		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
-		Permissions: libkite.AllowFSPermissions(),
+		Permissions: libkite.SandboxPathPermissions(),
 	})
 	if err != nil {
-		t.Fatalf("libkite.New(allow-fs): %v", err)
+		t.Fatalf("libkite.New(sandbox-path): %v", err)
 	}
 	defer rtFS.Close()
 
 	if err := rtFS.Execute(context.Background(), starScript); err == nil {
-		t.Fatal("expected permission denial under allow-fs, got nil")
+		t.Fatal("expected permission denial under sandbox-path, got nil")
 	}
 
-	// 3. allow-local allows containers.config()
+	// 3. sandbox-net allows containers.config()
 	rtLocal, err := libkite.New(&libkite.Config{
 		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
-		Permissions: libkite.AllowLocalPermissions(),
+		Permissions: libkite.SandboxNetPermissions(),
 	})
 	if err != nil {
-		t.Fatalf("libkite.New(allow-local): %v", err)
+		t.Fatalf("libkite.New(sandbox-net): %v", err)
 	}
 	defer rtLocal.Close()
 
 	if err := rtLocal.Execute(context.Background(), starScript); err != nil {
-		t.Fatalf("expected containers.config to be allowed under allow-local, got: %v", err)
+		t.Fatalf("expected containers.config to be allowed under sandbox-net, got: %v", err)
 	}
 }
 
@@ -359,10 +359,10 @@ func TestLifecyclePermissions(t *testing.T) {
 	host, cleanup := setupMockDaemon(t, mux)
 	defer cleanup()
 
-	// 1. allow-local permits create, start, remove
+	// 1. sandbox-net permits create, start, remove
 	rtLocal, err := libkite.New(&libkite.Config{
 		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
-		Permissions: libkite.AllowLocalPermissions(),
+		Permissions: libkite.SandboxNetPermissions(),
 	})
 	if err != nil {
 		t.Fatalf("libkite.New: %v", err)

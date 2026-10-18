@@ -14,7 +14,7 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	"github.com/project-starkite/starkite/libkite/permissions"
+	"github.com/project-starkite/starkite/libkite/sandbox"
 )
 
 // Priority levels for variable resolution (highest to lowest):
@@ -49,9 +49,8 @@ type Vars struct {
 	// Runtime defaults
 	RuntimeDefaults map[string]any
 
-	// Permissions profiles defined in config.yaml's `permissions:` map,
-	// keyed by profile name.
-	Permissions map[string]permissions.ProfileSpec
+	// Sandbox profiles defined in config.yaml's `sandbox:` section.
+	Sandbox *sandbox.SandboxConfig
 }
 
 // New creates a new Vars instance.
@@ -94,84 +93,69 @@ func (v *Vars) LoadDefaults() error {
 	return nil
 }
 
-// parseConfigFile parses a YAML config file. The file has exactly three
-// top-level sections:
-//
-//	config:        arbitrary configuration — the runtime keys (project,
-//	               defaults, providers, active_edition) plus user variables
-//	permissions:   named permission profiles (selected via --permissions)
-//	sandbox:       named sandbox profiles (consumed by the sandbox loader)
+// parseConfigFile parses a YAML config file.
 func (v *Vars) parseConfigFile(data []byte) error {
-	var config map[string]any
-	if err := yaml.Unmarshal(data, &config); err != nil {
+	var root yaml.Node
+	if err := yaml.Unmarshal(data, &root); err != nil {
 		return err
 	}
+	if len(root.Content) == 0 {
+		return nil
+	}
+	top := root.Content[0]
+	if top.Kind != yaml.MappingNode {
+		return nil
+	}
 
-	for key, value := range config {
-		switch key {
+	for i := 0; i < len(top.Content); i += 2 {
+		keyNode := top.Content[i]
+		valNode := top.Content[i+1]
+		switch keyNode.Value {
 		case "config":
-			m, ok := value.(map[string]any)
-			if !ok {
-				return fmt.Errorf("config section must be a map")
+			var m map[string]any
+			if err := valNode.Decode(&m); err != nil {
+				return fmt.Errorf("config section must be a map: %w", err)
 			}
 			v.parseConfigSection(m)
 		case "permissions":
-			specs, err := decodePermissions(value)
-			if err != nil {
-				return fmt.Errorf("config permissions: %w", err)
-			}
-			v.Permissions = specs
+			return fmt.Errorf("top-level \"permissions:\" section is no longer supported; define capabilities in \"sandbox:\"")
 		case "sandbox":
-			// Consumed by the sandbox profile loader, not the var store.
+			sCfg, err := sandbox.DecodeConfigNode(valNode)
+			if err != nil {
+				return fmt.Errorf("config sandbox: %w", err)
+			}
+			v.Sandbox = sCfg
 		default:
-			return fmt.Errorf("unknown top-level key %q: the config file has three sections — config: (variables and runtime settings), permissions:, and sandbox:", key)
+			return fmt.Errorf("unknown top-level key %q: the config file has two sections — config: (variables and runtime settings) and sandbox:", keyNode.Value)
 		}
 	}
 
 	return nil
 }
 
-// parseConfigSection handles the config: section: the runtime keys are parsed
-// specially; every other key flattens into user variables.
-func (v *Vars) parseConfigSection(section map[string]any) {
-	for key, value := range section {
-		switch key {
+func (v *Vars) parseConfigSection(m map[string]any) {
+	for k, val := range m {
+		switch k {
 		case "project":
-			if m, ok := value.(map[string]any); ok {
-				v.ProjectConfig = m
+			if pm, ok := val.(map[string]any); ok {
+				v.ProjectConfig = pm
 			}
 		case "defaults":
-			if m, ok := value.(map[string]any); ok {
-				v.RuntimeDefaults = m
+			if dm, ok := val.(map[string]any); ok {
+				v.RuntimeDefaults = dm
 			}
 		case "providers":
-			if m, ok := value.(map[string]any); ok {
-				for pname, pconfig := range m {
-					if pc, ok := pconfig.(map[string]any); ok {
-						v.ProviderDefaults[pname] = pc
+			if provMap, ok := val.(map[string]any); ok {
+				for pName, pVal := range provMap {
+					if pm, ok := pVal.(map[string]any); ok {
+						v.ProviderDefaults[pName] = pm
 					}
 				}
 			}
-
 		default:
-			// Flatten nested maps with dot notation
-			v.flattenAndStore(key, value, v.defaultVars)
+			v.flattenAndStore(k, val, v.defaultVars)
 		}
 	}
-}
-
-// decodePermissions converts the raw `permissions:` config section into typed
-// profile specs by round-tripping through YAML.
-func decodePermissions(value any) (map[string]permissions.ProfileSpec, error) {
-	raw, err := yaml.Marshal(value)
-	if err != nil {
-		return nil, err
-	}
-	var specs map[string]permissions.ProfileSpec
-	if err := yaml.Unmarshal(raw, &specs); err != nil {
-		return nil, err
-	}
-	return specs, nil
 }
 
 // flattenAndStore flattens nested maps into dot-notation keys.

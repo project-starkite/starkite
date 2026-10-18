@@ -13,7 +13,6 @@ import (
 	"github.com/project-starkite/starkite/basekite/version"
 	"github.com/project-starkite/starkite/libkite"
 	runtimemod "github.com/project-starkite/starkite/libkite/modules/runtime"
-	"github.com/project-starkite/starkite/libkite/permissions"
 	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
@@ -394,14 +393,14 @@ func PrintDebug(format string, args ...any) {
 	}
 }
 
-// configPermissions returns the permission profiles defined in config.yaml's
-// `permissions:` map, or nil if none are configured.
-func configPermissions() map[string]permissions.ProfileSpec {
+// configSandbox returns the sandbox configuration defined in config.yaml's
+// `sandbox:` section, or nil if none are configured.
+func configSandbox() *sandbox.SandboxConfig {
 	vs := varstore.New()
 	if err := vs.LoadDefaults(); err != nil {
 		return nil
 	}
-	return vs.Permissions
+	return vs.Sandbox
 }
 
 // loadVarStore builds the variable store every script-executing command uses,
@@ -427,7 +426,7 @@ func loadVarStore() (*varstore.Vars, error) {
 // profiles. With no flag, it falls back to the configured `default` profile, or
 // deny-all. Used by commands without a single script file (exec, repl, test).
 func GetPermissions() (*libkite.PermissionConfig, error) {
-	return permissions.Resolve(permissionsMode, configPermissions())
+	return sandbox.ResolvePermissions(permissionsMode, configSandbox())
 }
 
 // GetSandbox resolves the active sandbox profile from the CLI flags or environment.
@@ -489,7 +488,7 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 	if err != nil {
 		return false, err
 	}
-	if profile.IsZero() {
+	if profile.IsZero() || !profile.Enabled {
 		return false, nil
 	}
 
@@ -507,7 +506,7 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 	spec := &sandbox.ExecutionSpec{
 		Command:          os.Args,
 		Cwd:              cwd,
-		Env:              os.Environ(),
+		Env:              profile.CompileEnv(os.Environ()),
 		Network:          profile.Network,
 		Mounts:           profile.Mounts,
 		MaxMemoryMB:      profile.MaxMemoryMB,

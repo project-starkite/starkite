@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -140,36 +141,38 @@ func TestPermissionChecker(t *testing.T) {
 		}
 	})
 
-	t.Run("allow-fs reads anywhere, writes only under $CWD, blocks net and exec", func(t *testing.T) {
-		checker, err := NewPermissionChecker(AllowFSPermissions())
-		if err != nil {
-			t.Fatalf("NewPermissionChecker: %v", err)
-		}
+	t.Run("sandbox-path reads and writes under $CWD, blocks outside and blocks net/exec", func(t *testing.T) {
 		cwd, err := os.Getwd()
 		if err != nil {
 			t.Fatalf("Getwd: %v", err)
 		}
+		checker, err := NewPermissionChecker(SandboxPathPermissions())
+		if err != nil {
+			t.Fatalf("NewPermissionChecker: %v", err)
+		}
 
-		// Read anywhere; write/delete inside $CWD; env and prompt.
+		// Read/write/delete inside $CWD; env and prompt.
 		for _, c := range []struct{ mod, cat, fn, res string }{
-			{"fs", "read", "read_file", "/etc/passwd"},
+			{"fs", "read", "read_file", filepath.Join(cwd, "in.txt")},
 			{"fs", "write", "write", filepath.Join(cwd, "out.txt")},
 			{"fs", "delete", "remove", filepath.Join(cwd, "sub/x")},
 			{"os", "env", "env", "PATH"},
 			{"io", "prompt", "prompt", ""},
+			{"sql", "open", "sqlite", filepath.Join(cwd, "test.db")},
 		} {
 			if err := checker.Check(c.mod, c.cat, c.fn, c.res); err != nil {
-				t.Errorf("allow-fs should allow %s.%s.%s(%s): %v", c.mod, c.cat, c.fn, c.res, err)
+				t.Errorf("sandbox-path should allow %s.%s.%s(%s): %v", c.mod, c.cat, c.fn, c.res, err)
 			}
 		}
 
-		// Writes/deletes outside $CWD are blocked (read stays unrestricted).
+		// Reads/writes/deletes outside $CWD are blocked.
 		for _, c := range []struct{ mod, cat, fn, res string }{
+			{"fs", "read", "read_file", "/etc/passwd"},
 			{"fs", "write", "write", "/tmp/out.txt"},
 			{"fs", "delete", "remove", "/etc/hosts"},
 		} {
 			if err := checker.Check(c.mod, c.cat, c.fn, c.res); err == nil {
-				t.Errorf("allow-fs should block %s.%s.%s(%s) outside $CWD", c.mod, c.cat, c.fn, c.res)
+				t.Errorf("sandbox-path should block %s.%s.%s(%s) outside $CWD", c.mod, c.cat, c.fn, c.res)
 			}
 		}
 
@@ -182,8 +185,87 @@ func TestPermissionChecker(t *testing.T) {
 			{"mcp", "client", "connect"},
 		} {
 			if err := checker.Check(c.mod, c.cat, c.fn, "anything"); err == nil {
-				t.Errorf("allow-fs should block %s.%s.%s", c.mod, c.cat, c.fn)
+				t.Errorf("sandbox-path should block %s.%s.%s", c.mod, c.cat, c.fn)
 			}
+		}
+	})
+
+	t.Run("capability ladder monotonic levels", func(t *testing.T) {
+		cwd, _ := os.Getwd()
+
+		// Level 0: deny-all
+		c0, _ := NewPermissionChecker(DenyAllPermissions())
+		if err := c0.Check("fs", "read", "read", filepath.Join(cwd, "file")); err == nil {
+			t.Error("deny-all should block fs.read")
+		}
+		if err := c0.Check("os", "exec", "exec", "ls"); err == nil {
+			t.Error("deny-all should block os.exec")
+		}
+		if err := c0.Check("http", "client", "get", "https://x"); err == nil {
+			t.Error("deny-all should block http.client")
+		}
+
+		// Level 1: sandbox-path
+		c1, _ := NewPermissionChecker(SandboxPathPermissions())
+		if err := c1.Check("fs", "read", "read", filepath.Join(cwd, "file")); err != nil {
+			t.Errorf("sandbox-path should allow $CWD read: %v", err)
+		}
+		if err := c1.Check("os", "exec", "exec", "ls"); err == nil {
+			t.Error("sandbox-path should block os.exec")
+		}
+
+		// Level 2: sandbox-exec
+		c2, _ := NewPermissionChecker(SandboxExecPermissions())
+		if err := c2.Check("fs", "read", "read", filepath.Join(cwd, "file")); err != nil {
+			t.Errorf("sandbox-exec should allow $CWD read: %v", err)
+		}
+		if err := c2.Check("os", "exec", "exec", "ls"); err != nil {
+			t.Errorf("sandbox-exec should allow os.exec: %v", err)
+		}
+		if err := c2.Check("http", "client", "get", "https://x"); err == nil {
+			t.Error("sandbox-exec should block http.client")
+		}
+
+		// Level 3: sandbox-net
+		c3, _ := NewPermissionChecker(SandboxNetPermissions())
+		if err := c3.Check("http", "client", "get", "https://x"); err != nil {
+			t.Errorf("sandbox-net should allow http.client: %v", err)
+		}
+		if err := c3.Check("fs", "write", "write", "/etc/passwd"); err == nil {
+			t.Error("sandbox-net should block write outside $CWD")
+		}
+
+		// Level 4: unconfined (allow-all)
+		c4, _ := NewPermissionChecker(AllowAllPermissions())
+		if err := c4.Check("fs", "write", "write", "/etc/passwd"); err != nil {
+			t.Errorf("unconfined should allow write to /etc/passwd: %v", err)
+		}
+	})
+
+	t.Run("rule synthesis helpers", func(t *testing.T) {
+		readRules := PathReadRules([]string{".", "/data"})
+		if !slices.Contains(readRules, "fs.read($CWD/**)") || !slices.Contains(readRules, "fs.read(/data/**)") {
+			t.Errorf("PathReadRules missing expected rules: %v", readRules)
+		}
+
+		writeRules := PathWriteRules([]string{"./dist"})
+		if !slices.Contains(writeRules, "fs.write($CWD/dist/**)") || !slices.Contains(writeRules, "fs.delete($CWD/dist/**)") {
+			t.Errorf("PathWriteRules missing expected rules: %v", writeRules)
+		}
+
+		execRules := ExecAllowRules([]string{"git", "go", "*"})
+		if !slices.Contains(execRules, "os.exec") || !slices.Contains(execRules, "os.exec(git)") || !slices.Contains(execRules, "os.exec(/**/git)") {
+			t.Errorf("ExecAllowRules missing expected rules: %v", execRules)
+		}
+
+		netLoopback := NetworkAllowRules("loopback", nil)
+		if !slices.Contains(netLoopback, "http.server") {
+			t.Errorf("NetworkAllowRules loopback missing http.server: %v", netLoopback)
+		}
+
+		netHost := NetworkAllowRules("host", nil)
+		if !slices.Contains(netHost, "http.client") {
+			t.Errorf("NetworkAllowRules host missing http.client: %v", netHost)
 		}
 	})
 
@@ -289,7 +371,7 @@ func TestPermissionError(t *testing.T) {
 	if !strings.HasPrefix(msg, "permission denied: os.exec exec - no matching allow rule") {
 		t.Errorf("Error() = %q, missing capability prefix", msg)
 	}
-	if !strings.Contains(msg, "--permissions=allow-local") {
+	if !strings.Contains(msg, "--sandbox-profile=allow-local") {
 		t.Errorf("Error() = %q, missing opt-up suggestion", msg)
 	}
 }
@@ -610,5 +692,121 @@ func TestParseRule_WindowsDriveLetter(t *testing.T) {
 	}
 	if rule.Resource != "C:/Users/alice/work/**" {
 		t.Fatalf("expected Resource == %q, got %q", "C:/Users/alice/work/**", rule.Resource)
+	}
+}
+
+func TestCapabilityLadderLevels(t *testing.T) {
+	// Level 0: Deny-All
+	p0 := DenyAllPermissions()
+	if p0.Default != DefaultDeny || len(p0.Allow) != 0 {
+		t.Errorf("Level 0 DenyAll: default=%v, allow=%v", p0.Default, p0.Allow)
+	}
+
+	// Level 1: Sandbox-Path
+	p1 := SandboxPathPermissions()
+	if p1.Default != DefaultDeny {
+		t.Errorf("Level 1 SandboxPath: default=%v", p1.Default)
+	}
+	if !slices.Contains(p1.Allow, "fs.read($CWD/**)") || !slices.Contains(p1.Allow, "fs.write($CWD/**)") {
+		t.Errorf("Level 1 SandboxPath missing workspace rules: %v", p1.Allow)
+	}
+	if slices.Contains(p1.Allow, "os.exec") {
+		t.Errorf("Level 1 SandboxPath must not have os.exec: %v", p1.Allow)
+	}
+
+	// Level 2: Sandbox-Exec
+	p2 := SandboxExecPermissions()
+	if p2.Default != DefaultDeny {
+		t.Errorf("Level 2 SandboxExec: default=%v", p2.Default)
+	}
+	for _, r := range p1.Allow {
+		if !slices.Contains(p2.Allow, r) {
+			t.Errorf("Level 2 SandboxExec missing Level 1 rule %q", r)
+		}
+	}
+	if !slices.Contains(p2.Allow, "os.exec") || !slices.Contains(p2.Allow, "os.shell") {
+		t.Errorf("Level 2 SandboxExec missing os.exec/os.shell: %v", p2.Allow)
+	}
+	if slices.Contains(p2.Allow, "http.client") {
+		t.Errorf("Level 2 SandboxExec must not have http.client: %v", p2.Allow)
+	}
+
+	// Level 3: Sandbox-Net
+	p3 := SandboxNetPermissions()
+	if p3.Default != DefaultDeny {
+		t.Errorf("Level 3 SandboxNet: default=%v", p3.Default)
+	}
+	for _, r := range p2.Allow {
+		if !slices.Contains(p3.Allow, r) {
+			t.Errorf("Level 3 SandboxNet missing Level 2 rule %q", r)
+		}
+	}
+	if !slices.Contains(p3.Allow, "http.client") || !slices.Contains(p3.Allow, "ssh.connect") {
+		t.Errorf("Level 3 SandboxNet missing network rules: %v", p3.Allow)
+	}
+
+	// Level 4: Unconfined
+	p4 := AllowAllPermissions()
+	if p4.Default != DefaultAllow {
+		t.Errorf("Level 4 AllowAll: default=%v, want DefaultAllow", p4.Default)
+	}
+}
+
+func TestRuleSynthesisHelpers(t *testing.T) {
+	// PathReadRules
+	rRead := PathReadRules([]string{"./src", "/var/data", "/"})
+	if !slices.Contains(rRead, "fs.read($CWD/src/**)") || !slices.Contains(rRead, "fs.read(/var/data/**)") {
+		t.Errorf("PathReadRules missing expected path: %v", rRead)
+	}
+	if !slices.Contains(rRead, "fs.read(/**)") {
+		t.Errorf("PathReadRules missing root rule: %v", rRead)
+	}
+
+	// PathWriteRules
+	rWrite := PathWriteRules([]string{"./dist"})
+	if !slices.Contains(rWrite, "fs.read($CWD/dist/**)") {
+		t.Errorf("PathWriteRules missing read: %v", rWrite)
+	}
+	if !slices.Contains(rWrite, "fs.write($CWD/dist/**)") || !slices.Contains(rWrite, "fs.delete($CWD/dist/**)") {
+		t.Errorf("PathWriteRules missing write/delete: %v", rWrite)
+	}
+	if !slices.Contains(rWrite, "sql.open(sqlite::memory:)") {
+		t.Errorf("PathWriteRules missing sqlite memory: %v", rWrite)
+	}
+
+	// ExecAllowRules
+	rExecWildcard := ExecAllowRules([]string{"*"})
+	if !slices.Contains(rExecWildcard, "os.exec") || !slices.Contains(rExecWildcard, "os.shell") {
+		t.Errorf("ExecAllowRules(*) failed: %v", rExecWildcard)
+	}
+	rExecNamed := ExecAllowRules([]string{"git", "/usr/bin/tar"})
+	if !slices.Contains(rExecNamed, "os.exec(git)") || !slices.Contains(rExecNamed, "os.exec(/**/git)") {
+		t.Errorf("ExecAllowRules bare binary failed: %v", rExecNamed)
+	}
+	if !slices.Contains(rExecNamed, "os.exec(/usr/bin/tar)") {
+		t.Errorf("ExecAllowRules absolute binary failed: %v", rExecNamed)
+	}
+
+	// ExecDenyRules
+	rDeny := ExecDenyRules([]string{"rm"})
+	if !slices.Contains(rDeny, "os.exec(rm)") || !slices.Contains(rDeny, "os.exec(/**/rm)") {
+		t.Errorf("ExecDenyRules failed: %v", rDeny)
+	}
+
+	// NetworkAllowRules
+	if rNone := NetworkAllowRules("none", nil); len(rNone) != 0 {
+		t.Errorf("NetworkAllowRules(none) = %v, want nil/empty", rNone)
+	}
+	rLoopback := NetworkAllowRules("loopback", nil)
+	if !slices.Contains(rLoopback, "http.server") || !slices.Contains(rLoopback, "http.client(http://localhost*)") {
+		t.Errorf("NetworkAllowRules(loopback) failed: %v", rLoopback)
+	}
+	rHost := NetworkAllowRules("host", nil)
+	if !slices.Contains(rHost, "http.client") || !slices.Contains(rHost, "ssh.connect") {
+		t.Errorf("NetworkAllowRules(host) failed: %v", rHost)
+	}
+	rEndpoints := NetworkAllowRules("none", []string{"ghcr.io:443"})
+	if !slices.Contains(rEndpoints, "http.client") {
+		t.Errorf("NetworkAllowRules with endpoints failed: %v", rEndpoints)
 	}
 }

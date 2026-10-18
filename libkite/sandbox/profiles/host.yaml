@@ -18,6 +18,10 @@
 
 network: host
 
+exec:
+  allow:
+    - "*"
+
 mounts:
   - source: $CWD
     destination: $CWD

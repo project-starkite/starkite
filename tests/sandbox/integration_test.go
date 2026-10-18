@@ -134,10 +134,16 @@ func TestSandboxPerTestFile(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
 	defer cancel()
 
-	// allow-all keeps the permission layer out of the way so what the test
-	// observes is the sandbox's isolation, not a permission denial.
+	fakeHome := t.TempDir()
 	cmd := exec.CommandContext(ctx, kite, "test", workDir, "--sandbox-profile=opaque", "--permissions=allow-all")
 	cmd.Dir = workDir
+	var filteredEnv []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "HOME=") && !strings.HasPrefix(e, "USERPROFILE=") {
+			filteredEnv = append(filteredEnv, e)
+		}
+	}
+	cmd.Env = append(filteredEnv, "HOME="+fakeHome, "USERPROFILE="+fakeHome)
 	out, err := cmd.CombinedOutput()
 	t.Logf("kite test --sandbox-profile=opaque (multi-file) output:\n%s", out)
 	if err != nil {
@@ -203,10 +209,15 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
 	defer cancel()
 
-	// allow-all keeps the permission layer out of the way so what the test
-	// observes is the sandbox's isolation, not a permission denial.
+	fakeHome := t.TempDir()
 	args := []string{"test", dstPath, "--permissions=allow-all"}
-	env := os.Environ()
+	var env []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "HOME=") && !strings.HasPrefix(e, "USERPROFILE=") {
+			env = append(env, e)
+		}
+	}
+	env = append(env, "HOME="+fakeHome, "USERPROFILE="+fakeHome)
 	var label string
 	switch eng {
 	case viaSandboxedFlag:

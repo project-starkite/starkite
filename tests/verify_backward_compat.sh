@@ -98,7 +98,7 @@ fi
 # --------------------------------------------
 info "Test 4: File I/O operations"
 
-TMPFILE=$(mktemp /tmp/kite_test_XXXXXX.txt)
+TMPFILE=$(mktemp ./kite_test_XXXXXX.txt)
 echo "test content" > "$TMPFILE"
 
 if $KITE exec "content = read_text(\"$TMPFILE\"); print(content)" --permissions=allow-fs 2>&1 | grep -q "test content"; then
@@ -301,13 +301,15 @@ info "Test 13d: config-defined permission profiles"
 PROFHOME=$(mktemp -d /tmp/kite_test_XXXXXX)
 mkdir -p "$PROFHOME/.starkite"
 cat > "$PROFHOME/.starkite/config.yaml" <<'PROF'
-permissions:
+sandbox:
   runner:
-    allow: ["os.exec"]
-  everything: allow-all
+    exec:
+      allow: ["echo"]
+  everything: unconfined
   carved:
-    base: allow-all
-    deny: ["os.exec"]
+    base: unconfined
+    exec:
+      deny: ["*"]
 PROF
 
 if HOME="$PROFHOME" $KITE exec 'print(exec("echo profiled"))' --permissions=runner 2>&1 | grep -q "profiled"; then
@@ -328,7 +330,7 @@ else
     fail "alias profile (everything: allow-all) works"
 fi
 
-# base composition: allow-all minus os.exec — exec denied, fs read allowed.
+# base composition: unconfined minus os.exec — exec denied, fs read allowed.
 if HOME="$PROFHOME" $KITE exec 'exec("echo nope")' --permissions=carved 2>&1 | grep -q "permission denied"; then
     pass "base-composed profile denies the carved capability"
 else
@@ -348,6 +350,20 @@ else
     fail "inline rule syntax is rejected"
 fi
 rm -rf "$PROFHOME"
+
+# Legacy permissions: section is strictly rejected
+BADHOME=$(mktemp -d /tmp/kite_test_XXXXXX)
+mkdir -p "$BADHOME/.starkite"
+cat > "$BADHOME/.starkite/config.yaml" <<'PROF'
+permissions:
+  runner: allow-all
+PROF
+if HOME="$BADHOME" $KITE exec 'print(1)' 2>&1 | grep -q "top-level \"permissions:\" section is no longer supported"; then
+    pass "legacy permissions: section in config.yaml is rejected"
+else
+    fail "legacy permissions: section in config.yaml is rejected"
+fi
+rm -rf "$BADHOME"
 
 # --------------------------------------------
 # Test 13e: a loaded module is bound by the runtime permission, and a denial
