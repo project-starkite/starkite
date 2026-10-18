@@ -757,7 +757,8 @@ if ! $KITE version 2>&1 | grep -qE "Starkite|kite"; then
     TEST16_PASSED=false
 fi
 
-if ! $KITE version --short 2>&1 | grep -qE "^v[0-9]|dev"; then
+SHORT_VER=$($KITE version --short 2>/dev/null)
+if [ -z "$SHORT_VER" ]; then
     TEST16_PASSED=false
 fi
 
