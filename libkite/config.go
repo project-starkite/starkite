@@ -2,6 +2,7 @@ package libkite
 
 import (
 	"log/slog"
+	"maps"
 
 	"go.starlark.net/starlark"
 )
@@ -72,10 +73,21 @@ type Config struct {
 	// Logger receives runtime session diagnostics, such as a skipped automatic
 	// entry-point invocation. If nil, a text logger to stderr is used.
 	Logger *slog.Logger
+
+	// Env defines isolated environment variables for modules that inspect or inherit them.
+	// If nil, modules operate against host environment unless explicitly isolated.
+	Env map[string]string
 }
 
 // ConfigOption is a functional option for Config.
 type ConfigOption func(*Config)
+
+// WithEnv sets the environment variables available to the script and runtime modules.
+func WithEnv(env map[string]string) ConfigOption {
+	return func(c *Config) {
+		c.Env = maps.Clone(env)
+	}
+}
 
 // WithScriptArgs sets the command-line arguments forwarded to the script.
 func WithScriptArgs(args ...string) ConfigOption {

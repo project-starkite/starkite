@@ -155,11 +155,18 @@ func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.Per
 		varStore = vs
 	}
 
+	var activeProf *sandbox.Profile
+	if prof, err := GetSandbox(); err == nil && !prof.IsZero() {
+		activeProf = &prof
+	}
+	envMap, _, _ := ResolveRuntimeEnv(activeProf)
+
 	// Create module config
 	moduleConfig := &libkite.ModuleConfig{
 		DryRun:   dryRun,
 		Debug:    debugMode,
 		VarStore: varStore,
+		Env:      envMap,
 	}
 
 	// Create registry with all modules
@@ -174,6 +181,7 @@ func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.Per
 		VarStore:          varStore,
 		Permissions:       perms,
 		Registry:          registry,
+		Env:               envMap,
 		EntryPoint:        "main",
 		RequireEntryPoint: isModule,
 	}

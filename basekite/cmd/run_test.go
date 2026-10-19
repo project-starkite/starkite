@@ -3,6 +3,8 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -315,3 +317,120 @@ func TestScriptHelpRoutingAfterTarget(t *testing.T) {
 		t.Errorf("expected scriptArgs=['-h'], got target=%q, args=%v", target2, scriptArgs2)
 	}
 }
+
+func TestCLIEnvFlagParsingInRun(t *testing.T) {
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	var eFlags []string
+	var eInherit bool
+	fs.StringArrayVarP(&eFlags, "env", "e", nil, "env flags")
+	fs.BoolVar(&eInherit, "env-inherit", false, "env inherit")
+
+	rawArgs := []string{
+		"-e", "PORT=8080",
+		"--env", "APP_ENV=production",
+		"-e", "QUERY=SELECT id, name FROM users",
+		"-e", "HOST_FORWARD",
+		"--env-inherit",
+		"./script.star",
+		"--action", "start",
+	}
+
+	target, scriptArgs, err := parseScriptCommandLine(fs, rawArgs)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if target != "./script.star" {
+		t.Errorf("expected target ./script.star, got %s", target)
+	}
+	if !eInherit {
+		t.Errorf("expected eInherit to be true")
+	}
+	expectedFlags := []string{
+		"PORT=8080",
+		"APP_ENV=production",
+		"QUERY=SELECT id, name FROM users",
+		"HOST_FORWARD",
+	}
+	if !slices.Equal(eFlags, expectedFlags) {
+		t.Errorf("expected env flags %v, got %v", expectedFlags, eFlags)
+	}
+	if len(scriptArgs) != 2 || scriptArgs[0] != "--action" || scriptArgs[1] != "start" {
+		t.Errorf("expected scriptArgs ['--action', 'start'], got %v", scriptArgs)
+	}
+}
+
+func TestRunScriptEnvironmentSanitization(t *testing.T) {
+	t.Setenv("HOST_SECRET_CANARY", "canary_val")
+	t.Setenv("FORWARD_ME", "forwarded_val")
+
+	dir := t.TempDir()
+	scriptFile := filepath.Join(dir, "env_test.star")
+
+	scriptContent := `
+def main():
+    secret = os.env("HOST_SECRET_CANARY")
+    custom = os.env("CUSTOM_VAR")
+    forwarded = os.env("FORWARD_ME")
+    sql = os.env("SQL_QUERY")
+
+    mode = os.env("TEST_MODE")
+    if mode == "zero-trust":
+        if secret != "":
+            fail("secret should be scrubbed, got: " + secret)
+    elif mode == "with-flags":
+        if custom != "123":
+            fail("custom var mismatch, got: " + custom)
+        if forwarded != "forwarded_val":
+            fail("forwarded var mismatch, got: " + forwarded)
+        if sql != "SELECT a, b FROM t":
+            fail("sql with comma mismatch, got: " + sql)
+    elif mode == "inherit":
+        if secret != "canary_val":
+            fail("secret should be inherited, got: " + secret)
+`
+	if err := os.WriteFile(scriptFile, []byte(scriptContent), 0644); err != nil {
+		t.Fatalf("failed to write script: %v", err)
+	}
+
+	permissionsMode = "allow-all"
+	defer func() { permissionsMode = "" }()
+
+	// Subtest 1: Default zero-trust (sanitized)
+	t.Run("zero-trust", func(t *testing.T) {
+		envFlags = []string{"TEST_MODE=zero-trust"}
+		envInherit = false
+		defer func() { envFlags = nil; envInherit = false }()
+
+		if err := runScript(runCmd, []string{scriptFile}); err != nil {
+			t.Fatalf("runScript failed under zero-trust: %v", err)
+		}
+	})
+
+	// Subtest 2: With CLI env flags
+	t.Run("with-flags", func(t *testing.T) {
+		envFlags = []string{
+			"TEST_MODE=with-flags",
+			"CUSTOM_VAR=123",
+			"FORWARD_ME",
+			"SQL_QUERY=SELECT a, b FROM t",
+		}
+		envInherit = false
+		defer func() { envFlags = nil; envInherit = false }()
+
+		if err := runScript(runCmd, []string{scriptFile}); err != nil {
+			t.Fatalf("runScript failed with CLI env flags: %v", err)
+		}
+	})
+
+	// Subtest 3: With --env-inherit
+	t.Run("inherit", func(t *testing.T) {
+		envFlags = []string{"TEST_MODE=inherit"}
+		envInherit = true
+		defer func() { envFlags = nil; envInherit = false }()
+
+		if err := runScript(runCmd, []string{scriptFile}); err != nil {
+			t.Fatalf("runScript failed with env-inherit: %v", err)
+		}
+	})
+}
+

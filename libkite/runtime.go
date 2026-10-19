@@ -137,11 +137,16 @@ func New(config *Config) (*Runtime, error) {
 			moduleConfig.VarStore = config.VarStore
 		}
 	}
+	if moduleConfig.Env == nil && config.Env != nil {
+		moduleConfig.Env = maps.Clone(config.Env)
+	}
 
 	// Use provided registry or create new one
 	registry := config.Registry
 	if registry == nil {
 		registry = NewRegistry(moduleConfig)
+	} else if registry.config != nil && registry.config.Env == nil && config.Env != nil {
+		registry.config.Env = maps.Clone(config.Env)
 	}
 	rt.registry = registry
 

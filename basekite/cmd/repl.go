@@ -54,11 +54,21 @@ func startRepl(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	var activeProf *sandbox.Profile
+	if prof, err := GetSandbox(); err == nil && !prof.IsZero() {
+		activeProf = &prof
+	}
+	envMap, _, err := ResolveRuntimeEnv(activeProf)
+	if err != nil {
+		return err
+	}
+
 	// Create module config
 	moduleConfig := &libkite.ModuleConfig{
 		DryRun:   dryRun,
 		Debug:    debugMode,
 		VarStore: varStore,
+		Env:      envMap,
 	}
 
 	// Create registry with all modules
@@ -78,6 +88,7 @@ func startRepl(cmd *cobra.Command, args []string) error {
 		VarStore:     varStore,
 		Permissions:  perms,
 		Registry:     registry,
+		Env:          envMap,
 	}
 
 	// Create runtime

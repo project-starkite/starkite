@@ -52,11 +52,24 @@ func execCode(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	var activeProf *sandbox.Profile
+	if prof, err := GetSandbox(); err == nil && !prof.IsZero() {
+		activeProf = &prof
+	}
+	envMap, _, err := ResolveRuntimeEnv(activeProf)
+	if err != nil {
+		return &libkite.ScriptError{
+			Message:  err.Error(),
+			ExitCode: libkite.ExitConfigError,
+		}
+	}
+
 	// Create module config
 	moduleConfig := &libkite.ModuleConfig{
 		DryRun:   dryRun,
 		Debug:    debugMode,
 		VarStore: varStore,
+		Env:      envMap,
 	}
 
 	// Create registry with all modules
@@ -76,6 +89,7 @@ func execCode(cmd *cobra.Command, args []string) error {
 		VarStore:     varStore,
 		Permissions:  perms,
 		Registry:     registry,
+		Env:          envMap,
 		EntryPoint:   "main",
 	}
 

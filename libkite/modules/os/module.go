@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"os/user"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -33,10 +35,11 @@ type Module struct {
 	config  *libkite.ModuleConfig
 
 	// Provider configuration for exec
-	env     map[string]string
-	workDir string
-	timeout time.Duration
-	mu      sync.RWMutex
+	env         map[string]string
+	isolatedEnv bool
+	workDir     string
+	timeout     time.Duration
+	mu          sync.RWMutex
 }
 
 func New() *Module {
@@ -44,6 +47,16 @@ func New() *Module {
 		env:     make(map[string]string),
 		timeout: 60 * time.Second,
 	}
+}
+
+// NewWithConfig creates an os module initialized with the given ModuleConfig.
+func NewWithConfig(config *libkite.ModuleConfig) *Module {
+	m := New()
+	if config != nil && config.Env != nil {
+		m.isolatedEnv = true
+		m.env = maps.Clone(config.Env)
+	}
+	return m
 }
 
 func (m *Module) Name() libkite.ModuleName { return ModuleName }
@@ -55,6 +68,12 @@ func (m *Module) Description() string {
 func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error) {
 	m.once.Do(func() {
 		m.config = config
+		if config != nil && config.Env != nil {
+			m.mu.Lock()
+			m.isolatedEnv = true
+			m.env = maps.Clone(config.Env)
+			m.mu.Unlock()
+		}
 
 		members := starlark.StringDict{
 			// Environment
@@ -157,6 +176,18 @@ func (m *Module) env_(thread *starlark.Thread, fn *starlark.Builtin, args starla
 		return nil, err
 	}
 
+	m.mu.RLock()
+	val, ok := m.env[p.Name]
+	isolated := m.isolatedEnv
+	m.mu.RUnlock()
+
+	if ok {
+		return starlark.String(val), nil
+	}
+	if isolated {
+		return starlark.String(p.Default), nil
+	}
+
 	if value, ok := os.LookupEnv(p.Name); ok {
 		return starlark.String(value), nil
 	}
@@ -177,8 +208,18 @@ func (m *Module) setenv(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, err
 	}
 
-	if err := os.Setenv(p.Name, p.Value); err != nil {
-		return nil, err
+	m.mu.Lock()
+	if m.env == nil {
+		m.env = make(map[string]string)
+	}
+	m.env[p.Name] = p.Value
+	isolated := m.isolatedEnv
+	m.mu.Unlock()
+
+	if !isolated {
+		if err := os.Setenv(p.Name, p.Value); err != nil {
+			return nil, err
+		}
 	}
 	return starlark.None, nil
 }
@@ -537,9 +578,26 @@ func (m *Module) executeParams(thread *starlark.Thread, callerPrefix string, p e
 	if p.workDir != "" {
 		cmd.Dir = p.workDir
 	}
-	cmd.Env = os.Environ()
-	for k, v := range p.envMap {
-		cmd.Env = append(cmd.Env, k+"="+v)
+	m.mu.RLock()
+	isolated := m.isolatedEnv
+	m.mu.RUnlock()
+
+	if isolated {
+		cmd.Env = make([]string, 0, len(p.envMap))
+		for k, v := range p.envMap {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
+		slices.Sort(cmd.Env)
+		if pathEnv, ok := p.envMap["PATH"]; ok && pathEnv != "" {
+			if resolved, err := lookPathIn(p.cmdStr, pathEnv); err == nil {
+				cmd.Path = resolved
+			}
+		}
+	} else {
+		cmd.Env = os.Environ()
+		for k, v := range p.envMap {
+			cmd.Env = append(cmd.Env, k+"="+v)
+		}
 	}
 
 	if inputReader != nil {
@@ -817,11 +875,61 @@ func (m *Module) which(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		return nil, err
 	}
 
+	m.mu.RLock()
+	isolated := m.isolatedEnv
+	pathEnv, hasPath := m.env["PATH"]
+	m.mu.RUnlock()
+
+	if isolated {
+		if !hasPath {
+			return starlark.None, nil
+		}
+		path, err := lookPathIn(p.Name, pathEnv)
+		if err != nil {
+			return starlark.None, nil
+		}
+		return starlark.String(path), nil
+	}
+
 	path, err := exec.LookPath(p.Name)
 	if err != nil {
 		return starlark.None, nil
 	}
 	return starlark.String(path), nil
+}
+
+func lookPathIn(file string, pathList string) (string, error) {
+	if strings.Contains(file, "/") || (runtime.GOOS == "windows" && strings.Contains(file, "\\")) {
+		if fi, err := os.Stat(file); err == nil && !fi.IsDir() {
+			if runtime.GOOS == "windows" || fi.Mode()&0111 != 0 {
+				return file, nil
+			}
+		}
+		return "", exec.ErrNotFound
+	}
+	exts := []string{""}
+	if runtime.GOOS == "windows" {
+		pathext := os.Getenv("PATHEXT")
+		if pathext == "" {
+			pathext = ".COM;.EXE;.BAT;.CMD"
+		}
+		exts = filepath.SplitList(pathext)
+	}
+
+	for _, dir := range filepath.SplitList(pathList) {
+		if dir == "" {
+			dir = "."
+		}
+		for _, ext := range exts {
+			target := filepath.Join(dir, file+ext)
+			if fi, err := os.Stat(target); err == nil && !fi.IsDir() {
+				if runtime.GOOS == "windows" || fi.Mode()&0111 != 0 {
+					return target, nil
+				}
+			}
+		}
+	}
+	return "", exec.ErrNotFound
 }
 
 // username returns the current user's username.

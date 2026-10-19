@@ -53,6 +53,10 @@ var (
 	sandboxProfileFlags = []string{
 		"sandbox-opaque", "sandbox-net", "sandbox-net-access", "sandbox-host",
 	}
+
+	// Environment flags
+	envFlags   []string
+	envInherit bool
 )
 
 // sandboxAlias is a bool-style pflag.Value that sets the shared --sandbox-profile
@@ -170,6 +174,12 @@ func init() {
 		rootCmd.PersistentFlags().Var(sandboxAlias{profile}, flagName, fmt.Sprintf("Shortcut for --sandbox-profile=%s", profile))
 		rootCmd.PersistentFlags().Lookup(flagName).NoOptDefVal = "true" // usable as a bare flag
 	}
+
+	// Environment flags
+	rootCmd.PersistentFlags().StringArrayVarP(&envFlags, "env", "e", nil,
+		"Set or forward environment variables (KEY=VALUE or KEY)")
+	rootCmd.PersistentFlags().BoolVar(&envInherit, "env-inherit", false,
+		"Inherit all host environment variables (bypasses zero-trust env scrubbing)")
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		applyEnvDefaults()
@@ -466,6 +476,23 @@ func GetSandbox() (sandbox.Profile, error) {
 	return profile, nil
 }
 
+// ResolveRuntimeEnv compiles the effective runtime environment table and sorted slice
+// by synthesizing Tier 1 (baseline or inherited), Tier 2 (profile config), and Tier 3 (CLI flags).
+func ResolveRuntimeEnv(prof *sandbox.Profile) (map[string]string, []string, error) {
+	if prof == nil {
+		prof = &sandbox.Profile{}
+	}
+	envMap, err := prof.SynthesizeEnvMap(os.Environ(), envFlags, envInherit)
+	if err != nil {
+		return nil, nil, err
+	}
+	envSlice, err := prof.SynthesizeEnv(os.Environ(), envFlags, envInherit)
+	if err != nil {
+		return nil, nil, err
+	}
+	return envMap, envSlice, nil
+}
+
 // MaybeHandoffToSandbox checks whether a sandbox is requested (via
 // --sandbox flag or STARKITE_SECURITY_SANDBOX env var) and routes
 // execution through the resolved sandbox driver.
@@ -503,10 +530,14 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 	}
 
 	cwd, _ := os.Getwd()
+	envSlice, err := profile.SynthesizeEnv(os.Environ(), envFlags, envInherit)
+	if err != nil {
+		return false, err
+	}
 	spec := &sandbox.ExecutionSpec{
 		Command:          os.Args,
 		Cwd:              cwd,
-		Env:              profile.CompileEnv(os.Environ()),
+		Env:              envSlice,
 		Network:          profile.Network,
 		Mounts:           profile.Mounts,
 		MaxMemoryMB:      profile.MaxMemoryMB,

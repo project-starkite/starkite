@@ -250,12 +250,19 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 		varStore = vs
 	}
 
+	var activeProf *sandbox.Profile
+	if prof, err := GetSandbox(); err == nil && !prof.IsZero() {
+		activeProf = &prof
+	}
+	envMap, _, _ := ResolveRuntimeEnv(activeProf)
+
 	// Create module config
 	moduleConfig := &libkite.ModuleConfig{
 		DryRun:   dryRun,
 		Debug:    debugMode,
 		TestMode: true,
 		VarStore: varStore,
+		Env:      envMap,
 	}
 
 	// Create registry with all modules
@@ -271,6 +278,7 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 		TestMode:     true,
 		Permissions:  perms,
 		Registry:     registry,
+		Env:          envMap,
 	}
 
 	// Create runtime
@@ -458,6 +466,12 @@ func childTestArgs(file string) []string {
 			absVF = vf
 		}
 		args = append(args, "--var-file="+absVF)
+	}
+	for _, envArg := range envFlags {
+		args = append(args, "--env="+envArg)
+	}
+	if envInherit {
+		args = append(args, "--env-inherit")
 	}
 	return args
 }

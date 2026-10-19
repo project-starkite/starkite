@@ -46,6 +46,9 @@ type ModuleConfig struct {
 
 	// VarStore provides access to the variable store for modules that need it
 	VarStore VarStore
+
+	// Env provides isolated environment variables for modules that need it (e.g. os)
+	Env map[string]string
 }
 
 // VarStore is the interface for variable access used by modules.
