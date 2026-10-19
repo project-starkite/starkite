@@ -782,47 +782,10 @@ func (p Profile) CompilePermissions() *libkite.PermissionConfig {
 
 // CompileEnv compiles the execution environment based on the profile's Env policy.
 func (p Profile) CompileEnv(hostEnv []string) []string {
-	envMap := make(map[string]string)
-	if p.Env.Inherit {
-		for _, e := range hostEnv {
-			k, v, ok := strings.Cut(e, "=")
-			if ok {
-				envMap[k] = v
-			}
-		}
-	} else {
-		baselineKeys := []string{"PATH", "TERM", "LANG", "TZ"}
-		for _, e := range hostEnv {
-			k, v, ok := strings.Cut(e, "=")
-			if ok && slices.Contains(baselineKeys, k) {
-				envMap[k] = v
-			}
-		}
-		envMap["HOME"] = "/tmp"
-		envMap["TMPDIR"] = "/tmp"
-	}
-
-	for k, vPtr := range p.Env.Vars {
-		if vPtr == nil {
-			for _, e := range hostEnv {
-				hk, hv, ok := strings.Cut(e, "=")
-				if ok && hk == k {
-					envMap[k] = hv
-					break
-				}
-			}
-		} else {
-			envMap[k] = *vPtr
-		}
-	}
-
-	res := make([]string, 0, len(envMap))
-	for k, v := range envMap {
-		res = append(res, fmt.Sprintf("%s=%s", k, v))
-	}
-	slices.Sort(res)
+	res, _ := p.SynthesizeEnv(hostEnv, nil, false)
 	return res
 }
+
 
 // ResolvePermissions resolves a profile name against SandboxConfig or built-in ladder profiles.
 func ResolvePermissions(profileName string, cfg *SandboxConfig) (*libkite.PermissionConfig, error) {
