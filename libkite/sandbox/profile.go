@@ -786,7 +786,6 @@ func (p Profile) CompileEnv(hostEnv []string) []string {
 	return res
 }
 
-
 // ResolvePermissions resolves a profile name against SandboxConfig or built-in ladder profiles.
 func ResolvePermissions(profileName string, cfg *SandboxConfig) (*libkite.PermissionConfig, error) {
 	if profileName == "" {
