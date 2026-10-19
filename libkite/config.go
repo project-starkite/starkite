@@ -77,6 +77,9 @@ type Config struct {
 	// Env defines isolated environment variables for modules that inspect or inherit them.
 	// If nil, modules operate against host environment unless explicitly isolated.
 	Env map[string]string
+
+	// Preloaded holds the pre-resolved static module dependency graph.
+	Preloaded *StaticLoadClosure
 }
 
 // ConfigOption is a functional option for Config.
@@ -86,6 +89,13 @@ type ConfigOption func(*Config)
 func WithEnv(env map[string]string) ConfigOption {
 	return func(c *Config) {
 		c.Env = maps.Clone(env)
+	}
+}
+
+// WithPreloaded sets the preloaded static module closure in the configuration.
+func WithPreloaded(closure *StaticLoadClosure) ConfigOption {
+	return func(c *Config) {
+		c.Preloaded = closure
 	}
 }
 

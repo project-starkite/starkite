@@ -65,6 +65,9 @@ type Runtime struct {
 	// Module cache for external modules
 	moduleCache *ModuleCache
 
+	// preloaded holds the pre-resolved static module dependency graph.
+	preloaded *StaticLoadClosure
+
 	// lock is the mod.lock governing this run, loaded lazily from the entry's
 	// directory. When present it pins installed dependency revisions for
 	// reproducible resolution.
@@ -82,7 +85,15 @@ func (rt *Runtime) activeLock() *Lock {
 		if rt.config == nil || rt.config.ScriptPath == "" {
 			return
 		}
-		if l, err := LoadLock(filepath.Dir(rt.config.ScriptPath)); err == nil {
+		dir := filepath.Dir(rt.config.ScriptPath)
+		lockPath := filepath.Join(dir, LockFile)
+		if data, err := rt.readSourceFile(lockPath); err == nil {
+			if l, parseErr := ParseLock(data); parseErr == nil {
+				rt.lock = l
+				return
+			}
+		}
+		if l, err := LoadLock(dir); err == nil {
 			rt.lock = l
 		}
 	})
@@ -105,6 +116,7 @@ func New(config *Config) (*Runtime, error) {
 
 	rt := &Runtime{
 		config:         config,
+		preloaded:      config.Preloaded,
 		globals:        make(starlark.StringDict),
 		signalHandlers: make(map[string]starlark.Callable),
 		ctx:            ctx,

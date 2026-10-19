@@ -5,8 +5,10 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/project-starkite/starkite/basekite/varstore"
@@ -493,6 +495,26 @@ func ResolveRuntimeEnv(prof *sandbox.Profile) (map[string]string, []string, erro
 	return envMap, envSlice, nil
 }
 
+var (
+	activePreloadedClosureMu sync.RWMutex
+	activePreloadedClosure   *libkite.StaticLoadClosure
+)
+
+// GetActivePreloadedClosure returns the statically preloaded module closure
+// discovered prior to sandbox confinement, if any.
+func GetActivePreloadedClosure() *libkite.StaticLoadClosure {
+	activePreloadedClosureMu.RLock()
+	defer activePreloadedClosureMu.RUnlock()
+	return activePreloadedClosure
+}
+
+// SetActivePreloadedClosure records the statically preloaded module closure.
+func SetActivePreloadedClosure(closure *libkite.StaticLoadClosure) {
+	activePreloadedClosureMu.Lock()
+	defer activePreloadedClosureMu.Unlock()
+	activePreloadedClosure = closure
+}
+
 // MaybeHandoffToSandbox checks whether a sandbox is requested (via
 // --sandbox flag or STARKITE_SECURITY_SANDBOX env var) and routes
 // execution through the resolved sandbox driver.
@@ -549,6 +571,30 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 		Stdin:            os.Stdin,
 		Stdout:           os.Stdout,
 		Stderr:           os.Stderr,
+	}
+
+	if scriptPath != "" {
+		if closure, err := libkite.ResolveStaticLoadClosure(scriptPath, cwd, nil); err == nil && closure != nil {
+			SetActivePreloadedClosure(closure)
+			for _, p := range closure.ReadPaths {
+				cleanP := filepath.Clean(p)
+				alreadyMounted := false
+				for _, m := range spec.Mounts {
+					if filepath.Clean(m.Destination) == cleanP {
+						alreadyMounted = true
+						break
+					}
+				}
+				if !alreadyMounted {
+					spec.Mounts = append(spec.Mounts, sandbox.Mount{
+						Source:      cleanP,
+						Destination: cleanP,
+						Type:        sandbox.MountBind,
+						Mode:        sandbox.MountRO,
+					})
+				}
+			}
+		}
 	}
 
 	// Case 1: In-process native driver (e.g. Landlock on Linux, Seatbelt on macOS)

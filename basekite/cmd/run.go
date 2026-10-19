@@ -203,6 +203,13 @@ func runScript(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
+	preloaded := GetActivePreloadedClosure()
+	if preloaded == nil && scriptPath != "" {
+		if closure, err := libkite.ResolveStaticLoadClosure(scriptPath, filepath.Dir(scriptPath), nil); err == nil {
+			preloaded = closure
+		}
+	}
+
 	// Create runtime configuration
 	cfg := &libkite.Config{
 		ScriptPath:        scriptPath,
@@ -216,6 +223,7 @@ func runScript(cmd *cobra.Command, args []string) error {
 		Env:               envMap,
 		EntryPoint:        "main",
 		RequireEntryPoint: isModule,
+		Preloaded:         preloaded,
 	}
 
 	// Create and run the runtime

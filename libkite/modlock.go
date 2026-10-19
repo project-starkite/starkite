@@ -135,6 +135,15 @@ func hashFile(path string) (string, error) {
 	return hex.EncodeToString(h.Sum(nil)), nil
 }
 
+// ParseLock decodes mod.lock YAML data into a Lock struct.
+func ParseLock(data []byte) (*Lock, error) {
+	var l Lock
+	if err := yaml.Unmarshal(data, &l); err != nil {
+		return nil, fmt.Errorf("parsing %s: %w", LockFile, err)
+	}
+	return &l, nil
+}
+
 // LoadLock reads mod.lock from dir. It returns (nil, nil) when no lockfile is
 // present.
 func LoadLock(dir string) (*Lock, error) {
@@ -145,11 +154,7 @@ func LoadLock(dir string) (*Lock, error) {
 		}
 		return nil, err
 	}
-	var l Lock
-	if err := yaml.Unmarshal(data, &l); err != nil {
-		return nil, fmt.Errorf("parsing %s: %w", LockFile, err)
-	}
-	return &l, nil
+	return ParseLock(data)
 }
 
 // Save writes the lock to dir/mod.lock.

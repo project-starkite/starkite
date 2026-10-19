@@ -187,7 +187,7 @@ func (rt *Runtime) resolveInstalledModule(module string) (string, error) {
 				return "", fmt.Errorf("module %q has invalid locked revision %q", module, locked.Rev)
 			}
 			dir := filepath.Join(nsDir, name+"@"+locked.Rev)
-			if isModuleDir(dir) {
+			if rt.isSourceModuleDir(dir) {
 				if locked.Hash != "" {
 					if err := VerifyTree(dir, locked.Hash); err != nil {
 						return "", fmt.Errorf("module %q failed integrity verification: %w", module, err)
@@ -210,7 +210,7 @@ func (rt *Runtime) resolveInstalledModule(module string) (string, error) {
 		}
 		if n, _ := SplitModuleRev(e.Name()); n == name {
 			dir := filepath.Join(nsDir, e.Name())
-			if isModuleDir(dir) {
+			if rt.isSourceModuleDir(dir) {
 				dirs = append(dirs, dir)
 			}
 		}
@@ -243,7 +243,7 @@ func (rt *Runtime) resolvePathFrom(path, callerPath string) (string, error) {
 	// Try relative to caller (for nested module loads)
 	if callerPath != "" {
 		absPath := filepath.Join(filepath.Dir(callerPath), path)
-		if fileExists(absPath) || isModuleDir(absPath) {
+		if rt.sourceFileExists(absPath) || rt.isSourceModuleDir(absPath) {
 			return absPath, nil
 		}
 	}
@@ -251,7 +251,7 @@ func (rt *Runtime) resolvePathFrom(path, callerPath string) (string, error) {
 	// Try relative to working directory
 	if rt.config.WorkDir != "" {
 		absPath := filepath.Join(rt.config.WorkDir, path)
-		if fileExists(absPath) || isModuleDir(absPath) {
+		if rt.sourceFileExists(absPath) || rt.isSourceModuleDir(absPath) {
 			return absPath, nil
 		}
 	}
@@ -259,14 +259,14 @@ func (rt *Runtime) resolvePathFrom(path, callerPath string) (string, error) {
 	// Try relative to current script
 	if rt.config.ScriptPath != "" {
 		absPath := filepath.Join(filepath.Dir(rt.config.ScriptPath), path)
-		if fileExists(absPath) || isModuleDir(absPath) {
+		if rt.sourceFileExists(absPath) || rt.isSourceModuleDir(absPath) {
 			return absPath, nil
 		}
 	}
 
 	// Try current directory
 	absPath, err := filepath.Abs(path)
-	if err == nil && (fileExists(absPath) || isModuleDir(absPath)) {
+	if err == nil && (rt.sourceFileExists(absPath) || rt.isSourceModuleDir(absPath)) {
 		return absPath, nil
 	}
 
@@ -276,12 +276,12 @@ func (rt *Runtime) resolvePathFrom(path, callerPath string) (string, error) {
 // loadModuleFromPath loads a module from a resolved path. A directory is a
 // module (manifest + .star files); a .star file is an intra-module file load.
 func (rt *Runtime) loadModuleFromPath(modulePath string, config *starlark.Dict, origin string) (starlark.StringDict, error) {
-	info, err := os.Stat(modulePath)
-	if err != nil {
-		return nil, err
+	if rt.isSourceModuleDir(modulePath) {
+		return rt.loadModuleDir(modulePath, config, origin)
 	}
 
-	if info.IsDir() {
+	info, err := os.Stat(modulePath)
+	if err == nil && info.IsDir() {
 		return rt.loadModuleDir(modulePath, config, origin)
 	}
 
@@ -293,7 +293,7 @@ func (rt *Runtime) loadModuleFromPath(modulePath string, config *starlark.Dict, 
 // loadSingleFileModule loads a single .star file. origin labels the module
 // thread for denial attribution.
 func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict, origin string) (starlark.StringDict, error) {
-	data, err := os.ReadFile(filePath)
+	data, err := rt.readSourceFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read module file: %w", err)
 	}
@@ -334,26 +334,32 @@ func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict, 
 // one or more .star files. The manifest's entry file loads first; the public
 // symbols of every other .star file in the directory merge into the module.
 func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict, origin string) (starlark.StringDict, error) {
-	if _, err := LoadModuleManifest(dirPath); err != nil {
+	manifestPath := filepath.Join(dirPath, ManifestFile)
+	manifestData, err := rt.readSourceFile(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	m, err := ParseModuleManifest(manifestData, ManifestFile)
+	if err != nil {
 		return nil, err
 	}
 
 	entryPath := filepath.Join(dirPath, EntryFile)
+	if !rt.sourceFileExists(entryPath) {
+		return nil, fmt.Errorf("module %q is missing its %s entry file", m.Name, EntryFile)
+	}
+
 	globals, err := rt.loadSingleFileModule(entryPath, config, origin)
 	if err != nil {
 		return nil, err
 	}
 
 	// Merge the public symbols of the directory's other .star files.
-	entries, err := os.ReadDir(dirPath)
+	starFiles, err := rt.listModuleStarFiles(dirPath)
 	if err != nil {
 		return nil, err
 	}
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".star") {
-			continue
-		}
-		fullPath := filepath.Join(dirPath, entry.Name())
+	for _, fullPath := range starFiles {
 		if fullPath == entryPath {
 			continue
 		}
