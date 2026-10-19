@@ -364,13 +364,7 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		}
 	}
 
-	// Working directory: under container parity, omit $HOME or / to avoid
-	// granting broad Landlock additive access. Enforce W^X (writeDataAccess without execute).
-	if spec.Cwd != "" && !isHomeOrRoot && !isSharedMemoryPath(spec.Cwd) {
-		if err := addLandlockPathRule(int(rulesetFd), spec.Cwd, writeDataAccess); err != nil {
-			return fmt.Errorf("sandbox: failed to add cwd rule for %q: %w", spec.Cwd, err)
-		}
-	}
+
 
 	if isHomeOrRoot {
 		if cleanCwd == "/" {

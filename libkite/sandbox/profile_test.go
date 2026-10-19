@@ -30,6 +30,31 @@ func mountByDest(p Profile) map[string]Mount {
 	return m
 }
 
+func TestLoadProfile_denyAll(t *testing.T) {
+	p, err := LoadProfile(ProfileDenyAll)
+	if err != nil {
+		t.Fatalf("LoadProfile(deny-all): %v", err)
+	}
+	if p.Name != ProfileDenyAll {
+		t.Errorf("Name = %q, want %q", p.Name, ProfileDenyAll)
+	}
+	if p.Network != NetworkNone {
+		t.Errorf("Network = %q, want %q", p.Network, NetworkNone)
+	}
+	if !p.NoExec {
+		t.Errorf("NoExec = false, want true")
+	}
+	if len(p.Exec.Deny) != 1 || p.Exec.Deny[0] != "*" {
+		t.Errorf("Exec.Deny = %v, want [*]", p.Exec.Deny)
+	}
+	if len(p.Paths.Read) != 0 || len(p.Paths.Write) != 0 {
+		t.Errorf("Paths should be empty, got read=%v, write=%v", p.Paths.Read, p.Paths.Write)
+	}
+	if len(p.Mounts) != 1 || p.Mounts[0].Destination != "/tmp" || p.Mounts[0].Mode != MountRW {
+		t.Errorf("Mounts = %+v, want only /tmp RW tmpfs mount", p.Mounts)
+	}
+}
+
 func TestLoadProfile_opaque(t *testing.T) {
 	p, err := LoadProfile(ProfileOpaque)
 	if err != nil {

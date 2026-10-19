@@ -15,6 +15,12 @@ func TestGenerateSeatbeltSBPL(t *testing.T) {
 		Network: NetworkNone,
 		Mounts: []Mount{
 			{
+				Source:      "/workspace",
+				Destination: "/workspace",
+				Type:        MountBind,
+				Mode:        MountRW,
+			},
+			{
 				Source:      "/data/inputs",
 				Destination: "/data/inputs",
 				Type:        MountBind,
@@ -149,6 +155,14 @@ func TestGenerateSeatbeltSBPL_ContainerParity(t *testing.T) {
 		spec := &ExecutionSpec{
 			Command: []string{"kite", "run", "main.star"},
 			Cwd:     subDir,
+			Mounts: []Mount{
+				{
+					Source:      subDir,
+					Destination: subDir,
+					Type:        MountBind,
+					Mode:        MountRW,
+				},
+			},
 		}
 		sbpl := GenerateSeatbeltSBPL(spec)
 
@@ -211,6 +225,12 @@ func TestGenerateSeatbeltSBPL_NoExecAndWX(t *testing.T) {
 			Cwd:     "/workspace",
 			Mounts: []Mount{
 				{
+					Source:      "/workspace",
+					Destination: "/workspace",
+					Type:        MountBind,
+					Mode:        MountRW,
+				},
+				{
 					Source:      "/dev/shm",
 					Destination: "/dev/shm",
 					Type:        MountBind,
@@ -239,4 +259,58 @@ func TestGenerateSeatbeltSBPL_NoExecAndWX(t *testing.T) {
 			t.Errorf("/dev/shm must never be granted file-write* in SBPL")
 		}
 	})
+}
+
+func TestGenerateSeatbeltSBPL_ZeroTrustDenyAll(t *testing.T) {
+	spec := &ExecutionSpec{
+		Command:    []string{"kite", "run", "/workspace/script.star"},
+		Cwd:        "/workspace",
+		ScriptFile: "/workspace/script.star",
+		Mounts: []Mount{
+			{
+				Destination: "/tmp",
+				Type:        MountTmpfs,
+				Mode:        MountRW,
+			},
+		},
+	}
+	sbpl := GenerateSeatbeltSBPL(spec)
+
+	if strings.Contains(sbpl, `(allow file-write* (subpath "/workspace"))`) {
+		t.Errorf("unmounted /workspace must not be granted file-write* in zero-trust")
+	}
+	if !strings.Contains(sbpl, `(deny file-write* (subpath "/workspace"))`) {
+		t.Errorf("unmounted /workspace must be denied file-write* in zero-trust")
+	}
+	if !strings.Contains(sbpl, `(deny file-read* (subpath "/workspace"))`) {
+		t.Errorf("unmounted /workspace must be denied file-read* in zero-trust")
+	}
+	if !strings.Contains(sbpl, `(allow file-read* (literal "/workspace/script.star"))`) {
+		t.Errorf("spec.ScriptFile must be explicitly allowed even when Cwd is unmounted")
+	}
+}
+
+func TestGenerateSeatbeltSBPL_ReadOnlyCwd(t *testing.T) {
+	spec := &ExecutionSpec{
+		Command: []string{"kite", "run", "script.star"},
+		Cwd:     "/workspace",
+		Mounts: []Mount{
+			{
+				Source:      "/workspace",
+				Destination: "/workspace",
+				Type:        MountBind,
+				Mode:        MountRO,
+			},
+			{
+				Destination: "/tmp",
+				Type:        MountTmpfs,
+				Mode:        MountRW,
+			},
+		},
+	}
+	sbpl := GenerateSeatbeltSBPL(spec)
+
+	if strings.Contains(sbpl, `(allow file-write* (subpath "/workspace"))`) {
+		t.Errorf("read-only /workspace must not be granted file-write* in SBPL")
+	}
 }

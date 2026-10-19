@@ -849,7 +849,20 @@ func loadProfileResolved(value string) (Profile, error) {
 	}
 
 	switch value {
-	case ProfileDenyAll, ProfileOpaque:
+	case ProfileDenyAll:
+		return Profile{
+			Name:      ProfileDenyAll,
+			Enabled:   true,
+			Driver:    DriverDefault,
+			Paths:     PathsSpec{Read: nil, Write: nil},
+			Exec:      ExecPolicySpec{Deny: []string{"*"}},
+			NoExec:    true,
+			Network:   NetworkNone,
+			Mounts: []Mount{
+				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
+			},
+		}, nil
+	case ProfileOpaque:
 		return loadBuiltin(ProfileOpaque)
 	case ProfileNetAccess:
 		return loadBuiltin(ProfileNetAccess)

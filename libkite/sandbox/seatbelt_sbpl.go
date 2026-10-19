@@ -113,18 +113,37 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 		}
 
 		if !isHomeOrRoot {
-			if strings.HasPrefix(cleanCwd, cleanHome) {
-				for _, cwdVar := range sbplPathVariants(cleanCwd) {
-					b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", cwdVar))
-					b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", cwdVar))
-				}
-			}
 			starkiteDir := cleanSBPLPath(filepath.Join(cleanHome, ".starkite"))
 			for _, stVar := range sbplPathVariants(starkiteDir) {
 				b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", stVar))
 			}
 		}
 		b.WriteString("\n")
+	}
+
+	cwdMounted := false
+	for _, m := range spec.Mounts {
+		target := m.Source
+		if target == "" {
+			target = m.Destination
+		}
+		if cleanSBPLPath(target) == cleanCwd {
+			cwdMounted = true
+			break
+		}
+	}
+
+	// Working directory isolation: if CWD is not mounted, deny reading and writing
+	// unless already isolated by $HOME.
+	if !cwdMounted && cleanCwd != "" && !isHomeOrRoot && cleanCwd != "/tmp" && cleanCwd != "/private/tmp" {
+		if cleanHome == "" || !strings.HasPrefix(cleanCwd, cleanHome) {
+			b.WriteString(";; Working directory isolation (unmounted)\n")
+			for _, cwdVar := range sbplPathVariants(cleanCwd) {
+				b.WriteString(fmt.Sprintf("(deny file-read* (subpath %q))\n", cwdVar))
+				b.WriteString(fmt.Sprintf("(deny file-write* (subpath %q))\n", cwdVar))
+			}
+			b.WriteString("\n")
+		}
 	}
 
 	// Explicit writable mounts from ExecutionSpec
@@ -185,42 +204,6 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 		b.WriteString(";; Script File Access\n")
 		for _, sVar := range sbplPathVariants(cleanScript) {
 			b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", sVar))
-		}
-		b.WriteString("\n")
-	}
-
-	// Working directory writable if specified and not HOME or root
-	if cleanCwd != "" && !isHomeOrRoot {
-		b.WriteString(";; Working Directory Access\n")
-		if cleanHome == "" || !strings.HasPrefix(cleanCwd, cleanHome) {
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", cleanCwd))
-		}
-		if !spec.NoExec {
-			b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", cleanCwd))
-		}
-		if strings.HasPrefix(cleanCwd, "/var/") {
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", "/private"+cleanCwd))
-			if !spec.NoExec {
-				b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", "/private"+cleanCwd))
-			}
-		} else if strings.HasPrefix(cleanCwd, "/private/var/") {
-			trimmed := strings.TrimPrefix(cleanCwd, "/private")
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", trimmed))
-			if !spec.NoExec {
-				b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", trimmed))
-			}
-		}
-		if strings.HasPrefix(cleanCwd, "/tmp/") {
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", "/private"+cleanCwd))
-			if !spec.NoExec {
-				b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", "/private"+cleanCwd))
-			}
-		} else if strings.HasPrefix(cleanCwd, "/private/tmp/") {
-			trimmed := strings.TrimPrefix(cleanCwd, "/private")
-			b.WriteString(fmt.Sprintf("(allow file-write* (subpath %q))\n", trimmed))
-			if !spec.NoExec {
-				b.WriteString(fmt.Sprintf("(deny process-exec (subpath %q))\n", trimmed))
-			}
 		}
 		b.WriteString("\n")
 	}
