@@ -216,11 +216,29 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 			if cleanP == "" {
 				continue
 			}
-			b.WriteString(fmt.Sprintf("(allow process-exec (subpath %q))\n", cleanP))
+			for _, v := range sbplPathVariants(cleanP) {
+				b.WriteString(fmt.Sprintf("(allow process-exec (literal %q))\n", v))
+				b.WriteString(fmt.Sprintf("(allow process-exec (subpath %q))\n", v))
+				if cleanHome != "" && strings.HasPrefix(v, cleanHome) {
+					b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+				}
+				if cleanCwd != "" && strings.HasPrefix(v, cleanCwd) {
+					b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+				}
+			}
 			if resolved, evalErr := filepath.EvalSymlinks(cleanP); evalErr == nil {
 				cleanResolved := cleanSBPLPath(resolved)
 				if cleanResolved != "" && cleanResolved != cleanP {
-					b.WriteString(fmt.Sprintf("(allow process-exec (subpath %q))\n", cleanResolved))
+					for _, v := range sbplPathVariants(cleanResolved) {
+						b.WriteString(fmt.Sprintf("(allow process-exec (literal %q))\n", v))
+						b.WriteString(fmt.Sprintf("(allow process-exec (subpath %q))\n", v))
+						if cleanHome != "" && strings.HasPrefix(v, cleanHome) {
+							b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+						}
+						if cleanCwd != "" && strings.HasPrefix(v, cleanCwd) {
+							b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+						}
+					}
 				}
 			}
 		}

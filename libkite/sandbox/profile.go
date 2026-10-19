@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"maps"
 	"os"
-	osexec "os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -378,6 +377,9 @@ func profileFromBody(name string, body ProfileBody, origin string) (Profile, err
 	if err != nil {
 		return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
 	}
+	if p.Network == NetworkHost {
+		mounts = ResolveNetworkAssetMounts(mounts)
+	}
 	p.Mounts = mounts
 
 	// Exec & W^X
@@ -395,20 +397,7 @@ func profileFromBody(name string, body ProfileBody, origin string) (Profile, err
 			p.NoExec = false
 		} else {
 			p.NoExec = false
-			for _, bin := range p.Exec.Allow {
-				if strings.Contains(bin, "/") {
-					exp := expandPath(bin, cwd, home)
-					if isHostAbs(exp) && !slices.Contains(p.AllowedExecPaths, exp) {
-						p.AllowedExecPaths = append(p.AllowedExecPaths, exp)
-					}
-				} else {
-					if path, err := osexec.LookPath(bin); err == nil {
-						if !slices.Contains(p.AllowedExecPaths, path) {
-							p.AllowedExecPaths = append(p.AllowedExecPaths, path)
-						}
-					}
-				}
-			}
+			p.AllowedExecPaths = append(p.AllowedExecPaths, ResolveExecutablePaths(p.Exec.Allow, cwd, home)...)
 		}
 	}
 
@@ -908,10 +897,10 @@ func loadProfileResolved(value string) (Profile, error) {
 			Exec:    ExecPolicySpec{Allow: []string{"*"}},
 			NoExec:  false,
 			Network: NetworkHost,
-			Mounts: []Mount{
+			Mounts: ResolveNetworkAssetMounts([]Mount{
 				{Source: cwd, Destination: cwd, Type: MountBind, Mode: MountRW},
 				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
-			},
+			}),
 		}, nil
 	case ProfileUnconfined, "allow-all":
 		return Profile{

@@ -221,16 +221,20 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		"/usr/lib64",
 		"/usr/libexec",
 	}
-	// Non-executable configuration and random device paths (note: /dev/shm and /run/shm are excluded)
+	// Essential device paths and runtime assets
 	systemDataPaths := []string{
+		"/dev/urandom",
+		"/dev/random",
+	}
+	systemNetworkPaths := []string{
 		"/etc/ssl",
 		"/etc/pki",
 		"/etc/ca-certificates",
+		"/usr/share/ca-certificates",
 		"/etc/resolv.conf",
 		"/etc/hosts",
 		"/etc/nsswitch.conf",
-		"/dev/urandom",
-		"/dev/random",
+		"/etc/services",
 	}
 	systemWritableDevices := []string{
 		"/dev/null",
@@ -277,6 +281,16 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 	for _, p := range systemDataPaths {
 		if _, statErr := os.Stat(p); statErr == nil {
 			_ = addLandlockPathRule(int(rulesetFd), p, readDataAccess)
+		}
+	}
+	if spec.Network == NetworkHost {
+		for _, p := range systemNetworkPaths {
+			if _, statErr := os.Stat(p); statErr == nil {
+				_ = addLandlockPathRule(int(rulesetFd), p, readDataAccess)
+				if resolved, err := filepath.EvalSymlinks(p); err == nil && resolved != p {
+					_ = addLandlockPathRule(int(rulesetFd), resolved, readDataAccess)
+				}
+			}
 		}
 	}
 	for _, p := range systemWritableDevices {
@@ -353,6 +367,9 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 			if err := addLandlockPathRule(int(rulesetFd), cleanTarget, writeDataAccess); err != nil {
 				return fmt.Errorf("sandbox: failed to add rw rule for %q: %w", cleanTarget, err)
 			}
+			if resolved, err := filepath.EvalSymlinks(cleanTarget); err == nil && resolved != cleanTarget {
+				_ = addLandlockPathRule(int(rulesetFd), resolved, writeDataAccess)
+			}
 		} else {
 			roAccess := execAccess
 			if spec.NoExec || len(spec.AllowedExecPaths) > 0 {
@@ -360,6 +377,9 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 			}
 			if err := addLandlockPathRule(int(rulesetFd), cleanTarget, roAccess); err != nil {
 				return fmt.Errorf("sandbox: failed to add ro rule for %q: %w", cleanTarget, err)
+			}
+			if resolved, err := filepath.EvalSymlinks(cleanTarget); err == nil && resolved != cleanTarget {
+				_ = addLandlockPathRule(int(rulesetFd), resolved, roAccess)
 			}
 		}
 	}

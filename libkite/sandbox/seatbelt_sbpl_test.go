@@ -314,3 +314,24 @@ func TestGenerateSeatbeltSBPL_ReadOnlyCwd(t *testing.T) {
 		t.Errorf("read-only /workspace must not be granted file-write* in SBPL")
 	}
 }
+
+func TestGenerateSeatbeltSBPL_AllowedExecUnderHome(t *testing.T) {
+	rawHome, err := os.UserHomeDir()
+	if err != nil || rawHome == "" {
+		t.Skip("skipping test: os.UserHomeDir() unavailable")
+	}
+	home := cleanSBPLPath(rawHome)
+	binUnderHome := cleanSBPLPath(filepath.Join(home, ".rd", "bin", "kubectl"))
+
+	spec := &ExecutionSpec{
+		AllowedExecPaths: []string{binUnderHome},
+	}
+	sbpl := GenerateSeatbeltSBPL(spec)
+
+	if !strings.Contains(sbpl, fmt.Sprintf("(allow process-exec (literal %q))", binUnderHome)) {
+		t.Errorf("expected process-exec allow for binary under home, got:\n%s", sbpl)
+	}
+	if !strings.Contains(sbpl, fmt.Sprintf("(allow file-read* (literal %q))", binUnderHome)) {
+		t.Errorf("expected file-read* allow for binary under home, got:\n%s", sbpl)
+	}
+}

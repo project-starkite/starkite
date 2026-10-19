@@ -1103,3 +1103,39 @@ func TestResolvePermissions(t *testing.T) {
 		t.Errorf("pCustom missing fs.read(/custom/read/**): %v", pCustom.Allow)
 	}
 }
+
+func TestCompilePaths_NetworkAssetAutoUnveil(t *testing.T) {
+	body := ProfileBody{
+		Network: networkSpec{Mode: "host"},
+	}
+	p, err := profileFromBody("net-test", body, "test")
+	if err != nil {
+		t.Fatalf("profileFromBody: %v", err)
+	}
+
+	destMap := make(map[string]bool)
+	for _, m := range p.Mounts {
+		destMap[m.Destination] = true
+	}
+
+	for _, req := range []string{"/etc/resolv.conf", "/etc/hosts"} {
+		if _, statErr := os.Stat(req); statErr == nil {
+			if !destMap[req] {
+				t.Errorf("expected network profile to auto-unveil %q, mounts: %+v", req, p.Mounts)
+			}
+		}
+	}
+
+	bodyNone := ProfileBody{
+		Network: networkSpec{Mode: "none"},
+	}
+	pNone, err := profileFromBody("none-test", bodyNone, "test")
+	if err != nil {
+		t.Fatalf("profileFromBody(none): %v", err)
+	}
+	for _, m := range pNone.Mounts {
+		if m.Destination == "/etc/resolv.conf" || m.Destination == "/etc/hosts" {
+			t.Errorf("network: none profile should not unveil %q", m.Destination)
+		}
+	}
+}
