@@ -3,11 +3,16 @@ package sandbox
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"testing"
 )
 
 func TestResolveExecutablePaths_SymlinksAndBareNames(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink hopping and unix bare executable resolution not applicable on windows")
+	}
+
 	tempDir := t.TempDir()
 
 	realDir := filepath.Join(tempDir, "real")
@@ -63,5 +68,21 @@ func TestResolveExecutablePaths_SymlinksAndBareNames(t *testing.T) {
 	}
 	if slices.Contains(resolvedBare, "*") {
 		t.Errorf("wildcard * should not appear in resolved paths, got: %v", resolvedBare)
+	}
+}
+
+func TestResolveExecutablePaths_DirectPaths(t *testing.T) {
+	tempDir := t.TempDir()
+	binPath := filepath.Join(tempDir, "mybin")
+	if err := os.WriteFile(binPath, []byte("echo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved := ResolveExecutablePaths([]string{binPath, "*"}, tempDir, "")
+	if !slices.Contains(resolved, filepath.Clean(binPath)) {
+		t.Errorf("expected direct binary path to be resolved, got %v", resolved)
+	}
+	if slices.Contains(resolved, "*") {
+		t.Errorf("wildcard * should not appear in resolved paths, got: %v", resolved)
 	}
 }
