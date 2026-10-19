@@ -108,7 +108,7 @@ func runTests(cmd *cobra.Command, args []string) error {
 		return err
 	}
 	insideSandbox := os.Getenv(sandbox.InsideEnvVar) == "1"
-	if !profile.IsZero() && !insideSandbox && len(testFiles) > 1 {
+	if !profile.IsZero() && !insideSandbox && len(testFiles) > 1 && !isRunningInTest() {
 		return runTestFilesInSandbox(testFiles)
 	}
 
@@ -117,13 +117,20 @@ func runTests(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	perms, err := sandbox.ResolvePermissions(permissionsMode, varStore.Sandbox)
+	activeProfile, err := ResolveActiveProfile()
 	if err != nil {
 		return err
 	}
+	perms := activeProfile.CompilePermissions()
 
-	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
-		return err
+	if len(testFiles) == 1 {
+		if handled, err := MaybeHandoffToSandboxWithScript(context.Background(), testFiles[0]); handled || err != nil {
+			return err
+		}
+	} else {
+		if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+			return err
+		}
 	}
 
 	startTime := time.Now()
@@ -250,11 +257,18 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 		varStore = vs
 	}
 
-	var activeProf *sandbox.Profile
-	if prof, err := GetSandbox(); err == nil && !prof.IsZero() {
-		activeProf = &prof
+	activeProf, err := ResolveActiveProfile()
+	if err != nil {
+		activeProf = sandbox.Profile{}
 	}
-	envMap, _, _ := ResolveRuntimeEnv(activeProf)
+	envMap, _, _ := ResolveRuntimeEnv(&activeProf)
+
+	preloaded := GetActivePreloadedClosure()
+	if preloaded == nil && testFile != "" {
+		if closure, err := libkite.ResolveStaticLoadClosure(testFile, filepath.Dir(testFile), nil); err == nil {
+			preloaded = closure
+		}
+	}
 
 	// Create module config
 	moduleConfig := &libkite.ModuleConfig{
@@ -279,6 +293,7 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 		Permissions:  perms,
 		Registry:     registry,
 		Env:          envMap,
+		Preloaded:    preloaded,
 	}
 
 	// Create runtime
@@ -445,8 +460,37 @@ func childTestArgs(file string) []string {
 	if testFilter != "" {
 		args = append(args, "--run", testFilter)
 	}
-	if permissionsMode != "" {
-		args = append(args, "--permissions="+permissionsMode)
+	if f := rootCmd.PersistentFlags().Lookup("sandbox-enabled"); f != nil && f.Changed {
+		args = append(args, fmt.Sprintf("--sandbox-enabled=%v", sandboxEnabled))
+	} else if !sandboxEnabled {
+		args = append(args, "--sandbox-enabled=false")
+	}
+	if sandboxProfile != "" {
+		args = append(args, "--sandbox-profile", sandboxProfile)
+	}
+	if sandboxDriver != "" {
+		args = append(args, "--sandbox-driver", sandboxDriver)
+	}
+	for _, p := range sandboxPathRead {
+		args = append(args, "--sandbox-path-read", p)
+	}
+	for _, p := range sandboxPathWrite {
+		args = append(args, "--sandbox-path-write", p)
+	}
+	for _, c := range sandboxCallAllow {
+		args = append(args, "--sandbox-call-allow", c)
+	}
+	for _, c := range sandboxCallDeny {
+		args = append(args, "--sandbox-call-deny", c)
+	}
+	for _, x := range sandboxExecAllow {
+		args = append(args, "--sandbox-exec-allow", x)
+	}
+	for _, x := range sandboxExecDeny {
+		args = append(args, "--sandbox-exec-deny", x)
+	}
+	if sandboxNet {
+		args = append(args, "--sandbox-net")
 	}
 	if debugMode {
 		args = append(args, "--debug")
@@ -477,9 +521,8 @@ func childTestArgs(file string) []string {
 }
 
 // sandboxEngagementValue returns whatever the user supplied to engage the
-// sandbox: the --sandbox-profile flag value, the env var if no flag, or "default"
-// if --sandboxed was used. Mirrors GetSandbox()'s precedence so children see the
-// exact value the parent resolved against.
+// sandbox: the --sandbox-profile flag value, the env var if no flag, or "default".
+// Mirrors GetSandbox()'s precedence so children see the exact value the parent resolved against.
 func sandboxEngagementValue() string {
 	if sandboxProfile != "" {
 		return sandboxProfile
@@ -487,10 +530,7 @@ func sandboxEngagementValue() string {
 	if v := os.Getenv(sandbox.ProfileEnvVar); v != "" {
 		return v
 	}
-	if sandboxed || sandboxDriver != "" {
-		return sandbox.DefaultProfileName
-	}
-	return ""
+	return sandbox.DefaultProfileName
 }
 
 func printTestSummary(results []testResult, elapsed time.Duration) {

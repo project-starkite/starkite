@@ -89,3 +89,86 @@ func TestRunTestsNoFiles(t *testing.T) {
 		t.Fatalf("expected nil error for empty directory, got: %v", err)
 	}
 }
+
+func TestChildTestArgs(t *testing.T) {
+	oldEnabled := sandboxEnabled
+	oldProfile := sandboxProfile
+	oldDriver := sandboxDriver
+	oldPathRead := sandboxPathRead
+	oldPathWrite := sandboxPathWrite
+	oldCallAllow := sandboxCallAllow
+	oldCallDeny := sandboxCallDeny
+	oldExecAllow := sandboxExecAllow
+	oldExecDeny := sandboxExecDeny
+	oldNet := sandboxNet
+	oldEnvFlags := envFlags
+	oldEnvInherit := envInherit
+	oldVerbose := testVerbose
+	oldFilter := testFilter
+
+	defer func() {
+		sandboxEnabled = oldEnabled
+		sandboxProfile = oldProfile
+		sandboxDriver = oldDriver
+		sandboxPathRead = oldPathRead
+		sandboxPathWrite = oldPathWrite
+		sandboxCallAllow = oldCallAllow
+		sandboxCallDeny = oldCallDeny
+		sandboxExecAllow = oldExecAllow
+		sandboxExecDeny = oldExecDeny
+		sandboxNet = oldNet
+		envFlags = oldEnvFlags
+		envInherit = oldEnvInherit
+		testVerbose = oldVerbose
+		testFilter = oldFilter
+	}()
+
+	sandboxEnabled = false
+	sandboxProfile = "sandbox-path"
+	sandboxDriver = "landlock"
+	sandboxPathRead = []string{"/custom/read"}
+	sandboxPathWrite = []string{"/custom/write"}
+	sandboxCallAllow = []string{"os.env"}
+	sandboxCallDeny = []string{"io.prompt"}
+	sandboxExecAllow = []string{"echo"}
+	sandboxExecDeny = []string{"rm"}
+	sandboxNet = true
+	envFlags = []string{"FOO=bar"}
+	envInherit = true
+	testVerbose = true
+	testFilter = "mytest"
+
+	args := childTestArgs("foo_test.star")
+
+	expectedSubstrings := []string{
+		"test",
+		"foo_test.star",
+		"--verbose",
+		"--run", "mytest",
+		"--sandbox-enabled=false",
+		"--sandbox-profile", "sandbox-path",
+		"--sandbox-driver", "landlock",
+		"--sandbox-path-read", "/custom/read",
+		"--sandbox-path-write", "/custom/write",
+		"--sandbox-call-allow", "os.env",
+		"--sandbox-call-deny", "io.prompt",
+		"--sandbox-exec-allow", "echo",
+		"--sandbox-exec-deny", "rm",
+		"--sandbox-net",
+		"--env=FOO=bar",
+		"--env-inherit",
+	}
+
+	for _, sub := range expectedSubstrings {
+		found := false
+		for _, a := range args {
+			if a == sub {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("childTestArgs missing %q, got: %v", sub, args)
+		}
+	}
+}

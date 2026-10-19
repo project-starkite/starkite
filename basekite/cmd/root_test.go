@@ -1,11 +1,11 @@
 package cmd
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
-	"github.com/spf13/pflag"
-
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/sandbox"
 )
 
@@ -76,351 +76,231 @@ func TestEnvTimeoutInvalid(t *testing.T) {
 	}
 }
 
-// buildPermissionFlagSet mirrors the production registration of --permissions
-// and the boolean profile aliases on a throwaway flag set, parses the given
-// args (the alias Set writes the shared permissionsMode), and returns it so the
-// conflict check can be exercised.
-func buildPermissionFlagSet(t *testing.T, args []string) *pflag.FlagSet {
-	t.Helper()
-	permissionsMode = ""
-	fs := pflag.NewFlagSet("x", pflag.ContinueOnError)
-	fs.StringVar(&permissionsMode, "permissions", "", "")
-	for _, p := range permissionProfileFlags {
-		fs.Var(permissionAlias{p}, p, "")
-		fs.Lookup(p).NoOptDefVal = "true"
-	}
-	if err := fs.Parse(args); err != nil {
-		t.Fatalf("parse %v: %v", args, err)
-	}
-	return fs
-}
-
-func TestPermissionAliasFlags(t *testing.T) {
-	t.Run("alias sets permissions value", func(t *testing.T) {
-		fs := buildPermissionFlagSet(t, []string{"--allow-fs"})
-		if err := checkPermissionFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if permissionsMode != "allow-fs" {
-			t.Errorf("permissionsMode = %q, want allow-fs", permissionsMode)
-		}
-	})
-
-	t.Run("deny-all alias", func(t *testing.T) {
-		fs := buildPermissionFlagSet(t, []string{"--deny-all"})
-		if err := checkPermissionFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if permissionsMode != "deny-all" {
-			t.Errorf("permissionsMode = %q, want deny-all", permissionsMode)
-		}
-	})
-
-	t.Run("two aliases conflict", func(t *testing.T) {
-		fs := buildPermissionFlagSet(t, []string{"--allow-fs", "--allow-net"})
-		err := checkPermissionFlagConflict(fs)
-		if err == nil {
-			t.Fatal("expected conflict error for two aliases")
-		}
-		if !strings.Contains(err.Error(), "--allow-fs") || !strings.Contains(err.Error(), "--allow-net") {
-			t.Errorf("error should name both flags; got %q", err.Error())
-		}
-	})
-
-	t.Run("alias plus --permissions conflict", func(t *testing.T) {
-		fs := buildPermissionFlagSet(t, []string{"--allow-fs", "--permissions=allow-all"})
-		err := checkPermissionFlagConflict(fs)
-		if err == nil {
-			t.Fatal("expected conflict error for alias + --permissions")
-		}
-		if !strings.Contains(err.Error(), "--permissions") || !strings.Contains(err.Error(), "--allow-fs") {
-			t.Errorf("error should name both flags; got %q", err.Error())
-		}
-	})
-}
-
-// buildSandboxFlagSet mirrors the production registration of sandbox flags
-// on a throwaway flag set so parsing and conflict checks can be exercised.
-func buildSandboxFlagSet(t *testing.T, args []string) *pflag.FlagSet {
-	t.Helper()
-	sandboxed = false
+func resetSandboxFlags() {
+	sandboxEnabled = true
 	sandboxProfile = ""
 	sandboxDriver = ""
-	fs := pflag.NewFlagSet("sandbox_test", pflag.ContinueOnError)
-	fs.BoolVar(&sandboxed, "sandboxed", false, "")
-	fs.StringVar(&sandboxProfile, "sandbox-profile", "", "")
-	fs.StringVar(&sandboxDriver, "sandbox-driver", "", "")
-	for flagName, profile := range sandboxProfileAliases {
-		fs.Var(sandboxAlias{profile}, flagName, "")
-		fs.Lookup(flagName).NoOptDefVal = "true"
+	sandboxPathRead = nil
+	sandboxPathWrite = nil
+	sandboxCallAllow = nil
+	sandboxCallDeny = nil
+	sandboxExecAllow = nil
+	sandboxExecDeny = nil
+	sandboxNet = false
+
+	flags := rootCmd.PersistentFlags()
+	for _, name := range []string{
+		"sandbox-enabled", "sandbox-profile", "sandbox-driver",
+		"sandbox-path-read", "sandbox-path-write",
+		"sandbox-call-allow", "sandbox-call-deny",
+		"sandbox-exec-allow", "sandbox-exec-deny",
+		"sandbox-net",
+	} {
+		if f := flags.Lookup(name); f != nil {
+			f.Changed = false
+		}
 	}
-	if err := fs.Parse(args); err != nil {
-		t.Fatalf("parse %v: %v", args, err)
-	}
-	return fs
 }
 
-func TestSandboxFlagsAndAliases(t *testing.T) {
-	origSandboxed := sandboxed
-	origProfile := sandboxProfile
-	origDriver := sandboxDriver
-	defer func() {
-		sandboxed = origSandboxed
-		sandboxProfile = origProfile
-		sandboxDriver = origDriver
-	}()
-	t.Run("sandboxed boolean switch", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandboxed"})
-		if err := checkSandboxFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !sandboxed {
-			t.Error("expected sandboxed=true")
+func TestSandboxFlags(t *testing.T) {
+	defer resetSandboxFlags()
+
+	t.Run("default resolution", func(t *testing.T) {
+		resetSandboxFlags()
+		if !sandboxEnabled {
+			t.Error("expected sandboxEnabled=true by default")
 		}
 		if sandboxProfile != "" {
-			t.Errorf("expected empty profile (default fallback), got %q", sandboxProfile)
+			t.Errorf("expected empty sandboxProfile, got %q", sandboxProfile)
+		}
+		prof, err := ResolveActiveProfile()
+		if err != nil {
+			t.Fatalf("ResolveActiveProfile: %v", err)
+		}
+		if prof.Name != sandbox.DefaultProfileName {
+			t.Errorf("prof.Name = %q, want %q", prof.Name, sandbox.DefaultProfileName)
+		}
+		if !prof.Enabled {
+			t.Error("expected prof.Enabled=true")
+		}
+		if !prof.NoExec {
+			t.Error("expected prof.NoExec=true under default deny-all")
+		}
+		if prof.Network != sandbox.NetworkNone {
+			t.Errorf("prof.Network = %q, want %q", prof.Network, sandbox.NetworkNone)
+		}
+		perms := prof.CompilePermissions()
+		if perms.Default != libkite.DefaultDeny {
+			t.Errorf("perms.Default = %v, want DefaultDeny", perms.Default)
 		}
 	})
 
-	t.Run("sandbox-profile space separated", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandbox-profile", "opaque"})
-		if err := checkSandboxFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+	t.Run("sandbox-enabled=false disables sandbox", func(t *testing.T) {
+		resetSandboxFlags()
+		sandboxEnabled = false
+		rootCmd.PersistentFlags().Lookup("sandbox-enabled").Changed = true
+
+		p, err := GetSandbox()
+		if err != nil {
+			t.Fatalf("GetSandbox: %v", err)
 		}
-		if sandboxProfile != "opaque" {
-			t.Errorf("sandboxProfile = %q, want opaque", sandboxProfile)
+		if !p.IsZero() {
+			t.Errorf("expected zero profile when disabled, got %+v", p)
+		}
+
+		prof, err := ResolveActiveProfile()
+		if err != nil {
+			t.Fatalf("ResolveActiveProfile: %v", err)
+		}
+		if prof.Enabled {
+			t.Error("expected prof.Enabled=false")
+		}
+		perms := prof.CompilePermissions()
+		if perms.Default != libkite.DefaultAllow {
+			t.Errorf("perms.Default = %v, want DefaultAllow", perms.Default)
 		}
 	})
 
-	t.Run("sandbox-profile equal separated", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandbox-profile=net-access"})
-		if err := checkSandboxFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+	t.Run("sandbox-profile=unconfined disables sandbox", func(t *testing.T) {
+		resetSandboxFlags()
+		sandboxProfile = "unconfined"
+
+		p, err := GetSandbox()
+		if err != nil {
+			t.Fatalf("GetSandbox: %v", err)
 		}
-		if sandboxProfile != "net-access" {
-			t.Errorf("sandboxProfile = %q, want net-access", sandboxProfile)
+		if !p.IsZero() {
+			t.Errorf("expected zero profile for unconfined, got %+v", p)
+		}
+
+		prof, err := ResolveActiveProfile()
+		if err != nil {
+			t.Fatalf("ResolveActiveProfile: %v", err)
+		}
+		if prof.Enabled {
+			t.Error("expected prof.Enabled=false")
 		}
 	})
 
-	t.Run("sandbox-profile custom name", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandbox-profile", "ci-builder"})
-		if err := checkSandboxFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+	t.Run("ladder profiles", func(t *testing.T) {
+		cases := []struct {
+			profile string
+			noExec  bool
+			network sandbox.NetworkMode
+		}{
+			{"deny-all", true, sandbox.NetworkNone},
+			{"sandbox-path", true, sandbox.NetworkNone},
+			{"sandbox-exec", false, sandbox.NetworkNone},
+			{"sandbox-net", false, sandbox.NetworkHost},
 		}
-		if sandboxProfile != "ci-builder" {
-			t.Errorf("sandboxProfile = %q, want ci-builder", sandboxProfile)
+
+		for _, tc := range cases {
+			t.Run(tc.profile, func(t *testing.T) {
+				resetSandboxFlags()
+				sandboxProfile = tc.profile
+				prof, err := ResolveActiveProfile()
+				if err != nil {
+					t.Fatalf("ResolveActiveProfile(%s): %v", tc.profile, err)
+				}
+				if !prof.Enabled {
+					t.Errorf("expected prof.Enabled=true for %s", tc.profile)
+				}
+				if prof.NoExec != tc.noExec {
+					t.Errorf("prof.NoExec = %v, want %v", prof.NoExec, tc.noExec)
+				}
+				if prof.Network != tc.network {
+					t.Errorf("prof.Network = %q, want %q", prof.Network, tc.network)
+				}
+			})
 		}
 	})
 
-	t.Run("sandbox-opaque shortcut", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandbox-opaque"})
-		if err := checkSandboxFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+	t.Run("capability flag overrides", func(t *testing.T) {
+		resetSandboxFlags()
+		sandboxProfile = "sandbox-path"
+		sandboxPathRead = []string{"/extra/read"}
+		sandboxPathWrite = []string{"/extra/write"}
+		sandboxCallAllow = []string{"custom.call"}
+		sandboxCallDeny = []string{"denied.call"}
+		sandboxExecAllow = []string{"echo"}
+		sandboxExecDeny = []string{"rm"}
+		sandboxNet = true
+
+		prof, err := ResolveActiveProfile()
+		if err != nil {
+			t.Fatalf("ResolveActiveProfile: %v", err)
 		}
-		if sandboxProfile != "opaque" {
-			t.Errorf("sandboxProfile = %q, want opaque", sandboxProfile)
+		if prof.NoExec {
+			t.Error("expected prof.NoExec=false after sandboxExecAllow")
 		}
-		if !sandboxed {
-			t.Error("expected sandboxed=true when shortcut is set")
+		if prof.Network != sandbox.NetworkHost {
+			t.Errorf("prof.Network = %q, want host", prof.Network)
+		}
+
+		perms := prof.CompilePermissions()
+		if !slices.Contains(perms.Allow, "custom.call") {
+			t.Errorf("perms missing custom.call: %v", perms.Allow)
+		}
+		if !slices.Contains(perms.Deny, "denied.call") {
+			t.Errorf("perms missing denied.call: %v", perms.Deny)
+		}
+		if !slices.Contains(perms.Allow, "os.exec(echo)") {
+			t.Errorf("perms missing os.exec(echo): %v", perms.Allow)
+		}
+		if !slices.Contains(perms.Deny, "os.exec(rm)") {
+			t.Errorf("perms missing os.exec(rm): %v", perms.Deny)
 		}
 	})
 
-	t.Run("sandbox-net shortcut", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandbox-net"})
-		if err := checkSandboxFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
+	t.Run("legacy flags rejected", func(t *testing.T) {
+		legacyFlags := []string{
+			"--permissions",
+			"--allow-all",
+			"--allow-fs",
+			"--sandboxed",
+			"--sandbox-opaque",
+			"--sandbox-net-access",
+			"--sandbox-host",
+			"--deny-all",
 		}
-		if sandboxProfile != "net-access" {
-			t.Errorf("sandboxProfile = %q, want net-access", sandboxProfile)
-		}
-		if !sandboxed {
-			t.Error("expected sandboxed=true when shortcut is set")
-		}
-	})
-
-	t.Run("sandbox-net-access shortcut", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandbox-net-access"})
-		if err := checkSandboxFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if sandboxProfile != "net-access" {
-			t.Errorf("sandboxProfile = %q, want net-access", sandboxProfile)
-		}
-		if !sandboxed {
-			t.Error("expected sandboxed=true when shortcut is set")
-		}
-	})
-
-	t.Run("sandbox-host shortcut", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandbox-host"})
-		if err := checkSandboxFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if sandboxProfile != "host" {
-			t.Errorf("sandboxProfile = %q, want host", sandboxProfile)
-		}
-		if !sandboxed {
-			t.Error("expected sandboxed=true when shortcut is set")
-		}
-	})
-
-	t.Run("sandbox-driver flag", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandbox-driver", "podman"})
-		if err := checkSandboxFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if sandboxDriver != "podman" {
-			t.Errorf("sandboxDriver = %q, want podman", sandboxDriver)
-		}
-	})
-
-	t.Run("sandboxed switch plus sandbox-profile does not conflict", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandboxed", "--sandbox-profile=opaque"})
-		if err := checkSandboxFlagConflict(fs); err != nil {
-			t.Fatalf("unexpected conflict error: %v", err)
-		}
-		if !sandboxed || sandboxProfile != "opaque" {
-			t.Errorf("sandboxed=%v, sandboxProfile=%s", sandboxed, sandboxProfile)
-		}
-	})
-
-	t.Run("two shortcuts conflict", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandbox-opaque", "--sandbox-net"})
-		err := checkSandboxFlagConflict(fs)
-		if err == nil {
-			t.Fatal("expected conflict error for two sandbox shortcuts")
-		}
-		if !strings.Contains(err.Error(), "--sandbox-opaque") || !strings.Contains(err.Error(), "--sandbox-net") {
-			t.Errorf("error should name both flags; got %q", err.Error())
-		}
-	})
-
-	t.Run("shortcut plus sandbox-profile conflict", func(t *testing.T) {
-		fs := buildSandboxFlagSet(t, []string{"--sandbox-profile=host", "--sandbox-opaque"})
-		err := checkSandboxFlagConflict(fs)
-		if err == nil {
-			t.Fatal("expected conflict error for shortcut + --sandbox-profile")
-		}
-		if !strings.Contains(err.Error(), "--sandbox-profile") || !strings.Contains(err.Error(), "--sandbox-opaque") {
-			t.Errorf("error should name both flags; got %q", err.Error())
+		for _, flag := range legacyFlags {
+			f := rootCmd.PersistentFlags().Lookup(strings.TrimPrefix(flag, "--"))
+			if f != nil {
+				t.Errorf("legacy flag %q still registered in persistent flags!", flag)
+			}
 		}
 	})
 }
 
-func TestGetSandbox(t *testing.T) {
-	origSandboxed := sandboxed
-	origProfile := sandboxProfile
-	origDriver := sandboxDriver
-	defer func() {
-		sandboxed = origSandboxed
-		sandboxProfile = origProfile
-		sandboxDriver = origDriver
-	}()
-	t.Run("empty returns zero profile", func(t *testing.T) {
-		sandboxed = false
+func TestGetSandboxDriverPrecedence(t *testing.T) {
+	defer resetSandboxFlags()
+
+	t.Run("flag overrides env var", func(t *testing.T) {
+		resetSandboxFlags()
+		sandboxProfile = "sandbox-path"
+		sandboxDriver = "landlock"
+		t.Setenv("STARKITE_SANDBOX_PROFILE", "sandbox-net")
+		t.Setenv("STARKITE_SANDBOX_DRIVER", "podman")
+
+		p, err := GetSandbox()
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if p.Driver != "landlock" {
+			t.Errorf("p.Driver = %s, want landlock", p.Driver)
+		}
+		if p.Name != "sandbox-path" {
+			t.Errorf("p.Name = %s, want sandbox-path", p.Name)
+		}
+	})
+
+	t.Run("env var used when flag empty", func(t *testing.T) {
+		resetSandboxFlags()
 		sandboxProfile = ""
 		sandboxDriver = ""
-		t.Setenv("STARKITE_SANDBOX_PROFILE", "")
-		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
-		p, err := GetSandbox()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if !p.IsZero() {
-			t.Errorf("expected zero profile, got %+v", p)
-		}
-	})
-
-	t.Run("sandboxed boolean switch selects default profile", func(t *testing.T) {
-		if !sandbox.Available() {
-			t.Skip("sandbox is not available on this platform")
-		}
-		sandboxed = true
-		sandboxProfile = ""
-		sandboxDriver = ""
-		t.Setenv("STARKITE_SANDBOX_PROFILE", "")
-		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
-		p, err := GetSandbox()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if p.IsZero() {
-			t.Fatal("expected non-zero profile when sandboxed=true")
-		}
-	})
-
-	t.Run("simple profile name", func(t *testing.T) {
-		if !sandbox.Available() {
-			t.Skip("sandbox is not available on this platform")
-		}
-		sandboxed = false
-		sandboxProfile = "opaque"
-		sandboxDriver = ""
-		t.Setenv("STARKITE_SANDBOX_PROFILE", "")
-		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
-		p, err := GetSandbox()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if p.IsZero() {
-			t.Fatal("expected non-zero profile")
-		}
-		if p.Network != "none" && p.Network != "loopback" {
-			t.Errorf("expected opaque network, got %s", p.Network)
-		}
-	})
-
-	t.Run("profile with driver override flag", func(t *testing.T) {
-		if !sandbox.Available() {
-			t.Skip("sandbox is not available on this platform")
-		}
-		sandboxed = false
-		sandboxProfile = "opaque"
-		sandboxDriver = "podman"
-		t.Setenv("STARKITE_SANDBOX_PROFILE", "")
-		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
-		p, err := GetSandbox()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if p.Driver != "podman" {
-			t.Errorf("p.Driver = %s, want podman", p.Driver)
-		}
-		if p.Network != "none" && p.Network != "loopback" {
-			t.Errorf("expected opaque network, got %s", p.Network)
-		}
-	})
-
-	t.Run("driver flag alone defaults to default profile", func(t *testing.T) {
-		if !sandbox.Available() {
-			t.Skip("sandbox is not available on this platform")
-		}
-		sandboxed = false
-		sandboxProfile = ""
-		sandboxDriver = "docker"
-		t.Setenv("STARKITE_SANDBOX_PROFILE", "")
-		t.Setenv("STARKITE_SANDBOX_DRIVER", "")
-		p, err := GetSandbox()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if p.IsZero() {
-			t.Fatal("expected non-zero profile when driver is specified")
-		}
-		if p.Driver != "docker" {
-			t.Errorf("p.Driver = %s, want docker", p.Driver)
-		}
-	})
-
-	t.Run("env vars for profile and driver", func(t *testing.T) {
-		if !sandbox.Available() {
-			t.Skip("sandbox is not available on this platform")
-		}
-		sandboxed = false
-		sandboxProfile = ""
-		sandboxDriver = ""
-		t.Setenv("STARKITE_SANDBOX_PROFILE", "host")
+		t.Setenv("STARKITE_SANDBOX_PROFILE", "sandbox-net")
 		t.Setenv("STARKITE_SANDBOX_DRIVER", "seatbelt")
+
 		p, err := GetSandbox()
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -432,27 +312,37 @@ func TestGetSandbox(t *testing.T) {
 			t.Errorf("p.Network = %s, want host", p.Network)
 		}
 	})
+}
 
-	t.Run("CLI flag overrides env var", func(t *testing.T) {
-		if !sandbox.Available() {
-			t.Skip("sandbox is not available on this platform")
-		}
-		sandboxed = false
-		sandboxProfile = "opaque"
-		sandboxDriver = "landlock"
-		t.Setenv("STARKITE_SANDBOX_PROFILE", "host")
-		t.Setenv("STARKITE_SANDBOX_DRIVER", "podman")
-		p, err := GetSandbox()
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-		if p.Driver != "landlock" {
-			t.Errorf("p.Driver = %s, want landlock", p.Driver)
-		}
-		if p.Network != "none" && p.Network != "loopback" {
-			t.Errorf("expected opaque network, got %s", p.Network)
-		}
-	})
+func TestStripSandboxArgs(t *testing.T) {
+	args := []string{
+		"run",
+		"--sandbox-enabled",
+		"--sandbox-profile", "sandbox-path",
+		"--sandbox-driver=landlock",
+		"--sandbox-path-read", "/tmp/r",
+		"--sandbox-path-write=/tmp/w",
+		"--sandbox-call-allow", "os.env",
+		"--sandbox-call-deny=io.prompt",
+		"--sandbox-exec-allow", "echo",
+		"--sandbox-exec-deny=rm",
+		"--sandbox-net",
+		"--var=foo=bar",
+		"script.star",
+		"arg1",
+	}
+
+	stripped := stripSandboxArgs(args)
+	expected := []string{
+		"run",
+		"--var=foo=bar",
+		"script.star",
+		"arg1",
+	}
+
+	if !slices.Equal(stripped, expected) {
+		t.Errorf("stripSandboxArgs got %v, want %v", stripped, expected)
+	}
 }
 
 func TestNeedsImplicitRun(t *testing.T) {
@@ -467,18 +357,13 @@ func TestNeedsImplicitRun(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "flags before script file",
-			args: []string{"kite", "--sandboxed", "./script.star"},
+			name: "sandbox flag before script file",
+			args: []string{"kite", "--sandbox-net", "./script.star"},
 			want: true,
 		},
 		{
 			name: "sandbox profile flag before script file",
-			args: []string{"kite", "--sandbox-profile", "opaque", "./script.star"},
-			want: true,
-		},
-		{
-			name: "sandbox shortcut before script file",
-			args: []string{"kite", "--sandbox-opaque", "./script.star"},
+			args: []string{"kite", "--sandbox-profile", "sandbox-path", "./script.star"},
 			want: true,
 		},
 		{

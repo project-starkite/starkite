@@ -7,16 +7,19 @@
 # read the host, write only the tree. The driver stages hostinfo.json
 # (containing the host $HOME path) into $CWD before the run.
 
-hostinfo = json.decode(read_text("hostinfo.json")) if exists("hostinfo.json") else {"home": os.env("HOME") if os.env("HOME") else "/root"}
+res_info = path("hostinfo.json").try_read_text()
+hostinfo = json.decode(res_info.value) if res_info.ok else {"home": os.env("HOME") if os.env("HOME") else "/root"}
 HOME = hostinfo.get("home", "/root")
 
 # --- positive: host-read capabilities ---
 
 def test_home_visible():
-    assert(exists(HOME), "$HOME (%s) must be visible inside the host rung" % HOME)
+    res = path(HOME).try_exists()
+    assert(res.ok and res.value, "$HOME (%s) must be visible inside the host rung" % HOME)
 
 def test_usr_visible():
-    assert(exists("/usr"), "/usr must be visible inside the host rung")
+    res = path("/usr").try_exists()
+    assert(res.ok and res.value, "/usr must be visible inside the host rung")
 
 def test_host_binary_runs():
     out = exec("/usr/bin/env echo host-tool-ok")
@@ -31,7 +34,7 @@ def test_cwd_writable():
 # --- negative: host-write and beyond-rung surfaces ---
 
 def test_home_not_writable():
-    if not exists("hostinfo.json"):
+    if not path("hostinfo.json").try_exists().ok:
         return
     res = path(HOME + "/sandbox_host_probe.txt").try_write_text("x")
     assert(not res.ok, "$HOME must be read-only inside the host rung")

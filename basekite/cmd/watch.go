@@ -78,10 +78,11 @@ func watchScript(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	perms, err := sandbox.ResolvePermissions(permissionsMode, varStore.Sandbox)
+	activeProfile, err := ResolveActiveProfile()
 	if err != nil {
 		return err
 	}
+	perms := activeProfile.CompilePermissions()
 
 	fmt.Printf("Watching %s for changes...\n", absPath)
 	fmt.Println("Press Ctrl+C to stop")
@@ -155,11 +156,11 @@ func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.Per
 		varStore = vs
 	}
 
-	var activeProf *sandbox.Profile
-	if prof, err := GetSandbox(); err == nil && !prof.IsZero() {
-		activeProf = &prof
+	activeProf, err := ResolveActiveProfile()
+	if err != nil {
+		activeProf = sandbox.Profile{}
 	}
-	envMap, _, _ := ResolveRuntimeEnv(activeProf)
+	envMap, _, _ := ResolveRuntimeEnv(&activeProf)
 
 	// Create module config
 	moduleConfig := &libkite.ModuleConfig{

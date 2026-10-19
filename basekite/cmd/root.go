@@ -17,7 +17,6 @@ import (
 	runtimemod "github.com/project-starkite/starkite/libkite/modules/runtime"
 	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
-	"github.com/spf13/pflag"
 )
 
 var (
@@ -29,65 +28,22 @@ var (
 	variables    []string
 	varFiles     []string
 
-	// Permission flags
-	permissionsMode string
-
-	// permissionProfileFlags are boolean aliases for --permissions=<name>,
-	// one per built-in profile (e.g. --allow-fs == --permissions=allow-fs).
-	// Cobra enforces that at most one — including --permissions — is set.
-	permissionProfileFlags = []string{
-		"deny-all", "allow-fs", "allow-net", "allow-local", "allow-all",
-	}
-
 	// Sandbox flags
-	sandboxed      bool
-	sandboxProfile string
-	sandboxDriver  string
-
-	// sandboxProfileAliases maps shortcut flag names to their target profile names.
-	sandboxProfileAliases = map[string]string{
-		"sandbox-opaque":     "opaque",
-		"sandbox-net":        "net-access",
-		"sandbox-net-access": "net-access",
-		"sandbox-host":       "host",
-	}
-
-	sandboxProfileFlags = []string{
-		"sandbox-opaque", "sandbox-net", "sandbox-net-access", "sandbox-host",
-	}
+	sandboxEnabled   bool
+	sandboxProfile   string
+	sandboxDriver    string
+	sandboxPathRead  []string
+	sandboxPathWrite []string
+	sandboxCallAllow []string
+	sandboxCallDeny  []string
+	sandboxExecAllow []string
+	sandboxExecDeny  []string
+	sandboxNet       bool
 
 	// Environment flags
 	envFlags   []string
 	envInherit bool
 )
-
-// sandboxAlias is a bool-style pflag.Value that sets the shared --sandbox-profile
-// target to a fixed profile name when its flag is present, so --sandbox-opaque
-// is exactly --sandbox-profile=opaque.
-type sandboxAlias struct{ profile string }
-
-func (sandboxAlias) String() string     { return "" }
-func (sandboxAlias) Type() string       { return "bool" }
-func (a sandboxAlias) IsBoolFlag() bool { return true }
-func (a sandboxAlias) Set(string) error {
-	sandboxProfile = a.profile
-	sandboxed = true
-	return nil
-}
-
-// permissionAlias is a bool-style pflag.Value that sets the shared
-// --permissions target to a fixed profile name when its flag is present, so
-// --allow-fs is exactly --permissions=allow-fs. Mutual exclusion with
-// --permissions and the other aliases is enforced by MarkFlagsMutuallyExclusive.
-type permissionAlias struct{ profile string }
-
-func (permissionAlias) String() string   { return "" }
-func (permissionAlias) Type() string     { return "bool" }
-func (permissionAlias) IsBoolFlag() bool { return true }
-func (a permissionAlias) Set(string) error {
-	permissionsMode = a.profile
-	return nil
-}
 
 var rootCmd = &cobra.Command{
 	Use:   "kite [target]",
@@ -102,14 +58,14 @@ Examples:
   kite ./deploy.star
   ./deploy.star       # with shebang: #!/usr/bin/env kite
 
-  # Run with sandboxing enabled
-  kite ./deploy.star --sandboxed
-  kite ./deploy.star --sandbox-opaque
-  kite ./deploy.star --sandbox-profile=ci-builder
+  # Run with sandboxing enabled (default)
+  kite ./deploy.star
+  kite ./deploy.star --sandbox-profile=sandbox-net
+  kite ./deploy.star --sandbox-net
+  kite ./deploy.star --sandbox-path-read=/data
 
-  # Run with permissions
-  kite ./deploy.star --permissions=allow-net
-  kite ./deploy.star --allow-net
+  # Run unconfined
+  kite ./deploy.star --sandbox-enabled=false
 
   # Launch interactive REPL
   kite repl
@@ -149,33 +105,27 @@ func init() {
 	rootCmd.PersistentFlags().StringArrayVar(&variables, "var", nil, "Set script variable: --var key=value")
 	rootCmd.PersistentFlags().StringArrayVar(&varFiles, "var-file", nil, "Load variables from YAML file: --var-file=values.yaml")
 
-	// Permission flags
-	rootCmd.PersistentFlags().StringVar(&permissionsMode, "permissions", "",
-		"Permission profile name: a built-in (deny-all|allow-fs|allow-net|allow-local|allow-all) "+
-			"or a profile defined in config.yaml's permissions: section")
-
-	// Boolean aliases for the built-in profiles, e.g. --allow-fs == --permissions=allow-fs.
-	for _, p := range permissionProfileFlags {
-		rootCmd.PersistentFlags().Var(permissionAlias{p}, p, fmt.Sprintf("Alias for --permissions=%s", p))
-		rootCmd.PersistentFlags().Lookup(p).NoOptDefVal = "true" // usable as a bare flag
-	}
-
 	// Sandbox flags
-	rootCmd.PersistentFlags().BoolVar(&sandboxed, "sandboxed", false,
-		"Enable OS-level sandbox isolation using the default profile")
-
+	rootCmd.PersistentFlags().BoolVar(&sandboxEnabled, "sandbox-enabled", true,
+		"Enable sandbox confinement (default true; pass --sandbox-enabled=false to run unconfined)")
 	rootCmd.PersistentFlags().StringVar(&sandboxProfile, "sandbox-profile", "",
-		"Sandbox profile name: a built-in (opaque|net-access|host) or a profile defined in config.yaml's sandbox: section")
-
+		"Sandbox profile name: a built-in (deny-all|sandbox-path|sandbox-exec|sandbox-net|unconfined) or a profile in config.yaml")
 	rootCmd.PersistentFlags().StringVar(&sandboxDriver, "sandbox-driver", "",
-		"Sandbox execution driver (auto|landlock|seatbelt|podman|docker|nerdctl|gvisor). "+
-			"Overrides the driver configured in the sandbox profile.")
-
-	// Boolean shortcut aliases for the built-in rungs
-	for flagName, profile := range sandboxProfileAliases {
-		rootCmd.PersistentFlags().Var(sandboxAlias{profile}, flagName, fmt.Sprintf("Shortcut for --sandbox-profile=%s", profile))
-		rootCmd.PersistentFlags().Lookup(flagName).NoOptDefVal = "true" // usable as a bare flag
-	}
+		"Sandbox execution driver (auto|landlock|seatbelt|podman|docker|nerdctl|gvisor). Overrides the driver configured in the sandbox profile.")
+	rootCmd.PersistentFlags().StringArrayVar(&sandboxPathRead, "sandbox-path-read", nil,
+		"Grant read access to host path (repeatable)")
+	rootCmd.PersistentFlags().StringArrayVar(&sandboxPathWrite, "sandbox-path-write", nil,
+		"Grant read and write access to host path (repeatable)")
+	rootCmd.PersistentFlags().StringArrayVar(&sandboxCallAllow, "sandbox-call-allow", nil,
+		"Allow Starlark API call pattern, e.g. os.env or http.* (repeatable)")
+	rootCmd.PersistentFlags().StringArrayVar(&sandboxCallDeny, "sandbox-call-deny", nil,
+		"Deny Starlark API call pattern (repeatable)")
+	rootCmd.PersistentFlags().StringArrayVar(&sandboxExecAllow, "sandbox-exec-allow", nil,
+		"Allow execution of binary name/path or '*' (repeatable, comma-separated)")
+	rootCmd.PersistentFlags().StringArrayVar(&sandboxExecDeny, "sandbox-exec-deny", nil,
+		"Deny execution of binary name/path (repeatable, comma-separated)")
+	rootCmd.PersistentFlags().BoolVar(&sandboxNet, "sandbox-net", false,
+		"Enable outbound network access and unveil host DNS/TLS assets")
 
 	// Environment flags
 	rootCmd.PersistentFlags().StringArrayVarP(&envFlags, "env", "e", nil,
@@ -185,49 +135,8 @@ func init() {
 
 	rootCmd.PersistentPreRunE = func(cmd *cobra.Command, args []string) error {
 		applyEnvDefaults()
-		if err := checkPermissionFlagConflict(rootCmd.PersistentFlags()); err != nil {
-			return err
-		}
-		return checkSandboxFlagConflict(rootCmd.PersistentFlags())
+		return nil
 	}
-}
-
-// checkPermissionFlagConflict rejects setting more than one permission selector
-// — the profile aliases (--allow-fs, …) and --permissions all target the same
-// value, so combining them is contradictory.
-func checkPermissionFlagConflict(flags *pflag.FlagSet) error {
-	var set []string
-	if flags.Lookup("permissions").Changed {
-		set = append(set, "--permissions")
-	}
-	for _, p := range permissionProfileFlags {
-		if flags.Lookup(p).Changed {
-			set = append(set, "--"+p)
-		}
-	}
-	if len(set) > 1 {
-		return fmt.Errorf("only one permission flag may be set; got %s", strings.Join(set, " and "))
-	}
-	return nil
-}
-
-// checkSandboxFlagConflict rejects setting more than one sandbox profile selector —
-// the profile aliases (--sandbox-opaque, …) and --sandbox-profile all target the same
-// value, so combining them is contradictory.
-func checkSandboxFlagConflict(flags *pflag.FlagSet) error {
-	var set []string
-	if flags.Lookup("sandbox-profile").Changed {
-		set = append(set, "--sandbox-profile")
-	}
-	for _, f := range sandboxProfileFlags {
-		if flags.Lookup(f).Changed {
-			set = append(set, "--"+f)
-		}
-	}
-	if len(set) > 1 {
-		return fmt.Errorf("only one sandbox profile flag may be set; got %s", strings.Join(set, " and "))
-	}
-	return nil
 }
 
 // applyEnvDefaults applies STARKITE_* environment variables for any flag
@@ -434,48 +343,129 @@ func loadVarStore() (*varstore.Vars, error) {
 	return vs, nil
 }
 
-// GetPermissions resolves the --permissions flag against the config-defined
-// profiles. With no flag, it falls back to the configured `default` profile, or
-// deny-all. Used by commands without a single script file (exec, repl, test).
-func GetPermissions() (*libkite.PermissionConfig, error) {
-	return sandbox.ResolvePermissions(permissionsMode, configSandbox())
+func currentCLIOverrides() sandbox.CLIOverrides {
+	var enabledOverride *bool
+	if f := rootCmd.PersistentFlags().Lookup("sandbox-enabled"); f != nil && f.Changed {
+		v := sandboxEnabled
+		enabledOverride = &v
+	} else if !sandboxEnabled {
+		v := false
+		enabledOverride = &v
+	}
+
+	drv := strings.TrimSpace(sandboxDriver)
+	if drv == "" {
+		drv = strings.TrimSpace(os.Getenv(sandbox.DriverEnvVar))
+	}
+
+	return sandbox.CLIOverrides{
+		Enabled:   enabledOverride,
+		Driver:    drv,
+		PathRead:  sandboxPathRead,
+		PathWrite: sandboxPathWrite,
+		CallAllow: sandboxCallAllow,
+		CallDeny:  sandboxCallDeny,
+		ExecAllow: sandboxExecAllow,
+		ExecDeny:  sandboxExecDeny,
+		Net:       sandboxNet,
+	}
 }
 
-// GetSandbox resolves the active sandbox profile from the CLI flags or environment.
-// --sandboxed (bool), --sandbox-profile (or STARKITE_SANDBOX_PROFILE), and --sandbox-driver
-// (or STARKITE_SANDBOX_DRIVER) configure sandbox execution.
-func GetSandbox() (sandbox.Profile, error) {
-	profileName := sandboxProfile
-	if profileName == "" {
-		profileName = os.Getenv(sandbox.ProfileEnvVar)
-	}
-	driverOverride := sandboxDriver
-	if driverOverride == "" {
-		driverOverride = os.Getenv(sandbox.DriverEnvVar)
+// ResolveActiveProfile resolves the effective sandbox.Profile for the current CLI invocation.
+// By default (when sandboxEnabled is true and no profile is specified), it resolves "default"
+// (which falls back to "deny-all" if not defined in config.yaml) and applies all CLI overrides.
+func ResolveActiveProfile() (sandbox.Profile, error) {
+	overrides := currentCLIOverrides()
+
+	// If --sandbox-enabled=false was set without an explicit profile, return unconfined with overrides.
+	if overrides.Enabled != nil && !*overrides.Enabled && strings.TrimSpace(sandboxProfile) == "" && strings.TrimSpace(os.Getenv(sandbox.ProfileEnvVar)) == "" {
+		p, err := sandbox.LoadProfile(sandbox.ProfileUnconfined)
+		if err != nil {
+			return sandbox.Profile{}, err
+		}
+		if err := p.ApplyCLIOverrides(overrides); err != nil {
+			return sandbox.Profile{}, err
+		}
+		return p, nil
 	}
 
-	// If neither --sandboxed, a profile, nor a driver is specified, execution is unsandboxed.
-	if !sandboxed && profileName == "" && driverOverride == "" {
-		return sandbox.Profile{}, nil
+	value := strings.TrimSpace(sandboxProfile)
+	if value == "" {
+		value = strings.TrimSpace(os.Getenv(sandbox.ProfileEnvVar))
+	}
+	if value == "" {
+		value = sandbox.DefaultProfileName
 	}
 
-	if !sandbox.Available() {
-		return sandbox.Profile{}, sandbox.PlatformError()
-	}
+	cfg := configSandbox()
 
-	// If sandboxed is true or driver is set, but no profile was named, default to "default".
-	if profileName == "" {
-		profileName = sandbox.DefaultProfileName
-	}
-
-	profile, err := sandbox.LoadProfile(profileName)
+	p, err := sandbox.ResolveProfile(value, cfg)
 	if err != nil {
 		return sandbox.Profile{}, err
 	}
-	if driverOverride != "" {
-		profile.Driver = driverOverride
+	if err := p.ApplyCLIOverrides(overrides); err != nil {
+		return sandbox.Profile{}, err
+	}
+	return p, nil
+}
+
+// GetSandbox resolves the active sandbox profile from the CLI flags or environment.
+// It returns a zero Profile when the effective profile has Enabled=false (unconfined).
+func GetSandbox() (sandbox.Profile, error) {
+	profile, err := ResolveActiveProfile()
+	if err != nil {
+		return sandbox.Profile{}, err
+	}
+	if !profile.Enabled {
+		return sandbox.Profile{}, nil
 	}
 	return profile, nil
+}
+
+// stripSandboxArgs removes sandbox-related CLI flags from an argument slice.
+func stripSandboxArgs(args []string) []string {
+	valueFlags := map[string]bool{
+		"sandbox-profile":    true,
+		"sandbox-driver":     true,
+		"sandbox-path-read":  true,
+		"sandbox-path-write": true,
+		"sandbox-call-allow": true,
+		"sandbox-call-deny":  true,
+		"sandbox-exec-allow": true,
+		"sandbox-exec-deny":  true,
+	}
+	boolFlags := map[string]bool{
+		"sandbox-enabled": true,
+		"sandbox-net":     true,
+	}
+
+	var out []string
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if !strings.HasPrefix(arg, "-") {
+			out = append(out, arg)
+			continue
+		}
+
+		trimmed := strings.TrimLeft(arg, "-")
+		parts := strings.SplitN(trimmed, "=", 2)
+		flagName := parts[0]
+
+		if valueFlags[flagName] {
+			if len(parts) == 1 {
+				// Flag value is in the next arg if present
+				i++
+			}
+			continue
+		}
+
+		if boolFlags[flagName] {
+			continue
+		}
+
+		out = append(out, arg)
+	}
+	return out
 }
 
 // ResolveRuntimeEnv compiles the effective runtime environment table and sorted slice
@@ -516,6 +506,15 @@ func SetActivePreloadedClosure(closure *libkite.StaticLoadClosure) {
 }
 
 // MaybeHandoffToSandbox checks whether a sandbox is requested (via
+func isRunningInTest() bool {
+	if os.Getenv("STARKITE_TEST_FORCE_SANDBOX") != "" {
+		return false
+	}
+	base := filepath.Base(os.Args[0])
+	return strings.HasSuffix(base, ".test") || strings.HasSuffix(base, ".test.exe")
+}
+
+// MaybeHandoffToSandbox checks whether a sandbox is requested (via
 // --sandbox flag or STARKITE_SECURITY_SANDBOX env var) and routes
 // execution through the resolved sandbox driver.
 //
@@ -541,17 +540,47 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 		return false, nil
 	}
 
+	cwd, _ := os.Getwd()
+	if scriptPath != "" {
+		if closure, err := libkite.ResolveStaticLoadClosure(scriptPath, cwd, nil); err == nil && closure != nil {
+			SetActivePreloadedClosure(closure)
+		}
+	}
+
+	if isRunningInTest() {
+		return false, nil
+	}
+
 	// Legacy Backend support if registered
 	if sandbox.Backend != nil {
 		return true, sandbox.Backend.Run(ctx, sandbox.ExecSpec{Profile: profile})
 	}
 
-	driver, err := sandbox.Resolve(profile.Driver)
+	explicitDriver := strings.TrimSpace(sandboxDriver) != "" ||
+		strings.TrimSpace(os.Getenv(sandbox.DriverEnvVar)) != "" ||
+		(profile.Driver != "" && profile.Driver != sandbox.DriverDefault && profile.Driver != "auto")
+
+	drvName := profile.Driver
+	if drvName == "" || drvName == sandbox.DriverDefault || drvName == "auto" {
+		if !explicitDriver && sandbox.Backend == nil {
+			d, err := sandbox.AutoDetect()
+			if err != nil {
+				// No host in-process driver available (e.g. Windows) and no container driver was explicitly requested.
+				return false, nil
+			}
+			if _, isInProc := d.(sandbox.InProcessDriver); !isInProc {
+				// Driver is container-based but not explicitly requested; continue in-process with PermissionChecker.
+				return false, nil
+			}
+			drvName = d.Name()
+		}
+	}
+
+	driver, err := sandbox.Resolve(drvName)
 	if err != nil {
 		return false, err
 	}
 
-	cwd, _ := os.Getwd()
 	envSlice, err := profile.SynthesizeEnv(os.Environ(), envFlags, envInherit)
 	if err != nil {
 		return false, err
@@ -573,26 +602,23 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 		Stderr:           os.Stderr,
 	}
 
-	if scriptPath != "" {
-		if closure, err := libkite.ResolveStaticLoadClosure(scriptPath, cwd, nil); err == nil && closure != nil {
-			SetActivePreloadedClosure(closure)
-			for _, p := range closure.ReadPaths {
-				cleanP := filepath.Clean(p)
-				alreadyMounted := false
-				for _, m := range spec.Mounts {
-					if filepath.Clean(m.Destination) == cleanP {
-						alreadyMounted = true
-						break
-					}
+	if closure := GetActivePreloadedClosure(); closure != nil {
+		for _, p := range closure.ReadPaths {
+			cleanP := filepath.Clean(p)
+			alreadyMounted := false
+			for _, m := range spec.Mounts {
+				if filepath.Clean(m.Destination) == cleanP {
+					alreadyMounted = true
+					break
 				}
-				if !alreadyMounted {
-					spec.Mounts = append(spec.Mounts, sandbox.Mount{
-						Source:      cleanP,
-						Destination: cleanP,
-						Type:        sandbox.MountBind,
-						Mode:        sandbox.MountRO,
-					})
-				}
+			}
+			if !alreadyMounted {
+				spec.Mounts = append(spec.Mounts, sandbox.Mount{
+					Source:      cleanP,
+					Destination: cleanP,
+					Type:        sandbox.MountBind,
+					Mode:        sandbox.MountRO,
+				})
 			}
 		}
 	}

@@ -49,8 +49,8 @@ const InsideEnvVar = "STARKITE_INSIDE_SANDBOX"
 // inside the named sandbox profile. Unset/empty means "no sandbox".
 //
 // The value matches the syntax accepted by --sandbox-profile: a built-in name
-// ("default", "opaque", "net-access", "host"), a file path, or a named profile
-// under "sandbox:<name>" in ~/.starkite/config.yaml.
+// ("default", "deny-all", "sandbox-path", "sandbox-exec", "sandbox-net", "unconfined"),
+// or a named profile under "sandbox:<name>" in config.yaml.
 const ProfileEnvVar = "STARKITE_SANDBOX_PROFILE"
 
 // EngagementEnvVar is an alias for ProfileEnvVar.
@@ -194,11 +194,6 @@ const (
 	ProfileSandboxExec = "sandbox-exec"
 	ProfileSandboxNet  = "sandbox-net"
 	ProfileUnconfined  = "unconfined"
-
-	// Existing rungs kept as aliases/built-ins
-	ProfileOpaque    = "opaque"
-	ProfileNetAccess = "net-access"
-	ProfileHost      = "host"
 )
 
 // DefaultProfileName is the reserved profile name in config.yaml's sandbox:

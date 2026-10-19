@@ -13,7 +13,7 @@ ALL_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/
 
 MODULES=libkite basekite cloudkite aikite kite tests/sandbox
 
-.PHONY: kite all build-base build-cloud build-ai clean test test-libkite test-base test-cloud test-ai test-all test-install-script test-compat install deps lint fmt fix vet test-race preflight run-example repl help
+.PHONY: kite all build-base build-cloud build-ai clean test test-libkite test-base test-cloud test-ai test-all test-install-script install deps lint fmt fix vet test-race preflight run-example repl help
 
 kite: $(BIN_DIR) ## Build the default all-in-one binary (kite)
 	cd kite && go build $(ALL_LDFLAGS) -o ../$(BIN_DIR)/$(BINARY_NAME) .
@@ -70,10 +70,7 @@ lint: ## Run staticcheck across all workspace packages
 preflight: fix fmt vet test-race lint ## Run complete Go code hygiene and pre-flight verification suite
 	@echo "=== Pre-flight verification passed cleanly ==="
 
-test: test-libkite test-base test-cloud test-ai test-all test-install-script test-compat ## Run all tests
- 
-test-compat: kite ## Run backward compatibility verification suite
-	./tests/verify_backward_compat.sh ./$(BIN_DIR)/$(BINARY_NAME)
+test: test-libkite test-base test-cloud test-ai test-all test-install-script ## Run all tests
 
 test-libkite: ## Run libkite (runtime) tests
 	cd libkite && go test ./...

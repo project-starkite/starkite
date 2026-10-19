@@ -9,7 +9,6 @@ import (
 	"strings"
 
 	"github.com/project-starkite/starkite/libkite"
-	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
 	"github.com/spf13/pflag"
 	"go.starlark.net/syntax"
@@ -94,13 +93,6 @@ func runScript(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if err := checkPermissionFlagConflict(rootCmd.PersistentFlags()); err != nil {
-		return err
-	}
-	if err := checkSandboxFlagConflict(rootCmd.PersistentFlags()); err != nil {
-		return err
-	}
-
 	// Resolve the run target: a script file, a directory module, or an
 	// installed namespace/name. Module runs require a main() entry point.
 	scriptPath, isModule, err := resolveRunTarget(target)
@@ -175,11 +167,15 @@ func runScript(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	var activeProf *sandbox.Profile
-	if prof, err := GetSandbox(); err == nil && !prof.IsZero() {
-		activeProf = &prof
+	profile, err := ResolveActiveProfile()
+	if err != nil {
+		return &libkite.ScriptError{
+			Message:  fmt.Sprintf("failed to resolve sandbox profile: %v", err),
+			ExitCode: libkite.ExitConfigError,
+		}
 	}
-	envMap, _, err := ResolveRuntimeEnv(activeProf)
+	perms := profile.CompilePermissions()
+	envMap, _, err := ResolveRuntimeEnv(&profile)
 	if err != nil {
 		return &libkite.ScriptError{
 			Message:  err.Error(),
@@ -197,11 +193,6 @@ func runScript(cmd *cobra.Command, args []string) error {
 
 	// Create registry with all modules
 	registry := NewRegistry(moduleConfig)
-
-	perms, err := sandbox.ResolvePermissions(permissionsMode, varStore.Sandbox)
-	if err != nil {
-		return err
-	}
 
 	preloaded := GetActivePreloadedClosure()
 	if preloaded == nil && scriptPath != "" {

@@ -4,9 +4,9 @@
 // $HOME being the $CWD bind).
 //
 // Engagement paths exercised:
-//   - --sandboxed CLI flag (boolean switch for default profile)
+//   - Default sandbox engagement (enabled by default)
 //   - --sandbox-profile CLI flag (with = and space)
-//   - Shortcut aliases (--sandbox-opaque, --sandbox-net, --sandbox-net-access, --sandbox-host)
+//   - --sandbox-net CLI flag
 //   - STARKITE_SANDBOX_PROFILE env var
 //   - --sandbox-driver CLI flag and STARKITE_SANDBOX_DRIVER env var
 //
@@ -32,61 +32,47 @@ const perTestTimeout = 60 * time.Second
 type engagement int
 
 const (
-	viaSandboxedFlag engagement = iota
+	viaDefaultProfile engagement = iota
 	viaProfileFlag
 	viaProfileFlagSpace
 	viaEnv
-	viaAliasOpaque
-	viaAliasNet
-	viaAliasNetAccess
-	viaAliasHost
+	viaNetFlag
 	viaDriverFlag
 	viaDriverAndProfileFlag
 	viaDriverEnv
 )
 
 func TestSandboxNetAccessRung_flag(t *testing.T) {
-	runStarTest(t, "sandbox_netaccess_test.star", "net-access", viaProfileFlag)
+	runStarTest(t, "sandbox_netaccess_test.star", "sandbox-net", viaProfileFlag)
 }
 
 func TestSandboxNetAccessRung_flagSpace(t *testing.T) {
-	runStarTest(t, "sandbox_netaccess_test.star", "net-access", viaProfileFlagSpace)
+	runStarTest(t, "sandbox_netaccess_test.star", "sandbox-net", viaProfileFlagSpace)
 }
 
-func TestSandboxNetAccessRung_aliasNet(t *testing.T) {
-	runStarTest(t, "sandbox_netaccess_test.star", "net-access", viaAliasNet)
+func TestSandboxNetAccessRung_flagNet(t *testing.T) {
+	runStarTest(t, "sandbox_netaccess_test.star", "sandbox-net", viaNetFlag)
 }
 
-func TestSandboxNetAccessRung_aliasNetAccess(t *testing.T) {
-	runStarTest(t, "sandbox_netaccess_test.star", "net-access", viaAliasNetAccess)
+func TestSandboxPathRung_flag(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "sandbox-path", viaProfileFlag)
 }
 
-func TestSandboxOpaqueRung_flag(t *testing.T) {
-	runStarTest(t, "sandbox_opaque_test.star", "opaque", viaProfileFlag)
-}
-
-func TestSandboxOpaqueRung_flagSpace(t *testing.T) {
-	runStarTest(t, "sandbox_opaque_test.star", "opaque", viaProfileFlagSpace)
-}
-
-func TestSandboxOpaqueRung_alias(t *testing.T) {
-	runStarTest(t, "sandbox_opaque_test.star", "opaque", viaAliasOpaque)
+func TestSandboxPathRung_flagSpace(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "sandbox-path", viaProfileFlagSpace)
 }
 
 func TestSandboxHostRung_flag(t *testing.T) {
-	runStarTest(t, "sandbox_host_test.star", "host", viaProfileFlag)
+	home, _ := os.UserHomeDir()
+	runStarTest(t, "sandbox_host_test.star", "sandbox-exec", viaProfileFlag, "--sandbox-path-read="+home+",/usr")
 }
 
-func TestSandboxHostRung_alias(t *testing.T) {
-	runStarTest(t, "sandbox_host_test.star", "host", viaAliasHost)
-}
-
-func TestSandboxSandboxedFlagDefaultsToOpaque(t *testing.T) {
-	runStarTest(t, "sandbox_opaque_test.star", "default", viaSandboxedFlag)
+func TestSandboxDefaultProfile(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "default", viaDefaultProfile)
 }
 
 func TestSandboxDriverAndProfile_flag(t *testing.T) {
-	runStarTest(t, "sandbox_opaque_test.star", "opaque", viaDriverAndProfileFlag)
+	runStarTest(t, "sandbox_opaque_test.star", "sandbox-path", viaDriverAndProfileFlag)
 }
 
 func TestSandboxDriverOnly_flag(t *testing.T) {
@@ -94,16 +80,16 @@ func TestSandboxDriverOnly_flag(t *testing.T) {
 }
 
 func TestSandboxDriver_env(t *testing.T) {
-	runStarTest(t, "sandbox_opaque_test.star", "opaque", viaDriverEnv)
+	runStarTest(t, "sandbox_opaque_test.star", "sandbox-path", viaDriverEnv)
 }
 
 func TestSandboxModule_star(t *testing.T) {
-	runStarTest(t, "sandbox_module_test.star", "host", viaProfileFlag)
+	runStarTest(t, "sandbox_module_test.star", "sandbox-exec", viaProfileFlag)
 }
 
-// Env-var engagement is the shebang-style path. Exercised on the opaque rung.
-func TestSandboxOpaqueRung_env(t *testing.T) {
-	runStarTest(t, "sandbox_opaque_test.star", "opaque", viaEnv)
+// Env-var engagement is the shebang-style path. Exercised on the sandbox-path rung.
+func TestSandboxPathRung_env(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "sandbox-path", viaEnv)
 }
 
 // TestSandboxPerTestFile verifies that `kite test <dir>` with a sandbox
@@ -135,7 +121,7 @@ func TestSandboxPerTestFile(t *testing.T) {
 	defer cancel()
 
 	fakeHome := t.TempDir()
-	cmd := exec.CommandContext(ctx, kite, "test", workDir, "--sandbox-profile=opaque", "--permissions=allow-all")
+	cmd := exec.CommandContext(ctx, kite, "test", workDir, "--sandbox-profile=sandbox-path", "--env-inherit")
 	cmd.Dir = workDir
 	var filteredEnv []string
 	for _, e := range os.Environ() {
@@ -145,7 +131,7 @@ func TestSandboxPerTestFile(t *testing.T) {
 	}
 	cmd.Env = append(filteredEnv, "HOME="+fakeHome, "USERPROFILE="+fakeHome)
 	out, err := cmd.CombinedOutput()
-	t.Logf("kite test --sandbox-profile=opaque (multi-file) output:\n%s", out)
+	t.Logf("kite test --sandbox-profile=sandbox-path (multi-file) output:\n%s", out)
 	if err != nil {
 		if sandboxUnavailable(string(out)) {
 			t.Skipf("host cannot start a sandbox; skipping. "+
@@ -174,7 +160,7 @@ func TestSandboxPerTestFile(t *testing.T) {
 // temp dir, and runs `kite test <file>` with the sandbox engaged via
 // either the --sandbox flag or STARKITE_SECURITY_SANDBOX env var.
 // Asserts the printed test summary shows passes and zero failures.
-func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
+func runStarTest(t *testing.T, scriptName, profile string, eng engagement, extraArgs ...string) {
 	t.Helper()
 
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
@@ -210,7 +196,8 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	defer cancel()
 
 	fakeHome := t.TempDir()
-	args := []string{"test", dstPath, "--permissions=allow-all"}
+	args := []string{"test", dstPath, "--env-inherit"}
+	args = append(args, extraArgs...)
 	var env []string
 	for _, e := range os.Environ() {
 		if !strings.HasPrefix(e, "HOME=") && !strings.HasPrefix(e, "USERPROFILE=") {
@@ -220,27 +207,17 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement) {
 	env = append(env, "HOME="+fakeHome, "USERPROFILE="+fakeHome)
 	var label string
 	switch eng {
-	case viaSandboxedFlag:
-		args = append(args, "--sandboxed")
-		label = "--sandboxed"
+	case viaDefaultProfile:
+		label = "default"
 	case viaProfileFlag:
 		args = append(args, "--sandbox-profile="+profile)
 		label = "--sandbox-profile=" + profile
 	case viaProfileFlagSpace:
 		args = append(args, "--sandbox-profile", profile)
 		label = "--sandbox-profile " + profile
-	case viaAliasOpaque:
-		args = append(args, "--sandbox-opaque")
-		label = "--sandbox-opaque"
-	case viaAliasNet:
+	case viaNetFlag:
 		args = append(args, "--sandbox-net")
 		label = "--sandbox-net"
-	case viaAliasNetAccess:
-		args = append(args, "--sandbox-net-access")
-		label = "--sandbox-net-access"
-	case viaAliasHost:
-		args = append(args, "--sandbox-host")
-		label = "--sandbox-host"
 	case viaEnv:
 		env = append(env, "STARKITE_SANDBOX_PROFILE="+profile)
 		label = "STARKITE_SANDBOX_PROFILE=" + profile

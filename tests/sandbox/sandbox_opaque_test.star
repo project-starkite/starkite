@@ -50,13 +50,14 @@ def test_kernel_isolation():
 # --- negative: things that should be blocked / invisible under opaque ---
 
 def test_credentials_isolated():
-    """Host sensitive user directories (~/.ssh, ~/.aws) are NOT mounted under opaque."""
+    """Host sensitive user directories (~/.ssh, ~/.aws) are NOT mounted under sandbox-path."""
     hostinfo_path = path("hostinfo.json")
     if hostinfo_path.exists():
         info = json.decode(hostinfo_path.read_text())
         home = info.get("home", "")
         if home:
-            assert(not exists(home + "/.ssh/id_rsa"), "private ssh key should not be visible")
+            res = path(home + "/.ssh/id_rsa").try_exists()
+            assert(not res.ok or not res.value, "private ssh key should not be visible")
 
 def test_no_outbound_network():
     """No host bridging: outbound to non-loopback addresses must fail.

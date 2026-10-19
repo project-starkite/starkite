@@ -2,7 +2,6 @@ package sandbox
 
 import (
 	"bytes"
-	"embed"
 	"errors"
 	"fmt"
 	"maps"
@@ -16,9 +15,6 @@ import (
 
 	"github.com/project-starkite/starkite/libkite"
 )
-
-//go:embed profiles/opaque.yaml profiles/net-access.yaml profiles/host.yaml
-var builtinProfiles embed.FS
 
 // UserConfigFile is the default location for user-defined sandbox
 // profiles, relative to the user's home directory.
@@ -83,9 +79,7 @@ func (b *ProfileBody) Validate() error {
 
 func isBuiltinProfile(name string) bool {
 	switch name {
-	case ProfileDenyAll, ProfileOpaque, ProfileNetAccess, ProfileHost,
-		ProfileSandboxPath, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined,
-		"allow-fs", "allow-local", "allow-net", "allow-all":
+	case ProfileDenyAll, ProfileSandboxPath, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined:
 		return true
 	default:
 		return false
@@ -217,29 +211,6 @@ func encodeNode(node *yaml.Node) string {
 	_ = enc.Encode(node)
 	_ = enc.Close()
 	return buf.String()
-}
-
-// loadBuiltin reads an embedded rung YAML and returns a fully-validated Profile.
-func loadBuiltin(name string) (Profile, error) {
-	data, err := builtinProfiles.ReadFile("profiles/" + name + ".yaml")
-	if err != nil {
-		return Profile{}, fmt.Errorf("sandbox: built-in profile %q: %w", name, err)
-	}
-	p, err := decodeProfileYAML(name, data, "")
-	if err != nil {
-		return Profile{}, err
-	}
-	kept := p.Mounts[:0]
-	for _, m := range p.Mounts {
-		if m.Type == MountBind {
-			if _, err := os.Stat(m.Source); err != nil {
-				continue
-			}
-		}
-		kept = append(kept, m)
-	}
-	p.Mounts = kept
-	return p, nil
 }
 
 func decodeProfileYAML(name string, data []byte, origin string) (Profile, error) {
@@ -684,6 +655,7 @@ func errWithOrigin(err error, origin string) error {
 }
 
 // CompilePermissions compiles a sandbox.Profile into a *libkite.PermissionConfig.
+// CompilePermissions compiles a sandbox.Profile into a *libkite.PermissionConfig.
 func (p Profile) CompilePermissions() *libkite.PermissionConfig {
 	if !p.Enabled {
 		return &libkite.PermissionConfig{
@@ -697,19 +669,6 @@ func (p Profile) CompilePermissions() *libkite.PermissionConfig {
 		Default: libkite.DefaultDeny,
 	}
 
-	if p.Name == ProfileDenyAll || p.Name == ProfileOpaque {
-		if len(p.Paths.Read) == 0 && len(p.Paths.Write) == 0 && len(p.Exec.Allow) == 0 && len(p.Calls.Allow) == 0 {
-			for _, m := range p.Mounts {
-				if m.Destination == "/tmp" && m.Mode == MountRW {
-					cfg.Allow = append(cfg.Allow, libkite.PathWriteRules([]string{"/tmp"})...)
-				}
-			}
-			cfg.Allow = append(cfg.Allow, p.Calls.Allow...)
-			cfg.Deny = append(cfg.Deny, p.Calls.Deny...)
-			return cfg
-		}
-	}
-
 	if len(p.Paths.Read) > 0 {
 		cfg.Allow = append(cfg.Allow, libkite.PathReadRules(p.Paths.Read)...)
 	}
@@ -717,6 +676,7 @@ func (p Profile) CompilePermissions() *libkite.PermissionConfig {
 		cfg.Allow = append(cfg.Allow, libkite.PathWriteRules(p.Paths.Write)...)
 	}
 
+	hasNonTmpMount := false
 	for _, m := range p.Mounts {
 		if m.Destination == "/tmp" {
 			if m.Mode == MountRW {
@@ -726,6 +686,7 @@ func (p Profile) CompilePermissions() *libkite.PermissionConfig {
 			}
 			continue
 		}
+		hasNonTmpMount = true
 		if m.Mode == MountRW {
 			cfg.Allow = append(cfg.Allow, libkite.PathWriteRules([]string{m.Destination})...)
 			if m.Type == MountBind && m.Source != "" && m.Source != m.Destination {
@@ -739,7 +700,7 @@ func (p Profile) CompilePermissions() *libkite.PermissionConfig {
 		}
 	}
 
-	if len(p.Paths.Read) > 0 || len(p.Paths.Write) > 0 || len(p.Mounts) > 0 {
+	if len(p.Paths.Read) > 0 || len(p.Paths.Write) > 0 || hasNonTmpMount {
 		if !slices.Contains(p.Calls.Deny, "os.env") {
 			cfg.Allow = append(cfg.Allow, "os.env")
 		}
@@ -758,7 +719,7 @@ func (p Profile) CompilePermissions() *libkite.PermissionConfig {
 		cfg.Allow = append(cfg.Allow, libkite.ExecAllowRules(p.AllowedExecPaths)...)
 	}
 
-	if p.Network != "" || len(p.NetworkAllow) > 0 {
+	if (p.Network != "" && p.Network != NetworkNone) || len(p.NetworkAllow) > 0 {
 		netRules := libkite.NetworkAllowRules(string(p.Network), p.NetworkAllow)
 		cfg.Allow = append(cfg.Allow, netRules...)
 	}
@@ -775,6 +736,176 @@ func (p Profile) CompileEnv(hostEnv []string) []string {
 	return res
 }
 
+// CLIOverrides holds granular CLI flag overrides applied on top of a resolved Profile.
+type CLIOverrides struct {
+	Enabled   *bool
+	Driver    string
+	PathRead  []string
+	PathWrite []string
+	CallAllow []string
+	CallDeny  []string
+	ExecAllow []string
+	ExecDeny  []string
+	Net       bool
+}
+
+// HasCapabilityOverrides reports whether any additive capability flag was set.
+func (o CLIOverrides) HasCapabilityOverrides() bool {
+	return len(o.PathRead) > 0 || len(o.PathWrite) > 0 ||
+		len(o.CallAllow) > 0 || len(o.CallDeny) > 0 ||
+		len(o.ExecAllow) > 0 || len(o.ExecDeny) > 0 ||
+		o.Net
+}
+
+// splitCommaList expands comma-separated CLI flag entries and trims whitespace.
+func splitCommaList(items []string) []string {
+	var out []string
+	for _, raw := range items {
+		for _, part := range strings.Split(raw, ",") {
+			part = strings.TrimSpace(part)
+			if part != "" {
+				out = append(out, part)
+			}
+		}
+	}
+	return out
+}
+
+// ApplyCLIOverrides applies command-line flag overrides onto the receiving Profile.
+func (p *Profile) ApplyCLIOverrides(o CLIOverrides) error {
+	if o.Enabled != nil {
+		p.Enabled = *o.Enabled
+		if !p.Enabled {
+			if p.Name == "" {
+				p.Name = ProfileUnconfined
+			}
+			p.NoExec = false
+			if p.Network == "" {
+				p.Network = NetworkHost
+			}
+		}
+	}
+
+	if o.Driver != "" {
+		p.Driver = o.Driver
+	}
+	if p.Driver == "" {
+		p.Driver = DriverDefault
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("sandbox: getwd: %w", err)
+	}
+	home, _ := os.UserHomeDir()
+
+	if len(o.PathRead) > 0 || len(o.PathWrite) > 0 {
+		p.Paths.Read = append(p.Paths.Read, splitCommaList(o.PathRead)...)
+		p.Paths.Write = append(p.Paths.Write, splitCommaList(o.PathWrite)...)
+		mounts, err := compilePaths(cwd, home, p.Paths, nil, p.Mounts)
+		if err != nil {
+			return fmt.Errorf("sandbox: cli path overrides: %w", err)
+		}
+		p.Mounts = mounts
+	}
+
+	if o.Net {
+		p.Network = NetworkHost
+	}
+	if p.Network == NetworkHost {
+		p.Mounts = ResolveNetworkAssetMounts(p.Mounts)
+	}
+
+	execAllow := splitCommaList(o.ExecAllow)
+	if len(execAllow) > 0 {
+		p.Exec.Allow = append(p.Exec.Allow, execAllow...)
+		// Remove wildcard "*" from Exec.Deny inherited from deny-all/sandbox-path
+		// so explicit allow entries can take effect.
+		filteredDeny := p.Exec.Deny[:0]
+		for _, d := range p.Exec.Deny {
+			if d != "*" {
+				filteredDeny = append(filteredDeny, d)
+			}
+		}
+		p.Exec.Deny = filteredDeny
+		p.NoExec = false
+		if slices.Contains(p.Exec.Allow, "*") {
+			p.AllowedExecPaths = nil
+		} else {
+			for _, resolved := range ResolveExecutablePaths(execAllow, cwd, home) {
+				if !slices.Contains(p.AllowedExecPaths, resolved) {
+					p.AllowedExecPaths = append(p.AllowedExecPaths, resolved)
+				}
+			}
+		}
+	}
+
+	execDeny := splitCommaList(o.ExecDeny)
+	if len(execDeny) > 0 {
+		p.Exec.Deny = append(p.Exec.Deny, execDeny...)
+		if slices.Contains(execDeny, "*") && len(p.Exec.Allow) == 0 {
+			p.NoExec = true
+		}
+	}
+
+	if len(o.CallAllow) > 0 {
+		p.Calls.Allow = append(p.Calls.Allow, splitCommaList(o.CallAllow)...)
+	}
+	if len(o.CallDeny) > 0 {
+		p.Calls.Deny = append(p.Calls.Deny, splitCommaList(o.CallDeny)...)
+	}
+
+	return nil
+}
+
+// ResolveProfile resolves a profile name against SandboxConfig or built-in ladder profiles.
+func ResolveProfile(profileName string, cfg *SandboxConfig) (Profile, error) {
+	if profileName == "" || profileName == DefaultProfileName {
+		if cfg != nil {
+			if body, ok := cfg.Profiles[DefaultProfileName]; ok {
+				p, err := profileFromBody(DefaultProfileName, body, "config")
+				if err != nil {
+					return Profile{}, err
+				}
+				if err := validateSources(p, "config"); err != nil {
+					return Profile{}, err
+				}
+				if !cfg.Enabled && body.Enabled == nil {
+					p.Enabled = false
+				}
+				return p, nil
+			}
+		}
+		p, err := LoadProfile(DefaultProfileName)
+		if err != nil {
+			return Profile{}, err
+		}
+		if cfg != nil && !cfg.Enabled {
+			p.Enabled = false
+		}
+		return p, nil
+	}
+
+	if isBuiltinProfile(profileName) {
+		return loadProfileResolved(profileName)
+	}
+
+	if cfg != nil {
+		if body, ok := cfg.Profiles[profileName]; ok {
+			p, err := profileFromBody(profileName, body, "config")
+			if err != nil {
+				return Profile{}, err
+			}
+			if err := validateSources(p, "config"); err != nil {
+				return Profile{}, err
+			}
+			return p, nil
+		}
+	}
+
+	return LoadProfile(profileName)
+}
+
 // ResolvePermissions resolves a profile name against SandboxConfig or built-in ladder profiles.
 func ResolvePermissions(profileName string, cfg *SandboxConfig) (*libkite.PermissionConfig, error) {
 	if profileName == "" {
@@ -786,19 +917,11 @@ func ResolvePermissions(profileName string, cfg *SandboxConfig) (*libkite.Permis
 				}
 				return p.CompilePermissions(), nil
 			}
+			if !cfg.Enabled {
+				return libkite.AllowAllPermissions(), nil
+			}
 		}
 		return libkite.DenyAllPermissions(), nil
-	}
-
-	switch profileName {
-	case "allow-fs":
-		return libkite.SandboxPathPermissions(), nil
-	case "allow-local":
-		return libkite.SandboxExecPermissions(), nil
-	case "allow-net":
-		return libkite.SandboxNetPermissions(), nil
-	case "allow-all":
-		return libkite.AllowAllPermissions(), nil
 	}
 
 	switch profileName {
@@ -814,22 +937,11 @@ func ResolvePermissions(profileName string, cfg *SandboxConfig) (*libkite.Permis
 		return libkite.AllowAllPermissions(), nil
 	}
 
-	if cfg != nil {
-		if body, ok := cfg.Profiles[profileName]; ok {
-			p, err := profileFromBody(profileName, body, "config")
-			if err != nil {
-				return nil, err
-			}
-			return p.CompilePermissions(), nil
-		}
+	p, err := ResolveProfile(profileName, cfg)
+	if err != nil {
+		return nil, fmt.Errorf("unknown profile %q: %w", profileName, err)
 	}
-
-	p, err := LoadProfile(profileName)
-	if err == nil {
-		return p.CompilePermissions(), nil
-	}
-
-	return nil, fmt.Errorf("unknown profile %q", profileName)
+	return p.CompilePermissions(), nil
 }
 
 func loadProfileResolved(value string) (Profile, error) {
@@ -851,13 +963,7 @@ func loadProfileResolved(value string) (Profile, error) {
 				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
 			},
 		}, nil
-	case ProfileOpaque:
-		return loadBuiltin(ProfileOpaque)
-	case ProfileNetAccess:
-		return loadBuiltin(ProfileNetAccess)
-	case ProfileHost:
-		return loadBuiltin(ProfileHost)
-	case ProfileSandboxPath, "allow-fs":
+	case ProfileSandboxPath:
 		cwd, _ := os.Getwd()
 		return Profile{
 			Name:    value,
@@ -872,7 +978,7 @@ func loadProfileResolved(value string) (Profile, error) {
 				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
 			},
 		}, nil
-	case ProfileSandboxExec, "allow-local":
+	case ProfileSandboxExec:
 		cwd, _ := os.Getwd()
 		return Profile{
 			Name:    value,
@@ -887,7 +993,7 @@ func loadProfileResolved(value string) (Profile, error) {
 				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
 			},
 		}, nil
-	case ProfileSandboxNet, "allow-net":
+	case ProfileSandboxNet:
 		cwd, _ := os.Getwd()
 		return Profile{
 			Name:    value,
@@ -902,7 +1008,7 @@ func loadProfileResolved(value string) (Profile, error) {
 				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
 			}),
 		}, nil
-	case ProfileUnconfined, "allow-all":
+	case ProfileUnconfined:
 		return Profile{
 			Name:    ProfileUnconfined,
 			Enabled: false,
@@ -915,7 +1021,12 @@ func loadProfileResolved(value string) (Profile, error) {
 	if value == DefaultProfileName {
 		p, err := loadNamed(DefaultProfileName)
 		if errors.Is(err, errProfileNotFound) {
-			return loadBuiltin(ProfileOpaque)
+			def, err := loadProfileResolved(ProfileDenyAll)
+			if err != nil {
+				return Profile{}, err
+			}
+			def.Name = DefaultProfileName
+			return def, nil
 		}
 		return p, err
 	}
@@ -959,15 +1070,17 @@ func loadNamed(name string) (Profile, error) {
 		}
 	}
 
+	builtinList := fmt.Sprintf("%s, %s, %s, %s, %s",
+		ProfileDenyAll, ProfileSandboxPath, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined)
+
 	if len(searched) == 0 {
 		return Profile{}, fmt.Errorf(
-			"%w: %q (built-ins: %s, %s, %s; no config.yaml found)",
-			errProfileNotFound, name, ProfileOpaque, ProfileNetAccess, ProfileHost)
+			"%w: %q (built-ins: %s; no config.yaml found)",
+			errProfileNotFound, name, builtinList)
 	}
 	return Profile{}, fmt.Errorf(
-		"%w: %q in %s (defined: %v; built-ins: %s, %s, %s)",
-		errProfileNotFound, name, strings.Join(searched, ", "), defined,
-		ProfileOpaque, ProfileNetAccess, ProfileHost)
+		"%w: %q in %s (defined: %v; built-ins: %s)",
+		errProfileNotFound, name, strings.Join(searched, ", "), defined, builtinList)
 }
 
 func readConfigFile(path string) (*SandboxConfig, error) {

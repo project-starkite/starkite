@@ -34,11 +34,17 @@ def test_tmpfs_writable():
 
 def test_tls_certs_visible():
     """The curated certificates mount is in place — public CA roots visible."""
-    assert(exists("/etc/ssl/certs") or exists("/etc/ssl/cert.pem") or exists("/etc/ssl"), "TLS certs must be visible")
+    res1 = path("/etc/ssl/certs").try_exists()
+    res2 = path("/etc/ssl/cert.pem").try_exists()
+    res3 = path("/etc/ssl").try_exists()
+    assert((res1.ok and res1.value) or (res2.ok and res2.value) or (res3.ok and res3.value), "TLS certs must be visible")
 
 def test_resolv_conf_visible():
     """/etc/resolv.conf mount is in place — DNS resolver config available."""
-    assert(exists("/etc/resolv.conf") or exists("/var/run/resolv.conf") or exists("/etc"), "resolv.conf or /etc must be available")
+    res1 = path("/etc/resolv.conf").try_exists()
+    res2 = path("/var/run/resolv.conf").try_exists()
+    res3 = path("/etc").try_exists()
+    assert((res1.ok and res1.value) or (res2.ok and res2.value) or (res3.ok and res3.value), "resolv.conf or /etc must be available")
 
 def test_http_loopback():
     """In-sandbox http.server + http.url round-trip via NetworkHost loopback."""
@@ -82,13 +88,14 @@ def test_ssh_loopback_password():
 # --- negative: things that should be blocked / invisible ---
 
 def test_credentials_isolated():
-    """Host sensitive user directories (~/.ssh, ~/.aws) are NOT mounted in net-access."""
+    """Host sensitive user directories (~/.ssh, ~/.aws) are NOT mounted in sandbox-net."""
     hostinfo_path = path("hostinfo.json")
     if hostinfo_path.exists():
         info = json.decode(hostinfo_path.read_text())
         home = info.get("home", "")
         if home:
-            assert(not exists(home + "/.ssh/id_rsa"), "private ssh key should not be visible")
+            res = path(home + "/.ssh/id_rsa").try_exists()
+            assert(not res.ok or not res.value, "private ssh key should not be visible")
 
 def test_kernel_isolation():
     """Validates sandbox execution environment."""

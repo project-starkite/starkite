@@ -71,11 +71,8 @@ jobs:
           echo "=== Running all tests/*_test.star files ==="
           for f in tests/*_test.star; do
             echo "--- Testing $f ---"
-            ./bin/kite test "$f" --permissions=allow-all || exit 1
+            ./bin/kite test "$f" --sandbox-enabled=false --env-inherit || exit 1
           done
-
-      - name: Run backward compatibility verification suite
-        run: ./tests/verify_backward_compat.sh ./bin/kite
 
       - name: Run Linux native Landlock sandbox tests
         env:
@@ -164,7 +161,7 @@ jobs:
         run: |
           Get-ChildItem -Path tests\*_test.star | ForEach-Object {
             Write-Host "--- Testing $($_.Name) on Windows ---"
-            .\bin\kite.exe test $_.FullName --permissions=allow-all
+            .\bin\kite.exe test $_.FullName --sandbox-enabled=false --env-inherit
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 

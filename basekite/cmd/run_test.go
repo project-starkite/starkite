@@ -392,8 +392,9 @@ def main():
 		t.Fatalf("failed to write script: %v", err)
 	}
 
-	permissionsMode = "allow-all"
-	defer func() { permissionsMode = "" }()
+	oldEnabled := sandboxEnabled
+	sandboxEnabled = false
+	defer func() { sandboxEnabled = oldEnabled }()
 
 	// Subtest 1: Default zero-trust (sanitized)
 	t.Run("zero-trust", func(t *testing.T) {
@@ -432,4 +433,25 @@ def main():
 			t.Fatalf("runScript failed with env-inherit: %v", err)
 		}
 	})
+}
+
+func TestRunScriptDefaultDenyAll(t *testing.T) {
+	dir := t.TempDir()
+	// Test pure Starlark passes under default deny-all
+	pureFile := filepath.Join(dir, "pure.star")
+	if err := os.WriteFile(pureFile, []byte("x = 10 + 20\nassert(x == 30)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runScript(runCmd, []string{pureFile}); err != nil {
+		t.Fatalf("expected pure Starlark to succeed under default deny-all: %v", err)
+	}
+
+	// Test exec is denied
+	execFile := filepath.Join(dir, "exec.star")
+	if err := os.WriteFile(execFile, []byte("exec('echo hi')\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := runScript(runCmd, []string{execFile}); err == nil {
+		t.Fatal("expected exec to fail under default deny-all, got nil")
+	}
 }

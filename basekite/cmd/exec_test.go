@@ -45,9 +45,14 @@ func TestExecCodeSyntaxError(t *testing.T) {
 }
 
 func TestExecCodePermissionsDeny(t *testing.T) {
-	oldPerms := permissionsMode
-	permissionsMode = "deny-all"
-	defer func() { permissionsMode = oldPerms }()
+	oldEnabled := sandboxEnabled
+	oldProfile := sandboxProfile
+	sandboxEnabled = true
+	sandboxProfile = "deny-all"
+	defer func() {
+		sandboxEnabled = oldEnabled
+		sandboxProfile = oldProfile
+	}()
 
 	err := execCode(nil, []string{"exec('echo test')"})
 	if err == nil {

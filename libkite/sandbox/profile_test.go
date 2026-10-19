@@ -1,6 +1,7 @@
 package sandbox
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -55,146 +56,122 @@ func TestLoadProfile_denyAll(t *testing.T) {
 	}
 }
 
-func TestLoadProfile_opaque(t *testing.T) {
-	p, err := LoadProfile(ProfileOpaque)
-	if err != nil {
-		t.Fatalf("LoadProfile(opaque): %v", err)
-	}
-	if p.Name != ProfileOpaque {
-		t.Errorf("Name = %q, want %q", p.Name, ProfileOpaque)
-	}
-	if p.Network != NetworkLoopback {
-		t.Errorf("Network = %q, want %q", p.Network, NetworkLoopback)
-	}
+func TestLoadProfile_capabilityLadder(t *testing.T) {
+	t.Run("deny-all", func(t *testing.T) {
+		p, err := LoadProfile(ProfileDenyAll)
+		if err != nil {
+			t.Fatalf("LoadProfile(deny-all): %v", err)
+		}
+		if p.Name != ProfileDenyAll || p.Network != NetworkNone || !p.NoExec {
+			t.Errorf("deny-all mismatch: %+v", p)
+		}
+	})
 
-	cwd, _ := os.Getwd()
-	if got := len(p.Mounts); got != 2 {
-		t.Fatalf("opaque should have exactly 2 mounts ($CWD + /tmp); got %d (%+v)", got, p.Mounts)
-	}
-	m := mountByDest(p)
-	if cw, ok := m[cwd]; !ok || cw.Type != MountBind || cw.Mode != MountRW {
-		t.Errorf("$CWD mount = %+v, want bind+rw at %s", m[cwd], cwd)
-	}
-	if tmp, ok := m["/tmp"]; !ok || tmp.Type != MountTmpfs || tmp.Mode != MountRW {
-		t.Errorf("/tmp mount = %+v, want tmpfs+rw", m["/tmp"])
-	}
+	t.Run("sandbox-path", func(t *testing.T) {
+		p, err := LoadProfile(ProfileSandboxPath)
+		if err != nil {
+			t.Fatalf("LoadProfile(sandbox-path): %v", err)
+		}
+		if p.Name != ProfileSandboxPath || p.Network != NetworkNone || !p.NoExec {
+			t.Errorf("sandbox-path mismatch: %+v", p)
+		}
+		if len(p.Paths.Read) != 1 || len(p.Paths.Write) != 1 {
+			t.Errorf("expected cwd read/write paths, got read=%v write=%v", p.Paths.Read, p.Paths.Write)
+		}
+	})
+
+	t.Run("sandbox-exec", func(t *testing.T) {
+		p, err := LoadProfile(ProfileSandboxExec)
+		if err != nil {
+			t.Fatalf("LoadProfile(sandbox-exec): %v", err)
+		}
+		if p.Name != ProfileSandboxExec || p.Network != NetworkNone || p.NoExec {
+			t.Errorf("sandbox-exec mismatch: %+v", p)
+		}
+		if !slices.Contains(p.Exec.Allow, "*") {
+			t.Errorf("expected * in Exec.Allow, got: %v", p.Exec.Allow)
+		}
+	})
+
+	t.Run("sandbox-net", func(t *testing.T) {
+		p, err := LoadProfile(ProfileSandboxNet)
+		if err != nil {
+			t.Fatalf("LoadProfile(sandbox-net): %v", err)
+		}
+		if p.Name != ProfileSandboxNet || p.Network != NetworkHost || p.NoExec {
+			t.Errorf("sandbox-net mismatch: %+v", p)
+		}
+	})
+
+	t.Run("unconfined", func(t *testing.T) {
+		p, err := LoadProfile(ProfileUnconfined)
+		if err != nil {
+			t.Fatalf("LoadProfile(unconfined): %v", err)
+		}
+		if p.Name != ProfileUnconfined || p.Enabled {
+			t.Errorf("unconfined must have Enabled=false: %+v", p)
+		}
+	})
 }
 
-func TestLoadProfile_netAccess(t *testing.T) {
-	p, err := LoadProfile(ProfileNetAccess)
+func TestApplyCLIOverrides(t *testing.T) {
+	p, err := LoadProfile(ProfileDenyAll)
 	if err != nil {
-		t.Fatalf("LoadProfile(net-access): %v", err)
+		t.Fatalf("LoadProfile(deny-all): %v", err)
 	}
+
+	netVal := true
+	enabledVal := true
+	overrides := CLIOverrides{
+		Enabled:   &enabledVal,
+		Driver:    "auto",
+		PathRead:  []string{"/tmp/read1", "/tmp/read2"},
+		PathWrite: []string{"/tmp/write1"},
+		ExecAllow: []string{"git", "go"},
+		ExecDeny:  []string{"rm"},
+		CallAllow: []string{"os.env"},
+		CallDeny:  []string{"os.exit"},
+		Net:       netVal,
+	}
+
+	if err := p.ApplyCLIOverrides(overrides); err != nil {
+		t.Fatalf("ApplyCLIOverrides: %v", err)
+	}
+
 	if p.Network != NetworkHost {
-		t.Errorf("Network = %q, want %q", p.Network, NetworkHost)
+		t.Errorf("Network = %v, want host", p.Network)
+	}
+	if p.NoExec {
+		t.Error("NoExec = true, want false after ExecAllow")
+	}
+	if slices.Contains(p.Exec.Deny, "*") {
+		t.Error("Exec.Deny should not contain '*' after explicit ExecAllow")
+	}
+	if !slices.Contains(p.Exec.Allow, "git") {
+		t.Errorf("Exec.Allow missing git: %v", p.Exec.Allow)
+	}
+	if !slices.Contains(p.Exec.Deny, "rm") {
+		t.Errorf("Exec.Deny missing rm: %v", p.Exec.Deny)
+	}
+	if !slices.Contains(p.Calls.Allow, "os.env") {
+		t.Errorf("Calls.Allow missing os.env: %v", p.Calls.Allow)
+	}
+	if !slices.Contains(p.Calls.Deny, "os.exit") {
+		t.Errorf("Calls.Deny missing os.exit: %v", p.Calls.Deny)
 	}
 
-	cwd, _ := os.Getwd()
-	m := mountByDest(p)
-	if _, ok := m[cwd]; !ok {
-		t.Errorf("net-access must mount $CWD")
+	// Verify unconfined override
+	unconfinedFalse := false
+	if err := p.ApplyCLIOverrides(CLIOverrides{Enabled: &unconfinedFalse}); err != nil {
+		t.Fatalf("ApplyCLIOverrides unconfined: %v", err)
 	}
-	if _, ok := m["/tmp"]; !ok {
-		t.Errorf("net-access must mount /tmp")
-	}
-
-	// Every host-support file present on this host must be mounted ro;
-	// absent ones are filtered at load (built-in portability).
-	for _, sf := range []string{"/etc/ssl/certs", "/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"} {
-		_, hostErr := os.Stat(sf)
-		mt, mounted := m[sf]
-		if hostErr == nil && (!mounted || mt.Mode != MountRO) {
-			t.Errorf("support file %s exists on host but is not mounted ro (got %+v)", sf, mt)
-		}
-		if hostErr != nil && mounted {
-			t.Errorf("support file %s absent on host but mounted: %+v", sf, mt)
-		}
-	}
-
-	// Nothing beyond opaque + support files: no $HOME, no host binaries.
-	home, _ := os.UserHomeDir()
-	for _, banned := range []string{home, "/usr", "/bin", "/lib"} {
-		if _, ok := m[banned]; ok {
-			t.Errorf("net-access must not mount %s", banned)
-		}
-	}
-}
-
-func TestLoadProfile_host(t *testing.T) {
-	p, err := LoadProfile(ProfileHost)
-	if err != nil {
-		t.Fatalf("LoadProfile(host): %v", err)
-	}
-	if p.Network != NetworkHost {
-		t.Errorf("Network = %q, want %q", p.Network, NetworkHost)
-	}
-
-	cwd, _ := os.Getwd()
-	home, _ := os.UserHomeDir()
-	m := mountByDest(p)
-
-	// $HOME and /usr exist on POSIX hosts; both must be ro when present on the host.
-	for _, ro := range []string{home, "/usr"} {
-		if _, err := os.Stat(ro); err != nil {
-			continue
-		}
-		mt, ok := m[ro]
-		if !ok {
-			t.Fatalf("host rung must mount %s", ro)
-		}
-		if mt.Mode != MountRO {
-			t.Errorf("%s mount mode = %q, want ro (a writable $HOME is a sandbox escape)", ro, mt.Mode)
-		}
-	}
-
-	// The only rw mounts are $CWD and /tmp.
-	for _, mt := range p.Mounts {
-		if mt.Mode == MountRW && mt.Destination != cwd && mt.Destination != "/tmp" {
-			t.Errorf("unexpected rw mount %+v — host rung writes only the tree", mt)
-		}
-	}
-}
-
-// TestLadderSubsets asserts each rung is a superset of the one below:
-// every mount of the lower rung is present identically in the higher one.
-func TestLadderSubsets(t *testing.T) {
-	opaque, err := LoadProfile(ProfileOpaque)
-	if err != nil {
-		t.Fatal(err)
-	}
-	net, err := LoadProfile(ProfileNetAccess)
-	if err != nil {
-		t.Fatal(err)
-	}
-	host, err := LoadProfile(ProfileHost)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	assertSuperset := func(lo, hi Profile) {
-		t.Helper()
-		him := mountByDest(hi)
-		for _, m := range lo.Mounts {
-			hm, ok := him[m.Destination]
-			if !ok {
-				t.Errorf("%s ⊄ %s: mount %q missing in %s", lo.Name, hi.Name, m.Destination, hi.Name)
-				continue
-			}
-			if hm != m {
-				t.Errorf("%s ⊄ %s: mount %q differs: %+v vs %+v", lo.Name, hi.Name, m.Destination, m, hm)
-			}
-		}
-	}
-	assertSuperset(opaque, net)
-	assertSuperset(net, host)
-
-	if opaque.Network != NetworkLoopback || net.Network != NetworkHost || host.Network != NetworkHost {
-		t.Errorf("network ladder wrong: %s/%s/%s", opaque.Network, net.Network, host.Network)
+	if p.Enabled {
+		t.Error("p.Enabled should be false after unconfined override")
 	}
 }
 
 func TestLoadProfile_defaultReserved(t *testing.T) {
-	t.Run("no config: bare default falls back to opaque", func(t *testing.T) {
+	t.Run("no config: bare default falls back to deny-all", func(t *testing.T) {
 		home := t.TempDir()
 		t.Setenv("HOME", home)
 		t.Setenv("USERPROFILE", home)
@@ -204,8 +181,8 @@ func TestLoadProfile_defaultReserved(t *testing.T) {
 		if err != nil {
 			t.Fatalf("LoadProfile(default): %v", err)
 		}
-		if p.Name != ProfileOpaque || p.Network != NetworkLoopback {
-			t.Errorf("fallback = %q/%q, want opaque/loopback", p.Name, p.Network)
+		if p.Name != DefaultProfileName || p.Network != NetworkNone || !p.NoExec {
+			t.Errorf("fallback = %+v, want Name=default Network=none NoExec=true", p)
 		}
 	})
 
@@ -214,7 +191,7 @@ func TestLoadProfile_defaultReserved(t *testing.T) {
 		t.Setenv("HOME", home)
 		t.Setenv("USERPROFILE", home)
 		work := t.TempDir()
-		writeFile(t, filepath.Join(work, "config.yaml"), "sandbox:\n  default: net-access\n")
+		writeFile(t, filepath.Join(work, "config.yaml"), "sandbox:\n  default: sandbox-net\n")
 		t.Chdir(work)
 
 		p, err := LoadProfile(DefaultProfileName)
@@ -258,7 +235,7 @@ func TestProfileAlias(t *testing.T) {
 	work := t.TempDir()
 	writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
-  sealed: opaque
+  sealed: sandbox-path
   bad: no-such-rung
   chained: default
 `)
@@ -269,8 +246,8 @@ sandbox:
 		if err != nil {
 			t.Fatalf("LoadProfile(sealed): %v", err)
 		}
-		if p.Name != "sealed" || p.Network != NetworkLoopback {
-			t.Errorf("alias = %q/%q, want sealed/loopback", p.Name, p.Network)
+		if p.Name != "sealed" || p.Network != NetworkNone || !p.NoExec {
+			t.Errorf("alias = %q/%q, want sealed/none", p.Name, p.Network)
 		}
 	})
 
@@ -295,17 +272,17 @@ func TestBuiltinShadowing(t *testing.T) {
 	work := t.TempDir()
 	writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
-  opaque:
+  sandbox-path:
     network: host
 `)
 	t.Chdir(work)
 
-	p, err := LoadProfile(ProfileOpaque)
+	p, err := LoadProfile(ProfileSandboxPath)
 	if err != nil {
-		t.Fatalf("LoadProfile(opaque): %v", err)
+		t.Fatalf("LoadProfile(sandbox-path): %v", err)
 	}
-	if p.Network != NetworkLoopback {
-		t.Errorf("built-in opaque shadowed by config: Network = %q", p.Network)
+	if p.Network != NetworkNone {
+		t.Errorf("built-in sandbox-path shadowed by config: Network = %q", p.Network)
 	}
 }
 
@@ -336,8 +313,10 @@ func TestOldRungNamesError(t *testing.T) {
 	t.Setenv("USERPROFILE", home)
 	t.Chdir(t.TempDir())
 
-	if _, err := LoadProfile("strict"); err == nil {
-		t.Error("removed name \"strict\" should no longer resolve")
+	for _, name := range []string{"strict", "opaque", "net-access", "host", "allow-fs", "allow-local", "allow-net", "allow-all"} {
+		if _, err := LoadProfile(name); err == nil {
+			t.Errorf("removed name %q should no longer resolve", name)
+		}
 	}
 }
 
@@ -624,22 +603,22 @@ func TestComposeProfile_base(t *testing.T) {
 	writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
   dev:
-    base: opaque
+    base: sandbox-path
     mounts:
       - source: $CWD/cache
         destination: /cache
         mode: rw
   widened:
-    base: opaque
+    base: sandbox-path
     network: host
-  scalar: opaque
+  scalar: sandbox-path
   badbase:
     base: nope
   badnet:
-    base: opaque
+    base: sandbox-path
     network: bridge
   missing:
-    base: opaque
+    base: sandbox-path
     mounts:
       - source: /nonexistent-base-add-xyz
         destination: /x
@@ -651,11 +630,11 @@ sandbox:
 		if err != nil {
 			t.Fatalf("LoadProfile(dev): %v", err)
 		}
-		if p.Network != NetworkLoopback {
-			t.Errorf("network should inherit base (loopback), got %q", p.Network)
+		if p.Network != NetworkNone {
+			t.Errorf("network should inherit base (none), got %q", p.Network)
 		}
-		opaque, _ := LoadProfile(ProfileOpaque)
-		if len(p.Mounts) != len(opaque.Mounts)+1 {
+		baseProf, _ := LoadProfile(ProfileSandboxPath)
+		if len(p.Mounts) != len(baseProf.Mounts)+1 {
 			t.Fatalf("mounts = %d, want base+1 (%+v)", len(p.Mounts), p.Mounts)
 		}
 		m := mountByDest(p)
@@ -680,21 +659,21 @@ sandbox:
 		if err != nil {
 			t.Fatalf("LoadProfile(scalar): %v", err)
 		}
-		opaque, _ := LoadProfile(ProfileOpaque)
-		if p.Network != opaque.Network || len(p.Mounts) != len(opaque.Mounts) {
+		baseProf, _ := LoadProfile(ProfileSandboxPath)
+		if p.Network != baseProf.Network || len(p.Mounts) != len(baseProf.Mounts) {
 			t.Errorf("scalar shorthand differs from rung: %+v", p)
 		}
 	})
 
 	t.Run("override by destination replaces the base mount", func(t *testing.T) {
 		// Narrowing/widening a base mount in place: remount $CWD ro over
-		// opaque's rw.
+		// sandbox-path's rw.
 		cwd, _ := os.Getwd()
 		writeFile(t, filepath.Join(work, "config2.yaml"), "")
 		writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
   rotree:
-    base: opaque
+    base: sandbox-path
     mounts:
       - source: $CWD
         destination: $CWD
@@ -704,8 +683,8 @@ sandbox:
 		if err != nil {
 			t.Fatalf("LoadProfile(rotree): %v", err)
 		}
-		opaque, _ := LoadProfile(ProfileOpaque)
-		if len(p.Mounts) != len(opaque.Mounts) {
+		baseProf, _ := LoadProfile(ProfileSandboxPath)
+		if len(p.Mounts) != len(baseProf.Mounts) {
 			t.Fatalf("override should replace, not append: %d mounts", len(p.Mounts))
 		}
 		if m := mountByDest(p)[cwd]; m.Mode != MountRO {
@@ -724,10 +703,10 @@ sandbox:
   badbase:
     base: nope
   badnet:
-    base: opaque
+    base: sandbox-path
     network: bridge
   missing:
-    base: opaque
+    base: sandbox-path
     mounts:
       - source: /nonexistent-base-add-xyz
         destination: /x
@@ -810,7 +789,7 @@ func TestComposeProfile_DriverInheritance(t *testing.T) {
 	writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
   custom-seatbelt:
-    base: host
+    base: sandbox-net
     driver: seatbelt
     max_memory: 512MB
 `)
@@ -840,7 +819,7 @@ func TestDecodeProfile_NoExecAndAllowedExecPaths(t *testing.T) {
 	writeFile(t, filepath.Join(work, "config.yaml"), `
 sandbox:
   locked:
-    base: opaque
+    base: sandbox-exec
     no_exec: true
   allowlisted:
     network: none
@@ -1068,10 +1047,11 @@ sandbox:
 }
 
 func TestResolvePermissions(t *testing.T) {
+	customDir := t.TempDir()
 	cfg := &SandboxConfig{
 		Profiles: map[string]ProfileBody{
 			"custom": {
-				Paths: PathsSpec{Read: []string{"/custom/read"}},
+				Paths: PathsSpec{Read: []string{customDir}},
 			},
 		},
 	}
@@ -1085,13 +1065,20 @@ func TestResolvePermissions(t *testing.T) {
 		t.Errorf("unexpected pPath: %+v", pPath)
 	}
 
-	// Legacy alias resolution
-	pLegacy, err := ResolvePermissions("allow-fs", cfg)
-	if err != nil {
-		t.Fatalf("ResolvePermissions(allow-fs): %v", err)
+	// Legacy alias rejected
+	_, err = ResolvePermissions("allow-fs", cfg)
+	if err == nil {
+		t.Error("expected ResolvePermissions(allow-fs) to fail (removed legacy name)")
 	}
-	if pLegacy == nil || pLegacy.Default != libkite.DefaultDeny {
-		t.Errorf("unexpected pLegacy: %+v", pLegacy)
+
+	for _, name := range []string{ProfileDenyAll, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined} {
+		pLadder, err := ResolvePermissions(name, cfg)
+		if err != nil {
+			t.Fatalf("ResolvePermissions(%s): %v", name, err)
+		}
+		if pLadder == nil {
+			t.Fatalf("ResolvePermissions(%s) returned nil", name)
+		}
 	}
 
 	// Custom profile resolution
@@ -1099,8 +1086,9 @@ func TestResolvePermissions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolvePermissions(custom): %v", err)
 	}
-	if !slices.Contains(pCustom.Allow, "fs.read(/custom/read/**)") {
-		t.Errorf("pCustom missing fs.read(/custom/read/**): %v", pCustom.Allow)
+	expectedRule := fmt.Sprintf("fs.read(%s/**)", filepath.Clean(customDir))
+	if !slices.Contains(pCustom.Allow, expectedRule) {
+		t.Errorf("pCustom missing %s: %v", expectedRule, pCustom.Allow)
 	}
 }
 
