@@ -840,13 +840,13 @@ func loadProfileResolved(value string) (Profile, error) {
 	switch value {
 	case ProfileDenyAll:
 		return Profile{
-			Name:      ProfileDenyAll,
-			Enabled:   true,
-			Driver:    DriverDefault,
-			Paths:     PathsSpec{Read: nil, Write: nil},
-			Exec:      ExecPolicySpec{Deny: []string{"*"}},
-			NoExec:    true,
-			Network:   NetworkNone,
+			Name:    ProfileDenyAll,
+			Enabled: true,
+			Driver:  DriverDefault,
+			Paths:   PathsSpec{Read: nil, Write: nil},
+			Exec:    ExecPolicySpec{Deny: []string{"*"}},
+			NoExec:  true,
+			Network: NetworkNone,
 			Mounts: []Mount{
 				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
 			},

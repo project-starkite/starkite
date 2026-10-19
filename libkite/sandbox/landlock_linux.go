@@ -384,8 +384,6 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		}
 	}
 
-
-
 	if isHomeOrRoot {
 		if cleanCwd == "/" {
 			fmt.Fprintln(os.Stderr, "sandbox: working directory is /; isolated to script file only. No other files in / are accessible.")
