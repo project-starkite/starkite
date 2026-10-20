@@ -455,3 +455,68 @@ func TestRunScriptDefaultDenyAll(t *testing.T) {
 		t.Fatal("expected exec to fail under default deny-all, got nil")
 	}
 }
+
+func TestRunScript_ModuleTrustBoundaryGate(t *testing.T) {
+	dir := t.TempDir()
+	modDir := filepath.Join(dir, "deployer")
+	if err := os.MkdirAll(modDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	modYAML := `
+name: test/deployer
+version: 0.1.0
+sandbox:
+  network: host
+  paths:
+    read:
+      - "."
+`
+	if err := os.WriteFile(filepath.Join(modDir, "mod.yaml"), []byte(modYAML), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modDir, "main.star"), []byte("status = 'ready'\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	appFile := filepath.Join(dir, "app.star")
+	appCode := `load("./deployer", "deployer")
+x = deployer.status
+`
+	if err := os.WriteFile(appFile, []byte(appCode), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Under default profile, pre-execution gate halts with actionable ModuleCapabilityError
+	err := runScript(runCmd, []string{appFile})
+	if err == nil {
+		t.Fatal("expected module trust boundary error under default profile")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, `module "test/deployer" requires capabilities exceeding active profile "default":`) {
+		t.Errorf("missing module mismatch header: %q", msg)
+	}
+	if !strings.Contains(msg, `network: host (active: none)`) {
+		t.Errorf("missing network violation: %q", msg)
+	}
+	if !strings.Contains(msg, `paths.read: ["."] (active: [])`) {
+		t.Errorf("missing paths.read violation: %q", msg)
+	}
+	if !strings.Contains(msg, "Hint: rerun with required capabilities: kite run --sandbox-net --sandbox-path-read=.") {
+		t.Errorf("missing rerun hint: %q", msg)
+	}
+
+	// 2. Supplying the suggested CLI flags satisfies the trust boundary
+	oldNet := sandboxNet
+	oldRead := sandboxPathRead
+	sandboxNet = true
+	sandboxPathRead = []string{"."}
+	defer func() {
+		sandboxNet = oldNet
+		sandboxPathRead = oldRead
+	}()
+
+	if err := runScript(runCmd, []string{appFile}); err != nil {
+		t.Fatalf("expected runScript to succeed once required flags are granted: %v", err)
+	}
+}

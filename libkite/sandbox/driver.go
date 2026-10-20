@@ -5,10 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"os"
-	"path/filepath"
 	"strings"
-	"syscall"
 	"time"
 )
 
@@ -69,104 +66,6 @@ func (s *ExecutionSpec) Validate() error {
 		}
 	}
 	return nil
-}
-
-// FormatPermissionError wraps OS-level EACCES/EPERM errors with actionable
-// sandbox policy attribution explaining why the operation was denied.
-func FormatPermissionError(err error, targetPath string, spec *ExecutionSpec) error {
-	if err == nil {
-		return nil
-	}
-	if !errors.Is(err, os.ErrPermission) && !errors.Is(err, syscall.EACCES) && !errors.Is(err, syscall.EPERM) {
-		return err
-	}
-	if spec == nil {
-		if targetPath != "" {
-			return fmt.Errorf("sandbox: permission denied accessing %q: %w", targetPath, err)
-		}
-		return fmt.Errorf("sandbox: permission denied: %w", err)
-	}
-	if spec.NoExec && targetPath == "" {
-		return fmt.Errorf("sandbox: subprocess execution denied by no_exec policy: %w", err)
-	}
-	if targetPath != "" {
-		cleanTarget := filepath.ToSlash(filepath.Clean(targetPath))
-		if cleanTarget == "/dev/shm" || strings.HasPrefix(cleanTarget, "/dev/shm/") ||
-			cleanTarget == "/run/shm" || strings.HasPrefix(cleanTarget, "/run/shm/") {
-			return fmt.Errorf("sandbox: access to %q denied by shared memory (/dev/shm) isolation: %w", targetPath, err)
-		}
-		if cleanTarget == "/tmp" || strings.HasPrefix(cleanTarget, "/tmp/") ||
-			cleanTarget == "/private/tmp" || strings.HasPrefix(cleanTarget, "/private/tmp/") {
-			return fmt.Errorf("sandbox: execution or access of %q denied on writable scratch mount (W^X noexec policy): %w", targetPath, err)
-		}
-		for _, m := range spec.Mounts {
-			dst := filepath.ToSlash(filepath.Clean(m.Destination))
-			src := filepath.ToSlash(filepath.Clean(m.Source))
-			if (m.Mode == MountRW || m.Type == MountTmpfs) &&
-				(cleanTarget == dst || strings.HasPrefix(cleanTarget, dst+"/") ||
-					(m.Source != "" && (cleanTarget == src || strings.HasPrefix(cleanTarget, src+"/")))) {
-				return fmt.Errorf("sandbox: execution of %q denied on writable mount %q (W^X noexec policy): %w", targetPath, m.Destination, err)
-			}
-		}
-		if home, homeErr := os.UserHomeDir(); homeErr == nil && home != "" {
-			cleanHome := filepath.ToSlash(filepath.Clean(home))
-			if cleanTarget == cleanHome || strings.HasPrefix(cleanTarget, cleanHome+"/") {
-				return fmt.Errorf("sandbox: access to %q denied by home directory isolation ($HOME is not mounted by default; add an explicit mount in your sandbox profile): %w", targetPath, err)
-			}
-		}
-		if spec.NoExec {
-			return fmt.Errorf("sandbox: execution of %q denied by no_exec policy: %w", targetPath, err)
-		}
-		if len(spec.AllowedExecPaths) > 0 {
-			return fmt.Errorf("sandbox: execution of %q denied by allowed_exec_paths policy: %w", targetPath, err)
-		}
-		return fmt.Errorf("sandbox: access to %q denied by sandbox policy (path is outside active mounts or read-only): %w", targetPath, err)
-	}
-	return fmt.Errorf("sandbox: operation denied by sandbox policy: %w", err)
-}
-
-// enrichPermissionStderr appends actionable sandbox policy attribution from
-// FormatPermissionError when a sandboxed process fails with a permission error.
-func enrichPermissionStderr(stderr string, spec *ExecutionSpec) string {
-	if spec == nil {
-		return stderr
-	}
-	lower := strings.ToLower(stderr)
-	if strings.Contains(lower, "sandbox:") {
-		return stderr
-	}
-	if strings.Contains(lower, "unknown flag") ||
-		strings.Contains(lower, "cannot connect to") ||
-		strings.Contains(lower, "unable to connect to") {
-		return stderr
-	}
-	if !strings.Contains(lower, "permission denied") &&
-		!strings.Contains(lower, "operation not permitted") &&
-		!strings.Contains(lower, "not permitted") &&
-		!spec.NoExec && len(spec.AllowedExecPaths) == 0 {
-		return stderr
-	}
-
-	target := ""
-	for _, arg := range spec.Command {
-		for tok := range strings.FieldsSeq(arg) {
-			cleanTok := strings.Trim(tok, "'\"`;|&()")
-			if strings.HasPrefix(cleanTok, "/") {
-				target = cleanTok
-				if cleanTok != "/bin/sh" && cleanTok != "/bin/bash" && cleanTok != "/usr/bin/env" {
-					break
-				}
-			}
-		}
-	}
-	diag := FormatPermissionError(syscall.EACCES, target, spec).Error()
-	if stderr == "" {
-		return diag + "\n"
-	}
-	if !strings.HasSuffix(stderr, "\n") {
-		stderr += "\n"
-	}
-	return stderr + diag + "\n"
 }
 
 // ExecResult contains the execution telemetry and output of a sandboxed process.

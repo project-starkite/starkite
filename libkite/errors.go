@@ -29,6 +29,7 @@ type PermissionError struct {
 	Reason   string   // Why it was denied
 	Allowed  []string // What patterns would allow this (for helpful errors)
 	Suggest  string   // Lowest built-in profile that would grant the capability
+	Hint     string   // Actionable CLI flag and config.yaml remediation hint
 	Origin   string   // Loaded module whose code triggered the denial, if any
 }
 
@@ -52,6 +53,9 @@ func (e *PermissionError) Error() string {
 	if e.Suggest != "" {
 		fmt.Fprintf(&b, "\n  grant %q with --sandbox-profile=%s (or higher), or in the sandbox: section of config.yaml",
 			target, e.Suggest)
+	}
+	if e.Hint != "" {
+		fmt.Fprintf(&b, "\n  Hint: %s", e.Hint)
 	}
 	return b.String()
 }

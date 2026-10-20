@@ -219,7 +219,7 @@ func (u *URL) doRequest(thread *starlark.Thread, method string, hasBody bool, ar
 	// Execute request
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("http", "client", u.rawURL, err)
 	}
 
 	respObj := newResponse(resp)

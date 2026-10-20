@@ -80,10 +80,21 @@ type Config struct {
 
 	// Preloaded holds the pre-resolved static module dependency graph.
 	Preloaded *StaticLoadClosure
+
+	// SandboxPolicy summarizes the operator's active sandbox profile and CLI
+	// capability grants for module manifest trust boundary validation.
+	SandboxPolicy *SandboxPolicySummary
 }
 
 // ConfigOption is a functional option for Config.
 type ConfigOption func(*Config)
+
+// WithSandboxPolicy sets the active operator sandbox policy summary.
+func WithSandboxPolicy(policy *SandboxPolicySummary) ConfigOption {
+	return func(c *Config) {
+		c.SandboxPolicy = policy
+	}
+}
 
 // WithEnv sets the environment variables available to the script and runtime modules.
 func WithEnv(env map[string]string) ConfigOption {

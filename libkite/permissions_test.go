@@ -1,12 +1,14 @@
 package libkite
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 	"testing"
 
 	"go.starlark.net/starlark"
@@ -808,5 +810,128 @@ func TestRuleSynthesisHelpers(t *testing.T) {
 	rEndpoints := NetworkAllowRules("none", []string{"ghcr.io:443"})
 	if !slices.Contains(rEndpoints, "http.client") {
 		t.Errorf("NetworkAllowRules with endpoints failed: %v", rEndpoints)
+	}
+}
+
+func TestPermissionError_ActionableHints(t *testing.T) {
+	checker, err := NewPermissionChecker(DenyAllPermissions())
+	if err != nil {
+		t.Fatalf("NewPermissionChecker: %v", err)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("os.Getwd: %v", err)
+	}
+	cwdFile := filepath.Join(cwd, "test.txt")
+
+	// 1. fs.read in $CWD
+	err = checker.Check("fs", "read", "read_file", cwdFile)
+	if err == nil {
+		t.Fatal("expected fs.read denial")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "Hint: pass --sandbox-path-read=. on CLI, or add \".\" to sandbox.<profile>.paths.read in config.yaml") {
+		t.Errorf("fs.read hint missing, got %q", msg)
+	}
+
+	// 2. fs.write in $CWD
+	err = checker.Check("fs", "write", "write_file", cwdFile)
+	if err == nil {
+		t.Fatal("expected fs.write denial")
+	}
+	msg = err.Error()
+	if !strings.Contains(msg, "Hint: pass --sandbox-path-write=. on CLI, or add \".\" to sandbox.<profile>.paths.write in config.yaml") {
+		t.Errorf("fs.write hint missing, got %q", msg)
+	}
+
+	// 3. fs.read outside $CWD
+	outsidePath := "/etc/ssl/cert.pem"
+	err = checker.Check("fs", "read", "read_file", outsidePath)
+	if err == nil {
+		t.Fatal("expected fs.read outside denial")
+	}
+	msg = err.Error()
+	if !strings.Contains(msg, "Hint: pass --sandbox-path-read=/etc/ssl/cert.pem on CLI, or add \"/etc/ssl/cert.pem\" to sandbox.<profile>.paths.read in config.yaml") {
+		t.Errorf("fs.read outside hint missing, got %q", msg)
+	}
+
+	// 4. os.exec for kubectl (both deny-all deny rule and missing allow rule)
+	err = checker.Check("os", "exec", "exec", "kubectl")
+	if err == nil {
+		t.Fatal("expected os.exec denial")
+	}
+	msg = err.Error()
+	if !strings.Contains(msg, "Hint: pass --sandbox-exec-allow=kubectl on CLI, or add \"kubectl\" to sandbox.<profile>.exec.allow in config.yaml") {
+		t.Errorf("os.exec kubectl hint missing, got %q", msg)
+	}
+
+	// 5. os.shell
+	err = checker.Check("os", "shell", "shell", "echo hello")
+	if err == nil {
+		t.Fatal("expected os.shell denial")
+	}
+	msg = err.Error()
+	if !strings.Contains(msg, "Hint: pass --sandbox-exec-allow=* on CLI, or add \"*\" to sandbox.<profile>.exec.allow in config.yaml") {
+		t.Errorf("os.shell hint missing, got %q", msg)
+	}
+
+	// 6. Network modules: http.client, ssh.connect, k8s.read, sql.open
+	for _, tc := range []struct {
+		module   string
+		category string
+		resource string
+	}{
+		{"http", "client", "https://api.github.com"},
+		{"ssh", "connect", "prod.example.com:22"},
+		{"k8s", "read", "pods"},
+		{"sql", "open", "postgres://localhost:5432/db"},
+	} {
+		err = checker.Check(tc.module, tc.category, "connect", tc.resource)
+		if err == nil {
+			t.Fatalf("expected %s.%s denial", tc.module, tc.category)
+		}
+		msg = err.Error()
+		if !strings.Contains(msg, "Hint: pass --sandbox-net on CLI, or set sandbox.<profile>.network: host in config.yaml") {
+			t.Errorf("%s.%s hint missing, got %q", tc.module, tc.category, msg)
+		}
+	}
+
+	// 7. os.process (os.exit)
+	err = checker.Check("os", "process", "exit", "")
+	if err == nil {
+		t.Fatal("expected os.process denial")
+	}
+	msg = err.Error()
+	if !strings.Contains(msg, "Hint: pass --sandbox-call-allow=os.process on CLI, or add \"os.process\" to sandbox.<profile>.calls.allow in config.yaml") {
+		t.Errorf("os.process hint missing, got %q", msg)
+	}
+}
+
+func TestWrapOSPermissionError(t *testing.T) {
+	// nil error returns nil
+	if got := WrapOSPermissionError("os", "exec", "ls", nil); got != nil {
+		t.Fatalf("expected nil, got %v", got)
+	}
+
+	// Non-permission error returns unchanged
+	notExist := os.ErrNotExist
+	if got := WrapOSPermissionError("os", "exec", "ls", notExist); !errors.Is(got, os.ErrNotExist) || strings.Contains(got.Error(), "Hint:") {
+		t.Fatalf("expected untouched ErrNotExist, got %v", got)
+	}
+
+	// syscall.EACCES is wrapped with hint
+	wrapped := WrapOSPermissionError("os", "exec", "kubectl get pods", syscall.EACCES)
+	if !errors.Is(wrapped, syscall.EACCES) {
+		t.Fatalf("expected wrapped to match EACCES, got %v", wrapped)
+	}
+	if !strings.Contains(wrapped.Error(), "Hint: pass --sandbox-exec-allow=kubectl on CLI") {
+		t.Errorf("wrapped error missing kubectl hint: %v", wrapped)
+	}
+
+	// Already wrapped does not duplicate hint
+	doubleWrapped := WrapOSPermissionError("os", "exec", "kubectl get pods", wrapped)
+	if strings.Count(doubleWrapped.Error(), "Hint:") != 1 {
+		t.Errorf("expected exactly 1 Hint, got: %v", doubleWrapped)
 	}
 }

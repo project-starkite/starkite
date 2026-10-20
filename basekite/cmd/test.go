@@ -261,6 +261,7 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 	if err != nil {
 		activeProf = sandbox.Profile{}
 	}
+	policy := activeProf.PolicySummary(envFlags, envInherit, testFile)
 	envMap, _, _ := ResolveRuntimeEnv(&activeProf)
 
 	preloaded := GetActivePreloadedClosure()
@@ -284,16 +285,17 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 
 	// Create runtime configuration
 	cfg := &libkite.Config{
-		ScriptPath:   testFile,
-		OutputFormat: "text",
-		Debug:        debugMode,
-		DryRun:       dryRun,
-		VarStore:     varStore,
-		TestMode:     true,
-		Permissions:  perms,
-		Registry:     registry,
-		Env:          envMap,
-		Preloaded:    preloaded,
+		ScriptPath:    testFile,
+		OutputFormat:  "text",
+		Debug:         debugMode,
+		DryRun:        dryRun,
+		VarStore:      varStore,
+		TestMode:      true,
+		Permissions:   perms,
+		SandboxPolicy: policy,
+		Registry:      registry,
+		Env:           envMap,
+		Preloaded:     preloaded,
 	}
 
 	// Create runtime

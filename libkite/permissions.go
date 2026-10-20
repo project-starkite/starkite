@@ -1,12 +1,14 @@
 package libkite
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"sync"
+	"syscall"
 
 	"go.starlark.net/starlark"
 )
@@ -103,6 +105,7 @@ func (c *PermissionChecker) Check(module, category, function, resource string) e
 				Function: function,
 				Resource: resource,
 				Reason:   fmt.Sprintf("blocked by deny rule: %s", rule.Raw),
+				Hint:     SuggestCapabilityHint(module, category, function, resource),
 			}
 		}
 	}
@@ -125,6 +128,7 @@ func (c *PermissionChecker) Check(module, category, function, resource string) e
 		Reason:   "no matching allow rule",
 		Allowed:  c.allowedPatterns(),
 		Suggest:  suggestProfile(module, category, function, resource),
+		Hint:     SuggestCapabilityHint(module, category, function, resource),
 	}
 }
 
@@ -857,4 +861,131 @@ func AllowPermissions(deny ...string) *PermissionConfig {
 		Deny:    deny,
 		Default: DefaultAllow,
 	}
+}
+
+// SuggestCapabilityHint returns an actionable remediation hint naming the exact
+// CLI flag and config.yaml directive required to authorize a denied capability.
+func SuggestCapabilityHint(module, category, function, resource string) string {
+	switch module {
+	case "fs":
+		target := suggestPathForResource(resource)
+		if category == "read" {
+			return fmt.Sprintf("pass --sandbox-path-read=%s on CLI, or add %q to sandbox.<profile>.paths.read in config.yaml", target, target)
+		}
+		return fmt.Sprintf("pass --sandbox-path-write=%s on CLI, or add %q to sandbox.<profile>.paths.write in config.yaml", target, target)
+
+	case "sql":
+		if rest, ok := strings.CutPrefix(resource, "sqlite:"); ok {
+			if rest == ":memory:" || rest == "" {
+				return "pass --sandbox-path-write=. on CLI, or add \".\" to sandbox.<profile>.paths.write in config.yaml"
+			}
+			target := suggestPathForResource(rest)
+			return fmt.Sprintf("pass --sandbox-path-write=%s on CLI, or add %q to sandbox.<profile>.paths.write in config.yaml", target, target)
+		}
+		return "pass --sandbox-net on CLI, or set sandbox.<profile>.network: host in config.yaml"
+
+	case "os":
+		if category == "exec" || category == "shell" {
+			if category == "shell" || function == "shell" || function == "sh" ||
+				function == "bash" || function == "zsh" || function == "cmdexe" ||
+				function == "powershell" || resource == "" || resource == "*" {
+				return "pass --sandbox-exec-allow=* on CLI, or add \"*\" to sandbox.<profile>.exec.allow in config.yaml"
+			}
+			bin := suggestExecBinary(resource)
+			return fmt.Sprintf("pass --sandbox-exec-allow=%s on CLI, or add %q to sandbox.<profile>.exec.allow in config.yaml", bin, bin)
+		}
+		callTarget := module + "." + category
+		return fmt.Sprintf("pass --sandbox-call-allow=%s on CLI, or add %q to sandbox.<profile>.calls.allow in config.yaml", callTarget, callTarget)
+
+	case "http", "ssh", "k8s", "mcp", "containers", "net":
+		return "pass --sandbox-net on CLI, or set sandbox.<profile>.network: host in config.yaml"
+
+	default:
+		callTarget := module + "." + category
+		if category == "" {
+			callTarget = module + ".*"
+		}
+		return fmt.Sprintf("pass --sandbox-call-allow=%s on CLI, or add %q to sandbox.<profile>.calls.allow in config.yaml", callTarget, callTarget)
+	}
+}
+
+// suggestPathForResource normalizes a denied file/directory resource into a
+// concise CLI path argument ("." when inside $CWD, or the cleaned path outside).
+func suggestPathForResource(resource string) string {
+	r := strings.TrimSpace(resource)
+	if r == "" || r == "." || r == "./" || r == "$CWD" || strings.HasPrefix(r, "$CWD/") {
+		return "."
+	}
+	if !filepath.IsAbs(r) && !strings.HasPrefix(r, "/") && !strings.HasPrefix(r, "$HOME") && !strings.HasPrefix(r, "~") {
+		cleanRel := filepath.ToSlash(filepath.Clean(r))
+		if cleanRel == "." || !strings.HasPrefix(cleanRel, "..") {
+			return "."
+		}
+	}
+	if cwd, err := os.Getwd(); err == nil && cwd != "" {
+		cleanCwd := filepath.ToSlash(filepath.Clean(cwd))
+		canonCwd := filepath.ToSlash(CanonicalizePath(cwd))
+		cleanRes := filepath.ToSlash(filepath.Clean(r))
+		canonRes := filepath.ToSlash(CanonicalizePath(r))
+		if cleanRes == cleanCwd || strings.HasPrefix(cleanRes, cleanCwd+"/") ||
+			canonRes == canonCwd || strings.HasPrefix(canonRes, canonCwd+"/") {
+			return "."
+		}
+	}
+	return filepath.ToSlash(filepath.Clean(r))
+}
+
+// suggestExecBinary extracts a clean binary name from an exec resource string.
+func suggestExecBinary(resource string) string {
+	r := strings.TrimSpace(resource)
+	if r == "" || r == "*" {
+		return "*"
+	}
+	fields := strings.Fields(r)
+	if len(fields) > 0 {
+		r = fields[0]
+	}
+	base := filepath.Base(filepath.ToSlash(r))
+	if base == "" || base == "." || base == "/" {
+		return "*"
+	}
+	return base
+}
+
+// FormatEnvScrubbedDiagnostic formats a debug warning when a script requests an
+// environment variable via os.env() that exists on the host but was scrubbed by
+// zero-trust environment sanitization.
+func FormatEnvScrubbedDiagnostic(varName string) string {
+	return fmt.Sprintf(
+		"[DEBUG] env %q requested by script is present on host but scrubbed by sandbox.\n  Hint: pass --env %s on CLI, or declare \"%s:\" in sandbox.<profile>.env in config.yaml",
+		varName, varName, varName,
+	)
+}
+
+// WrapOSPermissionError inspects an OS/syscall error and, if it represents a
+// kernel-level permission or socket denial (EACCES, EPERM, os.ErrPermission),
+// appends an actionable remediation hint for the corresponding module capability.
+func WrapOSPermissionError(module, category, resource string, err error) error {
+	if err == nil {
+		return nil
+	}
+	if IsPermissionError(err) {
+		return err
+	}
+	isPerm := errors.Is(err, os.ErrPermission) ||
+		errors.Is(err, syscall.EACCES) ||
+		errors.Is(err, syscall.EPERM)
+	if !isPerm {
+		lower := strings.ToLower(err.Error())
+		isPerm = strings.Contains(lower, "operation not permitted") ||
+			strings.Contains(lower, "permission denied")
+	}
+	if !isPerm {
+		return err
+	}
+	if strings.Contains(err.Error(), "Hint:") {
+		return err
+	}
+	hint := SuggestCapabilityHint(module, category, "", resource)
+	return fmt.Errorf("%w\n  Hint: %s", err, hint)
 }

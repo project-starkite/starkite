@@ -218,7 +218,11 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 		return nil
 	}
 
-	if err := walkFile(absScript); err != nil {
+	if filepath.Base(absScript) == EntryFile && isModuleDir(filepath.Dir(absScript)) {
+		if err := walkModuleDir(filepath.Dir(absScript)); err != nil {
+			return nil, err
+		}
+	} else if err := walkFile(absScript); err != nil {
 		return nil, err
 	}
 

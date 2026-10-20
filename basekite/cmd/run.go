@@ -153,6 +153,32 @@ func runScript(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	profile, err := ResolveActiveProfile()
+	if err != nil {
+		return &libkite.ScriptError{
+			Message:  fmt.Sprintf("failed to resolve sandbox profile: %v", err),
+			ExitCode: libkite.ExitConfigError,
+		}
+	}
+	policy := profile.PolicySummary(envFlags, envInherit, target)
+	perms := profile.CompilePermissions()
+	checker, _ := libkite.NewPermissionChecker(perms)
+
+	preloaded := GetActivePreloadedClosure()
+	if preloaded == nil && scriptPath != "" {
+		if closure, err := libkite.ResolveStaticLoadClosure(scriptPath, filepath.Dir(scriptPath), nil); err == nil {
+			preloaded = closure
+			SetActivePreloadedClosure(preloaded)
+		}
+	}
+
+	if err := libkite.ValidateClosureManifests(preloaded, policy, checker, filepath.Dir(scriptPath)); err != nil {
+		return &libkite.ScriptError{
+			Message:  err.Error(),
+			ExitCode: libkite.ExitScriptError,
+		}
+	}
+
 	// Sandbox handoff: if STARKITE_SECURITY_SANDBOX is set, hand the
 	// entire script execution to the OS-level sandbox backend and
 	// return its result.
@@ -167,14 +193,6 @@ func runScript(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	profile, err := ResolveActiveProfile()
-	if err != nil {
-		return &libkite.ScriptError{
-			Message:  fmt.Sprintf("failed to resolve sandbox profile: %v", err),
-			ExitCode: libkite.ExitConfigError,
-		}
-	}
-	perms := profile.CompilePermissions()
 	envMap, _, err := ResolveRuntimeEnv(&profile)
 	if err != nil {
 		return &libkite.ScriptError{
@@ -194,13 +212,6 @@ func runScript(cmd *cobra.Command, args []string) error {
 	// Create registry with all modules
 	registry := NewRegistry(moduleConfig)
 
-	preloaded := GetActivePreloadedClosure()
-	if preloaded == nil && scriptPath != "" {
-		if closure, err := libkite.ResolveStaticLoadClosure(scriptPath, filepath.Dir(scriptPath), nil); err == nil {
-			preloaded = closure
-		}
-	}
-
 	// Create runtime configuration
 	cfg := &libkite.Config{
 		ScriptPath:        scriptPath,
@@ -210,6 +221,7 @@ func runScript(cmd *cobra.Command, args []string) error {
 		DryRun:            dryRun,
 		VarStore:          varStore,
 		Permissions:       perms,
+		SandboxPolicy:     policy,
 		Registry:          registry,
 		Env:               envMap,
 		EntryPoint:        "main",

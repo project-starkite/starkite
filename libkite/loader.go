@@ -344,6 +344,19 @@ func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict, origin s
 		return nil, err
 	}
 
+	var policy *SandboxPolicySummary
+	var workDir string
+	if rt.config != nil {
+		policy = rt.config.SandboxPolicy
+		workDir = rt.config.WorkDir
+		if workDir == "" && rt.config.ScriptPath != "" {
+			workDir = filepath.Dir(rt.config.ScriptPath)
+		}
+	}
+	if err := ValidateModuleManifest(m, dirPath, policy, rt.permissions, workDir); err != nil {
+		return nil, err
+	}
+
 	entryPath := filepath.Join(dirPath, EntryFile)
 	if !rt.sourceFileExists(entryPath) {
 		return nil, fmt.Errorf("module %q is missing its %s entry file", m.Name, EntryFile)

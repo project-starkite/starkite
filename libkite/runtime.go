@@ -100,6 +100,14 @@ func (rt *Runtime) activeLock() *Lock {
 	return rt.lock
 }
 
+// Debug reports whether debug logging is enabled on this runtime.
+func (rt *Runtime) Debug() bool {
+	if rt == nil || rt.config == nil {
+		return false
+	}
+	return rt.config.Debug
+}
+
 // New creates a Runtime with the given config.
 // If config is nil, uses secure defaults (trusted permissions for CLI tools).
 func New(config *Config) (*Runtime, error) {

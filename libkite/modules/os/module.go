@@ -37,6 +37,8 @@ type Module struct {
 	// Provider configuration for exec
 	env         map[string]string
 	isolatedEnv bool
+	scrubWarned map[string]bool
+	diagWriter  io.Writer
 	workDir     string
 	timeout     time.Duration
 	mu          sync.RWMutex
@@ -44,14 +46,39 @@ type Module struct {
 
 func New() *Module {
 	return &Module{
-		env:     make(map[string]string),
-		timeout: 60 * time.Second,
+		env:         make(map[string]string),
+		scrubWarned: make(map[string]bool),
+		diagWriter:  os.Stderr,
+		timeout:     60 * time.Second,
 	}
+}
+
+// SetDiagWriter overrides the writer used for diagnostic warnings (defaults to os.Stderr).
+func (m *Module) SetDiagWriter(w io.Writer) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.diagWriter = w
+}
+
+func hostEnvExists(name string) bool {
+	if _, ok := os.LookupEnv(name); ok {
+		return true
+	}
+	if runtime.GOOS == "windows" {
+		for _, entry := range os.Environ() {
+			k, _, _ := strings.Cut(entry, "=")
+			if strings.EqualFold(k, name) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // NewWithConfig creates an os module initialized with the given ModuleConfig.
 func NewWithConfig(config *libkite.ModuleConfig) *Module {
 	m := New()
+	m.config = config
 	if config != nil && config.Env != nil {
 		m.isolatedEnv = true
 		m.env = maps.Clone(config.Env)
@@ -194,6 +221,30 @@ func (m *Module) env_(thread *starlark.Thread, fn *starlark.Builtin, args starla
 		return starlark.String(val), nil
 	}
 	if isolated {
+		debugActive := (m.config != nil && m.config.Debug)
+		if !debugActive {
+			if rt := libkite.GetRuntime(thread); rt != nil && rt.Debug() {
+				debugActive = true
+			}
+		}
+		if debugActive && hostEnvExists(p.Name) {
+			m.mu.Lock()
+			if m.scrubWarned == nil {
+				m.scrubWarned = make(map[string]bool)
+			}
+			alreadyWarned := m.scrubWarned[p.Name]
+			if !alreadyWarned {
+				m.scrubWarned[p.Name] = true
+			}
+			w := m.diagWriter
+			if w == nil {
+				w = os.Stderr
+			}
+			m.mu.Unlock()
+			if !alreadyWarned {
+				fmt.Fprintln(w, libkite.FormatEnvScrubbedDiagnostic(p.Name))
+			}
+		}
 		return starlark.String(p.Default), nil
 	}
 
@@ -631,7 +682,7 @@ func (m *Module) executeParams(thread *starlark.Thread, callerPrefix string, p e
 	cmd.Stderr = &stderr
 
 	if err := cmd.Start(); err != nil {
-		return &cmdResult{err: err}, nil
+		return &cmdResult{err: libkite.WrapOSPermissionError("os", "exec", p.cmdStr, err)}, nil
 	}
 
 	done := make(chan error, 1)
