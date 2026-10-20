@@ -93,7 +93,7 @@ def test_env_access():
     assert(len(home) > 0, "home/user directory should be set")
 
     # PATH is usually set
-    path_val = env("PATH")
+    path_val = env("PATH", env("Path", ""))
     assert(len(path_val) > 0, "PATH should be set")
 
 # Test 6: File read — gated under fs.read (allow-fs and up)

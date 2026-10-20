@@ -178,6 +178,15 @@ func (m *Module) env_(thread *starlark.Thread, fn *starlark.Builtin, args starla
 
 	m.mu.RLock()
 	val, ok := m.env[p.Name]
+	if !ok && runtime.GOOS == "windows" {
+		for k, v := range m.env {
+			if strings.EqualFold(k, p.Name) {
+				val = v
+				ok = true
+				break
+			}
+		}
+	}
 	isolated := m.isolatedEnv
 	m.mu.RUnlock()
 
@@ -212,7 +221,16 @@ func (m *Module) setenv(thread *starlark.Thread, fn *starlark.Builtin, args star
 	if m.env == nil {
 		m.env = make(map[string]string)
 	}
-	m.env[p.Name] = p.Value
+	targetKey := p.Name
+	if runtime.GOOS == "windows" {
+		for k := range m.env {
+			if strings.EqualFold(k, p.Name) {
+				targetKey = k
+				break
+			}
+		}
+	}
+	m.env[targetKey] = p.Value
 	isolated := m.isolatedEnv
 	m.mu.Unlock()
 
