@@ -64,7 +64,7 @@ Pick a constructor by how much you trust the script, since each one sets a diffe
 | Constructor | Permission default |
 |---|---|
 | `libkite.New(cfg)` | as configured (`Permissions` nil → all allowed) |
-| `libkite.NewTrusted(cfg, opts...)` | allow-all |
+| `libkite.NewTrusted(cfg, opts...)` | unconfined |
 | `libkite.NewSandboxed(cfg, opts...)` | deny-all |
 
 All three take a `*Config` plus optional `ConfigOption` functions, and either argument may be `nil`. That gives you three equivalent ways to spell the same setup — choose whichever reads best at the call site:
@@ -244,9 +244,9 @@ A registry decides what modules exist; permissions decide what a script may do w
 | Helper | Effect |
 |---|---|
 | `libkite.DenyAllPermissions()` | compute, print, and log only; no fs, network, or exec |
-| `libkite.AllowFSPermissions()` | read any file; write/delete within `$CWD`; `os.env`, `io.prompt` |
-| `libkite.AllowNetPermissions()` | adds `http.client` and all `ssh` |
-| `libkite.AllowLocalPermissions()` | adds `http.server`, `os.exec` under `$CWD`, `k8s.read`/`write`/`config`, `mcp.client`/`server` |
+| `libkite.SandboxPathPermissions()` | read/write within `$CWD`; `/tmp` scratch, `os.env`, `io.prompt` |
+| `libkite.SandboxExecPermissions()` | adds local binary execution (`os.exec`, `os.shell`) |
+| `libkite.SandboxNetPermissions()` | adds outbound network, `http`, `ssh`, `k8s`, `mcp`, `containers` |
 | `libkite.AllowAllPermissions()` | every operation allowed, including unrestricted `os.exec`, `k8s.exec`, and `os.process` |
 | `&libkite.PermissionConfig{Allow: …, Deny: …, Default: …}` | custom rules |
 

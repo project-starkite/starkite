@@ -1,233 +1,228 @@
 ---
 title: "Sandbox"
-description: "Pluggable OS and container runtime isolation"
+description: "Zero-trust OS-level and container runtime isolation"
 weight: 30
 ---
 
 # Execution Sandbox
 
-Starkite provides a pluggable OS-level sandbox architecture that isolates script execution across native operating system primitives and container runtimes. Confined scripts are restricted from accessing host credentials, unauthorized directories, and unapproved network surfaces.
+Starkite enforces zero-trust execution by default. Every script executed via `kite run`, `kite exec`, or `kite test` runs inside an OS-level kernel boundary and Starlark capability gate under the `deny-all` profile. Confined scripts are isolated from host credentials, unauthorized filesystems, network egress, and ambient host environment variables.
+
+## Default Zero-Trust Confinement
+
+When you invoke Starkite, the execution sandbox engages automatically (`--sandbox-enabled=true`). You do not need to pass an opt-in flag to secure script execution.
+
+Under the default `deny-all` profile, Starkite guarantees the following runtime invariants:
+
+- **Network Egress Blocked**: The sandbox isolates network namespaces or installs socket filtering (`network: none`), preventing outbound network requests.
+- **Filesystem & Working Directory Confinement**: The working directory (`$CWD`) and host `$HOME` are not mounted into the sandbox. Scripts run with an isolated `rw,noexec` temporary scratch directory mounted at `/tmp` (`HOME=/tmp`, `TMPDIR=/tmp`).
+- **Subprocess Execution Lockdown**: Subprocess spawning is disabled (`exec.deny: ["*"]`, `no_exec: true`). Attempts to execute binaries on the host fail immediately.
+- **Environment Sanitization**: Ambient host environment variables are scrubbed. The script receives only a minimal, safe baseline (`PATH`, `HOME=/tmp`, `TMPDIR=/tmp`, `LANG=C.UTF-8`, `TERM`).
+- **Memory-Resident Closures**: Local `.star` files and modules loaded via top-level `load()` statements are resolved and pre-loaded into memory before sandbox initialization, allowing modular scripts to execute without requiring filesystem mount permissions.
 
 ## Supported Sandbox Drivers
 
+Starkite isolates processes using native operating system primitives or container runtimes:
+
 | Driver | Platform | Mechanism | Overhead |
 |---|---|---|---|
-| `landlock` | Linux | Pure-Go unprivileged Landlock kernel syscalls (`landlock_create_ruleset`) | In-process (0 subprocess overhead) |
-| `seatbelt` | macOS | Pure-Go dynamic dynamic binding (`sandbox_init` / SBPL profiles) | In-process (0 subprocess overhead) |
+| `landlock` | Linux | Unprivileged Landlock kernel syscalls (`landlock_create_ruleset`) and Seccomp-BPF filters | In-process (0 subprocess overhead) |
+| `seatbelt` | macOS | Dynamic Seatbelt binding (`sandbox_init` with SBPL profiles) | In-process (0 subprocess overhead) |
 | `podman` | Linux, macOS | Ephemeral rootless OCI container with auto-bind mounts | Low subprocess overhead |
 | `docker` | Linux, macOS | Ephemeral Docker container execution | Low subprocess overhead |
 | `nerdctl` | Linux, macOS | Ephemeral containerd runtime execution | Low subprocess overhead |
-| `gvisor` | Linux | External `runsc` application kernel (Sentry) | Container / MicroVM overhead |
+| `gvisor` | Linux | Application kernel sandboxing via `runsc` (Sentry) | Container / MicroVM overhead |
 
-When invoked without an explicit driver name, Starkite auto-detects the host driver: `landlock` on Linux, `seatbelt` on macOS, or a configured container runtime if native drivers are unavailable.
+When invoked without an explicit `--sandbox-driver`, Starkite auto-detects the host driver: `landlock` on Linux, `seatbelt` on macOS, or a configured container runtime if native drivers are unavailable.
 
-## Quick start
+## Built-in Capability Ladder
 
-To execute a script within the default sandbox profile:
+Privileges are organized into a five-rung capability ladder, where each profile is a strict superset of the prior:
 
-```bash
-kite run ./script.star --sandboxed
-```
-
-To target a specific profile, pass `--sandbox-profile` (with space or `=`):
-
-```bash
-kite run ./script.star --sandbox-profile opaque
-kite run ./script.star --sandbox-profile=net-access
-kite run ./script.star --sandbox-profile host
-```
-
-Or use built-in boolean shortcut flags:
-
-```bash
-kite run ./script.star --sandbox-opaque
-kite run ./script.star --sandbox-net
-kite run ./script.star --sandbox-host
-```
-
-To override the sandbox execution driver, pass `--sandbox-driver`:
-
-```bash
-kite run ./script.star --sandbox-opaque --sandbox-driver=landlock
-kite run ./script.star --sandbox-host --sandbox-driver=seatbelt
-kite run ./script.star --sandbox-net --sandbox-driver=podman
-kite run ./script.star --sandbox-opaque --sandbox-driver=gvisor
-kite run ./script.star --sandbox-driver=podman   # Runs default profile in Podman
-```
-
-For shebang scripts (`#!/usr/bin/env kite`), configure the sandbox via environment variables:
-
-```bash
-# Set profile and/or driver via environment variables
-STARKITE_SANDBOX_PROFILE=opaque STARKITE_SANDBOX_DRIVER=seatbelt ./script.star
-```
-
-## Built-in sandbox profiles
-
-Starkite provides three standard sandbox profiles and corresponding CLI shortcut flags:
-
-| Profile | Shortcut Flag | Network | Filesystem Access | Purpose |
+| Profile | Network | Filesystem (`$CWD`) | Subprocess Execution | Purpose |
 |---|---|---|---|---|
-| `opaque` | `--sandbox-opaque` | None / Loopback | `$CWD` read/write, `/tmp` tmpfs | Completely offline execution; writes restricted to the working directory. |
-| `net-access` | `--sandbox-net`, `--sandbox-net-access` | Full network | `opaque` + read-only CA certificates and `/etc/resolv.conf` | Outbound network allowed (e.g. HTTP clients or Git operations). |
-| `host` | `--sandbox-host` | Full network | `net-access` + read-only `$HOME`, `/usr`, `/bin`, `/lib` | Allows reading host files and running system binaries while preventing modifications. |
+| `deny-all` (default) | `none` | Isolated (`[]`) | Blocked (`no_exec: true`) | Pure computation, print, and log. Top-level `load()` closures are pre-loaded into memory automatically. |
+| `sandbox-path` | `none` | `$CWD` read/write, `/tmp` scratch | Blocked (`no_exec: true`) | Local file processing, code generation, and SQLite databases within the working directory. |
+| `sandbox-exec` | `none` | `$CWD` read/write, `/tmp` scratch | Allowed (`exec.allow: ["*"]`) | Running local build tools, compilers, and CLI utilities without network access. |
+| `sandbox-net` | `host` | `$CWD` read/write, `/tmp` scratch + DNS/TLS certs | Allowed (`exec.allow: ["*"]`) | Full cloud-native workflows (`http`, `ssh`, `k8s`, `mcp`, `containers`). |
+| `unconfined` | `host` | Unrestricted host filesystem | Unrestricted | Completely disables OS sandbox confinement and Starlark permission checks (`--sandbox-enabled=false`). |
 
-## Custom sandbox profiles
+Select a profile with `--sandbox-profile=<name>`:
 
-Define custom sandbox profiles in `~/.starkite/config.yaml`. The `sandbox:` section is a pure profile mapping, where `default` is the profile selected when `--sandboxed` is passed without a specific profile:
+```bash
+kite run ./calc.star                                       # Runs under default 'deny-all'
+kite run ./process_files.star --sandbox-profile=sandbox-path
+kite run ./build_project.star --sandbox-profile=sandbox-exec
+kite run ./deploy_stack.star --sandbox-profile=sandbox-net
+kite run ./untrusted.star --sandbox-enabled=false         # Disables sandbox (runs unconfined)
+```
+
+## Composable CLI Capability Flags
+
+Rather than switching whole profiles, you can selectively grant specific capabilities from the command line on top of the zero-trust default:
+
+| CLI Flag | Description |
+|---|---|
+| `--sandbox-path-read=<paths>` | Grants read access to specific host paths (comma-separated or repeatable). |
+| `--sandbox-path-write=<paths>` | Grants read and write access to specific host paths (comma-separated or repeatable). |
+| `--sandbox-exec-allow=<bins>` | Permits execution of specific binary names, absolute paths, or `*`. |
+| `--sandbox-exec-deny=<bins>` | Denies execution of specific binaries (takes precedence over allow rules). |
+| `--sandbox-call-allow=<rules>` | Permits specific Starlark API module calls (e.g. `fs.read`, `http.client`). |
+| `--sandbox-call-deny=<rules>` | Denies specific Starlark API module calls. |
+| `--sandbox-net` | Grants outbound network access (equivalent to `network: host`). |
+| `--sandbox-driver=<driver>` | Selects the sandbox driver (`landlock`, `seatbelt`, `podman`, `docker`, `nerdctl`, `gvisor`, `auto`). |
+| `--sandbox-image=<image>` | Specifies the OCI image when using a container sandbox driver. |
+| `--sandbox-enabled=false` | Disables sandbox confinement and runs unconfined. |
+
+Example compositions:
+
+```bash
+# Grant working directory read/write access
+kite run ./generate.star --sandbox-path-write=.
+
+# Grant specific CLI tools and network egress
+kite run ./deploy.star --sandbox-exec-allow=kubectl,helm --sandbox-net
+
+# Grant working directory read and selective outbound HTTP
+kite run ./fetch.star --sandbox-path-read=. --sandbox-net
+```
+
+### Runtime Usability Automations
+
+Starkite eliminates common sandbox friction through automated runtime analysis:
+
+1. **Static AST `load()` Closure Pre-Loading**: Local `.star` scripts referenced by top-level `load()` statements are discovered, parsed, and cached in memory before the sandbox boundary is locked down. Scripts can import helper libraries and modules without needing filesystem read grants for `$CWD`.
+2. **Automatic Binary & Symlink Unveiling**: When you specify allowed binaries via `--sandbox-exec-allow=kubectl,go`, Starkite searches `$PATH`, resolves symlink chains (such as package manager links in `/opt/homebrew` or `/usr/local`), and mounts the underlying binary and its required directories read-only without exposing unauthorized paths.
+3. **Automatic Network Resolution Assets**: When you enable network access (`--sandbox-net` or `network: host`), the sandbox automatically unveils system DNS resolvers and TLS CA certificate bundles (`/etc/resolv.conf`, `/etc/hosts`, `/etc/ssl/certs`, `/etc/ca-certificates`, and macOS `/private/etc/ssl`).
+
+## Environment Isolation & Forwarding
+
+Starkite sanitizes the process environment so host secrets cannot leak into scripts or subprocesses. You control environment variable visibility using a 3-tier synthesis model:
+
+1. **Selective Host Forwarding**: Forward an ambient variable from the host environment:
+   ```bash
+   kite run ./deploy.star --env KUBECONFIG -e AWS_REGION
+   ```
+2. **Explicit Assignment**: Inject specific key-value pairs without reading the host environment:
+   ```bash
+   kite run ./deploy.star --env DEPLOY_ENV=production -e REPLICAS=5
+   ```
+3. **Full Host Inheritance**: Forward the complete ambient host environment when required:
+   ```bash
+   kite run ./local_tool.star --env-inherit
+   ```
+
+## Custom Profiles in `config.yaml`
+
+Define reusable sandbox profiles in `~/.starkite/config.yaml` or `./config.yaml`:
 
 ```yaml
 # ~/.starkite/config.yaml
 sandbox:
-  # The default profile applied when `--sandboxed` is used alone
+  # Default overrides applied when no profile is explicitly passed
   default:
-    base: net-access
-    driver: podman             # Optional: binds a default driver to this profile
+    paths:
+      read: ["."]
 
-  # Strictly confined script profile with no subprocess execution
-  strict:
-    base: opaque
-    no_exec: true              # Blocks all subprocess execution (execve)
+  # Deployment profile for cloud automation
+  deploy:
+    network: host
+    paths:
+      read: ["."]
+      write: ["./build", "./dist"]
+    exec:
+      allow: ["kubectl", "helm"]
+    calls:
+      allow: ["k8s.write", "http.client"]
+    env:
+      KUBECONFIG:
+      DEPLOY_STAGE: production
 
-  # Custom named profile with targeted binary execution allowlist
-  dev:
-    base: host                 # Inherits host settings
-    allowed_exec_paths:        # Restricts execution to specific binaries
-      - /bin/echo
-      - /usr/bin/git
-    mounts:
-      - source: $HOME/.cache
-        destination: $HOME/.cache
-        mode: rw
-
-  ci-builder:
-    driver: docker             # Profile-bound driver
-    base: net-access
-    mounts:
-      - source: $CWD
-        destination: /workspace
-        mode: rw
+  # Strictly isolated compute profile
+  isolated:
+    network: none
+    paths:
+      read: ["/data/readonly"]
+    no_exec: true
+    max_memory: "512MB"
+    timeout: "60s"
 ```
 
-Execute with custom profiles:
+Activate a configured profile using `--sandbox-profile`:
 
 ```bash
-kite run ./build.star --sandbox-profile ci-builder --sandbox-driver podman  # CLI driver overrides profile default
+kite run ./deploy.star --sandbox-profile=deploy
 ```
 
-## Security Invariants & Confinement
+## Actionable Denial Diagnostics
 
-Starkite sandbox drivers enforce four core security invariants across native OS and container runtimes.
+When a script or subprocess attempts an action prohibited by the sandbox or permission layer, Starkite formats an actionable diagnostic error indicating the exact CLI flag or configuration setting required to grant the privilege:
+
+```text
+Error: script error: permission denied: fs.read read_file("./config.yaml") - no matching allow rule
+  grant "fs.read" with --sandbox-profile=sandbox-path (or higher), or in the sandbox: section of config.yaml
+  Hint: pass --sandbox-path-read=. on CLI, or add "." to sandbox.<profile>.paths.read in config.yaml
+```
+
+```text
+Error: script error: permission denied: os.exec exec("/usr/bin/kubectl") - blocked by deny rule: os.exec
+  Hint: pass --sandbox-exec-allow=kubectl on CLI, or add "kubectl" to sandbox.<profile>.exec.allow in config.yaml
+```
+
+When running under `--debug`, Starkite also alerts you if a script requests an environment variable that exists on the host but was scrubbed by zero-trust sanitization:
+
+```text
+[DEBUG] env "KUBECONFIG" requested by script is present on host but scrubbed by sandbox.
+  Hint: pass --env KUBECONFIG on CLI, or declare "KUBECONFIG:" in sandbox.<profile>.env in config.yaml
+```
+
+## Security Invariants
+
+Starkite sandbox drivers enforce core kernel-level invariants across all execution profiles:
 
 ### Write-XOR-Execute (W^X)
 
-To prevent code injection and dynamic binary dropping, all writable locations—including `$CWD`, `/tmp`, and any bind mount with `mode: rw`—are mounted with `noexec` access rights. Scripts cannot generate a binary or script file inside a writable scratch directory and then execute it directly as a subprocess. Binaries must reside on immutable, read-only system paths or explicitly mounted read-only directories.
+All writable mount locations—including `$CWD`, `/tmp`, and custom writable paths—are mounted with `noexec` flags. A script cannot generate a binary or script inside a writable directory and execute it as a child process. Binaries must reside on immutable, read-only system paths.
 
 ### Subprocess Execution Lockdown
 
-You can constrain or completely eliminate subprocess execution within a sandbox:
-
-- **`no_exec` (boolean)**: Completely disables process execution. Any attempt to invoke a subprocess (`SYS_EXECVE`/`SYS_EXECVEAT` in Linux Seccomp-BPF or `process-exec` in macOS Seatbelt) immediately fails with an execution policy denial.
-- **`allowed_exec_paths` (list of strings)**: Restricts executable paths to an allowlist of absolute binary paths. Spawning any binary outside this list is denied.
+When running under profiles where `no_exec: true` is active (such as `deny-all` and `sandbox-path`), process execution syscalls (`SYS_EXECVE`/`SYS_EXECVEAT` in Linux Seccomp-BPF and `process-exec` in macOS Seatbelt) are trapped and blocked at the kernel boundary.
 
 ### Shared Memory & IPC Isolation
 
-Host shared memory segments (`/dev/shm` and `/run/shm`) and System V IPC primitives (`shmget`, `semget`, `msgget`) present cross-process attack surfaces. Starkite isolates shared memory across all drivers:
-
-- **Landlock & Seccomp-BPF**: System V IPC syscalls are denied by the in-process Seccomp-BPF filter, and `/dev/shm` paths are excluded from Landlock rulesets.
-- **Seatbelt**: macOS SBPL profiles deny POSIX and System V shared memory descriptors.
-- **Containers**: Container runtimes are launched with `--ipc=private`, preventing access to the host's IPC namespace.
+Host shared memory segments (`/dev/shm`, `/run/shm`) and System V IPC primitives (`shmget`, `semget`, `msgget`) are isolated. Container drivers run with `--ipc=private`, and Linux Landlock excludes shared memory devices from sandbox rulesets.
 
 ### Process Inspection & Signal Boundary
 
-On Linux, the Seccomp-BPF filter is installed unconditionally across all profiles, including the `host` profile and `network: host`. The filter prevents sandboxed processes from inspecting or tampering with host processes (`SYS_PTRACE`, `SYS_PROCESS_VM_READV`, `SYS_PROCESS_VM_WRITEV`) and forbids sending signals (`SYS_KILL`) to processes outside the sandbox process tree.
-
-## Container Driver Execution & Image Packaging
-
-When using container sandbox drivers (`podman`, `docker`, `nerdctl`), Starkite executes scripts within an OCI container:
-
-- **Default Image**: Container drivers default to `ghcr.io/project-starkite/starkite:latest`. Custom images can be specified using `image:` in profile configuration or `--sandbox-image`.
-- **Image Composition**: The official `ghcr.io/project-starkite/starkite:latest` container is a minimal distroless image containing the `kite` engine as its entrypoint. For executing general OS utilities or custom toolchains inside a container sandbox, specify an image containing the required binaries (such as `alpine:latest` or custom developer images).
-- **Cross-Platform Host Support**: On non-Linux hosts (such as macOS), container drivers execute the Linux `kite` binary packaged within the OCI container, seamlessly mounting the local workspace into `/workspace` without attempting to mount the host's native (Mach-O) binary.
-- **Local Testing & Development**: When developing or testing container isolation locally without pulling the remote registry image, build the local container image using the Makefile:
-
-```bash
-# Build local container image with Podman
-make podman-build
-
-# Or with Docker
-make docker-build
-```
+The Linux Seccomp-BPF filter prevents sandboxed processes from inspecting or modifying host processes (`SYS_PTRACE`, `SYS_PROCESS_VM_READV`, `SYS_PROCESS_VM_WRITEV`) and restricts signal delivery (`SYS_KILL`) strictly to processes within the sandbox process tree.
 
 ## Starlark `sandbox` Module API
 
-In addition to CLI-level process isolation, Starkite provides a built-in `sandbox` Starlark module for programmatic sandbox creation and child script execution.
-
-### Creating and Executing in a Sandbox
+Starkite also exposes programmatic sandbox management through the built-in `sandbox` Starlark module:
 
 ```python
-# Query host driver
-driver = sandbox.default_driver()
-
-# Create a configured sandbox instance with execution gating
+# Create a programmatic sandbox configuration
 box = sandbox.config(
     driver="auto",
     network="host",
     no_exec=False,
-    allowed_exec_paths=["/bin/echo", "/usr/bin/git"],
+    allowed_exec_paths=["/bin/echo"],
     mounts=[
         {"source": ".", "destination": "/workspace", "mode": "rw"},
     ],
     timeout="30s",
 )
 
-# Inspect configuration attributes
-if box.no_exec:
-    print("Subprocess execution is disabled")
-print("Permitted binaries:", box.allowed_exec_paths)
-
-# Run commands within the sandbox
+# Run a subprocess within the configured sandbox
 result = box.exec("echo", ["hello-from-sandbox"])
 if result.ok:
     print(result.stdout)
-else:
-    print("Execution failed:", result.stderr)
-```
-
-### Running Sandboxed Child Scripts
-
-```python
-# Run an external Starlark script under sandbox boundaries
-result = sandbox.run_script(
-    path="./untrusted_subtask.star",
-    driver="landlock",
-    profile="opaque",
-    timeout="10s",
-)
 ```
 
 ### Non-Escalation Security Invariant
 
-When running inside an active parent sandbox (e.g. via `kite run --sandbox-opaque`), child sandboxes spawned via the Starlark `sandbox` module cannot elevate privileges beyond the parent. The runtime enforces an intersection rule:
+When running inside an active parent sandbox, child sandboxes created via `sandbox.config` or `sandbox.run_script` cannot elevate privileges beyond the parent boundary. The runtime enforces an intersection rule:
 
 $$\text{Effective Permissions} = \text{Parent Permissions} \cap \text{Requested Permissions}$$
 
-If an outer sandbox has `network: none`, child sandboxes cannot request `network: host`.
-
-## Actionable Denial Diagnostics
-
-When the sandbox intercepts an unauthorized operation, Starkite formats the error with context identifying the active policy constraint:
-
-- **`denied by no_exec policy`**: The profile or sandbox configuration set `no_exec: true`, preventing all child process execution.
-- **`denied by allowed_exec_paths policy`**: The requested executable is not in the configured `allowed_exec_paths` allowlist.
-- **`denied by W^X noexec policy (binary resides on a writable mount or /tmp)`**: The command attempted to execute a file located within a writable mount or temporary directory. Relocate the binary to a read-only path or run it through an allowlisted system interpreter.
-- **`denied by shared memory (/dev/shm) isolation policy`**: Direct access to host shared memory files was blocked.
-- **`denied by home directory isolation policy`**: When running with `$CWD` set to `$HOME` or root (`/`), sibling files in the home directory are isolated and inaccessible to protect credentials.
-
-## Combining Sandboxing with Permissions
-
-Sandbox isolation operates at the OS/kernel boundary, while Starkite permissions operate at the language/API boundary. Composing both provides defense in depth:
-
-```bash
-kite run ./untrusted.star --sandbox-opaque --permissions=deny-all
-```
+If the parent sandbox has `network: none`, child sandboxes cannot request `network: host`.

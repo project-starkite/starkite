@@ -26,7 +26,7 @@ func ResolveExecutablePaths(allowList []string, cwd, home string) []string {
 	}
 
 	for _, entry := range allowList {
-		for _, part := range strings.Split(entry, ",") {
+		for part := range strings.SplitSeq(entry, ",") {
 			trimmed := strings.TrimSpace(part)
 			if trimmed == "" || trimmed == "*" {
 				continue
@@ -86,7 +86,7 @@ func resolveSymlinkChain(startPath string) []string {
 	seen := make(map[string]bool)
 
 	cur := cleanStart
-	for i := 0; i < 16; i++ {
+	for range 16 {
 		if cur == "" || seen[cur] {
 			break
 		}

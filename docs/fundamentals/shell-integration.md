@@ -24,7 +24,7 @@ OS Platform: darwin
 File path matching can be executed directly using the built-in `glob()` function:
 
 ```bash
-$ kite exec --allow-fs 'print(", ".join(glob("*.md")))'
+$ kite exec --sandbox-path-read=. 'print(", ".join(glob("*.md")))'
 CHANGELOG.md, README.md
 ```
 
@@ -35,11 +35,11 @@ Structured configuration formats are parsed from standard input (`/dev/stdin`) u
 ```bash
 # Query JSON values inline from a pipeline without installing jq
 $ echo '{"env": "production", "status": "active"}' | \
-    kite exec --allow-fs 'print(json.decode(read_text("/dev/stdin"))["status"])'
+    kite exec --sandbox-path-read=/dev/stdin 'print(json.decode(read_text("/dev/stdin"))["status"])'
 active
 
 # Query local YAML configuration files inline without installing yq
-$ kite exec --allow-fs 'print(yaml.decode(read_text("mod.yaml"))["name"])'
+$ kite exec --sandbox-path-read=. 'print(yaml.decode(read_text("mod.yaml"))["name"])'
 ```
 
 ## Making HTTP API calls
@@ -48,7 +48,7 @@ API queries and remote service responses are handled using the built-in `http` m
 
 ```bash
 # Fetch details from remote web services without curling or writing external scripts
-$ kite exec --allow-net 'print(json.decode(http.url("https://httpbin.org/get").get().body)["url"])'
+$ kite exec --sandbox-net 'print(json.decode(http.url("https://httpbin.org/get").get().body)["url"])'
 https://httpbin.org/get
 ```
 
@@ -58,7 +58,7 @@ Structured text or configurations are rendered inline using the built-in `templa
 
 ```bash
 # Render templates dynamically with environment variables
-$ kite exec --allow-fs 'print(template.render("Hello, {{.user}}!", {"user": env("USER")}))'
+$ kite exec --env USER 'print(template.render("Hello, {{.user}}!", {"user": env("USER")}))'
 Hello, alice!
 ```
 
@@ -79,17 +79,17 @@ Tabular datasets are parsed, iterated, and queried directly within pipelines usi
 ```bash
 # Stream and filter CSV records from standard input
 $ echo -e "host,status\nweb-1,active\nweb-2,inactive" | \
-    kite exec --allow-fs 'print([r["host"] for r in csv.file("/dev/stdin").read(header=True) if r["status"] == "active"])'
+    kite exec --sandbox-path-read=/dev/stdin 'print([r["host"] for r in csv.file("/dev/stdin").read(header=True) if r["status"] == "active"])'
 ["web-1"]
 ```
 
 ## Shell script assertions
 
-Process exit codes returned by `kite exec` can validate inputs and execute assertions inside shell scripts. In Starlark, conditional assertions must reside inside a function body (such as `main()`), and environment lookups require permission profiles that allow filesystem or environment reads (such as `--allow-fs` or `--allow-all`):
+Process exit codes returned by `kite exec` can validate inputs and execute assertions inside shell scripts. In Starlark, conditional assertions must reside inside a function body (such as `main()`), and host environment lookups forward variables via `--env`:
 
 ```bash
 # Validate environment port configurations in a Bash conditional wrapper
-if PORT=8080 kite exec --allow-fs '
+if PORT=8080 kite exec --env PORT '
 def main():
     if int(env("PORT", "80")) < 1024:
         fail("Privileged port configuration")

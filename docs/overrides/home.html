@@ -959,7 +959,7 @@ def main():
   "mcpServers": {
     "cluster-ops": {
       "command": "kite",
-      "args": ["run", "./tools/k8s.star", "--allow-net"]
+      "args": ["run", "./tools/k8s.star", "--sandbox-net"]
     }
   }
 }</code></pre>
@@ -976,7 +976,7 @@ description: Safely inspect cluster workloads via Starkite.
 
 ## Agent Execution Rule
 Run operational scripts within strict capability bounds:
-$ kite run ./scripts/triage.star --permissions=allow-local</code></pre>
+$ kite run ./scripts/triage.star --sandbox-net</code></pre>
                 </div>
               </div>
             </div>
@@ -988,23 +988,25 @@ $ kite run ./scripts/triage.star --permissions=allow-local</code></pre>
                 <div class="hero-terminal__code">
                   <pre><code id="code-sec-0" class="language-yaml"># Use the Starkite configuration file to define 
 # capabilities and sandbox boundaries for scripts
-permissions:
+sandbox:
   agent-job:
-    allow:
-      - "fs.read($CWD/**)"
-      - "net.connect(api.k8s.local)"
-    deny:
-      - os.exec</code></pre>
+    paths:
+      read: ["."]
+    calls:
+      allow:
+        - "k8s.read"
+      deny:
+        - os.exec</code></pre>
                 </div>
               </div>
               <!-- Slide 1: Kernel & Container Sandboxing CLI -->
               <div class="hero-slide" data-filename="sandbox_run.sh">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-sec-1" class="language-bash"># Run with capability-based permission profile
-$ kite run ./agent_tool.star --permissions=agent-job
+                  <pre><code id="code-sec-1" class="language-bash"># Run with capability-based sandbox profile
+$ kite run ./agent_tool.star --sandbox-profile=agent-job
 
-# Run with default script sandbox
-$ kite run ./untrusted.star --permissions=agent-job --sandbox-opaque
+# Run with default zero-trust script sandbox
+$ kite run ./untrusted.star
 
 # Use container isolation to sandbox running scripts
 $ kite run ./eval.star --sandbox-driver=podman</code></pre>
@@ -1236,13 +1238,13 @@ mcp.serve(
     </div>
     <div class="feature-section__code">
       <pre><code class="language-bash"># Named profile from ~/.starkite/config.yaml
-$ kite run ./job.star --permissions=ci --sandbox-profile=ci
+$ kite run ./job.star --sandbox-profile=ci
 
 # Built-in ladder profile — no config file needed
-$ kite run ./job.star --allow-fs
+$ kite run ./job.star --sandbox-profile=sandbox-path
 
-# Deny-all permissions + strict sandbox for untrusted code
-$ kite run ./untrusted.star --permissions=deny-all --sandbox-opaque
+# Default zero-trust sandbox for untrusted code
+$ kite run ./untrusted.star
 Error: permission denied: os.exec is not allowed</code></pre>
     </div>
   </div>

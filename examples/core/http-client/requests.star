@@ -5,8 +5,8 @@
 # PATCH, and DELETE requests without manually instantiating http.client().
 #
 # Run:
-#   kite run --allow-net ./examples/core/http-client/requests.star
-#   kite run --dry-run --allow-net ./examples/core/http-client/requests.star
+#   kite run --sandbox-net ./examples/core/http-client/requests.star
+#   kite run --dry-run --sandbox-net ./examples/core/http-client/requests.star
 
 def main():
     # 1. Simple GET request

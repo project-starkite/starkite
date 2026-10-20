@@ -218,13 +218,14 @@ path("config.json").copy_to("config.json.bak")
 
 All filesystem interactions are gated by Starkite's security engine. Reading from the filesystem requires the `fs.read` capability, and modifying or deleting files requires `fs.write` or `fs.delete`. 
 
-To run a script that accesses the filesystem, execute it with a permission profile like `--allow-fs`:
+To run a script that accesses the working directory, execute it with a profile such as `--sandbox-profile=sandbox-path` or pass composable flags:
 
 ```bash
-kite run ./backup.star --allow-fs
+kite run ./backup.star --sandbox-profile=sandbox-path
+kite run ./backup.star --sandbox-path-write=.
 ```
 
-For more details, see the [Permission Guide](../fundamentals/security/permission.md).
+For more details, see the [Permission Guide](../fundamentals/security/permission.md) and [Sandbox Guide](../fundamentals/security/sandbox.md).
 
 ## Failure handling
 

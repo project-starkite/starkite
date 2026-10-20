@@ -150,7 +150,7 @@ result = os.try_exec(
     timeout="120s",
 )
 
-# With user and group execution switching (requires POSIX and allow-all permissions)
+# With user and group execution switching (requires POSIX and unconfined profile)
 result = os.try_exec(
     "id",
     [],

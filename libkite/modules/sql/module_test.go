@@ -168,7 +168,7 @@ func TestUnavailableDriver(t *testing.T) {
 	m := New()
 	m.Load(&libkite.ModuleConfig{})
 	th := threadWith(t, libkite.AllowAllPermissions())
-	// postgres is permitted under allow-all but not registered in libkite.
+	// postgres is permitted under unconfined but not registered in libkite.
 	if _, err := m.open(th, nil, starlark.Tuple{starlark.String("postgres"), starlark.String("postgres://u@h/db")}, nil); err == nil {
 		t.Error("expected 'not available' error for postgres in libkite build")
 	}
@@ -281,7 +281,7 @@ func TestIsRetryable(t *testing.T) {
 }
 
 func TestAutoCloseOnRunEnd(t *testing.T) {
-	rt, err := libkite.NewTrusted(nil) // trusted → allow-all permissions
+	rt, err := libkite.NewTrusted(nil) // trusted → unconfined permissions
 	if err != nil {
 		t.Fatalf("NewTrusted: %v", err)
 	}

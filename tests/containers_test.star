@@ -1,5 +1,5 @@
 # containers_test.star — Unit tests for Starkite containers module using mock engine server
-# Run: kite test tests/containers_test.star --permissions=allow-all
+# Run: kite test tests/containers_test.star --sandbox-enabled=false
 
 def _create_mock_engine():
     """Builds an HTTP mock server simulating the Docker / Podman Engine REST API."""

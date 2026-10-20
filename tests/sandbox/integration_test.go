@@ -330,3 +330,327 @@ func copyFile(src, dst string) error {
 	}
 	return os.WriteFile(dst, data, 0o644)
 }
+
+func tempDirOutsideHome(t *testing.T) string {
+	t.Helper()
+	// On Linux, t.TempDir() defaults to /tmp, which is the sandbox's designated scratch mount.
+	// To verify that CWD isolation works under deny-all (and isn't masked by the /tmp scratch rule),
+	// stage workDir in /var/tmp on Linux.
+	if runtime.GOOS == "linux" {
+		fallback, err := os.MkdirTemp("/var/tmp", "starkite-zt-*")
+		if err == nil {
+			t.Cleanup(func() { os.RemoveAll(fallback) })
+			return fallback
+		}
+	}
+	if runtime.GOOS == "windows" {
+		tmpBase := os.Getenv("SystemRoot") + `\Temp`
+		fallback, err := os.MkdirTemp(tmpBase, "starkite-zt-*")
+		if err == nil {
+			t.Cleanup(func() { os.RemoveAll(fallback) })
+			return fallback
+		}
+	}
+	dir := t.TempDir()
+	home, err := os.UserHomeDir()
+	if err == nil && strings.HasPrefix(dir, home) {
+		fallback, err := os.MkdirTemp("", "starkite-zt-*")
+		if err != nil {
+			t.Fatalf("creating temp dir outside HOME: %v", err)
+		}
+		t.Cleanup(func() { os.RemoveAll(fallback) })
+		return fallback
+	}
+	return dir
+}
+
+// TestZeroTrustDefault_EndToEnd verifies that `kite run` defaults to zero-trust
+// confinement ('deny-all'): static AST load() closures are pre-loaded into memory
+// and work without CWD access, while filesystem reads, subprocess execution,
+// network egress, and ambient host environment variables are strictly blocked with
+// actionable denial hints.
+func TestZeroTrustDefault_EndToEnd(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+
+	kite := buildKite(t)
+	workDir := tempDirOutsideHome(t)
+
+	helperContent := `MSG = "loaded-from-closure"`
+	if err := os.WriteFile(filepath.Join(workDir, "helper.star"), []byte(helperContent), 0o644); err != nil {
+		t.Fatalf("writing helper.star: %v", err)
+	}
+
+	if err := os.WriteFile(filepath.Join(workDir, "secret.txt"), []byte("sensitive-data\n"), 0o644); err != nil {
+		t.Fatalf("writing secret.txt: %v", err)
+	}
+
+	mainContent := `load("./helper.star", "helper")
+
+assert(helper.MSG == "loaded-from-closure", "expected MSG from closure")
+
+# 1. fs access to secret.txt should fail with actionable Hint
+res_fs = fs.try_read_text("./secret.txt")
+assert(not res_fs.ok, "fs read should fail under default deny-all")
+assert("Hint: pass --sandbox-path-read=." in res_fs.error, "unexpected fs error: %s" % res_fs.error)
+
+# 2. http access should fail with actionable Hint
+res_http = http.url("https://example.com").try_get()
+assert(not res_http.ok, "http get should fail under default deny-all")
+assert("Hint: pass --sandbox-net" in res_http.error, "unexpected http error: %s" % res_http.error)
+
+# 3. os.env should fail with actionable Hint under default deny-all
+res_env = os.try_env("AMBIENT_HOST_SECRET")
+assert(not res_env.ok, "os.env should fail under default deny-all")
+assert("Hint: pass --sandbox-call-allow=os.env" in res_env.error, "unexpected env error: %s" % res_env.error)
+`
+	if err := os.WriteFile(filepath.Join(workDir, "main.star"), []byte(mainContent), 0o644); err != nil {
+		t.Fatalf("writing main.star: %v", err)
+	}
+
+	execFailContent := `os.exec("echo hello")`
+	if err := os.WriteFile(filepath.Join(workDir, "exec_fail.star"), []byte(execFailContent), 0o644); err != nil {
+		t.Fatalf("writing exec_fail.star: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
+	defer cancel()
+
+	// 1. main.star: pure compute, closure load, try_ assertions
+	cmd := exec.CommandContext(ctx, kite, "run", "./main.star")
+	cmd.Dir = workDir
+	cmd.Env = append(os.Environ(), "AMBIENT_HOST_SECRET=leaked")
+	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd.Env = append(cmd.Env, "STARKITE_SANDBOX_DRIVER=seatbelt")
+	}
+
+	out, err := cmd.CombinedOutput()
+	t.Logf("kite run main.star output:\n%s", out)
+	if err != nil {
+		if sandboxUnavailable(string(out)) {
+			t.Skipf("host cannot start a sandbox; skipping: %s", out)
+		}
+		t.Fatalf("kite run main.star failed: %v\nOutput: %s", err, out)
+	}
+
+	// 2. exec_fail.star: os.exec without flags must fail with actionable Hint
+	ctx2, cancel2 := context.WithTimeout(context.Background(), perTestTimeout)
+	defer cancel2()
+
+	cmd2 := exec.CommandContext(ctx2, kite, "run", "./exec_fail.star")
+	cmd2.Dir = workDir
+	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd2.Env = append(os.Environ(), "STARKITE_SANDBOX_DRIVER=seatbelt")
+	}
+
+	out2, err2 := cmd2.CombinedOutput()
+	t.Logf("kite run exec_fail.star output:\n%s", out2)
+	if err2 == nil {
+		t.Fatal("expected kite run exec_fail.star to fail under default deny-all profile")
+	}
+	output2 := string(out2)
+	wantExecErr := "permission denied: os.exec"
+	wantExecHint := "Hint: pass --sandbox-exec-allow=echo"
+	if !strings.Contains(output2, wantExecErr) {
+		t.Errorf("expected exec error %q in output, got:\n%s", wantExecErr, output2)
+	}
+	if !strings.Contains(output2, wantExecHint) {
+		t.Errorf("expected exec hint %q in output, got:\n%s", wantExecHint, output2)
+	}
+}
+
+// TestZeroTrustComposableFlags_EndToEnd verifies that composable flags
+// (--sandbox-path-write, --sandbox-exec-allow, --env) correctly open up capabilities
+// on top of the zero-trust default.
+func TestZeroTrustComposableFlags_EndToEnd(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+
+	kite := buildKite(t)
+	workDir := tempDirOutsideHome(t)
+
+	if err := os.WriteFile(filepath.Join(workDir, "input.txt"), []byte("hello-input\n"), 0o644); err != nil {
+		t.Fatalf("writing input.txt: %v", err)
+	}
+
+	workContent := `in_txt = fs.read_text("./input.txt")
+assert(in_txt.strip() == "hello-input", "unexpected input: %s" % in_txt)
+
+fs.write_text("./output.txt", "output-ok")
+
+res = os.exec("echo composable-ok")
+assert("composable-ok" in res, "unexpected exec stdout: %s" % res)
+
+fwd = os.env("FORWARDED_VAR")
+assert(fwd == "from-host", "unexpected FORWARDED_VAR: %s" % fwd)
+
+inj = os.env("INJECTED_VAR")
+assert(inj == "custom42", "unexpected INJECTED_VAR: %s" % inj)
+
+ambient = os.env("UNFORWARDED_HOST_VAR")
+assert(ambient == "", "expected ambient host var to be scrubbed, got: %s" % ambient)
+`
+	if err := os.WriteFile(filepath.Join(workDir, "work.star"), []byte(workContent), 0o644); err != nil {
+		t.Fatalf("writing work.star: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, kite, "run", "./work.star",
+		"--sandbox-path-write=.",
+		"--sandbox-exec-allow=echo",
+		"--env", "FORWARDED_VAR",
+		"--env", "INJECTED_VAR=custom42",
+	)
+	cmd.Dir = workDir
+	cmd.Env = append(os.Environ(), "FORWARDED_VAR=from-host", "UNFORWARDED_HOST_VAR=leaked")
+	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd.Env = append(cmd.Env, "STARKITE_SANDBOX_DRIVER=seatbelt")
+	}
+
+	out, err := cmd.CombinedOutput()
+	t.Logf("kite run work.star output:\n%s", out)
+	if err != nil {
+		if sandboxUnavailable(string(out)) {
+			t.Skipf("host cannot start a sandbox; skipping: %s", out)
+		}
+		t.Fatalf("kite run work.star failed: %v\nOutput: %s", err, out)
+	}
+
+	outBytes, err := os.ReadFile(filepath.Join(workDir, "output.txt"))
+	if err != nil {
+		t.Fatalf("output.txt not written: %v", err)
+	}
+	if string(outBytes) != "output-ok" {
+		t.Errorf("output.txt content = %q, want %q", string(outBytes), "output-ok")
+	}
+}
+
+// TestZeroTrustEnvScrubDiagnostic_EndToEnd verifies that when a script requests a host
+// environment variable that was scrubbed by the sandbox, a diagnostic warning with
+// actionable remediation is logged under --debug.
+func TestZeroTrustEnvScrubDiagnostic_EndToEnd(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+
+	kite := buildKite(t)
+	workDir := tempDirOutsideHome(t)
+
+	probeContent := `val = os.env("SCRUBBED_TOKEN")`
+	if err := os.WriteFile(filepath.Join(workDir, "env_probe.star"), []byte(probeContent), 0o644); err != nil {
+		t.Fatalf("writing env_probe.star: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, kite, "run", "./env_probe.star", "--sandbox-call-allow=os.env", "--debug")
+	cmd.Dir = workDir
+	cmd.Env = append(os.Environ(), "SCRUBBED_TOKEN=secret123")
+	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd.Env = append(cmd.Env, "STARKITE_SANDBOX_DRIVER=seatbelt")
+	}
+
+	out, err := cmd.CombinedOutput()
+	t.Logf("kite run env_probe.star --debug output:\n%s", out)
+	if err != nil {
+		if sandboxUnavailable(string(out)) {
+			t.Skipf("host cannot start a sandbox; skipping: %s", out)
+		}
+		t.Fatalf("kite run env_probe.star failed: %v\nOutput: %s", err, out)
+	}
+
+	output := string(out)
+	wantDiag := `[DEBUG] env "SCRUBBED_TOKEN" requested by script is present on host but scrubbed by sandbox.`
+	wantHint := `Hint: pass --env SCRUBBED_TOKEN on CLI`
+	if !strings.Contains(output, wantDiag) {
+		t.Errorf("expected debug diagnostic %q in output, got:\n%s", wantDiag, output)
+	}
+	if !strings.Contains(output, wantHint) {
+		t.Errorf("expected hint %q in output, got:\n%s", wantHint, output)
+	}
+}
+
+// TestZeroTrustModuleTrustBoundary_EndToEnd verifies that third-party module capability
+// declarations in mod.yaml cannot self-escalate past the active sandbox profile,
+// producing an actionable denial hint, and succeeds once granted by the operator.
+func TestZeroTrustModuleTrustBoundary_EndToEnd(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+
+	kite := buildKite(t)
+	workDir := tempDirOutsideHome(t)
+
+	modDir := filepath.Join(workDir, "netmod")
+	if err := os.MkdirAll(modDir, 0o755); err != nil {
+		t.Fatalf("creating netmod dir: %v", err)
+	}
+
+	modYAML := `namespace: acme
+name: netmod
+version: 0.1.0
+sandbox:
+  network: host
+`
+	if err := os.WriteFile(filepath.Join(modDir, "mod.yaml"), []byte(modYAML), 0o644); err != nil {
+		t.Fatalf("writing mod.yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(modDir, "main.star"), []byte("ok = True\n"), 0o644); err != nil {
+		t.Fatalf("writing main.star: %v", err)
+	}
+
+	appContent := `load("./netmod", "netmod")`
+	if err := os.WriteFile(filepath.Join(workDir, "app.star"), []byte(appContent), 0o644); err != nil {
+		t.Fatalf("writing app.star: %v", err)
+	}
+
+	// 1. Run under default zero-trust flags: must fail with capability boundary error
+	ctx1, cancel1 := context.WithTimeout(context.Background(), perTestTimeout)
+	defer cancel1()
+
+	cmd1 := exec.CommandContext(ctx1, kite, "run", "./app.star")
+	cmd1.Dir = workDir
+	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd1.Env = append(os.Environ(), "STARKITE_SANDBOX_DRIVER=seatbelt")
+	}
+
+	out1, err1 := cmd1.CombinedOutput()
+	t.Logf("kite run app.star (default) output:\n%s", out1)
+	if err1 == nil {
+		t.Fatal("expected kite run app.star to fail under default deny-all profile")
+	}
+
+	output1 := string(out1)
+	wantModErr := `module "acme/netmod" requires capabilities exceeding active profile "default"`
+	wantModHint := `Hint: rerun with required capabilities: kite run --sandbox-net`
+	if !strings.Contains(output1, wantModErr) {
+		t.Errorf("expected module error %q in output, got:\n%s", wantModErr, output1)
+	}
+	if !strings.Contains(output1, wantModHint) {
+		t.Errorf("expected module hint %q in output, got:\n%s", wantModHint, output1)
+	}
+
+	// 2. Rerun with --sandbox-net granted by operator: must succeed
+	ctx2, cancel2 := context.WithTimeout(context.Background(), perTestTimeout)
+	defer cancel2()
+
+	cmd2 := exec.CommandContext(ctx2, kite, "run", "./app.star", "--sandbox-net")
+	cmd2.Dir = workDir
+	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd2.Env = append(os.Environ(), "STARKITE_SANDBOX_DRIVER=seatbelt")
+	}
+
+	out2, err2 := cmd2.CombinedOutput()
+	t.Logf("kite run app.star (--sandbox-net) output:\n%s", out2)
+	if err2 != nil {
+		if sandboxUnavailable(string(out2)) {
+			t.Skipf("host cannot start a sandbox; skipping: %s", out2)
+		}
+		t.Fatalf("kite run app.star --sandbox-net failed: %v\nOutput: %s", err2, out2)
+	}
+}

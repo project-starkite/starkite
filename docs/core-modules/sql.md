@@ -10,21 +10,21 @@ The `sql` module provides persistent, queryable data storage for Starkite script
 
 The module provides two levels of control: a low-level interface for direct SQL execution, and a high-level interface that automates common scripting tasks such as managing transactions, streaming large datasets, and running idempotent schema migrations.
 
-Because database operations access the host system, Starkite enforces permission checks. Interacting with local SQLite files requires the `--allow-fs` permission, while connecting to external PostgreSQL or MySQL servers requires `--allow-net`:
+Because database operations access the host system or network, Starkite enforces capability checks. Interacting with local SQLite files requires the `sandbox-path` profile (or `--sandbox-path-write=.`), while connecting to external PostgreSQL or MySQL servers requires `--sandbox-net`:
 
 ```bash
-kite run ./store.star --allow-fs
+kite run ./store.star --sandbox-profile=sandbox-path
 ```
 
 ## Connecting to a database
 
-Initialize a database connection using `sql.open(driver, dsn)`. The driver name and connection string (DSN) format determine the target database and the required permission profile:
+Initialize a database connection using `sql.open(driver, dsn)`. The driver name and connection string (DSN) format determine the target database and the required capability profile:
 
-| Driver | DSN Format / Example | Required Permission | Description |
+| Driver | DSN Format / Example | Required Capability | Description |
 | :--- | :--- | :--- | :--- |
-| `sqlite` | `app.db` or `:memory:` | `--allow-fs` | Local file-based database or in-memory ephemeral database. |
-| `postgres` | `postgres://user:pass@host:port/db?sslmode=disable` | `--allow-net` | External PostgreSQL server connection string. |
-| `mysql` | `user:pass@tcp(host:port)/db` | `--allow-net` | External MySQL or MariaDB server connection string. |
+| `sqlite` | `app.db` or `:memory:` | `--sandbox-profile=sandbox-path` | Local file-based database or in-memory ephemeral database. |
+| `postgres` | `postgres://user:pass@host:port/db?sslmode=disable` | `--sandbox-net` | External PostgreSQL server connection string. |
+| `mysql` | `user:pass@tcp(host:port)/db` | `--sandbox-net` | External MySQL or MariaDB server connection string. |
 
 ```python
 # Open a persistent SQLite database file
@@ -212,7 +212,7 @@ The following script demonstrates opening a database, initializing the schema, p
 
 ```python
 # store.star
-# Run with: kite run ./store.star --allow-fs
+# Run with: kite run ./store.star --sandbox-profile=sandbox-path
 
 db = sql.open("sqlite", "notes.db")
 

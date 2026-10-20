@@ -122,9 +122,7 @@ func (p *Profile) SynthesizeEnvMap(hostEnv []string, cliEnvFlags []string, cliEn
 	if err != nil {
 		return nil, err
 	}
-	for k, v := range cliMap {
-		envMap[k] = v
-	}
+	maps.Copy(envMap, cliMap)
 
 	return envMap, nil
 }

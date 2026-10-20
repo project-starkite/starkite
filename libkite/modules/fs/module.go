@@ -38,9 +38,15 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 	m.once.Do(func() {
 		m.config = config
 
-		// fs module exposes only the Path factory
+		// fs module exposes Path factory and file operations
 		members := starlark.StringDict{
-			"path": starlark.NewBuiltin("fs.path", m.pathFactory),
+			"path":        starlark.NewBuiltin("fs.path", m.pathFactory),
+			"read_text":   starlark.NewBuiltin("fs.read_text", m.readFile),
+			"read_bytes":  starlark.NewBuiltin("fs.read_bytes", m.readBytes),
+			"write_text":  starlark.NewBuiltin("fs.write_text", m.write),
+			"write_bytes": starlark.NewBuiltin("fs.write_bytes", m.write),
+			"exists":      starlark.NewBuiltin("fs.exists", m.exists),
+			"glob":        starlark.NewBuiltin("fs.glob", m.glob),
 		}
 
 		m.module = libkite.NewTryModule(string(ModuleName), members)

@@ -231,7 +231,7 @@ def main():
 
 Execute the script with:
 ```bash
-kite run ./deploy.star --permissions=allow-local
+kite run ./deploy.star --sandbox-net
 ```
 
 ---
@@ -241,4 +241,4 @@ kite run ./deploy.star --permissions=allow-local
 * `containers.read`: Required for `client.image_list()` and `client.image_inspect()`.
 * `containers.write`: Required for `client.image_pull()`, `client.image_build()`, `client.image_remove()`, and `client.prune()`.
 
-Both capabilities are granted by default under `--permissions=allow-local`.
+Both capabilities are granted by default under `--sandbox-net` (or `--sandbox-profile=sandbox-net`).

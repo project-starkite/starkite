@@ -38,7 +38,7 @@ The fastest way to learn what a Starkite script looks like is to read one that a
 
     ---
 
-    OS and container isolation with `--sandboxed` and `--sandbox-profile`.
+    OS and container isolation with `--sandbox-profile` and composable flags.
 
     [:octicons-arrow-right-24: Browse](#sandbox)
 
@@ -93,13 +93,13 @@ To understand MCP tool serving and client patterns, read the [MCP guide](../ai/m
 
 ## Sandbox
 
-When you run code you do not fully trust, the examples above gain a second layer: `--sandboxed` (or `--sandbox-profile`) confines the script to OS-level or container isolation. These examples show that layer in action — a network fetch under the default profile, offline compute over the working directory, and the sandbox composed with a permission profile for defense in depth.
+When you run code you do not fully trust, Starkite confines execution to OS-level or container isolation by default. These examples show that layer in action — a network fetch under `--sandbox-net`, offline compute over the working directory, and the sandbox composed with Starlark capability gates for defense in depth.
 
 | Example | Description |
 |---|---|
-| [netaccess-http-fetch.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/netaccess-http-fetch.star) | HTTPS fetch under the default profile |
-| [opaque-compute.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/opaque-compute.star) | Offline compute over `$CWD` |
-| [defense-in-depth.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/defense-in-depth.star) | Compose `--sandbox-opaque` with `--permissions=deny-all` |
+| [netaccess-http-fetch.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/netaccess-http-fetch.star) | HTTPS fetch under the `sandbox-net` profile |
+| [opaque-compute.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/opaque-compute.star) | Offline compute over `$CWD` (`sandbox-path`) |
+| [defense-in-depth.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/defense-in-depth.star) | Defense-in-depth under the default `deny-all` profile |
 | [sandbox-module-exec.star](https://github.com/project-starkite/starkite/blob/main/examples/sandbox/sandbox-module-exec.star) | Programmatic sandbox module execution |
 
 For the isolation model, supported drivers, and profile configuration, see the [Sandbox guide](../fundamentals/security/sandbox.md).

@@ -5,8 +5,8 @@
 # provides the CA roots).
 #
 # Run:
-#   kite ./netaccess-http-fetch.star --sandboxed --permissions=allow-net
-#   STARKITE_SANDBOX_PROFILE=net-access ./netaccess-http-fetch.star --permissions=allow-net
+#   kite ./netaccess-http-fetch.star --sandbox-net
+#   STARKITE_SANDBOX_PROFILE=sandbox-net ./netaccess-http-fetch.star
 
 resp = http.url("https://example.com").get()
 print("status: %d" % resp.status_code)

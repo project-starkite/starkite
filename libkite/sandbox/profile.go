@@ -761,7 +761,7 @@ func (o CLIOverrides) HasCapabilityOverrides() bool {
 func splitCommaList(items []string) []string {
 	var out []string
 	for _, raw := range items {
-		for _, part := range strings.Split(raw, ",") {
+		for part := range strings.SplitSeq(raw, ",") {
 			part = strings.TrimSpace(part)
 			if part != "" {
 				out = append(out, part)

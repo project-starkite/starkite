@@ -1,18 +1,18 @@
-# Permission System Integration Tests
+# Sandbox Capability & Permission Integration Tests
 #
 # These tests exercise gated capabilities across the module surface. The test
-# runner applies one profile to the whole file via --permissions. Run with:
+# runner applies the active sandbox profile to the file. Run with:
 #
-#   kite test ./tests/permissions_test.star --permissions=allow-all   # every test passes
-#   kite test ./tests/permissions_test.star --permissions=allow-fs    # only fs/env tests pass
-#   kite test ./tests/permissions_test.star --permissions=deny-all    # only pure-compute tests pass
+#   kite test ./tests/permissions_test.star --sandbox-enabled=false            # every test passes
+#   kite test ./tests/permissions_test.star --sandbox-profile=sandbox-path     # fs ($CWD) tests pass
+#   kite test ./tests/permissions_test.star --sandbox-profile=deny-all         # only pure-compute tests pass
 #
 # The capability ladder, each profile a superset of the prior:
-#   deny-all     pure compute, print, log — no fs, net, or exec
-#   allow-fs     + fs.read (any file), fs.write/delete ($CWD only), os.env, io.prompt
-#   allow-net    + http.client, ssh
-#   allow-local  + http.server, $CWD-scoped os.exec, ai/k8s/mcp
-#   allow-all    + unrestricted os.exec, k8s.exec, process control
+#   deny-all      pure compute, print, log — no host fs, net, or subprocess exec
+#   sandbox-path  + fs.read/write/delete ($CWD only), sqlite(:memory: and $CWD)
+#   sandbox-exec  + os.exec, os.shell
+#   sandbox-net   + http.client, http.server, ssh, k8s, mcp, remote sql, containers
+#   unconfined    + unrestricted host fs, os.process control, full capabilities
 
 is_windows = runtime.platform() == "windows"
 temp_base = env("TEMP", env("TMP", "/tmp"))
@@ -83,9 +83,9 @@ def test_core_info():
     u = username()
     assert(len(u) > 0, "username() should return non-empty string")
 
-# Test 5: Environment variables — gated under os.env (allow-fs and up)
+# Test 5: Environment variables — gated under os.env (sandbox-path and up)
 def test_env_access():
-    """Environment access requires allow-fs or higher"""
+    """Environment access requires sandbox-path or higher"""
     if is_windows:
         home = env("USERPROFILE", env("HOMEPATH", env("SystemRoot")))
     else:
@@ -96,25 +96,25 @@ def test_env_access():
     path_val = env("PATH", env("Path", ""))
     assert(len(path_val) > 0, "PATH should be set")
 
-# Test 6: File read — gated under fs.read (allow-fs and up)
+# Test 6: File read — gated under fs.read (sandbox-path and up)
 def test_file_read():
-    """File read requires allow-fs or higher"""
+    """File read requires sandbox-path or higher"""
     # Read this test file itself
     content = read_text("tests/permissions_test.star")
-    assert("Permission System Integration Tests" in content, "should read this file")
+    assert("Sandbox Capability & Permission Integration Tests" in content, "should read this file")
 
-# Test 7: Command execution — system binary requires allow-all
+# Test 7: Command execution — system binary requires unconfined
 def test_exec():
-    """Command execution of a system binary requires allow-all"""
+    """Command execution of a system binary requires unconfined"""
     if is_windows:
         output = exec("cmd.exe /c echo hello")
     else:
         output = exec("echo hello")
     assert("hello" in output, "should capture output")
 
-# Test 8: File existence check — gated under fs.read (allow-fs and up)
+# Test 8: File existence check — gated under fs.read (sandbox-path and up)
 def test_file_exists():
-    """File existence check requires allow-fs or higher"""
+    """File existence check requires sandbox-path or higher"""
     assert(exists("tests/permissions_test.star"), "this file should exist")
     assert(not exists("nonexistent-file-12345.txt"), "nonexistent file should not exist")
 
@@ -151,29 +151,29 @@ def test_concur():
 # active profile grants that category, proving the category is correctly gated.
 
 # Test 11: fs.write category. The path is under temp_base (outside $CWD), so it
-# requires allow-all; allow-fs only permits writes within $CWD.
+# requires unconfined; sandbox-path only permits writes within $CWD.
 def test_fs_write_category():
-    """fs.write outside $CWD requires allow-all"""
+    """fs.write outside $CWD requires unconfined"""
     tmp_path = path(temp_base) / "starkite_perm_write_test"
     tmp_path.write_text("hello")
     assert(tmp_path.exists(), "file should have been written")
     tmp_path.remove()
 
-# Test 12: fs.delete category. Path under temp_base (outside $CWD) → requires allow-all.
+# Test 12: fs.delete category. Path under temp_base (outside $CWD) → requires unconfined.
 def test_fs_delete_category():
-    """fs.delete outside $CWD requires allow-all"""
+    """fs.delete outside $CWD requires unconfined"""
     tmp_path = path(temp_base) / "starkite_perm_delete_test"
     tmp_path.write_text("temp")
     tmp_path.remove()
     assert(not tmp_path.exists(), "file should have been deleted")
 
-# Test 13: os.env category — setenv (requires allow-fs or higher)
+# Test 13: os.env category — setenv (requires sandbox-path or higher)
 def test_os_env_setenv():
     """os.env category covers both env and setenv"""
     setenv("STARKITE_TEST_VAR", "value")
     assert(env("STARKITE_TEST_VAR") == "value", "setenv should have stuck")
 
-# Test 14: os.process category — chdir (requires allow-all)
+# Test 14: os.process category — chdir (requires unconfined)
 def test_os_process_chdir():
     """os.process category covers chdir/exit"""
     original = cwd()
@@ -183,20 +183,20 @@ def test_os_process_chdir():
 
 # Test 15: http.client category — url construction triggers no permission
 # but the .get() method is gated. Verify http.config, gated under the client
-# category (requires allow-net or higher).
+# category (requires sandbox-net or higher).
 def test_http_client_config():
     """http.client category gates http.config"""
     http.config(timeout="5s")
 
-# Test 16: http.server category — server construction (requires allow-local or higher)
+# Test 16: http.server category — server construction (requires sandbox-net or higher)
 def test_http_server_construct():
     """http.server category is distinct from http.client"""
     srv = http.server(port=0)
     assert(srv != None, "server should construct")
 
-# Test 17: $CWD fs round-trip — read/write/delete in one test (requires allow-fs).
+# Test 17: $CWD fs round-trip — read/write/delete in one test (requires sandbox-path).
 def test_cwd_fs_roundtrip():
-    """fs read/write/delete inside $CWD requires allow-fs or higher"""
+    """fs read/write/delete inside $CWD requires sandbox-path or higher"""
     p = path(cwd()) / "starkite_cwd_roundtrip.tmp"
     p.write_text("ok")
     assert(p.exists(), "should write under $CWD")

@@ -1,5 +1,5 @@
 # sql_test.star — SQLite Layer 0 (open/query/exec/transaction) integration tests.
-# Run: kite test tests/sql_test.star --permissions=allow-all
+# Run: kite test tests/sql_test.star --sandbox-enabled=false
 
 def _setup():
     db = sql.open("sqlite", ":memory:")

@@ -76,10 +76,11 @@ def check_disk_space():
 
 ### Permissions
 
-Direct process execution requires the **`allow-all`** permission profile (or a custom profile explicitly granting `os.exec` permissions):
+Direct process execution requires the **`sandbox-exec`** profile or higher (or `--sandbox-exec-allow=<binary>`):
 
 ```bash
-kite run ./script.star --permissions allow-all
+kite run ./script.star --sandbox-profile=sandbox-exec
+kite run ./script.star --sandbox-exec-allow=df,tail
 ```
 
 ---

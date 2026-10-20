@@ -1,39 +1,35 @@
 # Sandbox examples
 
-Run any of these scripts with the sandbox engaged:
+Starkite runs all scripts under an OS-level sandbox by default (`deny-all`). Use `--sandbox-*` flags or profiles to grant capabilities:
 
 ```bash
-# default profile (network + curated /etc mounts)
-kite run ./netaccess-http-fetch.star --sandboxed --permissions=allow-net
-# or with shortcut:
-kite run ./netaccess-http-fetch.star --sandbox-net --permissions=allow-net
+# Network access (grants outbound network and unveils system DNS/TLS certificates)
+kite run ./netaccess-http-fetch.star --sandbox-net
 
-# opaque rung (no network, no host credentials)
-kite run ./opaque-compute.star --sandbox-profile=opaque --permissions=allow-fs
-# or with shortcut:
-kite run ./opaque-compute.star --sandbox-opaque --permissions=allow-fs
+# Working directory file processing (sandbox-path profile allows $CWD access)
+kite run ./opaque-compute.star --sandbox-profile=sandbox-path
 
-# both layers — sandbox + permissions
-kite run ./defense-in-depth.star --sandbox-opaque --permissions=deny-all
+# Default zero-trust execution (deny-all: both kernel sandbox and Starlark gate active)
+kite run ./defense-in-depth.star
 
-# programmatic execution using Starlark sandbox module
-kite run ./sandbox-module-exec.star --permissions=allow-all
+# Programmatic sandbox execution (run unconfined to spawn nested child sandboxes)
+kite run ./sandbox-module-exec.star --sandbox-enabled=false
 
-# Seccomp-BPF network isolation test (isolated mode vs allowed mode)
-kite run ./seccomp-network-test.star --sandbox-opaque --permissions=allow-all
-kite run ./seccomp-network-test.star --sandbox-net --permissions=allow-all
+# Seccomp-BPF network isolation test (network: none blocks socket creation vs --sandbox-net)
+kite run ./seccomp-network-test.star --sandbox-call-allow=http.client
+kite run ./seccomp-network-test.star --sandbox-net
 ```
 
-Or override the backend driver via `--sandbox-driver`:
+Or select the backend driver via `--sandbox-driver`:
 
 ```bash
-kite run ./opaque-compute.star --sandbox-opaque --sandbox-driver=landlock
-kite run ./opaque-compute.star --sandbox-opaque --sandbox-driver=seatbelt
+kite run ./opaque-compute.star --sandbox-profile=sandbox-path --sandbox-driver=landlock
+kite run ./opaque-compute.star --sandbox-profile=sandbox-path --sandbox-driver=seatbelt
 kite run ./netaccess-http-fetch.star --sandbox-net --sandbox-driver=podman
 ```
 
-Or via environment variables:
+Or configure via environment variables:
 
 ```bash
-STARKITE_SANDBOX_PROFILE=net-access STARKITE_SANDBOX_DRIVER=podman ./netaccess-http-fetch.star
+STARKITE_SANDBOX_PROFILE=sandbox-net STARKITE_SANDBOX_DRIVER=podman ./netaccess-http-fetch.star
 ```

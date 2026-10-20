@@ -194,14 +194,14 @@ db.driver    # → "sqlite"
 
 ## Permissions
 
-`sql.open` is gated per driver in the [permission ladder](../../fundamentals/security/permission.md):
+`sql.open` is gated per driver in the [capability ladder](../../fundamentals/security/permission.md):
 
 | Profile | Grants |
 |---------|--------|
-| `allow-fs` | `sql.open(sqlite:**)` — SQLite is file I/O |
-| `allow-net` | adds `sql.open(postgres:**)`, `sql.open(mysql:**)` — networked databases |
+| `sandbox-path` | `sql.open(sqlite:**)` — SQLite is file I/O within `$CWD` |
+| `sandbox-net` | adds `sql.open(postgres:**)`, `sql.open(mysql:**)` — networked databases |
 
-Connection methods inherit the capability from `open`. DSN passwords are redacted in permission patterns and error messages. Under `--sandbox=opaque`, network drivers are blocked by network isolation while a SQLite database in `$CWD` works.
+Connection methods inherit the capability from `open`. DSN passwords are redacted in permission patterns and error messages. Under `--sandbox-profile=sandbox-path`, network drivers are blocked by network isolation while a SQLite database in `$CWD` works.
 
 ## Error handling
 

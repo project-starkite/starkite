@@ -141,7 +141,7 @@ def main():
 
 Run with:
 ```bash
-kite run ./verify_db.star --permissions=allow-local
+kite run ./verify_db.star --sandbox-net
 ```
 
 ---
@@ -150,8 +150,8 @@ kite run ./verify_db.star --permissions=allow-local
 
 Executing commands inside containers requires the `containers.write` capability.
 
-This capability is included in the `allow-local` and `allow-all` profiles:
+This capability is included in the `sandbox-net` profile (or `--sandbox-net`):
 
 ```bash
-kite run ./exec_cmd.star --permissions=allow-local
+kite run ./exec_cmd.star --sandbox-net
 ```

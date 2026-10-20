@@ -60,7 +60,7 @@ To display help for the `kite run` command itself, pass `--help` before the targ
 
 ### Runtime Flag Collision and `--` Delimiter
 
-Kite binary runtime flags (e.g., `--dry-run`, `--timeout`, `--permissions`) are evaluated by the Go runner before reaching the script. To forward colliding flag names directly to the script, supply the POSIX `--` delimiter:
+Kite binary runtime flags (e.g., `--dry-run`, `--timeout`, `--sandbox-profile`) are evaluated by the Go runner before reaching the script. To forward colliding flag names directly to the script, supply the POSIX `--` delimiter:
 
 ```bash
 # Sets kite execution timeout to 15m, while passing --timeout 5s and --dry-run to deploy.star:
@@ -74,7 +74,7 @@ If command-line arguments are provided to a script that does not call `args.pars
 ## Examples
 
 ```bash
-# Basic execution
+# Basic execution (runs under zero-trust default sandbox)
 kite run ./deploy.star
 
 # With variables
@@ -86,14 +86,17 @@ kite ./deploy.star --var-file=prod.yaml
 # Pipe output
 kite ./manifest.star | kubectl apply -f -
 
-# Local filesystem and environment only
-kite ./deploy.star --permissions=allow-fs
+# Grant working directory read/write and outbound network
+kite ./deploy.star --sandbox-path-write=. --sandbox-net
 
-# OS-level sandbox isolation
-kite ./deploy.star --sandboxed                               # default profile (network ok, no $HOME)
-kite ./deploy.star --sandbox-opaque                          # offline, $CWD-only
-kite ./deploy.star --sandbox-profile=opaque --sandbox-driver=podman # run inside Podman container
-kite ./deploy.star --sandboxed --permissions=allow-fs        # both layers
+# Allow execution of specific binaries and forward KUBECONFIG
+kite ./deploy.star --sandbox-exec-allow=kubectl,helm --sandbox-net --env KUBECONFIG
+
+# Run inside a container sandbox driver
+kite ./deploy.star --sandbox-profile=sandbox-net --sandbox-driver=podman
+
+# Run unconfined
+kite ./deploy.star --sandbox-enabled=false
 ```
 
 For shebang scripts (`./script.star` via `#!/usr/bin/env kite`), set

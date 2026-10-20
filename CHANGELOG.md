@@ -1,5 +1,25 @@
 # Changelog
 
+## v0.10.0
+
+### Added & Enhanced
+
+- **Always-On Zero-Trust Sandboxing**: `--sandbox-enabled=true` by default across `run`, `exec`, and `test` under the `deny-all` profile (pure computation, print, and log; isolated filesystem, network, subprocess execution, and ambient host environment).
+- **Composable Capability Flags**: Modular CLI flags (`--sandbox-path-read`, `--sandbox-path-write`, `--sandbox-exec-allow`, `--sandbox-exec-deny`, `--sandbox-call-allow`, `--sandbox-call-deny`, `--sandbox-net`, `--sandbox-driver`, `--sandbox-image`, `--sandbox-enabled=false`).
+- **Unified `sandbox:` Configuration Schema**: Consolidated profile definitions in `config.yaml` under `sandbox:`. High-level sandbox settings automatically synthesize fine-grained Starlark permission rules, supplemented by `calls.allow` and `calls.deny`.
+- **5-Rung Capability Ladder**: Built-in profiles organized in ascending order: `deny-all` ⊂ `sandbox-path` ⊂ `sandbox-exec` ⊂ `sandbox-net` ⊂ `unconfined`.
+- **Zero-Trust Environment Sanitization**: Purges ambient host environment variables by default to a safe minimal baseline (`PATH`, `HOME=/tmp`, `TMPDIR=/tmp`, `LANG=C.UTF-8`, `TERM`), paired with a 3-tier variable forwarding model (`--env KEY`, `--env KEY=VALUE`, `--env-inherit`).
+- **Static AST `load()` Closure Pre-Loading**: Discovers, parses, and caches local `.star` modules referenced by top-level `load()` statements in memory prior to sandbox boundary lock down.
+- **Automatic Binary & Symlink Unveiling**: Resolves permitted binaries across `$PATH`, tracing symlink chains (such as package manager links) to mount the underlying binary read-only without exposing neighboring host paths.
+- **Automated Network Resolution Assets**: Enabling `--sandbox-net` or `network: host` automatically unveils system DNS resolvers (`/etc/resolv.conf`, `/etc/hosts`) and TLS CA certificate bundles.
+- **Actionable Denial Diagnostics**: Sycall and Starlark permission denials include actionable `Hint:` diagnostics with exact CLI flags and `config.yaml` directives, plus debug warnings for scrubbed host environment variables.
+- **Module Trust Boundary Gate**: Validates third-party module capability declarations in `mod.yaml` against the active profile before execution, halting with actionable remediation hints if requirements exceed operator grants.
+
+### Breaking Changes
+
+- **Legacy Permission Flags Removed**: Replaced `--permissions`, `--allow-fs`, `--allow-net`, `--allow-local`, `--allow-all`, `--sandboxed`, `--sandbox-opaque`, `--sandbox-net-access`, and `--sandbox-host` with `--sandbox-profile=<name>` and composable `--sandbox-*` flags.
+- **Legacy Configuration Section Removed**: Removed the top-level `permissions:` configuration section in `config.yaml`; all capability profiles now reside under `sandbox:`.
+
 ## v0.7.5
 
 ### Breaking Changes

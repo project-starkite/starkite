@@ -81,7 +81,7 @@ func (m *Module) open(thread *starlark.Thread, fn *starlark.Builtin, args starla
 
 	// Permission check. The driver is the function so the ladder can gate
 	// per-driver via rules like sql.open(sqlite:**) / sql.open(postgres:**):
-	// sqlite under allow-fs, postgres/mysql under allow-net.
+	// sqlite under sandbox-path, postgres/mysql under sandbox-net.
 	if err := libkite.Check(thread, "sql", "open", p.Driver, sanitizeDSN(p.DSN)); err != nil {
 		return nil, err
 	}

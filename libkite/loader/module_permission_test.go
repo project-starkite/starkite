@@ -43,7 +43,7 @@ func writeModuleAndEntry(t *testing.T, modSrc, entrySrc string) (string, string)
 }
 
 // A loaded module is bound by the runtime permission: a capability the runtime
-// profile withholds (os.exec under allow-fs) is denied inside the module.
+// profile withholds (os.exec under sandbox-path) is denied inside the module.
 func TestLoadedModule_BoundByRuntimePermission(t *testing.T) {
 	entryPath, entry := writeModuleAndEntry(t,
 		"def reach():\n    return exec(\"echo hi\")\n",
@@ -98,6 +98,6 @@ func TestLoadedModule_AllowedWithinRuntimePermission(t *testing.T) {
 		"load(\"./mod.star\", \"mod\")\nresult = mod.reach()\n",
 	)
 	if err := runEntry(t, libkite.AllowAllPermissions(), entryPath, entry); err != nil {
-		t.Fatalf("module call should be allowed under allow-all: %v", err)
+		t.Fatalf("module call should be allowed under unconfined: %v", err)
 	}
 }

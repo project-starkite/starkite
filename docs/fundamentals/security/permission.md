@@ -6,117 +6,136 @@ weight: 20
 
 # Script Permissions
 
-Starkite features a rule-based permission engine that restricts execution capabilities at runtime. The engine intercepts privileged operations—such as filesystem access, network connections, and command execution—and validates them against a permission profile.
+Starkite features a rule-based permission engine that restricts execution capabilities at runtime. The engine intercepts privileged operations—such as filesystem access, network connections, subprocess execution, and environment queries—and validates them against the active sandbox profile.
 
-For kernel-level isolation (such as filesystem invisibility and process containment), see [Sandbox](sandbox.md).
+While kernel sandbox drivers provide OS-level process containment, Starlark permissions operate at the language and API level, enforcing granular authorization before operations reach the operating system.
 
-## Default profile
+## Default Zero-Trust Profile
 
 By default, scripts execute under the `deny-all` profile. In this mode, the script can run pure computations and call basic utilities like `load()`, `print()`, and `log()`. Any attempt to access files, the network, environment variables, or external processes is blocked.
 
 ```bash
-kite ./script.star            # Runs under the deny-all profile
+kite run ./script.star            # Runs under the default deny-all profile
 ```
 
-## Built-in permission profiles
+## Built-in Capability Profiles
 
-Starkite includes five built-in profiles forming a capability ladder, selectable via the `--permissions` flag or its boolean aliases:
+Starkite includes five built-in profiles forming a capability ladder, selectable via the `--sandbox-profile` flag:
 
-| Profile | Flag Alias | Key Grants |
-|---|---|---|
-| `deny-all` | `--deny-all` | Compute-only (`strings`, `json`, `yaml`, `time`), plus `load()`, `print()`, `log()` |
-| `allow-fs` | `--allow-fs` | File reads, file writes within `$CWD`, environment variables, SQLite |
-| `allow-net` | `--allow-net` | HTTP clients, SSH connections, remote SQL databases |
-| `allow-local` | `--allow-local` | Local command execution (within `$CWD`), HTTP servers, Kubernetes, MCP |
-| `allow-all` | `--allow-all` | Unrestricted execution anywhere on the host, system process controls, full capabilities |
+| Profile | Key Grants |
+|---|---|
+| `deny-all` (default) | Pure computation (`strings`, `json`, `yaml`, `time`), plus `load()`, `print()`, `log()`. |
+| `sandbox-path` | Filesystem read/write within `$CWD`, `/tmp` scratch, environment variables, SQLite. |
+| `sandbox-exec` | `sandbox-path` grants + local command execution (`os.exec`, `os.shell`). |
+| `sandbox-net` | `sandbox-exec` grants + HTTP client/server, SSH connections, Kubernetes, MCP, containers. |
+| `unconfined` | Unrestricted execution anywhere on the host, system process controls, full capabilities (`--sandbox-enabled=false`). |
 
 Example:
 
 ```bash
-kite ./script.star --allow-fs        # Shorthand alias
-kite ./script.star --permissions=allow-fs
+kite run ./script.star --sandbox-profile=sandbox-path
+kite run ./script.star --sandbox-profile=sandbox-exec
+kite run ./script.star --sandbox-profile=sandbox-net
+kite run ./script.star --sandbox-enabled=false        # Run unconfined
 ```
 
-## Custom permission profiles
+## Synthesizing Permissions from Sandbox Settings
 
-Define custom profiles in `~/.starkite/config.yaml` under the `permissions` section. Each profile lists explicit `allow` and `deny` rules:
+In Starkite, high-level sandbox settings automatically synthesize corresponding Starlark permission rules:
+
+- `paths.read`: Automatically generates `fs.read` rules for each allowed directory or file.
+- `paths.write`: Automatically generates `fs.read`, `fs.write`, and `fs.delete` rules.
+- `exec.allow`: Automatically generates `os.exec` allow rules for permitted binaries.
+- `exec.deny`: Automatically generates `os.exec` deny rules.
+- `network: host` (or `--sandbox-net`): Automatically permits network operations across `http.client`, `http.server`, `ssh`, `k8s`, and `mcp`.
+
+For fine-grained function- or resource-level authorization, configure `calls.allow` and `calls.deny` in `config.yaml` or use CLI flags (`--sandbox-call-allow`, `--sandbox-call-deny`).
+
+## Custom Profiles in `config.yaml`
+
+Define custom profiles in `~/.starkite/config.yaml` or `./config.yaml` under the `sandbox:` section:
 
 ```yaml
 # ~/.starkite/config.yaml
-permissions:
-  ci: { allow: ["k8s.read"] }
+sandbox:
+  ci:
+    calls:
+      allow: ["k8s.read"]
   deploy:
-    allow:
-      - fs.read($CWD/**)
-      - fs.write($CWD/build/**)
-      - os.exec($CWD/**)
-      - http.client
-    deny:
-      - http.client(*.internal.*)
+    network: host
+    paths:
+      read: ["."]
+      write: ["./build"]
+    exec:
+      allow: ["kubectl", "helm"]
+    calls:
+      allow:
+        - http.client
+      deny:
+        - http.client(*.internal.*)
 ```
 
 At runtime, select the profile by name:
 
 ```bash
-kite ./build.star --permissions=deploy
+kite run ./deploy.star --sandbox-profile=deploy
 ```
 
-### Implicit default profile
+### Implicit Default Profile
 
-To define a default profile that Starkite applies when no `--permissions` flag is provided, name the profile `default`:
+To customize default privileges applied when no `--sandbox-profile` flag is passed, define a profile named `default`:
 
 ```yaml
 # ~/.starkite/config.yaml
-permissions:
-  default: { allow: ["fs.read", "http.client"] }
+sandbox:
+  default:
+    paths:
+      read: ["."]
+    calls:
+      allow: ["http.client"]
 ```
 
-When running scripts without specifying a permissions flag, the runtime automatically applies this default profile:
+When running scripts without specifying a profile, the runtime automatically applies this default configuration:
 
 ```bash
-kite run ./script.star        # Executes with fs.read and http.client capabilities
+kite run ./script.star        # Executes with working directory read and http.client capabilities
 ```
 
-### Profile composition
+### Profile Composition
 
 Custom profiles can inherit from built-in profiles using `base`. Appended rules extend base capabilities, and `deny` rules always take precedence:
 
 ```yaml
 # ~/.starkite/config.yaml
-permissions:
+sandbox:
   deploy:
-    base: allow-fs
-    allow: ["k8s.write", "os.exec($CWD/**)"]
-    deny: ["fs.delete"]
-  almost-everything:
-    base: allow-all
-    deny: ["os.exec"]        # everything except process execution
+    base: sandbox-path
+    network: host
+    calls:
+      allow: ["k8s.write"]
+      deny: ["fs.delete"]
 ```
 
-You can assign a built-in profile name directly as a string value. This is a shorthand for inheriting the built-in profile verbatim, without adding any rules:
+You can also assign a built-in profile name directly as a string value as shorthand:
 
 ```yaml
 # ~/.starkite/config.yaml
-permissions:
-  default: allow-fs        # Implicit default is allow-fs
-  everything: allow-all    # Selectable via --permissions=everything
+sandbox:
+  default: sandbox-path        # Implicit default is sandbox-path
 ```
 
-> [!NOTE]
-> The `base` field accepts built-in profile names only. Profiles cannot inherit from other custom profiles.
-
-## Rule grammar
+## Rule Grammar
 
 Starkite permission rules use a structured format:
 
 `module.category[([function_list:]resource)]`
 
-* **module**: Target module name (e.g., `fs`, `os`).
-* **category**: Target category name (e.g., `read`, `exec`).
+* **module**: Target module name (e.g., `fs`, `os`, `http`).
+* **category**: Target category name (e.g., `read`, `write`, `exec`, `client`).
 * **function_list**: Optional comma-separated list of specific function names.
 * **resource**: Optional path, host pattern, or glob.
 
-### Common rule patterns
+### Common Rule Patterns
 
 | Pattern | Matches |
 |---|---|
@@ -130,23 +149,24 @@ Starkite permission rules use a structured format:
 
 Evaluation is **deny-first**. Any operation not explicitly matched by an `allow` rule (or blocked by a `deny` rule) is denied.
 
-### Path expansion
+### Path Expansion
 
 Rule paths support `$CWD` and `$HOME` environment variables, expanding them to the current working directory and user home directory respectively. Standard globbing (`*`, `**`) applies:
 
 ```yaml
-allow:
-  - fs.read($CWD/**)               # Read any file under the project directory
-  - fs.read($HOME/.config/myapp/*) # Read files under the specified user path
+calls:
+  allow:
+    - fs.read($CWD/**)               # Read any file under the project directory
+    - fs.read($HOME/.config/myapp/*) # Read files under the specified user path
 ```
 
 Without these variables, paths are matched verbatim.
 
-## Checked modules and categories
+## Checked Modules and Categories
 
-The permission engine only checks modules that access host resources. Pure-compute modules (such as `strings`, `math`, or `json`) bypass the permission engine.
+The permission engine only checks modules that access host resources. Pure-compute modules (such as `strings`, `math`, `yaml`, or `json`) bypass the permission engine.
 
-| Module | Categories | Grated Operations Checked |
+| Module | Categories | Gated Operations Checked |
 |---|---|---|
 | `fs` | `read`, `write`, `delete` | Path reads, writes, and deletions |
 | `os` | `exec`, `shell`, `env`, `process` | Direct process execution, shell process execution, env reads/writes, directory/process controls |
@@ -161,8 +181,6 @@ The permission engine only checks modules that access host resources. Pure-compu
 
 Starkite supports executing command-line processes under specified user or group credentials in POSIX environments by passing `userid` and `groupid` to process execution functions (`os.exec()`, `os.try_exec()`).
 
-### Credential Configuration
-
 On non-Windows platforms, Starkite maps the `userid` and `groupid` parameters to Go's `syscall.Credential` struct and attaches it to the command's `SysProcAttr`:
 
 ```go
@@ -172,35 +190,28 @@ cmd.SysProcAttr = &syscall.SysProcAttr{Credential: cred}
 
 On Windows platforms, credential switching is unsupported; attempting to pass `userid` or `groupid` will immediately return an execution error.
 
-### Security Authorization
-
-Because switching process credentials is a sensitive operation, the Starkite interpreter validates identity-switching requests against a dedicated permission rule. The script must be granted the `switch_identity` capability for the target binary:
-
-```go
-libkite.Check(thread, "os", permCategory, "switch_identity", execTarget)
-```
-
-By default, the **`allow-all`** profile authorizes identity switching for execution (`os.exec`/`os.try_exec`). In custom profiles, you can explicitly grant this capability:
+Because switching process credentials is a sensitive operation, the interpreter validates identity-switching requests against a dedicated permission rule. The script must be granted the `switch_identity` capability for the target binary:
 
 ```yaml
-permissions:
-  restricted-deploy:
-    allow:
-      - os.exec(switch_identity:/usr/bin/git) # Allow identity switching for git
+sandbox:
+  deploy:
+    calls:
+      allow:
+        - os.exec(switch_identity:/usr/bin/git)
 ```
 
-## Loaded modules
+By default, the **`unconfined`** profile authorizes identity switching for execution.
 
-When you import a module using `load()`, it runs under the exact same permissions as the calling script. Loading external code does not bypass or expand the script's permission boundary. If an imported module attempts any operation not permitted by the calling script's profile, the runtime blocks the action and raises a permission error.
+## Loaded Modules and Trust Boundaries
 
-```
-kite ./deploy.star --allow-fs
-#   deploy.star reads/writes local files   → allowed
-#   the loaded module calls k8s.read(...)  → denied (k8s is allow-local)
-```
+When you import a module using `load()`, it runs under the exact same permissions as the calling script. Loading external code does not bypass or expand the script's permission boundary. If an imported module attempts any operation not permitted by the calling script's profile, the runtime blocks the action and raises an actionable permission denial error.
 
-To resolve this, rerun the script with the required capabilities:
+Furthermore, third-party modules declaring required capabilities in `mod.yaml` must not exceed operator grants. If a module's declared requirements exceed the active profile, execution halts before code runs with an actionable hint:
 
 ```bash
-kite ./deploy.star --allow-local
+kite run ./app.star
+# If a loaded module requires network: host under the default profile:
+# Error: module "acme/netmod" requires capabilities exceeding active profile "default":
+#   - network: host (active: none)
+#   Hint: rerun with required capabilities: kite run --sandbox-net ./app.star
 ```

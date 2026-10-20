@@ -129,16 +129,16 @@ def main():
 
 ## Permissions
 
-Connecting to a container daemon socket requires the `containers.connect` permission. This capability is granted by default in the `allow-local` and `allow-all` permission profiles.
+Connecting to a container daemon socket requires the `containers.connect` capability. This is granted by default in the `sandbox-net` profile (or with `--sandbox-net`).
 
 To run scripts that connect to a container daemon:
 
 ```bash
-kite run ./check_daemon.star --permissions=allow-local
+kite run ./check_daemon.star --sandbox-net
 ```
 
-You can also grant fine-grained permissions:
+You can also grant fine-grained call rules:
 
 ```bash
-kite run ./check_daemon.star --permissions=containers.connect
+kite run ./check_daemon.star --sandbox-call-allow=containers.connect --sandbox-path-read=/var/run/docker.sock
 ```

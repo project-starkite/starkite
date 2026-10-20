@@ -3,7 +3,7 @@
 # the Starlark sandbox module.
 #
 # Run:
-#   kite run ./sandbox-module-exec.star --permissions=allow-all
+#   kite run ./sandbox-module-exec.star --sandbox-enabled=false
 
 # Query default driver available on this platform
 driver_name = sandbox.default_driver()

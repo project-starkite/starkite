@@ -8,11 +8,11 @@
 #   3. Local compute and file operations to ensure the script functions normally.
 #
 # Usage:
-#   # 1. Test in isolated mode (network="none", Seccomp-BPF blocks all network sockets):
-#   kite run ./seccomp-network-test.star --sandbox-opaque --permissions=allow-all
+#   # 1. Test in isolated mode (network="none", kernel blocks network sockets):
+#   kite run ./seccomp-network-test.star --sandbox-call-allow=http.client
 #
-#   # 2. Test in allowed mode (network="host", Host network access permitted):
-#   kite run ./seccomp-network-test.star --sandbox-net --permissions=allow-all
+#   # 2. Test in allowed mode (network="host", network access permitted):
+#   kite run ./seccomp-network-test.star --sandbox-net
 
 def main():
     print("=== Starkite Sandbox Network Test ===")

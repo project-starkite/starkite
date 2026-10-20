@@ -1,5 +1,5 @@
 # containers_integration_test.star — Integration tests for Starkite containers module against local Podman / Docker
-# Run: kite test tests/containers_integration_test.star --permissions=allow-all
+# Run: kite test tests/containers_integration_test.star --sandbox-enabled=false
 
 def _get_client():
     """Initializes container client, skipping if neither Docker nor Podman is reachable."""

@@ -180,7 +180,7 @@ args.string("environment", default="dev", var_fallback="env")
 
 ## Passing Colliding Flags via `--`
 
-Kite runtime flags (such as `--dry-run`, `--timeout`, and `--permissions`) are consumed by the Go binary before reaching the script. To pass a colliding flag name directly to the script, place the POSIX `--` delimiter before script arguments:
+Kite runtime flags (such as `--dry-run`, `--timeout`, and `--sandbox-profile`) are consumed by the Go binary before reaching the script. To pass a colliding flag name directly to the script, place the POSIX `--` delimiter before script arguments:
 
 ```bash
 # Bypasses kite runtime flags and forwards --timeout and --dry-run directly to the script:

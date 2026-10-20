@@ -1,15 +1,15 @@
 #!/usr/bin/env kite
-# opaque-compute.star — pure compute over project files inside the opaque
-# sandbox profile. Completely offline: no outbound network, no DNS, no TLS roots.
+# opaque-compute.star — compute over project files inside the sandbox-path
+# profile. Offline execution: no outbound network, no DNS, no TLS roots.
 #
-# Demonstrates opaque profile properties:
-#   1. $CWD is writable — the script reads input.json, transforms it,
+# Demonstrates sandbox-path profile properties:
+#   1. $CWD is readable and writable — the script reads input.json, transforms it,
 #      writes output.json next to itself.
-#   2. Completely offline — network connections are blocked at the OS layer.
+#   2. Offline — network connections are blocked at the OS layer.
 #
 # Run:
-#   kite ./opaque-compute.star --sandbox-opaque --permissions=allow-fs
-#   STARKITE_SANDBOX_PROFILE=opaque ./opaque-compute.star --permissions=allow-fs
+#   kite ./opaque-compute.star --sandbox-profile=sandbox-path
+#   STARKITE_SANDBOX_PROFILE=sandbox-path ./opaque-compute.star
 
 # (1) Compute over project files.
 def transform_items(values):

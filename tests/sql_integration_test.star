@@ -2,7 +2,7 @@
 #
 # Gated: set STARKITE_PG_DSN and/or STARKITE_MYSQL_DSN to run; each test skips
 # when its DSN is absent. Requires the all-in-one kite (pg/mysql drivers).
-#   kite test tests/sql_integration_test.star --permissions=allow-all
+#   kite test tests/sql_integration_test.star --sandbox-enabled=false
 
 def test_postgres():
     dsn = os.env("STARKITE_PG_DSN")

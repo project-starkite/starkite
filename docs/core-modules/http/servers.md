@@ -8,10 +8,10 @@ weight: 2
 
 The `http` module provides an HTTP server to receive and process incoming network requests. This allows Starkite scripts to expose health endpoints, listen for webhook payloads, or build internal APIs that respond to external clients.
 
-Serving HTTP requests requires server-binding permissions. Grant access using the `--permissions=allow-local` flag:
+Serving HTTP requests requires network and server-binding permissions. Grant access using the `--sandbox-net` flag or `--sandbox-profile=sandbox-net`:
 
 ```bash
-kite run ./server.star --permissions=allow-local
+kite run ./server.star --sandbox-net
 ```
 
 ## A minimal server

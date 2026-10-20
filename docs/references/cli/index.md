@@ -52,12 +52,19 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--debug` | Enable debug logging | `false` |
 | `--dry-run` | Preview commands without executing | `false` |
 | `--timeout seconds` | Script execution timeout | `300` |
-| `--permissions name` | Permission profile name: a built-in (`deny-all`/`allow-fs`/`allow-net`/`allow-local`/`allow-all`) or a profile defined in `config.yaml`; unset resolves to the config `default` profile or `deny-all` | `""` |
-| `--deny-all`, `--allow-fs`, `--allow-net`, `--allow-local`, `--allow-all` | Boolean aliases for `--permissions=<profile>`. Set at most one; not combinable with `--permissions` | `false` |
-| `--sandboxed` | Enable OS-level sandbox isolation using the `default` profile. See [Sandbox guide](../../fundamentals/security/sandbox.md). | `false` |
-| `--sandbox-profile name` | Sandbox profile name: a built-in rung (`opaque`/`net-access`/`host`) or a `config.yaml` profile. | `""` |
-| `--sandbox-driver driver` | Sandbox execution driver (`auto`/`landlock`/`seatbelt`/`podman`/`docker`/`nerdctl`/`gvisor`). Overrides driver in profile. | `""` |
-| `--sandbox-opaque`, `--sandbox-net`, `--sandbox-net-access`, `--sandbox-host` | Boolean shortcuts for `--sandbox-profile=<rung>`. | `false` |
+| `--sandbox-profile name` | Sandbox profile name: a built-in rung (`deny-all`/`sandbox-path`/`sandbox-exec`/`sandbox-net`/`unconfined`) or a `config.yaml` profile. Default is `deny-all`. | `""` |
+| `--sandbox-path-read paths` | Grant read access to host paths (comma-separated or repeatable). | |
+| `--sandbox-path-write paths` | Grant read/write access to host paths (comma-separated or repeatable). | |
+| `--sandbox-exec-allow bins` | Allow execution of specific binaries, paths, or `*` (comma-separated or repeatable). | |
+| `--sandbox-exec-deny bins` | Deny execution of specific binaries (comma-separated or repeatable). | |
+| `--sandbox-call-allow rules` | Allow specific Starlark module calls (e.g. `fs.read`, `http.client`). | |
+| `--sandbox-call-deny rules` | Deny specific Starlark module calls. | |
+| `--sandbox-net` | Grant outbound network access (equivalent to `network: host`). | `false` |
+| `--sandbox-driver driver` | Sandbox execution driver (`auto`/`landlock`/`seatbelt`/`podman`/`docker`/`nerdctl`/`gvisor`). | `""` |
+| `--sandbox-image image` | OCI image for container sandbox drivers (`podman`/`docker`/`nerdctl`). | `""` |
+| `--sandbox-enabled=false` | Disable sandbox confinement and run unconfined. Default is `true`. | `true` |
+| `--env, -e KEY[=VALUE]` | Forward host environment variable (`KEY`) or inject assignment (`KEY=VALUE`). | |
+| `--env-inherit` | Inherit the full ambient host environment. | `false` |
 
 ## Environment Variables
 

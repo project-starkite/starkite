@@ -269,7 +269,7 @@ def main():
 
 Run with:
 ```bash
-kite run ./test_db.star --permissions=allow-local
+kite run ./test_db.star --sandbox-net
 ```
 
 ### Container Health Diagnostic and Log Inspection
@@ -299,7 +299,7 @@ def main():
 
 Run with:
 ```bash
-kite run ./diagnose.star --permissions=allow-local
+kite run ./diagnose.star --sandbox-net
 ```
 
 ---
@@ -312,8 +312,8 @@ Container management operations require the following capabilities:
 * `containers.write`: `create()`, `run()`, `start()`, `stop()`, `restart()`, `wait()`.
 * `containers.manage`: `delete()` / `remove()`.
 
-All of these capabilities are included in the `allow-local` profile:
+All of these capabilities are included in the `sandbox-net` profile:
 
 ```bash
-kite run ./manage.star --permissions=allow-local
+kite run ./manage.star --sandbox-net
 ```

@@ -29,7 +29,7 @@ The default binary is **`kite`**, the all-in-one edition — it bundles every mo
 | `kitecloud` | base + Kubernetes (`k8s` module + `kite kube` subcommands) | cloud-native ops, manifest workflows |
 | `kiteai` | base + MCP server and client | MCP tools and agent orchestration |
 
-Use `kite` unless binary size or attack surface is a real constraint — init containers, edge nodes, or CI runners under a restricted profile such as `--permissions=allow-fs`. The lean editions (`kitecmd` / `kitecloud` / `kiteai`) are a strict subset for those targets.
+Use `kite` unless binary size or attack surface is a real constraint — init containers, edge nodes, or CI runners under a restricted profile such as `--sandbox-profile=sandbox-path`. The lean editions (`kitecmd` / `kitecloud` / `kiteai`) are a strict subset for those targets.
 
 > **Naming convention.** Source directory names end in `kite`: `libkite/` (embeddable runtime), `basekite/` / `cloudkite/` / `aikite/` (editions), and `kite/` (the all-in-one). Binaries use the `kite<edition>` prefix form (`kitecmd`, `kitecloud`, `kiteai`), with the all-in-one as the unadorned `kite`.
 
@@ -102,21 +102,21 @@ printf("Running on %s/%s\n", runtime.platform(), runtime.arch())
 
 # Execute a command
 result = os.exec("uname -a")
-print(result["stdout"])
+print(result)
 ```
 
 Then, make the script executable and run the script:
 
 ```bash
 chmod +x hello.star
-./hello.star --var name=Alice
+./hello.star --sandbox-exec-allow=uname --var name=Alice
 ```
 
 Or, run it directly with `kite`:
 
 ```bash
-kite hello.star
-kite hello.star --var name=Alice
+kite hello.star --sandbox-exec-allow=uname
+kite hello.star --sandbox-exec-allow=uname --var name=Alice
 ```
 
 ## CLI
@@ -176,35 +176,47 @@ yaml.source(data).write_file("output.yaml")
 
 See the [API reference](https://starkite.dev/references/api/) for full module documentation.
 
-## Permission Sandbox
+## Zero-Trust Sandboxing & Capability Profiles
 
-starkite controls script privileges via CLI flags. The default is `deny-all` — a script runs with pure compute plus `print`/`log` until granted more:
+starkite enforces zero-trust execution by default. Every script runs inside an OS-level sandbox (`landlock` + `seccomp-bpf` on Linux, `seatbelt` on macOS) and Starlark capability gate under the `deny-all` profile: pure computation, print, and log are allowed, while host filesystem, outbound network, subprocess execution, and ambient host environment variables are strictly isolated.
+
+Grant privileges with composable CLI flags:
 
 ```bash
-kite run script.star                          # deny-all (default)
-kite run script.star --permissions=allow-fs   # read any file; write within $CWD; env
-kite run script.star --permissions=allow-local # serve, $CWD exec, k8s, mcp
-kite run script.star --permissions=allow-all  # unrestricted
+kite run script.star                                     # deny-all (default: pure compute, isolated env & fs)
+kite run script.star --sandbox-path-read=.               # read files in working directory
+kite run script.star --sandbox-path-write=.              # read and write files in working directory
+kite run script.star --sandbox-exec-allow=kubectl,helm   # execute specific binaries (auto-resolved on PATH)
+kite run script.star --sandbox-net                       # allow outbound network access
+kite run script.star --env KUBECONFIG --env ENV=prod     # forward host KUBECONFIG and inject ENV=prod
+kite run script.star --sandbox-enabled=false             # run unconfined
 ```
 
-The five built-in profiles form a capability ladder, each a superset of the prior: `deny-all` ⊂ `allow-fs` ⊂ `allow-net` ⊂ `allow-local` ⊂ `allow-all`.
+The five built-in profiles form a capability ladder, each a superset of the prior: `deny-all` ⊂ `sandbox-path` ⊂ `sandbox-exec` ⊂ `sandbox-net` ⊂ `unconfined`.
 
-For fine-grained control, define named profiles in `config.yaml` and select one with `--permissions=<name>`:
+Define named sandbox profiles in `~/.starkite/config.yaml` or `./config.yaml`:
 
 ```yaml
 # ~/.starkite/config.yaml
-permissions:
-  default: { allow: ["fs.read", "http.client"] }   # this machine's everyday ceiling
+sandbox:
+  default:
+    paths:
+      read: ["."]
   deploy:
-    allow:
-      - fs.read($CWD/**)
-      - http.client
-      - k8s.write
-    deny:
-      - os.exec
+    network: host
+    paths:
+      read: ["."]
+      write: ["./build"]
+    exec:
+      allow: ["kubectl", "helm"]
+    calls:
+      allow: ["k8s.write"]
+    env:
+      KUBECONFIG:
+      DEPLOY_ENV: production
 ```
 
-Each profile is allow-list only; `deny` rules carve out exceptions and take precedence. An unspecified `--permissions` resolves to the `default` profile if defined, else `deny-all`. See the [permissions reference](https://starkite.dev/fundamentals/security/permission/) for details.
+Select a profile with `--sandbox-profile=<name>`. See the [sandbox guide](https://starkite.dev/fundamentals/security/sandbox/) and [permissions reference](https://starkite.dev/fundamentals/security/permission/) for details.
 
 ## Error Handling
 
@@ -241,8 +253,8 @@ def test_addition():
     assert_equal(1 + 1, 2)
 
 def test_command():
-    result = os.exec("echo hello")
-    assert_equal(result["exit_code"], 0)
+    result = os.try_exec("echo hello")
+    assert_equal(result.ok, True)
 ```
 
 ```bash

@@ -1,23 +1,23 @@
 ---
 title: "Security"
-description: "Process execution security, permissions, and sandbox isolation in Starkite"
-weight: 40
+description: "Process execution gating, privilege enforcement, and OS sandbox boundaries"
+weight: 4
 ---
 
-# Process Security
+# Execution Security & Process Isolation
 
-Starkite manages process execution security through two layers of defense: API-level capability checks (Permission Profiles) and kernel-level process isolation (Execution Sandboxing). This section describes how these security layers apply specifically to running external command-line utilities.
+Starkite applies two complementary layers of protection to ensure that script execution and subprocess spawning remain bounded and predictable.
 
 ---
 
 ## 1. Interpreter-Level Execution Protection
 
-When a script attempts to execute an operating system command (`os.exec()`, `os.try_exec()`), the Starkite interpreter intercepts the call and validates the target binary's absolute path against the active permission profile:
+When a script attempts to execute an operating system command (`os.exec()`, `os.try_exec()`, `os.shell()`), the Starkite interpreter intercepts the call and validates the target binary against the active capability profile:
 
-* **Local Command Execution**: Running a binary located inside the script's working tree (`$CWD`) is permitted under the **`allow-local`** profile or higher. This allows scripts to run local scripts or vendored binaries, but blocks access to system-wide utilities.
-* **System Command Execution**: Running a binary located anywhere else on the host system (such as `/bin/ls`, `/usr/bin/git`, or `/usr/bin/psql`) is blocked by default. It is authorized under the **`allow-all`** profile.
+* **Zero-Trust Default**: Subprocess execution is blocked by default under the `deny-all` and `sandbox-path` profiles (`exec.deny: ["*"]`, `no_exec: true`).
+* **Binary Allowlisting**: Under `sandbox-exec` and higher (or when using `--sandbox-exec-allow=<bins>`), binaries are checked against allowed execution rules. Passing `--sandbox-exec-allow=kubectl,helm` resolves the binaries across `$PATH` and follows symlink chains into read-only mount rules.
 * **Process Permissions**: All process execution (including explicit shell invocations like `os.exec("sh", ["-c", "..."])`) is governed uniformly by standard `os.exec` permission rules.
-* **Identity Switching (POSIX)**: Executing a command under a specific user or group identity (using the `userid` and `groupid` optional keyword arguments) is a privileged operation requiring the **`allow-all`** profile and the `os.exec(switch_identity:...)` capability.
+* **Identity Switching (POSIX)**: Executing a command under a specific user or group identity (using the `userid` and `groupid` optional keyword arguments) is a privileged operation requiring the `unconfined` profile or explicit `os.exec(switch_identity:...)` capability grant.
 
 For instructions on defining custom execution rules and composing profiles, see the [Script Permissions Guide](../fundamentals/security/permission.md).
 
@@ -25,21 +25,29 @@ For instructions on defining custom execution rules and composing profiles, see 
 
 ## 2. OS-Level Process Sandboxing
 
-For environments requiring process isolation (such as executing untrusted scripts or running automations in multi-tenant environments), Starkite provides a pluggable OS-level sandbox architecture supporting native OS kernel primitives (Linux Landlock, macOS Seatbelt), container runtimes (Podman, Docker, nerdctl), and external gVisor.
+Starkite enables OS-level sandboxing by default across native OS kernel primitives (Linux Landlock + Seccomp-BPF, macOS Seatbelt) and container runtimes (Podman, Docker, nerdctl, gVisor).
 
-When sandboxing is enabled (via `--sandboxed`, `--sandbox-profile=<name>`, shortcut flags `--sandbox-opaque`/`--sandbox-net`/`--sandbox-host`, or `STARKITE_SANDBOX_PROFILE` environment variable), the script process is confined to explicit filesystem and network boundaries depending on the active sandbox profile:
+Every script runs inside explicit filesystem, network, and execution boundaries defined by its active profile:
 
-### Opaque Sandbox (`opaque` profile / `--sandbox-opaque`)
-* **Filesystem**: The host filesystem is restricted. The sandboxed process operates within the script's working directory (`$CWD`) mounted as read/write, with a private in-memory filesystem mounted at `/tmp`.
-* **Process Execution**: Running external commands without explicit binary paths or mounts is restricted because host user directories and unapproved system paths are omitted.
-* **Network**: Disabled (loopback only). Outbound network requests are blocked.
+### Default Zero-Trust (`deny-all` profile)
+* **Filesystem**: Isolated. `$CWD` and host `$HOME` are not mounted. An isolated temporary scratch mount is provided at `/tmp` (`HOME=/tmp`, `TMPDIR=/tmp`).
+* **Subprocess Execution**: Blocked at both interpreter and OS kernel boundary.
+* **Network**: Disabled (`network: none`). Outbound network requests fail closed.
+* **Environment**: Scrubbed to minimal safe baseline (`PATH`, `HOME`, `TMPDIR`, `LANG`, `TERM`).
 
-### Network Access Sandbox (`net-access` profile / `--sandbox-net`)
-* **Filesystem & Process Execution**: Same isolation as the Opaque profile, with read-only access to host network configuration (`/etc/resolv.conf`, `/etc/hosts`, and system CA certificates) to support outbound TLS operations.
-* **Network**: Egress networking enabled for client connections.
+### Filesystem Processing (`sandbox-path` profile)
+* **Filesystem**: `$CWD` mounted read/write with `/tmp` scratch mount.
+* **Subprocess Execution**: Blocked.
+* **Network**: Disabled (`network: none`).
 
-### Host Sandbox (`host` profile / `--sandbox-host`)
-* **Filesystem & Process Execution**: Grants read-only access to host system paths (such as `$HOME`, `/usr`, `/bin`, `/lib`, and `/lib64`) while confining all writes strictly to `$CWD` and `/tmp`. This allows scripts to inspect host configuration and execute host CLI utilities without modifying host files.
-* **Network**: Egress networking enabled.
+### Local Execution (`sandbox-exec` profile)
+* **Filesystem**: `$CWD` mounted read/write with `/tmp` scratch mount.
+* **Subprocess Execution**: Permitted for system binaries (`exec.allow: ["*"]`).
+* **Network**: Disabled (`network: none`).
+
+### Cloud-Native & Network Workflows (`sandbox-net` profile / `--sandbox-net`)
+* **Filesystem**: `$CWD` mounted read/write, `/tmp` scratch mount, and automatic read-only mounts for system DNS resolvers (`/etc/resolv.conf`, `/etc/hosts`) and TLS CA certificates.
+* **Subprocess Execution**: Permitted for system binaries.
+* **Network**: Full outbound network connectivity (`network: host`).
 
 For driver configuration, driver override flags (`--sandbox-driver=<driver>`), and programmatic Starlark module execution, see the [Execution Sandbox Guide](../fundamentals/security/sandbox.md).

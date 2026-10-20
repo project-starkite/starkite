@@ -94,17 +94,16 @@ You can repeat the `--var-file` flag to layer settings. Keys in later files over
 kite run ./deploy.star --var-file=base.yaml --var-file=prod.yaml --var replicas=7
 ```
 
-Unlike the main `config.yaml` file, a var-file is a flat collection of user variables and does not support runtime keys like `permissions` or `sandbox`.
+Unlike the main `config.yaml` file, a var-file is a flat collection of user variables and does not support runtime keys like `sandbox`.
 
 ## Config file format
 
-Starkite loads its global configuration from `~/.starkite/config.yaml` and `./config.yaml`. The file is structured into exactly three top-level sections:
+Starkite loads its global configuration from `~/.starkite/config.yaml` and `./config.yaml`. The file is structured into two top-level sections:
 
 | Section | Purpose |
 |---|---|
 | `config` | Holds runtime settings and user-defined variables |
-| `permissions` | Named permission profiles, selectable via `--permissions=<name>`. See [Permission Guide](security/permission.md#custom-permission-profiles). |
-| `sandbox` | Named sandbox profiles, selectable via `--sandbox-profile=<name>`. See [Sandbox Guide](security/sandbox.md). |
+| `sandbox` | Named sandbox and capability profiles, selectable via `--sandbox-profile=<name>`. See [Sandbox Guide](security/sandbox.md) and [Permission Guide](security/permission.md). |
 
 The `config` section contains both runtime parameters and user variables. Four reserved keys are parsed into runtime state and cannot be accessed via `var_*`:
 
@@ -114,7 +113,7 @@ The `config` section contains both runtime parameters and user variables. Four r
 | `config.defaults` | Runtime defaults (such as `log_level` and `timeout`) |
 | `config.providers` | Default provider configurations (e.g., `ssh`), read directly by modules at construction |
 
-All other keys under `config` are loaded as user variables. The following example demonstrates a `config.yaml` containing runtime settings, user variables, permissions, and sandbox profiles:
+All other keys under `config` are loaded as user variables. The following example demonstrates a `config.yaml` containing runtime settings, user variables, and sandbox profiles:
 
 ```yaml
 # ~/.starkite/config.yaml
@@ -138,21 +137,22 @@ config:
     app: myapp
     team: platform
 
-permissions:
-  default: allow-fs        # Implicit default profile
-  ci:
-    allow: ["fs.read", "os.exec($CWD/**)"]
-
 sandbox:
   default:
-    base: net-access       # Bare --sandboxed profile fallback
+    paths:
+      read: ["."]
   ci:
-    driver: podman         # Binds execution driver to this profile
-    base: net-access
-    mounts:
-      - source: $CWD
-        destination: /workspace
-        mode: rw
+    driver: podman
+    network: host
+    paths:
+      read: ["."]
+      write: ["./dist"]
+    exec:
+      allow: ["kubectl", "helm"]
+    calls:
+      allow: ["k8s.write"]
+    env:
+      KUBECONFIG:
 ```
 
 Reserved keys (such as `project` or `providers`) do not appear in `var_names()` and cannot be read via `var_*`. Modules read their respective configuration directly from these fields at initialization, ensuring runtime settings do not leak into user script logic.

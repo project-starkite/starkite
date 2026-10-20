@@ -48,17 +48,17 @@ The host agent reads the printed JSON the same way it would from a script run �
 
 ## Make it safe
 
-The reason to reach for `kite` at all is that the host agent may run logic you do not fully trust. That trust gap is exactly what the [permission engine](../fundamentals/security/permission.md) and, on Linux, the [sandbox](../fundamentals/security/sandbox.md) are for. Constrain a single invocation with a permission profile, an OS-level boundary, or both:
+The reason to reach for `kite` at all is that the host agent may run logic you do not fully trust. That trust gap is exactly what the [permission engine](../fundamentals/security/permission.md) and the [sandbox](../fundamentals/security/sandbox.md) are for. Every invocation runs sandboxed by default under the zero-trust `deny-all` profile, bounding privileges until explicitly granted:
 
 ```bash
-# Restrict to compute, print, and log only
-kite run ./untrusted.star --permissions=deny-all
+# Default: pure compute, print, and log (isolated filesystem, network, and environment)
+kite run ./untrusted.star
 
-# OS-level isolation
-kite run ./untrusted.star --sandboxed
+# Selectively grant working directory read or specific tool execution
+kite run ./untrusted.star --sandbox-path-read=. --sandbox-exec-allow=kubectl
 ```
 
-`--permissions=deny-all` leaves the script able to compute, print, and log but cuts off the filesystem, network, processes, and environment; `--sandboxed` adds a process-level boundary underneath that. The payoff is that you can expose genuinely powerful automation — Kubernetes, SSH, HTTP, filesystem — while bounding the blast radius of any one invocation, and you pay that cost per call rather than trusting the calling agent wholesale.
+The default `deny-all` profile leaves the script able to compute, print, and log but cuts off the filesystem, network, processes, and environment. The payoff is that you can expose genuinely powerful automation — Kubernetes, SSH, HTTP, filesystem — while bounding the blast radius of any one invocation, and you pay that cost per call rather than trusting the calling agent wholesale.
 
 ## Why kite as a tool
 

@@ -84,25 +84,26 @@ kite test ./tests/ --parallel 4    # Run up to four files concurrently
 > [!NOTE]
 > Unlike standard executions, the test runner does not invoke `main()`. It executes only the discovered `test_*` functions.
 
-## Permissions and tests
+## Sandbox profiles and capabilities
 
-Tests run under the same [permission](security/permission.md) rules as standard executions. Without explicit flags, tests run under the `deny-all` profile. If your tests perform I/O, network requests, or shell commands, pass an appropriate permission profile:
+Tests run under the same [sandbox](security/sandbox.md) and [permission](security/permission.md) rules as standard executions. Without explicit flags, tests run under the zero-trust `deny-all` profile. If your tests perform I/O, network requests, or shell commands, pass an appropriate sandbox profile or composable flags:
 
 ```bash
-kite test ./tests/ --permissions=allow-local
+kite test ./tests/ --sandbox-profile=sandbox-net
+kite test ./tests/ --sandbox-path-write=. --sandbox-exec-allow=echo
 ```
 
-To ensure test reliability, run your test suite under the same permission profile the script uses in production.
+To ensure test reliability, run your test suite under the same sandbox profile the script uses in production.
 
 ## Sandbox isolation
 
-You can isolate test execution using the pluggable sandbox architecture. The `kite test --sandboxed` (or `kite test --sandbox-opaque`) command runs **each test file in its own separate sandbox process**, preventing tests from mutating host files or leaking state to other tests. 
+The sandbox is engaged by default (`--sandbox-enabled=true`). When running tests against a directory, **each test file runs in its own separate sandbox process**, preventing tests from mutating host files or leaking state to other tests.
 
-For maximum security, combine sandbox isolation with explicit API permissions and optional backend drivers:
+You can customize the sandbox driver or run unconfined:
 
 ```bash
-kite test ./tests/ --sandbox-opaque --permissions=allow-fs
 kite test ./tests/ --sandbox-profile ci-builder --sandbox-driver podman
+kite test ./tests/ --sandbox-enabled=false  # Run unconfined
 ```
 
 For more details on sandbox isolation, see the [Sandbox Guide](security/sandbox.md).

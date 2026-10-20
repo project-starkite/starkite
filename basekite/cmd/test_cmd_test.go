@@ -3,6 +3,7 @@ package cmd
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -160,13 +161,7 @@ func TestChildTestArgs(t *testing.T) {
 	}
 
 	for _, sub := range expectedSubstrings {
-		found := false
-		for _, a := range args {
-			if a == sub {
-				found = true
-				break
-			}
-		}
+		found := slices.Contains(args, sub)
 		if !found {
 			t.Errorf("childTestArgs missing %q, got: %v", sub, args)
 		}

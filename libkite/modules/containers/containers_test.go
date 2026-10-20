@@ -381,7 +381,7 @@ main()
 `, host)
 
 	if err := rtLocal.Execute(context.Background(), script); err != nil {
-		t.Fatalf("expected lifecycle to succeed under allow-local, got: %v", err)
+		t.Fatalf("expected lifecycle to succeed under sandbox-net, got: %v", err)
 	}
 
 	// 2. Denying containers.manage blocks remove

@@ -367,13 +367,13 @@ func TestPermissionError(t *testing.T) {
 		Category: "exec",
 		Function: "exec",
 		Reason:   "no matching allow rule",
-		Suggest:  "allow-local",
+		Suggest:  "sandbox-exec",
 	}
 	msg := err2.Error()
 	if !strings.HasPrefix(msg, "permission denied: os.exec exec - no matching allow rule") {
 		t.Errorf("Error() = %q, missing capability prefix", msg)
 	}
-	if !strings.Contains(msg, "--sandbox-profile=allow-local") {
+	if !strings.Contains(msg, "--sandbox-profile=sandbox-exec") {
 		t.Errorf("Error() = %q, missing opt-up suggestion", msg)
 	}
 }

@@ -17,55 +17,52 @@ import (
 var runCmd = &cobra.Command{
 	Use:   "run <target>",
 	Short: "Execute a starkite script",
-	Long: `Execute a starkite script file.
+	Long: `Execute a starkite script file or module directory.
 
-The script should be written in Starlark (a Python-like language) and typically
-has the .star extension.
+The script is written in Starlark (a deterministic Python-like language) and
+typically uses the .star extension.
 
-Note: You can also run scripts directly without the 'run' subcommand:
+You can also run scripts directly without the 'run' subcommand:
   kite ./script.star
   ./script.star    # with shebang: #!/usr/bin/env kite
 
-Variables can be injected from multiple sources with the following priority
-(highest to lowest):
+Variables can be injected from multiple sources (highest to lowest priority):
   1. CLI flags:      --var key=value
-  2. Variable files: --var-file=values.yaml (can specify multiple)
-  3. Default config: ~/.starkite/config.yaml (always loaded if present)
+  2. Variable files: --var-file=values.yaml (repeatable)
+  3. Default config: ~/.starkite/config.yaml and ./config.yaml
+  4. Environment:    STARKITE_VAR_<NAME>=value
 
-Parameters can be passed to functions with:
-  --param name=value
-  --param-file=params.yaml
+Sandbox & Capabilities (enabled by default under the 'deny-all' profile):
+  --sandbox-profile=<name>       Select sandbox profile (deny-all, sandbox-path, sandbox-exec, sandbox-net, unconfined, or custom)
+  --sandbox-path-read=<paths>    Grant read access to host paths (comma-separated or repeatable)
+  --sandbox-path-write=<paths>   Grant read/write access to host paths (comma-separated or repeatable)
+  --sandbox-exec-allow=<bins>    Allow execution of specific binaries or '*' (comma-separated or repeatable)
+  --sandbox-exec-deny=<bins>     Deny execution of specific binaries (comma-separated or repeatable)
+  --sandbox-call-allow=<rules>   Allow specific Starlark module calls (e.g. fs.read, http.client)
+  --sandbox-call-deny=<rules>    Deny specific Starlark module calls
+  --sandbox-net                  Grant outbound network access (equivalent to network: host)
+  --sandbox-driver=<driver>      Select sandbox driver (auto, landlock, seatbelt, podman, docker, nerdctl, gvisor)
+  --sandbox-enabled=false        Disable sandbox confinement (run unconfined)
+  --env, -e <KEY[=VALUE]>        Forward host environment variable (KEY) or inject assignment (KEY=VALUE)
+  --env-inherit                  Inherit the full ambient host environment
 
 Dry run mode:
-  --dry-run: Simulate execution without making changes
-
-Permissions (default: interactive prompt for dangerous operations):
-  --allow-all:       Allow all permissions
-  --allow-fs:        Allow filesystem access (read/write)
-  --allow-fs-read:   Allow filesystem read access only
-  --allow-fs-write:  Allow filesystem write access only
-  --allow-net:       Allow network access (HTTP, SSH, etc.)
-  --allow-exec:      Allow command execution
-  --deny-all:        Deny all operations requiring permission
-  --trust:           Trust script and prompt only for explicitly denied ops
+  --dry-run                      Simulate execution without making changes
 
 Examples:
-  # Run a script
-  kite run ./deploy.star
+  # Run a pure Starlark script (default zero-trust sandbox)
+  kite run ./calc.star
 
-  # Run with variable overrides
-  kite run ./deploy.star --var env=prod --var replicas=5
+  # Grant working directory read/write and outbound network access
+  kite run ./deploy.star --sandbox-path-write=. --sandbox-net
 
-  # Run with variable file
-  kite run ./deploy.star --var-file=prod.yaml
+  # Grant execution of specific CLI tools and forward KUBECONFIG
+  kite run ./rollout.star --sandbox-exec-allow=kubectl,helm --sandbox-net --env KUBECONFIG
 
-  # Dry run
-  kite run ./deploy.star --dry-run
+  # Run with variable overrides and a variable file
+  kite run ./deploy.star --var env=prod --var replicas=5 --var-file=prod.yaml
 
-  # Allow network and filesystem
-  kite run ./deploy.star --allow-net --allow-fs
-
-  # Pipe output to kubectl
+  # Pipe generated manifests to kubectl
   kite ./manifest.star | kubectl apply -f -
 `,
 	DisableFlagParsing: true,
