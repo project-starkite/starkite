@@ -413,15 +413,22 @@ func isPathGranted(rawPath string, write bool, cwd, home, moduleDir string, poli
 	probeFile := filepath.Join(canonTarget, ".probe")
 
 	if checker != nil {
-		if write {
-			if checker.allows("fs", "write", "write_file", probeFile) ||
-				checker.allows("fs", "write", "write_file", canonTarget) {
-				return true
-			}
-		} else {
-			if checker.allows("fs", "read", "read_file", probeFile) ||
-				checker.allows("fs", "read", "read_file", canonTarget) {
-				return true
+		// Do not let a generic scratch /tmp mount rule satisfy a requirement on
+		// the current working directory or a relative path when the working directory
+		// happens to reside under /tmp (e.g. in test tempdirs).
+		isRelativeReq := !filepath.IsAbs(rawPath) && !strings.HasPrefix(rawPath, "$HOME") && !strings.HasPrefix(rawPath, "~")
+		isTmpTarget := strings.HasPrefix(canonTarget, "/tmp") || strings.HasPrefix(canonTarget, "/private/tmp")
+		if !(isRelativeReq && isTmpTarget) {
+			if write {
+				if checker.allows("fs", "write", "write_file", probeFile) ||
+					checker.allows("fs", "write", "write_file", canonTarget) {
+					return true
+				}
+			} else {
+				if checker.allows("fs", "read", "read_file", probeFile) ||
+					checker.allows("fs", "read", "read_file", canonTarget) {
+					return true
+				}
 			}
 		}
 	}
