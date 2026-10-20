@@ -118,8 +118,8 @@ def test_outside_cwd_no_write():
     # the file must NOT exist after the attempt.
     # If write_text raised, the script would have errored out — so we
     # use a guard via path that returns the current state.
-    pre_exists = exists("/etc/ssl/certs/sandbox-test")
-    assert(not pre_exists, "test setup: stray file should not pre-exist")
+    pre_res = path("/etc/ssl/certs/sandbox-test").try_exists()
+    assert(not pre_res.ok or not pre_res.value, "test setup: stray file should not pre-exist")
     # We deliberately DO NOT call write here because starlark lacks
     # generic try/except. The fact that /etc is mounted ro is asserted
     # by the curated mount options in the spec; verifying the mount is

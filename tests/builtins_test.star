@@ -234,7 +234,7 @@ def test_local_exec_error():
 
 def test_local_which():
     """Test which function."""
-    bin_name = "cmd.exe" if which("cmd.exe") else ("bash" if which("bash") else "sh")
+    bin_name = "cmd.exe" if runtime.platform() == "windows" else ("bash" if which("bash") else "sh")
     found_path = which(bin_name)
     assert(found_path != None, "should find standard shell binary")
     assert(len(found_path) > 0, "path should not be empty")

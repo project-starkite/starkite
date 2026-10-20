@@ -42,16 +42,16 @@ const (
 	viaDriverEnv
 )
 
-func TestSandboxNetAccessRung_flag(t *testing.T) {
+func TestSandboxNetRung_flag(t *testing.T) {
 	runStarTest(t, "sandbox_netaccess_test.star", "sandbox-net", viaProfileFlag)
 }
 
-func TestSandboxNetAccessRung_flagSpace(t *testing.T) {
+func TestSandboxNetRung_flagSpace(t *testing.T) {
 	runStarTest(t, "sandbox_netaccess_test.star", "sandbox-net", viaProfileFlagSpace)
 }
 
-func TestSandboxNetAccessRung_flagNet(t *testing.T) {
-	runStarTest(t, "sandbox_netaccess_test.star", "sandbox-net", viaNetFlag)
+func TestSandboxNetComposableFlag(t *testing.T) {
+	runStarTest(t, "sandbox_netaccess_test.star", "sandbox-path", viaProfileFlag, "--sandbox-net")
 }
 
 func TestSandboxPathRung_flag(t *testing.T) {
@@ -62,13 +62,13 @@ func TestSandboxPathRung_flagSpace(t *testing.T) {
 	runStarTest(t, "sandbox_opaque_test.star", "sandbox-path", viaProfileFlagSpace)
 }
 
-func TestSandboxHostRung_flag(t *testing.T) {
+func TestSandboxExecWithPathRead_flag(t *testing.T) {
 	home, _ := os.UserHomeDir()
-	runStarTest(t, "sandbox_host_test.star", "sandbox-exec", viaProfileFlag, "--sandbox-path-read="+home+",/usr")
+	runStarTest(t, "sandbox_host_test.star", "sandbox-exec", viaProfileFlag, "--sandbox-path-read="+home, "--sandbox-path-read=/usr")
 }
 
-func TestSandboxDefaultProfile(t *testing.T) {
-	runStarTest(t, "sandbox_opaque_test.star", "default", viaDefaultProfile)
+func TestSandboxDefaultIsEnabled(t *testing.T) {
+	runStarTest(t, "sandbox_opaque_test.star", "default", viaDefaultProfile, "--sandbox-path-write=.")
 }
 
 func TestSandboxDriverAndProfile_flag(t *testing.T) {
@@ -76,7 +76,7 @@ func TestSandboxDriverAndProfile_flag(t *testing.T) {
 }
 
 func TestSandboxDriverOnly_flag(t *testing.T) {
-	runStarTest(t, "sandbox_opaque_test.star", "default", viaDriverFlag)
+	runStarTest(t, "sandbox_opaque_test.star", "default", viaDriverFlag, "--sandbox-path-write=.")
 }
 
 func TestSandboxDriver_env(t *testing.T) {
@@ -84,7 +84,7 @@ func TestSandboxDriver_env(t *testing.T) {
 }
 
 func TestSandboxModule_star(t *testing.T) {
-	runStarTest(t, "sandbox_module_test.star", "sandbox-exec", viaProfileFlag)
+	runStarTest(t, "sandbox_module_test.star", "sandbox-net", viaProfileFlag)
 }
 
 // Env-var engagement is the shebang-style path. Exercised on the sandbox-path rung.

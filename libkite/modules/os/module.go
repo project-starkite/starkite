@@ -588,7 +588,7 @@ func (m *Module) executeParams(thread *starlark.Thread, callerPrefix string, p e
 			cmd.Env = append(cmd.Env, k+"="+v)
 		}
 		slices.Sort(cmd.Env)
-		if pathEnv, ok := p.envMap["PATH"]; ok && pathEnv != "" {
+		if pathEnv, ok := getPathEnv(p.envMap); ok && pathEnv != "" {
 			if resolved, err := lookPathIn(p.cmdStr, pathEnv); err == nil {
 				cmd.Path = resolved
 			}
@@ -877,7 +877,7 @@ func (m *Module) which(thread *starlark.Thread, fn *starlark.Builtin, args starl
 
 	m.mu.RLock()
 	isolated := m.isolatedEnv
-	pathEnv, hasPath := m.env["PATH"]
+	pathEnv, hasPath := getPathEnv(m.env)
 	m.mu.RUnlock()
 
 	if isolated {
@@ -898,6 +898,20 @@ func (m *Module) which(thread *starlark.Thread, fn *starlark.Builtin, args starl
 	return starlark.String(path), nil
 }
 
+func getPathEnv(m map[string]string) (string, bool) {
+	if val, ok := m["PATH"]; ok {
+		return val, true
+	}
+	if runtime.GOOS == "windows" {
+		for k, v := range m {
+			if strings.EqualFold(k, "PATH") {
+				return v, true
+			}
+		}
+	}
+	return "", false
+}
+
 func lookPathIn(file string, pathList string) (string, error) {
 	if strings.Contains(file, "/") || (runtime.GOOS == "windows" && strings.Contains(file, "\\")) {
 		if fi, err := os.Stat(file); err == nil && !fi.IsDir() {
@@ -909,11 +923,13 @@ func lookPathIn(file string, pathList string) (string, error) {
 	}
 	exts := []string{""}
 	if runtime.GOOS == "windows" {
-		pathext := os.Getenv("PATHEXT")
-		if pathext == "" {
-			pathext = ".COM;.EXE;.BAT;.CMD"
+		if filepath.Ext(file) == "" {
+			pathext := os.Getenv("PATHEXT")
+			if pathext == "" {
+				pathext = ".COM;.EXE;.BAT;.CMD"
+			}
+			exts = filepath.SplitList(pathext)
 		}
-		exts = filepath.SplitList(pathext)
 	}
 
 	for _, dir := range filepath.SplitList(pathList) {

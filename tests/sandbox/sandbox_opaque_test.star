@@ -52,7 +52,7 @@ def test_kernel_isolation():
 def test_credentials_isolated():
     """Host sensitive user directories (~/.ssh, ~/.aws) are NOT mounted under sandbox-path."""
     hostinfo_path = path("hostinfo.json")
-    if hostinfo_path.exists():
+    if hostinfo_path.try_exists().value:
         info = json.decode(hostinfo_path.read_text())
         home = info.get("home", "")
         if home:
