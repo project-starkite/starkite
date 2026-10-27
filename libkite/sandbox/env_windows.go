@@ -56,23 +56,25 @@ func applyOSBaseline(env map[string]string, hostMap map[string]string) {
 		env["SystemDrive"] = "C:"
 	}
 
-	if val, ok := lookupEnv(hostMap, "SystemRoot"); ok && val != "" {
-		env["SystemRoot"] = val
-		env["windir"] = val
-	} else {
+	for _, wk := range []string{"SYSTEMROOT", "SystemRoot", "COMSPEC", "ComSpec", "WINDIR", "windir", "PATHEXT", "pathext"} {
+		if val, ok := lookupEnv(hostMap, wk); ok && val != "" {
+			env[wk] = val
+		}
+	}
+
+	if env["SYSTEMROOT"] == "" && env["SystemRoot"] == "" {
 		env["SystemRoot"] = `C:\Windows`
+		env["SYSTEMROOT"] = `C:\Windows`
+	}
+	if env["WINDIR"] == "" && env["windir"] == "" {
 		env["windir"] = `C:\Windows`
+		env["WINDIR"] = `C:\Windows`
 	}
-
-	if val, ok := lookupEnv(hostMap, "ComSpec"); ok && val != "" {
-		env["ComSpec"] = val
-	} else {
+	if env["COMSPEC"] == "" && env["ComSpec"] == "" {
 		env["ComSpec"] = `C:\Windows\system32\cmd.exe`
+		env["COMSPEC"] = `C:\Windows\system32\cmd.exe`
 	}
-
-	if val, ok := lookupEnv(hostMap, "PATHEXT"); ok && val != "" {
-		env["PATHEXT"] = val
-	} else {
+	if env["PATHEXT"] == "" && env["pathext"] == "" {
 		env["PATHEXT"] = ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH"
 	}
 }

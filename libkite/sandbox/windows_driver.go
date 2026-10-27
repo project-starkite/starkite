@@ -370,16 +370,27 @@ func createWindowsEnvBlock(env []string) ([]uint16, error) {
 		// Provide a minimal valid empty double-NUL terminated block.
 		return []uint16{0, 0}, nil
 	}
-	sorted := make([]string, len(env))
-	copy(sorted, env)
-	sort.Slice(sorted, func(i, j int) bool {
-		return strings.ToUpper(sorted[i]) < strings.ToUpper(sorted[j])
-	})
-	var block []uint16
-	for _, kv := range sorted {
+	seen := make(map[string]bool)
+	var deduped []string
+	for _, kv := range env {
 		if strings.ContainsRune(kv, 0) {
 			return nil, fmt.Errorf("sandbox: environment variable contains NUL byte")
 		}
+		k, _, hasEq := strings.Cut(kv, "=")
+		if !hasEq {
+			continue
+		}
+		upper := strings.ToUpper(k)
+		if !seen[upper] {
+			seen[upper] = true
+			deduped = append(deduped, kv)
+		}
+	}
+	sort.Slice(deduped, func(i, j int) bool {
+		return strings.ToUpper(deduped[i]) < strings.ToUpper(deduped[j])
+	})
+	var block []uint16
+	for _, kv := range deduped {
 		u16, err := windows.UTF16FromString(kv)
 		if err != nil {
 			return nil, err
