@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -137,7 +138,16 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	stdoutHandle := windows.Handle(stdoutW.Fd())
 	stderrHandle := windows.Handle(stderrW.Fd())
 
-	attrs, err := buildWindowsStartupAttrs(spec, stdinHandle, stdoutHandle, stderrHandle)
+	var secCaps *securityCapabilities
+	profile, err := newAppContainerProfile(spec.Network)
+	if err == nil {
+		defer profile.close()
+		secCaps = profile.securityCapabilitiesPtr()
+	} else if os.Getenv("STARKITE_WINDOWS_REQUIRE_APPCONTAINER") == "1" {
+		return nil, err
+	}
+
+	attrs, err := buildWindowsStartupAttrs(spec, stdinHandle, stdoutHandle, stderrHandle, secCaps)
 	if err != nil {
 		return nil, err
 	}
@@ -153,11 +163,16 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	}
 
 	var cwdPtr *uint16
-	if spec.Cwd != "" {
-		cwdPtr, err = windows.UTF16PtrFromString(spec.Cwd)
-		if err != nil {
-			return nil, err
+	cwd := spec.Cwd
+	if cwd == "" {
+		cwd = os.Getenv("SystemRoot")
+		if cwd == "" {
+			cwd = `C:\Windows`
 		}
+	}
+	cwdPtr, err = windows.UTF16PtrFromString(cwd)
+	if err != nil {
+		return nil, err
 	}
 
 	envVars := spec.Env
@@ -355,8 +370,13 @@ func createWindowsEnvBlock(env []string) ([]uint16, error) {
 		// Provide a minimal valid empty double-NUL terminated block.
 		return []uint16{0, 0}, nil
 	}
+	sorted := make([]string, len(env))
+	copy(sorted, env)
+	sort.Slice(sorted, func(i, j int) bool {
+		return strings.ToUpper(sorted[i]) < strings.ToUpper(sorted[j])
+	})
 	var block []uint16
-	for _, kv := range env {
+	for _, kv := range sorted {
 		if strings.ContainsRune(kv, 0) {
 			return nil, fmt.Errorf("sandbox: environment variable contains NUL byte")
 		}

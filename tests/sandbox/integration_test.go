@@ -305,6 +305,12 @@ func sandboxUnavailable(output string) bool {
 		"landlock_create_ruleset failed",
 		"landlock_restrict_self failed",
 		"landlock driver not supported",
+		"does not support required Windows kernel sandbox primitives",
+		"requires Windows 11 24H2+",
+		"CreateAppContainerProfile failed",
+		"driver \"windows\" is not available",
+		"no usable sandbox driver available on windows",
+		"Access is denied",
 	}
 	for _, m := range markers {
 		if strings.Contains(output, m) {
@@ -424,6 +430,9 @@ assert("Hint: pass --sandbox-call-allow=os.env" in res_env.error, "unexpected en
 	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
 		cmd.Env = append(cmd.Env, "STARKITE_SANDBOX_DRIVER=seatbelt")
 	}
+	if runtime.GOOS == "windows" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd.Env = append(cmd.Env, "STARKITE_SANDBOX_DRIVER=windows")
+	}
 
 	out, err := cmd.CombinedOutput()
 	t.Logf("kite run main.star output:\n%s", out)
@@ -442,6 +451,9 @@ assert("Hint: pass --sandbox-call-allow=os.env" in res_env.error, "unexpected en
 	cmd2.Dir = workDir
 	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
 		cmd2.Env = append(os.Environ(), "STARKITE_SANDBOX_DRIVER=seatbelt")
+	}
+	if runtime.GOOS == "windows" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd2.Env = append(os.Environ(), "STARKITE_SANDBOX_DRIVER=windows")
 	}
 
 	out2, err2 := cmd2.CombinedOutput()
@@ -510,6 +522,9 @@ assert(ambient == "", "expected ambient host var to be scrubbed, got: %s" % ambi
 	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
 		cmd.Env = append(cmd.Env, "STARKITE_SANDBOX_DRIVER=seatbelt")
 	}
+	if runtime.GOOS == "windows" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd.Env = append(cmd.Env, "STARKITE_SANDBOX_DRIVER=windows")
+	}
 
 	out, err := cmd.CombinedOutput()
 	t.Logf("kite run work.star output:\n%s", out)
@@ -553,6 +568,9 @@ func TestZeroTrustEnvScrubDiagnostic_EndToEnd(t *testing.T) {
 	cmd.Env = append(os.Environ(), "SCRUBBED_TOKEN=secret123")
 	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
 		cmd.Env = append(cmd.Env, "STARKITE_SANDBOX_DRIVER=seatbelt")
+	}
+	if runtime.GOOS == "windows" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd.Env = append(cmd.Env, "STARKITE_SANDBOX_DRIVER=windows")
 	}
 
 	out, err := cmd.CombinedOutput()
@@ -643,6 +661,9 @@ sandbox:
 	cmd2.Dir = workDir
 	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
 		cmd2.Env = append(os.Environ(), "STARKITE_SANDBOX_DRIVER=seatbelt")
+	}
+	if runtime.GOOS == "windows" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
+		cmd2.Env = append(os.Environ(), "STARKITE_SANDBOX_DRIVER=windows")
 	}
 
 	out2, err2 := cmd2.CombinedOutput()

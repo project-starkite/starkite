@@ -165,6 +165,13 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
+      - name: Run Windows native sandbox integration tests
+        env:
+          STARKITE_SANDBOX_INTEGRATION: "1"
+          STARKITE_SANDBOX_DRIVER: "windows"
+        run: go test -v -timeout 5m ./...
+        working-directory: tests/sandbox
+
       - name: Validate install.ps1 (Syntax & Dry-Run)
         run: |
           # 1. Parse AST to verify syntax

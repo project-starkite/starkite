@@ -76,10 +76,12 @@ func TestWindowsDriver_NoExecBlocksChildProcess(t *testing.T) {
 		t.Errorf("expected child process creation to be blocked under NoExec=true, got exit 0 (stdout: %q)", res.Stdout)
 	}
 	combined := ""
+	exitCode := -1
 	if res != nil {
 		combined = res.Stdout + res.Stderr
+		exitCode = res.ExitCode
 	}
-	t.Logf("NoExec child block result: exit=%v output=%q", res.ExitCode, combined)
+	t.Logf("NoExec child block result: exit=%v output=%q err=%v", exitCode, combined, err)
 }
 
 func TestWindowsDriver_JobObjectTimeoutAndOrphanCleanup(t *testing.T) {
@@ -89,7 +91,7 @@ func TestWindowsDriver_JobObjectTimeoutAndOrphanCleanup(t *testing.T) {
 	}
 
 	spec := &ExecutionSpec{
-		Command: []string{"cmd.exe", "/c", "ping.exe", "-n", "30", "127.0.0.1"},
+		Command: []string{"cmd.exe", "/c", "for /L %i in (1,1,10000000) do @verify>nul"},
 		Timeout: 500 * time.Millisecond,
 	}
 
@@ -132,4 +134,82 @@ func TestWindowsDriver_OSBaselineCheck(t *testing.T) {
 	if err := checkWindowsOSBaseline(); err != nil {
 		t.Errorf("checkWindowsOSBaseline() with override failed: %v", err)
 	}
+}
+
+func TestWindowsDriver_AppContainerLifecycle(t *testing.T) {
+	d := NewWindowsDriver()
+	if !d.Available() {
+		t.Skip("skipping on Windows host that does not meet OS baseline")
+	}
+
+	profile, err := newAppContainerProfile(NetworkNone)
+	if err != nil {
+		t.Fatalf("newAppContainerProfile(NetworkNone) failed: %v", err)
+	}
+	defer profile.close()
+
+	if profile.name == "" || !strings.HasPrefix(profile.name, "starkite.sbx.") {
+		t.Errorf("profile.name = %q, expected prefix 'starkite.sbx.'", profile.name)
+	}
+	if profile.appContainer == nil {
+		t.Errorf("expected non-nil AppContainer SID")
+	} else {
+		t.Logf("profile.appContainer: %s", profile.appContainer.String())
+	}
+	if len(profile.capabilities) != 0 {
+		t.Errorf("expected 0 capabilities for NetworkNone, got %d", len(profile.capabilities))
+	}
+}
+
+func TestWindowsDriver_AppContainerNetworkCapabilities(t *testing.T) {
+	d := NewWindowsDriver()
+	if !d.Available() {
+		t.Skip("skipping on Windows host that does not meet OS baseline")
+	}
+
+	profile, err := newAppContainerProfile(NetworkHost)
+	if err != nil {
+		t.Fatalf("newAppContainerProfile(NetworkHost) failed: %v", err)
+	}
+	defer profile.close()
+
+	if len(profile.capabilities) != 2 {
+		t.Errorf("expected 2 capabilities for NetworkHost, got %d", len(profile.capabilities))
+	}
+
+	secCaps := profile.securityCapabilitiesPtr()
+	if secCaps == nil {
+		t.Fatalf("securityCapabilitiesPtr returned nil")
+	}
+	if secCaps.CapabilityCount != 2 {
+		t.Errorf("secCaps.CapabilityCount = %d, want 2", secCaps.CapabilityCount)
+	}
+}
+
+func TestWindowsDriver_NetworkNone_BlocksSocket(t *testing.T) {
+	d := NewWindowsDriver()
+	if !d.Available() {
+		t.Skip("skipping on Windows host that does not meet OS baseline")
+	}
+
+	// Under NetworkNone (AppContainer with zero capability SIDs),
+	// WFP blocks all socket creation with WSAEACCES (10013).
+	spec := &ExecutionSpec{
+		Command: []string{
+			"powershell.exe", "-NoProfile", "-NonInteractive",
+			"-Command", "try { $c = New-Object System.Net.Sockets.TcpClient('1.1.1.1', 53); exit 0 } catch { exit 10013 }",
+		},
+		Network: NetworkNone,
+		Timeout: 5 * time.Second,
+	}
+
+	res, err := d.Exec(context.Background(), spec)
+	if err == nil && res != nil && res.ExitCode == 0 {
+		t.Errorf("expected socket connection to be blocked under NetworkNone, got exit 0")
+	}
+	var exitCode int
+	if res != nil {
+		exitCode = res.ExitCode
+	}
+	t.Logf("NetworkNone socket block result: exit=%d (err: %v)", exitCode, err)
 }

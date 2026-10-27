@@ -11,9 +11,10 @@ import (
 
 const (
 	// Win32 extended startup attribute keys.
-	procThreadAttributeHandleList       = 0x00020002
-	procThreadAttributeMitigationPolicy = 0x00020007
-	procThreadAttributeChildProcess     = 0x0002000E
+	procThreadAttributeHandleList           = 0x00020002
+	procThreadAttributeMitigationPolicy     = 0x00020007
+	procThreadAttributeSecurityCapabilities = 0x00020009
+	procThreadAttributeChildProcess         = 0x0002000E
 
 	// Child process creation restriction policy flags.
 	processCreationChildProcessRestricted = 0x01
@@ -34,10 +35,17 @@ type windowsStartupAttrs struct {
 }
 
 // buildWindowsStartupAttrs constructs a StartupInfoEx configured with handle whitelisting,
-// strict handle mitigation policies, and optional NoExec child process creation lockdown.
-func buildWindowsStartupAttrs(spec *ExecutionSpec, stdin, stdout, stderr windows.Handle) (*windowsStartupAttrs, error) {
+// strict handle mitigation policies, optional AppContainer capabilities, and optional NoExec child process creation lockdown.
+func buildWindowsStartupAttrs(
+	spec *ExecutionSpec,
+	stdin, stdout, stderr windows.Handle,
+	secCaps *securityCapabilities,
+) (*windowsStartupAttrs, error) {
 	var maxAttrs uint32 = 2 // handle list + mitigation policy
 	if spec.NoExec {
+		maxAttrs++
+	}
+	if secCaps != nil {
 		maxAttrs++
 	}
 
@@ -81,6 +89,18 @@ func buildWindowsStartupAttrs(spec *ExecutionSpec, stdin, stdout, stderr windows
 	if err != nil {
 		attrList.Delete()
 		return nil, fmt.Errorf("sandbox: UpdateProcThreadAttribute (MITIGATION_POLICY) failed: %w", err)
+	}
+
+	if secCaps != nil {
+		err = attrList.Update(
+			procThreadAttributeSecurityCapabilities,
+			unsafe.Pointer(secCaps),
+			unsafe.Sizeof(*secCaps),
+		)
+		if err != nil {
+			attrList.Delete()
+			return nil, fmt.Errorf("sandbox: UpdateProcThreadAttribute (SECURITY_CAPABILITIES) failed: %w", err)
+		}
 	}
 
 	if spec.NoExec {
