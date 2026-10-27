@@ -56,7 +56,7 @@ func (s *ExecutionSpec) Validate() error {
 		if m.Type == MountBind && m.Source == "" {
 			return fmt.Errorf("sandbox: mount[%d]: bind mount requires source", i)
 		}
-		if strings.ContainsAny(m.Destination, ":,\"\n\r\x00") || strings.ContainsAny(m.Source, ":,\"\n\r\x00") {
+		if strings.ContainsAny(stripDriveLetter(m.Destination), ":,\"\n\r\x00") || strings.ContainsAny(stripDriveLetter(m.Source), ":,\"\n\r\x00") {
 			return fmt.Errorf("sandbox: mount[%d]: source and destination must not contain ':', ',', quotes, newlines, or NUL bytes", i)
 		}
 	}
@@ -66,6 +66,17 @@ func (s *ExecutionSpec) Validate() error {
 		}
 	}
 	return nil
+}
+
+// stripDriveLetter removes a leading Windows volume prefix (e.g. "C:\" or "C:/")
+// so volume colons are not rejected by mount syntax validation.
+func stripDriveLetter(p string) string {
+	if len(p) >= 2 && ((p[0] >= 'a' && p[0] <= 'z') || (p[0] >= 'A' && p[0] <= 'Z')) && p[1] == ':' {
+		if len(p) == 2 || p[2] == '\\' || p[2] == '/' {
+			return p[2:]
+		}
+	}
+	return p
 }
 
 // ExecResult contains the execution telemetry and output of a sandboxed process.

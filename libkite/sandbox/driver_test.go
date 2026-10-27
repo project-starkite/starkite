@@ -109,6 +109,36 @@ func TestExecutionSpec_Validate(t *testing.T) {
 			},
 			wantErr: false,
 		},
+		{
+			name: "windows drive prefix backslash is valid",
+			spec: ExecutionSpec{
+				Command: []string{"cmd.exe", "/c", "dir"},
+				Mounts: []Mount{
+					{Type: MountBind, Source: `C:\Users\alice\work`, Destination: `C:\Users\alice\work`},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "windows drive prefix slash is valid",
+			spec: ExecutionSpec{
+				Command: []string{"cmd.exe", "/c", "dir"},
+				Mounts: []Mount{
+					{Type: MountBind, Source: "D:/data", Destination: "D:/data"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "windows path with colon after drive prefix is rejected",
+			spec: ExecutionSpec{
+				Command: []string{"cmd.exe", "/c", "dir"},
+				Mounts: []Mount{
+					{Type: MountBind, Source: `C:\Users\alice:evil`, Destination: `C:\sandbox`},
+				},
+			},
+			wantErr: true,
+		},
 	}
 
 	for _, tt := range tests {

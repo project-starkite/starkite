@@ -31,6 +31,17 @@ func TestRegistry_RegisterAndGet(t *testing.T) {
 		t.Errorf("expected mock2 to be unavailable")
 	}
 
+	winDriver := &mockDriver{name: DriverWindows, available: true}
+	reg.Register(winDriver)
+	gotWin, err := reg.Get(DriverWindows)
+	if err != nil || gotWin.Name() != DriverWindows {
+		t.Errorf("Get(windows) error: %v, got %v", err, gotWin)
+	}
+	gotAppContainer, err := reg.Get(DriverAppContainer)
+	if err != nil || gotAppContainer.Name() != DriverWindows {
+		t.Errorf("Get(appcontainer) error: %v, got %v", err, gotAppContainer)
+	}
+
 	_, err = reg.Get("nonexistent")
 	if err == nil {
 		t.Errorf("expected error for unregistered driver, got nil")

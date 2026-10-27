@@ -9,16 +9,25 @@ import (
 
 // Driver name constants for standard sandbox backends.
 const (
-	DriverDefault  = "default"
-	DriverAuto     = "auto"
-	DriverLandlock = "landlock"
-	DriverSeatbelt = "seatbelt"
-	DriverPodman   = "podman"
-	DriverDocker   = "docker"
-	DriverNerdctl  = "nerdctl"
-	DriverGVisor   = "gvisor"
-	DriverWasm     = "wasm"
+	DriverDefault      = "default"
+	DriverAuto         = "auto"
+	DriverLandlock     = "landlock"
+	DriverSeatbelt     = "seatbelt"
+	DriverWindows      = "windows"
+	DriverAppContainer = "appcontainer"
+	DriverPodman       = "podman"
+	DriverDocker       = "docker"
+	DriverNerdctl      = "nerdctl"
+	DriverGVisor       = "gvisor"
+	DriverWasm         = "wasm"
 )
+
+func normalizeDriverName(name string) string {
+	if name == DriverAppContainer {
+		return DriverWindows
+	}
+	return name
+}
 
 // Registry manages available sandbox drivers in a thread-safe manner.
 type Registry struct {
@@ -87,7 +96,7 @@ func (r *Registry) Get(name string) (Driver, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	d, ok := r.drivers[name]
+	d, ok := r.drivers[normalizeDriverName(name)]
 	if !ok {
 		return nil, fmt.Errorf("sandbox: driver %q not registered", name)
 	}
@@ -141,7 +150,11 @@ func (r *Registry) AutoDetect() (Driver, error) {
 			return d, nil
 		}
 	case "windows":
-		// Prefer container providers on Windows
+		// Prefer native Windows sandbox driver
+		if d, ok := r.drivers[DriverWindows]; ok && d.Available() {
+			return d, nil
+		}
+		// Fallback to container providers on Windows
 		if d, ok := r.drivers[DriverDocker]; ok && d.Available() {
 			return d, nil
 		}
@@ -151,7 +164,7 @@ func (r *Registry) AutoDetect() (Driver, error) {
 	}
 
 	// Fallback to any available registered driver
-	for _, name := range []string{DriverLandlock, DriverSeatbelt, DriverPodman, DriverDocker, DriverNerdctl, DriverGVisor, DriverWasm} {
+	for _, name := range []string{DriverLandlock, DriverSeatbelt, DriverWindows, DriverPodman, DriverDocker, DriverNerdctl, DriverGVisor, DriverWasm} {
 		if d, ok := r.drivers[name]; ok && d.Available() {
 			return d, nil
 		}
