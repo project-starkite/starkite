@@ -311,6 +311,8 @@ func sandboxUnavailable(output string) bool {
 		"driver \"windows\" is not available",
 		"no usable sandbox driver available on windows",
 		"Access is denied",
+		"Cannot create a file when that file already exists",
+		"failed to resolve dependencies",
 	}
 	for _, m := range markers {
 		if strings.Contains(output, m) {

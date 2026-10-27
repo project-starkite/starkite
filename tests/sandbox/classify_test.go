@@ -21,6 +21,11 @@ func TestSandboxUnavailable(t *testing.T) {
 			want:   true,
 		},
 		{
+			name:   "windows sandbox appcontainer directory creation limitation",
+			output: "Error: failed to resolve dependencies: cannot create directory C:\\Users\\runneradmin\\.starkite\\modules: mkdir C:\\Users: Cannot create a file when that file already exists.\n",
+			want:   true,
+		},
+		{
 			name:   "genuine in-sandbox test failure is not a host limitation",
 			output: "Tests: 9 passed, 2 failed, 11 total\nError: tests failed\n",
 			want:   false,
