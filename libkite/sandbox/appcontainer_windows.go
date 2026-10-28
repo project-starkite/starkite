@@ -140,13 +140,26 @@ func (p *appContainerProfile) securityCapabilitiesPtr() *securityCapabilities {
 	return &p.secCaps
 }
 
+// deleteAppContainerProfileByName deletes an AppContainer profile by name from the host registry.
+func deleteAppContainerProfileByName(name string) error {
+	if name == "" {
+		return nil
+	}
+	namePtr, err := windows.UTF16PtrFromString(name)
+	if err != nil {
+		return err
+	}
+	r1, _, _ := procDeleteAppContainerProfile.Call(uintptr(unsafe.Pointer(namePtr)))
+	if r1 != 0 {
+		return fmt.Errorf("sandbox: DeleteAppContainerProfile(%s) failed: 0x%08x", name, uint32(r1))
+	}
+	return nil
+}
+
 // close deletes the ephemeral AppContainer profile from the host registry and user profile store.
 func (p *appContainerProfile) close() {
 	if p.name != "" {
-		namePtr, err := windows.UTF16PtrFromString(p.name)
-		if err == nil {
-			_, _, _ = procDeleteAppContainerProfile.Call(uintptr(unsafe.Pointer(namePtr)))
-		}
+		_ = deleteAppContainerProfileByName(p.name)
 		p.name = ""
 	}
 }

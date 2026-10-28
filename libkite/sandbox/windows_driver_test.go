@@ -5,6 +5,7 @@ package sandbox
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -212,4 +213,151 @@ func TestWindowsDriver_NetworkNone_BlocksSocket(t *testing.T) {
 		exitCode = res.ExitCode
 	}
 	t.Logf("NetworkNone socket block result: exit=%d (err: %v)", exitCode, err)
+}
+
+func TestWindowsDriver_AclGrantAndRevocation(t *testing.T) {
+	d := NewWindowsDriver()
+	if !d.Available() {
+		t.Skip("skipping on Windows host that does not meet OS baseline")
+	}
+
+	profile, err := newAppContainerProfile(NetworkNone)
+	if err != nil {
+		t.Fatalf("newAppContainerProfile failed: %v", err)
+	}
+	defer profile.close()
+
+	tmpDir, err := os.MkdirTemp("", "starkite-acl-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	testFile := filepath.Join(tmpDir, "test.txt")
+	if err := os.WriteFile(testFile, []byte("hello"), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	// Test granting read-only access to file
+	if err := grantPathAccess(testFile, profile.appContainer, readOnlyAccessMask); err != nil {
+		t.Errorf("grantPathAccess(file) failed: %v", err)
+	}
+
+	// Test granting read-write access to directory
+	if err := grantPathAccess(tmpDir, profile.appContainer, readWriteAccessMask); err != nil {
+		t.Errorf("grantPathAccess(dir) failed: %v", err)
+	}
+
+	// Test revoking access
+	if err := revokePathAccess(testFile, profile.appContainer); err != nil {
+		t.Errorf("revokePathAccess(file) failed: %v", err)
+	}
+	if err := revokePathAccess(tmpDir, profile.appContainer); err != nil {
+		t.Errorf("revokePathAccess(dir) failed: %v", err)
+	}
+}
+
+func TestWindowsDriver_W_XOR_X_DenyExecute(t *testing.T) {
+	d := NewWindowsDriver()
+	if !d.Available() {
+		t.Skip("skipping on Windows host that does not meet OS baseline")
+	}
+
+	profile, err := newAppContainerProfile(NetworkNone)
+	if err != nil {
+		t.Fatalf("newAppContainerProfile failed: %v", err)
+	}
+	defer profile.close()
+
+	tmpDir, err := os.MkdirTemp("", "starkite-wx-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	// Grant RW access, then deny execution (W^X)
+	if err := grantPathAccess(tmpDir, profile.appContainer, readWriteAccessMask); err != nil {
+		t.Fatalf("grantPathAccess failed: %v", err)
+	}
+	if err := denyPathAccess(tmpDir, profile.appContainer, denyExecAccessMask); err != nil {
+		t.Fatalf("denyPathAccess failed: %v", err)
+	}
+
+	// Clean up
+	_ = revokePathAccess(tmpDir, profile.appContainer)
+}
+
+func TestWindowsDriver_LeaseJournalAndSweep(t *testing.T) {
+	d := NewWindowsDriver()
+	if !d.Available() {
+		t.Skip("skipping on Windows host that does not meet OS baseline")
+	}
+
+	tmpDir, err := os.MkdirTemp("", "starkite-lease-test-*")
+	if err != nil {
+		t.Fatalf("MkdirTemp failed: %v", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	dummyLease := windowsLease{
+		PID:             99999999, // Dead PID
+		ProfileName:     "starkite.sbx.deadtest",
+		AppContainerSID: "S-1-15-2-1",
+		Paths:           []string{tmpDir},
+		CreatedAt:       time.Now(),
+	}
+
+	if err := recordWindowsLease(dummyLease); err != nil {
+		t.Fatalf("recordWindowsLease failed: %v", err)
+	}
+
+	// Sweep should clean up dead PID lease
+	if err := sweepStaleWindowsLeases(); err != nil {
+		t.Errorf("sweepStaleWindowsLeases failed: %v", err)
+	}
+
+	path := getLeaseFilePath()
+	leases, _ := loadWindowsLeases(path)
+	for _, l := range leases {
+		if l.ProfileName == dummyLease.ProfileName {
+			t.Errorf("expected dead lease %q to be swept, but still present", dummyLease.ProfileName)
+		}
+	}
+}
+
+func TestWindowsDriver_ExecResolveWindowsDirs(t *testing.T) {
+	if len(defaultExecSearchDirs) == 0 {
+		t.Errorf("expected non-empty defaultExecSearchDirs on Windows")
+	}
+	foundSystem32 := false
+	for _, d := range defaultExecSearchDirs {
+		if strings.Contains(strings.ToLower(d), "system32") {
+			foundSystem32 = true
+			break
+		}
+	}
+	if !foundSystem32 {
+		t.Errorf("expected defaultExecSearchDirs to include System32, got %v", defaultExecSearchDirs)
+	}
+}
+
+func TestWindowsDriver_DriveRootDetection(t *testing.T) {
+	tests := []struct {
+		path string
+		want bool
+	}{
+		{"/", true},
+		{`\`, true},
+		{"C:", true},
+		{`C:\`, true},
+		{"C:/", true},
+		{`C:\Windows`, false},
+		{`C:\Users\alice`, false},
+	}
+	for _, tc := range tests {
+		got := isDriveRoot(tc.path)
+		if got != tc.want {
+			t.Errorf("isDriveRoot(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
 }
