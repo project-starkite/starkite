@@ -27,6 +27,8 @@ def test_sandbox_config():
 
 def test_box_exec():
     """Verify box.exec runs a basic command and captures output"""
+    if runtime.platform() == "windows":
+        skip("sandbox box.exec unsupported on windows")
     box = sandbox.config(driver="default", network="host")
     res = box.exec("echo", ["hello-starlark-sandbox"])
     assert(res.ok == True, "execution should be ok")
@@ -36,6 +38,8 @@ def test_box_exec():
 
 def test_box_exec_network_none():
     """Verify box.exec with network="none" either succeeds in isolated netns or fails closed cleanly"""
+    if runtime.platform() == "windows":
+        skip("sandbox box.exec unsupported on windows")
     box = sandbox.config(driver="default", network="none")
     res = box.exec("echo", ["isolated"])
     if res.ok:

@@ -32,6 +32,8 @@ def test_cwd_writable():
 
 def test_tmpfs_writable():
     """/tmp is a private writable tmpfs."""
+    if runtime.platform() == "windows":
+        skip("tmpfs scratch unsupported on windows")
     p = path("/tmp/sandbox_opaque_tmpfs")
     p.write_text("scratch")
     got = p.read_text()

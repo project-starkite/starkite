@@ -941,13 +941,45 @@ func suggestExecBinary(resource string) string {
 	if r == "" || r == "*" {
 		return "*"
 	}
-	fields := strings.Fields(r)
-	if len(fields) > 0 {
-		r = fields[0]
+	if strings.HasPrefix(r, `"`) {
+		if end := strings.Index(r[1:], `"`); end != -1 {
+			r = r[1 : end+1]
+		}
+	} else if strings.ContainsRune(r, filepath.Separator) || strings.ContainsRune(r, '/') {
+		if !fileExists(r) {
+			lower := strings.ToLower(r)
+			for _, ext := range []string{".exe ", ".cmd ", ".bat ", ".ps1 "} {
+				if idx := strings.Index(lower, ext); idx != -1 {
+					r = r[:idx+len(ext)-1]
+					break
+				}
+			}
+			if !fileExists(r) {
+				fields := strings.Fields(r)
+				for i := len(fields) - 1; i >= 1; i-- {
+					cand := strings.Join(fields[:i], " ")
+					if fileExists(cand) {
+						r = cand
+						break
+					}
+				}
+			}
+		}
+	} else {
+		fields := strings.Fields(r)
+		if len(fields) > 0 {
+			r = fields[0]
+		}
 	}
 	base := filepath.Base(filepath.ToSlash(r))
 	if base == "" || base == "." || base == "/" {
 		return "*"
+	}
+	for _, ext := range []string{".exe", ".cmd", ".bat", ".ps1", ".EXE", ".CMD", ".BAT", ".PS1"} {
+		if strings.HasSuffix(base, ext) {
+			base = strings.TrimSuffix(base, ext)
+			break
+		}
 	}
 	return base
 }

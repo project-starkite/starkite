@@ -638,6 +638,16 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 	os.Setenv(sandbox.InsideEnvVar, "1")
 	spec.Env = append(spec.Env, fmt.Sprintf("%s=1", sandbox.InsideEnvVar))
 
+	var hostNames []string
+	for _, entry := range os.Environ() {
+		if k, _, ok := strings.Cut(entry, "="); ok && k != "" {
+			hostNames = append(hostNames, k)
+		}
+	}
+	if len(hostNames) > 0 {
+		spec.Env = append(spec.Env, "STARKITE_HOST_ENV_NAMES="+strings.Join(hostNames, ","))
+	}
+
 	res, execErr := driver.Exec(ctx, spec)
 	if execErr != nil {
 		if res != nil && res.ExitCode != 0 {
