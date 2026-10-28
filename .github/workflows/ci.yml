@@ -26,6 +26,20 @@ jobs:
             kite/go.sum
             tests/sandbox/go.sum
 
+      - name: Verify go fix (AST modernizations across linux, darwin, windows)
+        run: |
+          for dir in libkite basekite cloudkite aikite kite tests/sandbox; do
+            echo "=== Checking go fix in $dir ==="
+            for os in linux darwin windows; do
+              (cd "$dir" && CGO_ENABLED=0 GOOS=$os GOARCH=amd64 go fix ./...)
+            done
+          done
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Unapplied go fix modernizations found:"
+            git diff
+            exit 1
+          fi
+
       - name: Verify code formatting (gofmt)
         run: |
           DIFFS=$(gofmt -l .)

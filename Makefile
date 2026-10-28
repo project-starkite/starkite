@@ -35,13 +35,15 @@ build-ai: $(BIN_DIR) ## Build the lean ai edition binary (kiteai)
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)/ dist/
 
-fix: ## Run go fix AST modernization across all workspace modules
+fix: ## Run go fix AST modernization across all workspace modules (linux, darwin, windows)
 	@for dir in $(MODULES); do \
-		echo "=== Fixing $$dir ==="; \
-		(cd $$dir && go fix ./...); \
+		echo "=== Fixing $$dir (linux/darwin/windows) ==="; \
+		for os in linux darwin windows; do \
+			(cd $$dir && CGO_ENABLED=0 GOOS=$$os GOARCH=amd64 go fix ./...) || exit 1; \
+		done; \
 	done
 
-fmt: ## Run go fmt and verify formatting across all files
+fmt: fix ## Run go fix, go fmt, and verify formatting across all files
 	@for dir in $(MODULES); do \
 		(cd $$dir && go fmt ./...); \
 	done
@@ -52,10 +54,12 @@ fmt: ## Run go fmt and verify formatting across all files
 		exit 1; \
 	fi
 
-vet: ## Run go vet across all workspace modules
+vet: ## Run go vet across all workspace modules (linux, darwin, windows)
 	@for dir in $(MODULES); do \
-		echo "=== Vetting $$dir ==="; \
-		(cd $$dir && go vet ./...); \
+		echo "=== Vetting $$dir (linux/darwin/windows) ==="; \
+		for os in linux darwin windows; do \
+			(cd $$dir && CGO_ENABLED=0 GOOS=$$os GOARCH=amd64 go vet ./...) || exit 1; \
+		done; \
 	done
 
 test-race: ## Run all Go unit tests with race detection
@@ -65,7 +69,7 @@ test-race: ## Run all Go unit tests with race detection
 	done
 
 lint: ## Run staticcheck across all workspace packages
-	staticcheck ./libkite/... ./basekite/... ./cloudkite/... ./aikite/... ./kite/... ./tests/sandbox/...
+	@PATH="$$(go env GOPATH)/bin:$$PATH" staticcheck ./libkite/... ./basekite/... ./cloudkite/... ./aikite/... ./kite/... ./tests/sandbox/...
 
 preflight: fix fmt vet test-race lint ## Run complete Go code hygiene and pre-flight verification suite
 	@echo "=== Pre-flight verification passed cleanly ==="
