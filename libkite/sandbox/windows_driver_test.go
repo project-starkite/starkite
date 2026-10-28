@@ -128,12 +128,11 @@ func TestWindowsDriver_JobObjectMemoryLimitOOM(t *testing.T) {
 }
 
 func TestWindowsDriver_OSBaselineCheck(t *testing.T) {
-	// With override env var set, baseline check always passes
-	os.Setenv("STARKITE_WINDOWS_ALLOW_LEGACY_BUILD", "1")
-	defer os.Unsetenv("STARKITE_WINDOWS_ALLOW_LEGACY_BUILD")
-
-	if err := checkWindowsOSBaseline(); err != nil {
-		t.Errorf("checkWindowsOSBaseline() with override failed: %v", err)
+	if err := validateWindowsVersion(10, minWindowsBuild24H2); err != nil {
+		t.Errorf("validateWindowsVersion(10, %d) failed: %v", minWindowsBuild24H2, err)
+	}
+	if err := validateWindowsVersion(10, 20348); err == nil {
+		t.Errorf("expected validateWindowsVersion(10, 20348) to fail below baseline %d", minWindowsBuild24H2)
 	}
 }
 

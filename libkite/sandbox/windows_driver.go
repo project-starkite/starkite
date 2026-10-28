@@ -49,10 +49,11 @@ func (d *WindowsDriver) Available() bool {
 }
 
 func checkWindowsOSBaseline() error {
-	if os.Getenv("STARKITE_WINDOWS_ALLOW_LEGACY_BUILD") == "1" {
-		return nil
-	}
 	major, _, build := windows.RtlGetNtVersionNumbers()
+	return validateWindowsVersion(major, build)
+}
+
+func validateWindowsVersion(major, build uint32) error {
 	if major < 10 || build < minWindowsBuild24H2 {
 		return fmt.Errorf(
 			"sandbox: host environment does not support required Windows kernel sandbox primitives: Windows build %d < %d (requires Windows 11 24H2+ or Windows Server 2025+)",
@@ -147,174 +148,172 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	// Sweep stale leases from prior dead processes.
 	_ = sweepStaleWindowsLeases()
 
-	var secCaps *securityCapabilities
 	var grantedPaths []string
 	var scratchDir string
 	profile, err := newAppContainerProfile(spec.Network)
-	if err == nil {
-		defer profile.close()
-		secCaps = profile.securityCapabilitiesPtr()
-
-		grantedSet := make(map[string]bool)
-		appliedMasks := make(map[string]windows.ACCESS_MASK)
-		traversedSet := make(map[string]bool)
-
-		addGrant := func(p string, mask windows.ACCESS_MASK) {
-			if p == "" {
-				return
-			}
-			clean := filepath.Clean(p)
-			key := strings.ToLower(clean)
-			if (appliedMasks[key] & mask) == mask {
-				return
-			}
-			merged := appliedMasks[key] | mask
-			if err := grantPathAccess(clean, profile.appContainer, merged); err == nil {
-				appliedMasks[key] = merged
-				if !grantedSet[key] {
-					grantedSet[key] = true
-					grantedPaths = append(grantedPaths, clean)
-				}
-			}
-		}
-
-		addDirTraverse := func(p string) {
-			if p == "" {
-				return
-			}
-			clean := filepath.Clean(p)
-			key := strings.ToLower(clean)
-			if appliedMasks[key] != 0 || traversedSet[key] {
-				return
-			}
-			if err := grantDirTraverse(clean, profile.appContainer); err == nil {
-				traversedSet[key] = true
-				if !grantedSet[key] {
-					grantedSet[key] = true
-					grantedPaths = append(grantedPaths, clean)
-				}
-			}
-		}
-
-		addGrant(exePath, execAccessMask)
-
-		cleanCwd := ""
-		if spec.Cwd != "" {
-			cleanCwd = filepath.Clean(spec.Cwd)
-		}
-		userHome := os.Getenv("USERPROFILE")
-		if userHome == "" {
-			userHome = os.Getenv("HOME")
-		}
-		cleanHome := ""
-		if userHome != "" {
-			cleanHome = filepath.Clean(userHome)
-		}
-		isHomeOrRoot := false
-		if cleanCwd != "" {
-			if isDriveRoot(cleanCwd) || (cleanHome != "" && strings.EqualFold(cleanCwd, cleanHome)) {
-				isHomeOrRoot = true
-			}
-		}
-		if isHomeOrRoot {
-			if isDriveRoot(cleanCwd) {
-				fmt.Fprintln(os.Stderr, "sandbox: working directory is /; isolated to script file only. No other files in / are accessible.")
-			} else {
-				fmt.Fprintln(os.Stderr, "sandbox: working directory is $HOME; isolated to script file only. No other files in $HOME are accessible.")
-			}
-		}
-
-		// Ephemeral scratch directory with strict W^X enforcement in a single ACL transaction.
-		candScratch := filepath.Join(os.TempDir(), "starkite-sbx-"+profile.name)
-		if err := os.MkdirAll(candScratch, 0700); err == nil {
-			_ = setScratchDirDacl(candScratch, profile.appContainer)
-			scratchDir = candScratch
-			defer os.RemoveAll(candScratch)
-		}
-
-		// Unveil explicit mounts first so directory mounts take precedence over non-inheriting traverse rules.
-		for _, m := range spec.Mounts {
-			if m.Source == "" {
-				continue
-			}
-			cleanMount := filepath.Clean(m.Source)
-			if isHomeOrRoot && ((cleanHome != "" && strings.EqualFold(cleanMount, cleanHome)) || isDriveRoot(cleanMount)) {
-				continue
-			}
-			var mask windows.ACCESS_MASK = readOnlyAccessMask
-			if m.Mode == MountRW {
-				mask = readWriteAccessMask
-			}
-			addGrant(cleanMount, mask)
-		}
-
-		// Unveil script file and runtime manifests (read-only), with non-inheriting directory traverse on parent dir.
-		scriptFile := spec.ScriptFile
-		if scriptFile != "" && !filepath.IsAbs(scriptFile) && spec.Cwd != "" {
-			scriptFile = filepath.Join(spec.Cwd, scriptFile)
-		}
-		if scriptFile != "" {
-			addGrant(scriptFile, readOnlyAccessMask)
-			if !isHomeOrRoot {
-				scriptDir := filepath.Dir(scriptFile)
-				addDirTraverse(scriptDir)
-				for _, asset := range []string{"mod.yaml", "mod.lock", "star.mod", "config.yaml"} {
-					assetPath := filepath.Join(scriptDir, asset)
-					if _, statErr := os.Stat(assetPath); statErr == nil {
-						addGrant(assetPath, readOnlyAccessMask)
-					}
-				}
-			}
-		}
-		if !isHomeOrRoot && cleanCwd != "" {
-			addDirTraverse(cleanCwd)
-			cfgPath := filepath.Join(cleanCwd, "config.yaml")
-			if _, statErr := os.Stat(cfgPath); statErr == nil {
-				addGrant(cfgPath, readOnlyAccessMask)
-			}
-		}
-
-		// Unveil ~/.starkite runtime assets (strictly read-only on config.yaml and modules cache).
-		if !isHomeOrRoot && cleanHome != "" {
-			starkiteDir := filepath.Join(cleanHome, ".starkite")
-			modulesDir := filepath.Join(starkiteDir, "modules")
-			_ = os.MkdirAll(modulesDir, 0755)
-			addDirTraverse(starkiteDir)
-			addGrant(modulesDir, readOnlyAccessMask)
-			userCfg := filepath.Join(starkiteDir, "config.yaml")
-			if _, statErr := os.Stat(userCfg); statErr == nil {
-				addGrant(userCfg, readOnlyAccessMask)
-			}
-		}
-
-		// Unveil allowed executables.
-		if len(spec.AllowedExecPaths) > 0 {
-			resolvedExecs := ResolveExecutablePaths(spec.AllowedExecPaths, spec.Cwd, userHome)
-			for _, exe := range resolvedExecs {
-				addGrant(exe, execAccessMask)
-			}
-		}
-
-		// Record lease in journal.
-		lease := windowsLease{
-			PID:             os.Getpid(),
-			ProfileName:     profile.name,
-			AppContainerSID: profile.appContainer.String(),
-			Paths:           grantedPaths,
-			CreatedAt:       time.Now(),
-		}
-		_ = recordWindowsLease(lease)
-
-		// Deferred DACL revocation and lease removal.
-		defer func() {
-			for _, p := range grantedPaths {
-				_ = revokePathAccess(p, profile.appContainer)
-			}
-			_ = removeWindowsLease(profile.name)
-		}()
-	} else if os.Getenv("STARKITE_WINDOWS_REQUIRE_APPCONTAINER") == "1" {
+	if err != nil {
 		return nil, err
 	}
+	defer profile.close()
+	secCaps := profile.securityCapabilitiesPtr()
+
+	grantedSet := make(map[string]bool)
+	appliedMasks := make(map[string]windows.ACCESS_MASK)
+	traversedSet := make(map[string]bool)
+
+	addGrant := func(p string, mask windows.ACCESS_MASK) {
+		if p == "" {
+			return
+		}
+		clean := filepath.Clean(p)
+		key := strings.ToLower(clean)
+		if (appliedMasks[key] & mask) == mask {
+			return
+		}
+		merged := appliedMasks[key] | mask
+		if err := grantPathAccess(clean, profile.appContainer, merged); err == nil {
+			appliedMasks[key] = merged
+			if !grantedSet[key] {
+				grantedSet[key] = true
+				grantedPaths = append(grantedPaths, clean)
+			}
+		}
+	}
+
+	addDirTraverse := func(p string) {
+		if p == "" {
+			return
+		}
+		clean := filepath.Clean(p)
+		key := strings.ToLower(clean)
+		if appliedMasks[key] != 0 || traversedSet[key] {
+			return
+		}
+		if err := grantDirTraverse(clean, profile.appContainer); err == nil {
+			traversedSet[key] = true
+			if !grantedSet[key] {
+				grantedSet[key] = true
+				grantedPaths = append(grantedPaths, clean)
+			}
+		}
+	}
+
+	addGrant(exePath, execAccessMask)
+
+	cleanCwd := ""
+	if spec.Cwd != "" {
+		cleanCwd = filepath.Clean(spec.Cwd)
+	}
+	userHome := os.Getenv("USERPROFILE")
+	if userHome == "" {
+		userHome = os.Getenv("HOME")
+	}
+	cleanHome := ""
+	if userHome != "" {
+		cleanHome = filepath.Clean(userHome)
+	}
+	isHomeOrRoot := false
+	if cleanCwd != "" {
+		if isDriveRoot(cleanCwd) || (cleanHome != "" && strings.EqualFold(cleanCwd, cleanHome)) {
+			isHomeOrRoot = true
+		}
+	}
+	if isHomeOrRoot {
+		if isDriveRoot(cleanCwd) {
+			fmt.Fprintln(os.Stderr, "sandbox: working directory is /; isolated to script file only. No other files in / are accessible.")
+		} else {
+			fmt.Fprintln(os.Stderr, "sandbox: working directory is $HOME; isolated to script file only. No other files in $HOME are accessible.")
+		}
+	}
+
+	// Ephemeral scratch directory with strict W^X enforcement in a single ACL transaction.
+	candScratch := filepath.Join(os.TempDir(), "starkite-sbx-"+profile.name)
+	if err := os.MkdirAll(candScratch, 0700); err == nil {
+		_ = setScratchDirDacl(candScratch, profile.appContainer)
+		scratchDir = candScratch
+		defer os.RemoveAll(candScratch)
+	}
+
+	// Unveil explicit mounts first so directory mounts take precedence over non-inheriting traverse rules.
+	for _, m := range spec.Mounts {
+		if m.Source == "" {
+			continue
+		}
+		cleanMount := filepath.Clean(m.Source)
+		if isHomeOrRoot && ((cleanHome != "" && strings.EqualFold(cleanMount, cleanHome)) || isDriveRoot(cleanMount)) {
+			continue
+		}
+		var mask windows.ACCESS_MASK = readOnlyAccessMask
+		if m.Mode == MountRW {
+			mask = readWriteAccessMask
+		}
+		addGrant(cleanMount, mask)
+	}
+
+	// Unveil script file and runtime manifests (read-only), with non-inheriting directory traverse on parent dir.
+	scriptFile := spec.ScriptFile
+	if scriptFile != "" && !filepath.IsAbs(scriptFile) && spec.Cwd != "" {
+		scriptFile = filepath.Join(spec.Cwd, scriptFile)
+	}
+	if scriptFile != "" {
+		addGrant(scriptFile, readOnlyAccessMask)
+		if !isHomeOrRoot {
+			scriptDir := filepath.Dir(scriptFile)
+			addDirTraverse(scriptDir)
+			for _, asset := range []string{"mod.yaml", "mod.lock", "star.mod", "config.yaml"} {
+				assetPath := filepath.Join(scriptDir, asset)
+				if _, statErr := os.Stat(assetPath); statErr == nil {
+					addGrant(assetPath, readOnlyAccessMask)
+				}
+			}
+		}
+	}
+	if !isHomeOrRoot && cleanCwd != "" {
+		addDirTraverse(cleanCwd)
+		cfgPath := filepath.Join(cleanCwd, "config.yaml")
+		if _, statErr := os.Stat(cfgPath); statErr == nil {
+			addGrant(cfgPath, readOnlyAccessMask)
+		}
+	}
+
+	// Unveil ~/.starkite runtime assets (strictly read-only on config.yaml and modules cache).
+	if !isHomeOrRoot && cleanHome != "" {
+		starkiteDir := filepath.Join(cleanHome, ".starkite")
+		modulesDir := filepath.Join(starkiteDir, "modules")
+		_ = os.MkdirAll(modulesDir, 0755)
+		addDirTraverse(starkiteDir)
+		addGrant(modulesDir, readOnlyAccessMask)
+		userCfg := filepath.Join(starkiteDir, "config.yaml")
+		if _, statErr := os.Stat(userCfg); statErr == nil {
+			addGrant(userCfg, readOnlyAccessMask)
+		}
+	}
+
+	// Unveil allowed executables.
+	if len(spec.AllowedExecPaths) > 0 {
+		resolvedExecs := ResolveExecutablePaths(spec.AllowedExecPaths, spec.Cwd, userHome)
+		for _, exe := range resolvedExecs {
+			addGrant(exe, execAccessMask)
+		}
+	}
+
+	// Record lease in journal.
+	lease := windowsLease{
+		PID:             os.Getpid(),
+		ProfileName:     profile.name,
+		AppContainerSID: profile.appContainer.String(),
+		Paths:           grantedPaths,
+		CreatedAt:       time.Now(),
+	}
+	_ = recordWindowsLease(lease)
+
+	// Deferred DACL revocation and lease removal.
+	defer func() {
+		for _, p := range grantedPaths {
+			_ = revokePathAccess(p, profile.appContainer)
+		}
+		_ = removeWindowsLease(profile.name)
+	}()
 
 	attrs, err := buildWindowsStartupAttrs(spec, stdinHandle, stdoutHandle, stderrHandle, secCaps)
 	if err != nil {
