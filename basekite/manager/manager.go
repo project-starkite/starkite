@@ -30,6 +30,12 @@ func New(rootDir string) (*Manager, error) {
 	}
 
 	if err := os.MkdirAll(rootDir, 0755); err != nil {
+		if info, statErr := os.Stat(rootDir); statErr == nil && info.IsDir() {
+			return &Manager{rootDir: rootDir}, nil
+		}
+		if os.IsPermission(err) || os.IsExist(err) {
+			return &Manager{rootDir: rootDir}, nil
+		}
 		return nil, fmt.Errorf("cannot create directory %s: %w", rootDir, err)
 	}
 

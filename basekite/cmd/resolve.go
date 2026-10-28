@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/project-starkite/starkite/basekite/manager"
@@ -101,6 +102,22 @@ func resolveModuleDeps(moduleDir string) error {
 // from the cache only, and writes mod.lock beside it. An uninstalled dependency
 // is an error.
 func resolveLooseDeps(scriptPath string) error {
+	src, err := os.ReadFile(scriptPath)
+	if err != nil {
+		return err
+	}
+	refs, err := libkite.LoadTargets(scriptPath, src)
+	if err != nil {
+		return err
+	}
+	if len(refs) == 0 {
+		return nil
+	}
+	hasInstalledRef := slices.ContainsFunc(refs, resolver.IsInstalledRef)
+	if !hasInstalledRef {
+		return nil
+	}
+
 	mgr, err := manager.New("")
 	if err != nil {
 		return err

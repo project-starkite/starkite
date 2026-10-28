@@ -28,12 +28,13 @@ Starkite isolates processes using native operating system primitives or containe
 |---|---|---|---|
 | `landlock` | Linux | Unprivileged Landlock kernel syscalls (`landlock_create_ruleset`) and Seccomp-BPF filters | In-process (0 subprocess overhead) |
 | `seatbelt` | macOS | Dynamic Seatbelt binding (`sandbox_init` with SBPL profiles) | In-process (0 subprocess overhead) |
-| `podman` | Linux, macOS | Ephemeral rootless OCI container with auto-bind mounts | Low subprocess overhead |
-| `docker` | Linux, macOS | Ephemeral Docker container execution | Low subprocess overhead |
+| `windows` | Windows | AppContainer token isolation, Job Object limits, NTFS DACLs, and WFP socket filtering | Process-isolation (outer broker / inner worker) |
+| `podman` | Linux, macOS, Windows | Ephemeral rootless OCI container with auto-bind mounts | Low subprocess overhead |
+| `docker` | Linux, macOS, Windows | Ephemeral Docker container execution | Low subprocess overhead |
 | `nerdctl` | Linux, macOS | Ephemeral containerd runtime execution | Low subprocess overhead |
 | `gvisor` | Linux | Application kernel sandboxing via `runsc` (Sentry) | Container / MicroVM overhead |
 
-When invoked without an explicit `--sandbox-driver`, Starkite auto-detects the host driver: `landlock` on Linux, `seatbelt` on macOS, or a configured container runtime if native drivers are unavailable.
+When invoked without an explicit `--sandbox-driver`, Starkite auto-detects the host driver: `landlock` on Linux, `seatbelt` on macOS, `windows` on Windows, or a configured container runtime if native drivers are unavailable.
 
 ## Built-in Capability Ladder
 
@@ -195,6 +196,15 @@ Host shared memory segments (`/dev/shm`, `/run/shm`) and System V IPC primitives
 ### Process Inspection & Signal Boundary
 
 The Linux Seccomp-BPF filter prevents sandboxed processes from inspecting or modifying host processes (`SYS_PTRACE`, `SYS_PROCESS_VM_READV`, `SYS_PROCESS_VM_WRITEV`) and restricts signal delivery (`SYS_KILL`) strictly to processes within the sandbox process tree.
+
+### Windows AppContainer & Job Object Isolation
+
+On Windows, Starkite isolates processes using five coordinated Win32 kernel primitives:
+- **Win32 Job Objects**: Enforces `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` for process tree termination on exit, alongside memory ceilings, CPU quotas, and UI isolation (`JOB_OBJECT_UILIMIT_ALL`).
+- **Ephemeral AppContainer Profiles**: Derives a scoped AppContainer security identifier (`S-1-15-2-...`) for the session, executing child processes in an unprivileged execution context.
+- **NTFS Discretionary Access Control (DACL)**: Surgically unmasks only the script file and explicit mount targets, leaving parent directories, `%USERPROFILE%`, and host credentials inaccessible.
+- **Write-XOR-Execute ($W\oplus X$) Enforcement**: Temporary scratch directories grant read and write permissions while explicitly denying `FILE_EXECUTE` in a single DACL transaction.
+- **Process Mitigations & WFP**: Blocks unauthorized subprocess creation when execution is disallowed and enforces network isolation through Windows Filtering Platform socket filters.
 
 ## Starlark `sandbox` Module API
 

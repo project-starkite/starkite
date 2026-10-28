@@ -178,7 +178,7 @@ See the [API reference](https://starkite.dev/references/api/) for full module do
 
 ## Zero-Trust Sandboxing & Capability Profiles
 
-starkite enforces zero-trust execution by default. Every script runs inside an OS-level sandbox (`landlock` + `seccomp-bpf` on Linux, `seatbelt` on macOS) and Starlark capability gate under the `deny-all` profile: pure computation, print, and log are allowed, while host filesystem, outbound network, subprocess execution, and ambient host environment variables are strictly isolated.
+starkite enforces zero-trust execution by default. Every script runs inside an OS-level sandbox (`landlock` + `seccomp-bpf` on Linux, `seatbelt` on macOS, AppContainer + Job Objects on Windows) and Starlark capability gate under the `deny-all` profile: pure computation, print, and log are allowed, while host filesystem, outbound network, subprocess execution, and ambient host environment variables are strictly isolated.
 
 Grant privileges with composable CLI flags:
 

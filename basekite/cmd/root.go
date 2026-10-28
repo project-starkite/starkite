@@ -505,7 +505,6 @@ func SetActivePreloadedClosure(closure *libkite.StaticLoadClosure) {
 	activePreloadedClosure = closure
 }
 
-// MaybeHandoffToSandbox checks whether a sandbox is requested (via
 func isRunningInTest() bool {
 	if os.Getenv("STARKITE_TEST_FORCE_SANDBOX") != "" {
 		return false
@@ -532,6 +531,9 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 	if os.Getenv(sandbox.InsideEnvVar) == "1" {
 		return false, nil
 	}
+	if isRunningInTest() {
+		return false, nil
+	}
 	profile, err := GetSandbox()
 	if err != nil {
 		return false, err
@@ -541,14 +543,10 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 	}
 
 	cwd, _ := os.Getwd()
-	if scriptPath != "" {
+	if scriptPath != "" && GetActivePreloadedClosure() == nil {
 		if closure, err := libkite.ResolveStaticLoadClosure(scriptPath, cwd, nil); err == nil && closure != nil {
 			SetActivePreloadedClosure(closure)
 		}
-	}
-
-	if isRunningInTest() {
-		return false, nil
 	}
 
 	// Legacy Backend support if registered
@@ -565,11 +563,9 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 		if !explicitDriver && sandbox.Backend == nil {
 			d, err := sandbox.AutoDetect()
 			if err != nil {
-				// No host in-process driver available (e.g. Windows) and no container driver was explicitly requested.
 				return false, nil
 			}
-			if _, isInProc := d.(sandbox.InProcessDriver); !isInProc {
-				// Driver is container-based but not explicitly requested; continue in-process with PermissionChecker.
+			if _, isInProc := d.(sandbox.InProcessDriver); !isInProc && d.Name() != sandbox.DriverWindows {
 				return false, nil
 			}
 			drvName = d.Name()

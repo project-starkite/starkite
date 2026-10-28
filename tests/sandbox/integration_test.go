@@ -107,11 +107,7 @@ func TestSandboxPerTestFile(t *testing.T) {
 
 	kite := buildKite(t)
 
-	workDir := t.TempDir()
-	home, err := os.UserHomeDir()
-	if err == nil && strings.HasPrefix(workDir, home) {
-		t.Fatalf("temp dir %s is under $HOME — sandbox isolation tests would be confounded", workDir)
-	}
+	workDir := createNonHomeTempDir(t)
 	for _, name := range []string{"multi_a_test.star", "multi_b_test.star"} {
 		src := mustAbs(t, filepath.Join("multi", name))
 		dst := filepath.Join(workDir, name)
@@ -126,13 +122,7 @@ func TestSandboxPerTestFile(t *testing.T) {
 	fakeHome := t.TempDir()
 	cmd := exec.CommandContext(ctx, kite, "test", workDir, "--sandbox-profile=sandbox-path", "--env-inherit")
 	cmd.Dir = workDir
-	var filteredEnv []string
-	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "HOME=") && !strings.HasPrefix(e, "USERPROFILE=") {
-			filteredEnv = append(filteredEnv, e)
-		}
-	}
-	cmd.Env = append(filteredEnv, "HOME="+fakeHome, "USERPROFILE="+fakeHome)
+	cmd.Env = envWithFakeHome(fakeHome)
 	out, err := cmd.CombinedOutput()
 	t.Logf("kite test --sandbox-profile=sandbox-path (multi-file) output:\n%s", out)
 	if err != nil {
@@ -174,11 +164,8 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement, extra
 
 	// Run from a temp dir explicitly OUTSIDE $HOME so the $CWD bind
 	// doesn't accidentally expose ~/.aws, ~/.ssh, etc. to the script.
-	workDir := t.TempDir()
-	home, err := os.UserHomeDir()
-	if err == nil && strings.HasPrefix(workDir, home) {
-		t.Fatalf("temp dir %s is under $HOME — sandbox isolation tests would be confounded", workDir)
-	}
+	workDir := createNonHomeTempDir(t)
+	home, _ := os.UserHomeDir()
 
 	// The sandbox profiles only mount $CWD. The test script must live
 	// inside $CWD so kite inside the sandbox can find it.
@@ -201,13 +188,7 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement, extra
 	fakeHome := t.TempDir()
 	args := []string{"test", dstPath, "--env-inherit"}
 	args = append(args, extraArgs...)
-	var env []string
-	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "HOME=") && !strings.HasPrefix(e, "USERPROFILE=") {
-			env = append(env, e)
-		}
-	}
-	env = append(env, "HOME="+fakeHome, "USERPROFILE="+fakeHome)
+	env := envWithFakeHome(fakeHome)
 	var label string
 	switch eng {
 	case viaDefaultProfile:
@@ -261,6 +242,22 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement, extra
 }
 
 var buildKiteOnce = sync.OnceValues(func() (string, error) {
+	binName := "kite"
+	if runtime.GOOS == "windows" {
+		binName = "kite.exe"
+	}
+	if envBin := os.Getenv("STARKITE_BIN"); envBin != "" {
+		if abs, err := filepath.Abs(envBin); err == nil {
+			if _, err := os.Stat(abs); err == nil {
+				return abs, nil
+			}
+		}
+	}
+	if abs, err := filepath.Abs(binName); err == nil {
+		if _, err := os.Stat(abs); err == nil {
+			return abs, nil
+		}
+	}
 	repoRoot, err := filepath.Abs("../..")
 	if err != nil {
 		return "", fmt.Errorf("resolving repo root: %w", err)
@@ -268,10 +265,6 @@ var buildKiteOnce = sync.OnceValues(func() (string, error) {
 	dir, err := os.MkdirTemp("", "kite-sandbox-bin-*")
 	if err != nil {
 		return "", fmt.Errorf("creating temp dir: %w", err)
-	}
-	binName := "kite"
-	if runtime.GOOS == "windows" {
-		binName = "kite.exe"
 	}
 	out := filepath.Join(dir, binName)
 
@@ -325,6 +318,16 @@ func sandboxUnavailable(output string) bool {
 	return false
 }
 
+func envWithFakeHome(fakeHome string) []string {
+	var env []string
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "HOME=") && !strings.HasPrefix(e, "USERPROFILE=") {
+			env = append(env, e)
+		}
+	}
+	return append(env, "HOME="+fakeHome, "USERPROFILE="+fakeHome)
+}
+
 func mustAbs(t *testing.T, rel string) string {
 	t.Helper()
 	abs, err := filepath.Abs(rel)
@@ -342,21 +345,31 @@ func copyFile(src, dst string) error {
 	return os.WriteFile(dst, data, 0o644)
 }
 
-func tempDirOutsideHome(t *testing.T) string {
+func createNonHomeTempDir(t *testing.T) string {
 	t.Helper()
-	// On Linux, t.TempDir() defaults to /tmp, which is the sandbox's designated scratch mount.
-	// To verify that CWD isolation works under deny-all (and isn't masked by the /tmp scratch rule),
-	// stage workDir in /var/tmp on Linux.
-	if runtime.GOOS == "linux" {
-		fallback, err := os.MkdirTemp("/var/tmp", "starkite-zt-*")
+	if runtime.GOOS == "windows" {
+		sysDrive := os.Getenv("SystemDrive")
+		if sysDrive == "" {
+			sysDrive = "C:"
+		}
+		baseDir := filepath.Join(sysDrive+`\`, "starkite-test-workdir")
+		if err := os.MkdirAll(baseDir, 0o777); err != nil {
+			sysRoot := os.Getenv("SystemRoot")
+			if sysRoot != "" {
+				baseDir = filepath.Join(sysRoot, "Temp")
+			} else {
+				baseDir = filepath.Join(sysDrive+`\`, "Temp")
+			}
+			_ = os.MkdirAll(baseDir, 0o777)
+		}
+		dir, err := os.MkdirTemp(baseDir, "test-*")
 		if err == nil {
-			t.Cleanup(func() { os.RemoveAll(fallback) })
-			return fallback
+			t.Cleanup(func() { os.RemoveAll(dir) })
+			return dir
 		}
 	}
-	if runtime.GOOS == "windows" {
-		tmpBase := os.Getenv("SystemRoot") + `\Temp`
-		fallback, err := os.MkdirTemp(tmpBase, "starkite-zt-*")
+	if runtime.GOOS == "linux" {
+		fallback, err := os.MkdirTemp("/var/tmp", "starkite-zt-*")
 		if err == nil {
 			t.Cleanup(func() { os.RemoveAll(fallback) })
 			return fallback
@@ -386,7 +399,7 @@ func TestZeroTrustDefault_EndToEnd(t *testing.T) {
 	}
 
 	kite := buildKite(t)
-	workDir := tempDirOutsideHome(t)
+	workDir := createNonHomeTempDir(t)
 
 	helperContent := `MSG = "loaded-from-closure"`
 	if err := os.WriteFile(filepath.Join(workDir, "helper.star"), []byte(helperContent), 0o644); err != nil {
@@ -486,7 +499,7 @@ func TestZeroTrustComposableFlags_EndToEnd(t *testing.T) {
 	}
 
 	kite := buildKite(t)
-	workDir := tempDirOutsideHome(t)
+	workDir := createNonHomeTempDir(t)
 
 	if err := os.WriteFile(filepath.Join(workDir, "input.txt"), []byte("hello-input\n"), 0o644); err != nil {
 		t.Fatalf("writing input.txt: %v", err)
@@ -558,7 +571,7 @@ func TestZeroTrustEnvScrubDiagnostic_EndToEnd(t *testing.T) {
 	}
 
 	kite := buildKite(t)
-	workDir := tempDirOutsideHome(t)
+	workDir := createNonHomeTempDir(t)
 
 	probeContent := `val = os.env("SCRUBBED_TOKEN")`
 	if err := os.WriteFile(filepath.Join(workDir, "env_probe.star"), []byte(probeContent), 0o644); err != nil {
@@ -607,7 +620,7 @@ func TestZeroTrustModuleTrustBoundary_EndToEnd(t *testing.T) {
 	}
 
 	kite := buildKite(t)
-	workDir := tempDirOutsideHome(t)
+	workDir := createNonHomeTempDir(t)
 
 	modDir := filepath.Join(workDir, "netmod")
 	if err := os.MkdirAll(modDir, 0o755); err != nil {

@@ -175,7 +175,7 @@ jobs:
         run: |
           Get-ChildItem -Path tests\*_test.star | ForEach-Object {
             Write-Host "--- Testing $($_.Name) on Windows ---"
-            .\bin\kite.exe test $_.FullName --sandbox-enabled=false --env-inherit
+            .\bin\kite.exe test $_.FullName --env-inherit --sandbox-net --sandbox-path-write=. --sandbox-exec-allow=*
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 
@@ -183,6 +183,7 @@ jobs:
         env:
           STARKITE_SANDBOX_INTEGRATION: "1"
           STARKITE_SANDBOX_DRIVER: "windows"
+          STARKITE_BIN: "${{ github.workspace }}\\bin\\kite.exe"
         run: go test -v -timeout 5m ./...
         working-directory: tests/sandbox
 

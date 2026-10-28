@@ -86,7 +86,7 @@ func (r *Resolver) SyncLoose(filePath string) (*libkite.Lock, error) {
 
 	lock := &libkite.Lock{Modules: map[string]libkite.LockedModule{}}
 	for _, ref := range refs {
-		if !isInstalledRef(ref) {
+		if !IsInstalledRef(ref) {
 			continue
 		}
 		if err := r.lockInstalled(ref, lock); err != nil {
@@ -134,10 +134,10 @@ func (r *Resolver) lockInstalled(ref string, lock *libkite.Lock) error {
 	return nil
 }
 
-// isInstalledRef reports whether a load() reference names an installed
+// IsInstalledRef reports whether a load() reference names an installed
 // "namespace/name" module (as opposed to a relative load, a .star path, or a
 // bare built-in module name).
-func isInstalledRef(ref string) bool {
+func IsInstalledRef(ref string) bool {
 	if strings.HasSuffix(ref, ".star") {
 		return false
 	}

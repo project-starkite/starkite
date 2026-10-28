@@ -215,6 +215,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		} else {
 			fmt.Fprintln(os.Stderr, "sandbox: working directory is $HOME; isolated to script file only. No other files in $HOME are accessible.")
 		}
+		addDirTraverse(cleanCwd)
 	}
 
 	// Ephemeral scratch directory with strict W^X enforcement in a single ACL transaction.
