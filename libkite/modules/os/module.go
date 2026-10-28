@@ -65,7 +65,7 @@ func hostEnvExists(name string) bool {
 		return true
 	}
 	if namesStr, ok := os.LookupEnv("STARKITE_HOST_ENV_NAMES"); ok {
-		for _, k := range strings.Split(namesStr, ",") {
+		for k := range strings.SplitSeq(namesStr, ",") {
 			if strings.EqualFold(k, name) {
 				return true
 			}

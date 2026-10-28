@@ -171,13 +171,7 @@ func (j *windowsJob) configureCPURate(maxCPUs float64) error {
 		numCPU = 1
 	}
 	// Windows CpuRate is expressed as cycles per 10,000 intervals (1% = 100, 100% = 10000).
-	rate := uint32((maxCPUs / numCPU) * 10000)
-	if rate < 1 {
-		rate = 1
-	}
-	if rate > 10000 {
-		rate = 10000
-	}
+	rate := min(max(uint32((maxCPUs/numCPU)*10000), 1), 10000)
 
 	cpuInfo := jobObjectCpuRateControlInformation{
 		ControlFlags: jobObjectCpuRateControlEnable | jobObjectCpuRateControlHardCap,
