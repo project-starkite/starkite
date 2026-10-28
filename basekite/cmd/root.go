@@ -111,7 +111,7 @@ func init() {
 	rootCmd.PersistentFlags().StringVar(&sandboxProfile, "sandbox-profile", "",
 		"Sandbox profile name: a built-in (deny-all|sandbox-path|sandbox-exec|sandbox-net|unconfined) or a profile in config.yaml")
 	rootCmd.PersistentFlags().StringVar(&sandboxDriver, "sandbox-driver", "",
-		"Sandbox execution driver (auto|landlock|seatbelt|podman|docker|nerdctl|gvisor). Overrides the driver configured in the sandbox profile.")
+		"Sandbox execution driver (auto|landlock|seatbelt|windows|appcontainer|podman|docker|nerdctl|gvisor). Overrides the driver configured in the sandbox profile.")
 	rootCmd.PersistentFlags().StringArrayVar(&sandboxPathRead, "sandbox-path-read", nil,
 		"Grant read access to host path (repeatable)")
 	rootCmd.PersistentFlags().StringArrayVar(&sandboxPathWrite, "sandbox-path-write", nil,
@@ -607,7 +607,7 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 			cleanP := filepath.Clean(p)
 			alreadyMounted := false
 			for _, m := range spec.Mounts {
-				if filepath.Clean(m.Destination) == cleanP {
+				if strings.EqualFold(filepath.Clean(m.Destination), cleanP) {
 					alreadyMounted = true
 					break
 				}

@@ -791,12 +791,9 @@ func resolveExecTarget(cmdStr, workDir string, env map[string]string) string {
 	}
 
 	// Bare name: resolve on PATH (prefer an explicit PATH override in env).
-	if p := env["PATH"]; p != "" {
-		for _, dir := range filepath.SplitList(p) {
-			cand := filepath.Join(dir, bin)
-			if fi, err := os.Stat(cand); err == nil && !fi.IsDir() {
-				return libkite.CanonicalizePath(cand)
-			}
+	if pathEnv, ok := getPathEnv(env); ok && pathEnv != "" {
+		if resolved, err := lookPathIn(bin, pathEnv); err == nil {
+			return libkite.CanonicalizePath(resolved)
 		}
 	}
 	if resolved, err := exec.LookPath(bin); err == nil {

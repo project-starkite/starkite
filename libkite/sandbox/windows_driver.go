@@ -99,13 +99,19 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	if err != nil {
 		return nil, err
 	}
+	var closeStdinOnce sync.Once
+	closeStdinW := func() {
+		closeStdinOnce.Do(func() {
+			if stdinW != nil {
+				_ = stdinW.Close()
+			}
+		})
+	}
 	defer func() {
 		if stdinR != nil {
 			_ = stdinR.Close()
 		}
-		if stdinW != nil {
-			_ = stdinW.Close()
-		}
+		closeStdinW()
 	}()
 
 	stdoutR, stdoutW, err := createInheritablePipe(false)
@@ -143,21 +149,67 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 
 	var secCaps *securityCapabilities
 	var grantedPaths []string
+	var scratchDir string
 	profile, err := newAppContainerProfile(spec.Network)
 	if err == nil {
 		defer profile.close()
 		secCaps = profile.securityCapabilitiesPtr()
 
-		if err := grantPathAccess(exePath, profile.appContainer, execAccessMask); err == nil {
-			grantedPaths = append(grantedPaths, exePath)
+		grantedSet := make(map[string]bool)
+		appliedMasks := make(map[string]windows.ACCESS_MASK)
+		traversedSet := make(map[string]bool)
+
+		addGrant := func(p string, mask windows.ACCESS_MASK) {
+			if p == "" {
+				return
+			}
+			clean := filepath.Clean(p)
+			key := strings.ToLower(clean)
+			if (appliedMasks[key] & mask) == mask {
+				return
+			}
+			merged := appliedMasks[key] | mask
+			if err := grantPathAccess(clean, profile.appContainer, merged); err == nil {
+				appliedMasks[key] = merged
+				if !grantedSet[key] {
+					grantedSet[key] = true
+					grantedPaths = append(grantedPaths, clean)
+				}
+			}
 		}
 
-		cleanCwd := filepath.Clean(spec.Cwd)
+		addDirTraverse := func(p string) {
+			if p == "" {
+				return
+			}
+			clean := filepath.Clean(p)
+			key := strings.ToLower(clean)
+			if appliedMasks[key] != 0 || traversedSet[key] {
+				return
+			}
+			if err := grantDirTraverse(clean, profile.appContainer); err == nil {
+				traversedSet[key] = true
+				if !grantedSet[key] {
+					grantedSet[key] = true
+					grantedPaths = append(grantedPaths, clean)
+				}
+			}
+		}
+
+		addGrant(exePath, execAccessMask)
+
+		cleanCwd := ""
+		if spec.Cwd != "" {
+			cleanCwd = filepath.Clean(spec.Cwd)
+		}
 		userHome := os.Getenv("USERPROFILE")
 		if userHome == "" {
 			userHome = os.Getenv("HOME")
 		}
-		cleanHome := filepath.Clean(userHome)
+		cleanHome := ""
+		if userHome != "" {
+			cleanHome = filepath.Clean(userHome)
+		}
 		isHomeOrRoot := false
 		if cleanCwd != "" {
 			if isDriveRoot(cleanCwd) || (cleanHome != "" && strings.EqualFold(cleanCwd, cleanHome)) {
@@ -172,66 +224,74 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 			}
 		}
 
-		// Ephemeral scratch directory with strict W^X enforcement.
-		scratchDir := filepath.Join(os.TempDir(), "starkite-sbx-"+profile.name)
-		if err := os.MkdirAll(scratchDir, 0700); err == nil {
-			_ = grantPathAccess(scratchDir, profile.appContainer, readWriteAccessMask)
-			_ = denyPathAccess(scratchDir, profile.appContainer, denyExecAccessMask)
-			defer os.RemoveAll(scratchDir)
+		// Ephemeral scratch directory with strict W^X enforcement in a single ACL transaction.
+		candScratch := filepath.Join(os.TempDir(), "starkite-sbx-"+profile.name)
+		if err := os.MkdirAll(candScratch, 0700); err == nil {
+			_ = setScratchDirDacl(candScratch, profile.appContainer)
+			scratchDir = candScratch
+			defer os.RemoveAll(candScratch)
 		}
 
-		// Unveil script file.
-		scriptFile := spec.ScriptFile
-		if scriptFile != "" && !filepath.IsAbs(scriptFile) && spec.Cwd != "" {
-			scriptFile = filepath.Join(spec.Cwd, scriptFile)
-		}
-		if scriptFile != "" {
-			if err := grantPathAccess(scriptFile, profile.appContainer, readOnlyAccessMask); err == nil {
-				grantedPaths = append(grantedPaths, scriptFile)
-			}
-			if !isHomeOrRoot {
-				dir := filepath.Dir(scriptFile)
-				if err := grantPathAccess(dir, profile.appContainer, readOnlyAccessMask); err == nil {
-					grantedPaths = append(grantedPaths, dir)
-				}
-			}
-		}
-
-		// Unveil ~/.starkite cache directory.
-		if userProf := os.Getenv("USERPROFILE"); userProf != "" {
-			starkiteDir := filepath.Join(userProf, ".starkite")
-			_ = os.MkdirAll(filepath.Join(starkiteDir, "modules"), 0755)
-			_ = os.MkdirAll(filepath.Join(starkiteDir, "run"), 0755)
-			if err := grantPathAccess(starkiteDir, profile.appContainer, readWriteAccessMask); err == nil {
-				grantedPaths = append(grantedPaths, starkiteDir)
-			}
-		}
-
-		// Unveil explicit mounts.
+		// Unveil explicit mounts first so directory mounts take precedence over non-inheriting traverse rules.
 		for _, m := range spec.Mounts {
 			if m.Source == "" {
 				continue
 			}
 			cleanMount := filepath.Clean(m.Source)
-			if isHomeOrRoot && (cleanHome != "" && strings.EqualFold(cleanMount, cleanHome) || isDriveRoot(cleanMount)) {
+			if isHomeOrRoot && ((cleanHome != "" && strings.EqualFold(cleanMount, cleanHome)) || isDriveRoot(cleanMount)) {
 				continue
 			}
 			var mask windows.ACCESS_MASK = readOnlyAccessMask
 			if m.Mode == MountRW {
 				mask = readWriteAccessMask
 			}
-			if err := grantPathAccess(cleanMount, profile.appContainer, mask); err == nil {
-				grantedPaths = append(grantedPaths, cleanMount)
+			addGrant(cleanMount, mask)
+		}
+
+		// Unveil script file and runtime manifests (read-only), with non-inheriting directory traverse on parent dir.
+		scriptFile := spec.ScriptFile
+		if scriptFile != "" && !filepath.IsAbs(scriptFile) && spec.Cwd != "" {
+			scriptFile = filepath.Join(spec.Cwd, scriptFile)
+		}
+		if scriptFile != "" {
+			addGrant(scriptFile, readOnlyAccessMask)
+			if !isHomeOrRoot {
+				scriptDir := filepath.Dir(scriptFile)
+				addDirTraverse(scriptDir)
+				for _, asset := range []string{"mod.yaml", "mod.lock", "star.mod", "config.yaml"} {
+					assetPath := filepath.Join(scriptDir, asset)
+					if _, statErr := os.Stat(assetPath); statErr == nil {
+						addGrant(assetPath, readOnlyAccessMask)
+					}
+				}
+			}
+		}
+		if !isHomeOrRoot && cleanCwd != "" {
+			addDirTraverse(cleanCwd)
+			cfgPath := filepath.Join(cleanCwd, "config.yaml")
+			if _, statErr := os.Stat(cfgPath); statErr == nil {
+				addGrant(cfgPath, readOnlyAccessMask)
+			}
+		}
+
+		// Unveil ~/.starkite runtime assets (strictly read-only on config.yaml and modules cache).
+		if !isHomeOrRoot && cleanHome != "" {
+			starkiteDir := filepath.Join(cleanHome, ".starkite")
+			modulesDir := filepath.Join(starkiteDir, "modules")
+			_ = os.MkdirAll(modulesDir, 0755)
+			addDirTraverse(starkiteDir)
+			addGrant(modulesDir, readOnlyAccessMask)
+			userCfg := filepath.Join(starkiteDir, "config.yaml")
+			if _, statErr := os.Stat(userCfg); statErr == nil {
+				addGrant(userCfg, readOnlyAccessMask)
 			}
 		}
 
 		// Unveil allowed executables.
 		if len(spec.AllowedExecPaths) > 0 {
-			resolvedExecs := ResolveExecutablePaths(spec.AllowedExecPaths, spec.Cwd, os.Getenv("USERPROFILE"))
+			resolvedExecs := ResolveExecutablePaths(spec.AllowedExecPaths, spec.Cwd, userHome)
 			for _, exe := range resolvedExecs {
-				if err := grantPathAccess(exe, profile.appContainer, execAccessMask); err == nil {
-					grantedPaths = append(grantedPaths, exe)
-				}
+				addGrant(exe, execAccessMask)
 			}
 		}
 
@@ -301,6 +361,9 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 			envVars = append(envVars, k+"="+v)
 		}
 	}
+	if scratchDir != "" {
+		envVars = append([]string{"TEMP=" + scratchDir, "TMP=" + scratchDir}, envVars...)
+	}
 	envBlock, err := createWindowsEnvBlock(envVars)
 	if err != nil {
 		return nil, err
@@ -358,16 +421,12 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	var ioWg sync.WaitGroup
 
 	if spec.Stdin != nil {
-		ioWg.Add(1)
-		go func() {
-			defer ioWg.Done()
-			_, _ = io.Copy(stdinW, spec.Stdin)
-			_ = stdinW.Close()
-			stdinW = nil
-		}()
+		go func(w *os.File, r io.Reader) {
+			_, _ = io.Copy(w, r)
+			closeStdinW()
+		}(stdinW, spec.Stdin)
 	} else {
-		_ = stdinW.Close()
-		stdinW = nil
+		closeStdinW()
 	}
 
 	stdoutDest := io.Writer(&stdoutBuf)
@@ -415,6 +474,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 
 	// Ensure all child processes in the job are terminated so stdout/stderr pipes close cleanly.
 	job.terminate(1)
+	closeStdinW()
 	ioWg.Wait()
 
 	duration := time.Since(startTime)

@@ -156,10 +156,14 @@ func deleteAppContainerProfileByName(name string) error {
 	return nil
 }
 
-// close deletes the ephemeral AppContainer profile from the host registry and user profile store.
+// close deletes the ephemeral AppContainer profile from the host registry and frees its Win32 SID.
 func (p *appContainerProfile) close() {
 	if p.name != "" {
 		_ = deleteAppContainerProfileByName(p.name)
 		p.name = ""
+	}
+	if p.appContainer != nil {
+		_ = windows.FreeSid(p.appContainer)
+		p.appContainer = nil
 	}
 }

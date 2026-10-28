@@ -41,7 +41,7 @@ Sandbox & Capabilities (enabled by default under the 'deny-all' profile):
   --sandbox-call-allow=<rules>   Allow specific Starlark module calls (e.g. fs.read, http.client)
   --sandbox-call-deny=<rules>    Deny specific Starlark module calls
   --sandbox-net                  Grant outbound network access (equivalent to network: host)
-  --sandbox-driver=<driver>      Select sandbox driver (auto, landlock, seatbelt, podman, docker, nerdctl, gvisor)
+  --sandbox-driver=<driver>      Select sandbox driver (auto, landlock, seatbelt, windows, podman, docker, nerdctl, gvisor)
   --sandbox-enabled=false        Disable sandbox confinement (run unconfined)
   --env, -e <KEY[=VALUE]>        Forward host environment variable (KEY) or inject assignment (KEY=VALUE)
   --env-inherit                  Inherit the full ambient host environment

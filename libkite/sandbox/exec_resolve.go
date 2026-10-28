@@ -4,6 +4,7 @@ import (
 	"os"
 	osexec "os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 )
@@ -18,11 +19,27 @@ func ResolveExecutablePaths(allowList []string, cwd, home string) []string {
 
 	addPath := func(p string) {
 		clean := filepath.Clean(p)
-		if clean == "" || seen[clean] {
+		if clean == "" {
 			return
 		}
-		seen[clean] = true
+		key := clean
+		if runtime.GOOS == "windows" {
+			key = strings.ToLower(clean)
+		}
+		if seen[key] {
+			return
+		}
+		seen[key] = true
 		resolved = append(resolved, clean)
+	}
+
+	var winExts []string
+	if runtime.GOOS == "windows" {
+		pathext := os.Getenv("PATHEXT")
+		if pathext == "" {
+			pathext = ".COM;.EXE;.BAT;.CMD;.PS1"
+		}
+		winExts = filepath.SplitList(pathext)
 	}
 
 	for _, entry := range allowList {
@@ -58,10 +75,21 @@ func ResolveExecutablePaths(allowList []string, cwd, home string) []string {
 			if path, err := osexec.LookPath(trimmed); err == nil {
 				foundPath = path
 			} else {
+				candidates := []string{trimmed}
+				if runtime.GOOS == "windows" && filepath.Ext(trimmed) == "" {
+					for _, ext := range winExts {
+						candidates = append(candidates, trimmed+ext)
+					}
+				}
 				for _, dir := range defaultExecSearchDirs {
-					cand := filepath.Join(dir, trimmed)
-					if fi, err := os.Lstat(cand); err == nil && !fi.IsDir() {
-						foundPath = cand
+					for _, name := range candidates {
+						cand := filepath.Join(dir, name)
+						if fi, err := os.Lstat(cand); err == nil && !fi.IsDir() {
+							foundPath = cand
+							break
+						}
+					}
+					if foundPath != "" {
 						break
 					}
 				}

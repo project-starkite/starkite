@@ -354,7 +354,7 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 		}
 		if (module == "os" || module == "*") && (category == "exec" || category == "*") && !isAbs && !strings.Contains(pattern, "/") && !strings.Contains(pattern, "*") {
 			base := filepath.Base(res)
-			if base == pattern || strings.TrimSuffix(base, ".exe") == pattern {
+			if base == pattern || strings.EqualFold(trimWindowsExecExt(base), trimWindowsExecExt(pattern)) {
 				return true
 			}
 		}
@@ -981,13 +981,17 @@ func suggestExecBinary(resource string) string {
 	if base == "" || base == "." || base == "/" {
 		return "*"
 	}
-	for _, ext := range []string{".exe", ".cmd", ".bat", ".ps1", ".EXE", ".CMD", ".BAT", ".PS1"} {
-		if strings.HasSuffix(base, ext) {
-			base = strings.TrimSuffix(base, ext)
-			break
+	return trimWindowsExecExt(base)
+}
+
+func trimWindowsExecExt(name string) string {
+	lower := strings.ToLower(name)
+	for _, ext := range []string{".exe", ".cmd", ".bat", ".ps1", ".com"} {
+		if strings.HasSuffix(lower, ext) {
+			return name[:len(name)-len(ext)]
 		}
 	}
-	return base
+	return name
 }
 
 // FormatEnvScrubbedDiagnostic formats a debug warning when a script requests an

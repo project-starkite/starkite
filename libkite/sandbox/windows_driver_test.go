@@ -275,12 +275,14 @@ func TestWindowsDriver_W_XOR_X_DenyExecute(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 
-	// Grant RW access, then deny execution (W^X)
-	if err := grantPathAccess(tmpDir, profile.appContainer, readWriteAccessMask); err != nil {
-		t.Fatalf("grantPathAccess failed: %v", err)
+	// Single-transaction scratch directory W^X DACL
+	if err := setScratchDirDacl(tmpDir, profile.appContainer); err != nil {
+		t.Fatalf("setScratchDirDacl failed: %v", err)
 	}
-	if err := denyPathAccess(tmpDir, profile.appContainer, denyExecAccessMask); err != nil {
-		t.Fatalf("denyPathAccess failed: %v", err)
+
+	// Non-inheriting directory traverse grant
+	if err := grantDirTraverse(tmpDir, profile.appContainer); err != nil {
+		t.Fatalf("grantDirTraverse failed: %v", err)
 	}
 
 	// Clean up
