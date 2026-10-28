@@ -27,6 +27,8 @@ def test_cwd_writable():
 
 def test_tmpfs_writable():
     """/tmp is a private writable tmpfs."""
+    if runtime.platform() == "windows":
+        skip("tmpfs scratch unsupported on windows")
     p = path("/tmp/sandbox_tmpfs_test")
     p.write_text("scratch")
     got = p.read_text()
@@ -34,6 +36,8 @@ def test_tmpfs_writable():
 
 def test_tls_certs_visible():
     """The curated certificates mount is in place — public CA roots visible."""
+    if runtime.platform() == "windows":
+        skip("TLS cert path is POSIX /etc/ssl/certs")
     res1 = path("/etc/ssl/certs").try_exists()
     res2 = path("/etc/ssl/cert.pem").try_exists()
     res3 = path("/etc/ssl").try_exists()
@@ -41,6 +45,8 @@ def test_tls_certs_visible():
 
 def test_resolv_conf_visible():
     """/etc/resolv.conf mount is in place — DNS resolver config available."""
+    if runtime.platform() == "windows":
+        skip("resolv.conf is POSIX /etc/resolv.conf")
     res1 = path("/etc/resolv.conf").try_exists()
     res2 = path("/var/run/resolv.conf").try_exists()
     res3 = path("/etc").try_exists()

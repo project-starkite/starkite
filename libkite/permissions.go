@@ -352,6 +352,12 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 		if isAbs {
 			res = filepath.ToSlash(CanonicalizePath(resource))
 		}
+		if (module == "os" || module == "*") && (category == "exec" || category == "*") && !isAbs && !strings.Contains(pattern, "/") && !strings.Contains(pattern, "*") {
+			base := filepath.Base(res)
+			if base == pattern || strings.TrimSuffix(base, ".exe") == pattern {
+				return true
+			}
+		}
 		matched, err := filepath.Match(pattern, res)
 		if err != nil {
 			if before, ok := strings.CutSuffix(pattern, "**"); ok {

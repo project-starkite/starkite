@@ -63,6 +63,9 @@ func TestSandboxPathRung_flagSpace(t *testing.T) {
 }
 
 func TestSandboxExecWithPathRead_flag(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipping POSIX /usr path read test on Windows")
+	}
 	home, _ := os.UserHomeDir()
 	runStarTest(t, "sandbox_host_test.star", "sandbox-exec", viaProfileFlag, "--sandbox-path-read="+home, "--sandbox-path-read=/usr")
 }
