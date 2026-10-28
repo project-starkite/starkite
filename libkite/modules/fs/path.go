@@ -492,7 +492,7 @@ func (p *Path) readTextMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlar
 	}
 	data, err := os.ReadFile(p.path)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "read", p.path, err)
 	}
 	return starlark.String(data), nil
 }
@@ -503,7 +503,7 @@ func (p *Path) readBytesMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starla
 	}
 	data, err := os.ReadFile(p.path)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "read", p.path, err)
 	}
 	return starlark.Bytes(data), nil
 }
@@ -528,7 +528,7 @@ func (p *Path) writeTextMethod(_ *starlark.Thread, _ *starlark.Builtin, args sta
 		return starlark.None, nil
 	}
 	if err := os.WriteFile(p.path, []byte(params.Content), fs.FileMode(params.Mode)); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -558,7 +558,7 @@ func (p *Path) writeBytesMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		return starlark.None, nil
 	}
 	if err := os.WriteFile(p.path, data, fs.FileMode(params.Mode)); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -578,11 +578,11 @@ func (p *Path) appendTextMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	}
 	f, err := os.OpenFile(p.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	defer f.Close()
 	if _, err := f.WriteString(params.Content); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -611,11 +611,11 @@ func (p *Path) appendBytesMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 	}
 	f, err := os.OpenFile(p.path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	defer f.Close()
 	if _, err := f.Write(data); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -642,20 +642,20 @@ func (p *Path) touchMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlar
 	if os.IsNotExist(err) {
 		f, err := os.Create(p.path)
 		if err != nil {
-			return nil, err
+			return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 		}
 		f.Close()
 		return starlark.None, nil
 	}
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	if !params.ExistOk {
 		return nil, fmt.Errorf("file already exists: %s", p.path)
 	}
 	now := time.Now()
 	if err := os.Chtimes(p.path, now, now); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -682,7 +682,7 @@ func (p *Path) mkdirMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlar
 		err = os.Mkdir(p.path, fs.FileMode(params.Mode))
 	}
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -695,7 +695,7 @@ func (p *Path) removeMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.
 		return starlark.None, nil
 	}
 	if err := os.Remove(p.path); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "delete", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -718,7 +718,7 @@ func (p *Path) renameMethod(_ *starlark.Thread, _ *starlark.Builtin, args starla
 		return p.newPath(target), nil
 	}
 	if err := os.Rename(p.path, target); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", target, err)
 	}
 	return p.newPath(target), nil
 }
@@ -737,7 +737,7 @@ func (p *Path) chmodMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlar
 		return starlark.None, nil
 	}
 	if err := os.Chmod(p.path, fs.FileMode(params.Mode)); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -763,7 +763,7 @@ func (p *Path) symlinkToMethod(_ *starlark.Thread, _ *starlark.Builtin, args sta
 		return starlark.None, nil
 	}
 	if err := os.Symlink(params.Target, p.path); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -774,7 +774,7 @@ func (p *Path) listdirMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark
 	}
 	entries, err := os.ReadDir(p.path)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "read", p.path, err)
 	}
 	elems := make([]starlark.Value, len(entries))
 	for i, entry := range entries {
@@ -831,16 +831,16 @@ func (p *Path) copyToMethod(_ *starlark.Thread, _ *starlark.Builtin, args starla
 	}
 	srcFile, err := os.Open(p.path)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "read", p.path, err)
 	}
 	defer srcFile.Close()
 	dstFile, err := os.Create(params.Target)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", params.Target, err)
 	}
 	defer dstFile.Close()
 	if _, err := io.Copy(dstFile, srcFile); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", params.Target, err)
 	}
 	return p.newPath(params.Target), nil
 }
@@ -862,7 +862,7 @@ func (p *Path) moveToMethod(_ *starlark.Thread, _ *starlark.Builtin, args starla
 		return p.newPath(params.Target), nil
 	}
 	if err := os.Rename(p.path, params.Target); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", params.Target, err)
 	}
 	return p.newPath(params.Target), nil
 }
@@ -881,7 +881,7 @@ func (p *Path) truncateMethod(_ *starlark.Thread, _ *starlark.Builtin, args star
 		return starlark.None, nil
 	}
 	if err := os.Truncate(p.path, params.Size); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -903,7 +903,7 @@ func (p *Path) chownMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlar
 		return starlark.None, nil
 	}
 	if err := os.Chown(p.path, params.Uid, params.Gid); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }
@@ -914,7 +914,7 @@ func (p *Path) readlinkMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlar
 	}
 	target, err := os.Readlink(p.path)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "read", p.path, err)
 	}
 	return p.newPath(target), nil
 }
@@ -939,7 +939,7 @@ func (p *Path) hardlinkToMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		return starlark.None, nil
 	}
 	if err := os.Link(params.Target, p.path); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", p.path, err)
 	}
 	return starlark.None, nil
 }

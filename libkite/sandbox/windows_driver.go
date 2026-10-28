@@ -19,11 +19,6 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const (
-	// minWindowsBuild24H2 is Windows 11 Version 24H2 / Windows Server 2025 (Build 26100).
-	minWindowsBuild24H2 = 26100
-)
-
 // WindowsDriver implements the sandbox.Driver interface on Windows using
 // Windows Job Objects and STARTUPINFOEXW process mitigations.
 type WindowsDriver struct{}
@@ -45,22 +40,7 @@ func (d *WindowsDriver) Name() string {
 // Available reports whether the host Windows operating system meets the minimum
 // kernel baseline for native sandboxing.
 func (d *WindowsDriver) Available() bool {
-	return checkWindowsOSBaseline() == nil
-}
-
-func checkWindowsOSBaseline() error {
-	major, _, build := windows.RtlGetNtVersionNumbers()
-	return validateWindowsVersion(major, build)
-}
-
-func validateWindowsVersion(major, build uint32) error {
-	if major < 10 || build < minWindowsBuild24H2 {
-		return fmt.Errorf(
-			"sandbox: host environment does not support required Windows kernel sandbox primitives: Windows build %d < %d (requires Windows 11 24H2+ or Windows Server 2025+)",
-			build, minWindowsBuild24H2,
-		)
-	}
-	return nil
+	return checkWindowsHostBaseline() == nil
 }
 
 // ValidateSpec verifies that the ExecutionSpec is valid and supported on Windows.
@@ -71,7 +51,10 @@ func (d *WindowsDriver) ValidateSpec(spec *ExecutionSpec) error {
 	if err := spec.Validate(); err != nil {
 		return err
 	}
-	if err := checkWindowsOSBaseline(); err != nil {
+	if err := checkWindowsHostBaseline(); err != nil {
+		return err
+	}
+	if err := validateSpecVolumes(spec); err != nil {
 		return err
 	}
 	return nil
@@ -202,7 +185,11 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 
 	cleanCwd := ""
 	if spec.Cwd != "" {
-		cleanCwd = filepath.Clean(spec.Cwd)
+		if abs, err := filepath.Abs(spec.Cwd); err == nil {
+			cleanCwd = filepath.Clean(abs)
+		} else {
+			cleanCwd = filepath.Clean(spec.Cwd)
+		}
 	}
 	userHome := os.Getenv("USERPROFILE")
 	if userHome == "" {
@@ -210,7 +197,11 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	}
 	cleanHome := ""
 	if userHome != "" {
-		cleanHome = filepath.Clean(userHome)
+		if abs, err := filepath.Abs(userHome); err == nil {
+			cleanHome = filepath.Clean(abs)
+		} else {
+			cleanHome = filepath.Clean(userHome)
+		}
 	}
 	isHomeOrRoot := false
 	if cleanCwd != "" {
@@ -333,9 +324,10 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	var cwdPtr *uint16
 	cwd := spec.Cwd
 	cwdAccessible := false
-	if cwd != "" {
+	if cleanCwd != "" {
 		for _, p := range grantedPaths {
-			if strings.EqualFold(filepath.Clean(p), filepath.Clean(cwd)) {
+			cleanP := filepath.Clean(p)
+			if equalOrHasPathPrefixFold(cleanCwd, cleanP) {
 				cwdAccessible = true
 				break
 			}
@@ -346,6 +338,8 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		if cwd == "" {
 			cwd = `C:\Windows`
 		}
+	} else {
+		cwd = cleanCwd
 	}
 	cwdPtr, err = windows.UTF16PtrFromString(cwd)
 	if err != nil {
@@ -389,7 +383,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		&procInfo,
 	)
 	if err != nil {
-		return nil, fmt.Errorf("sandbox: CreateProcessW (%s) failed: %w", exePath, err)
+		return nil, FormatPermissionError(fmt.Errorf("sandbox: CreateProcessW (%s) failed: %w", exePath, err), exePath, spec)
 	}
 	defer func() {
 		_ = windows.CloseHandle(procInfo.Thread)
@@ -497,6 +491,14 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		KilledByOOM: killedByOOM,
 		Stdout:      stdoutBuf.String(),
 		Stderr:      stderrBuf.String(),
+	}
+
+	if res.ExitCode != 0 && !timedOut && !killedByOOM {
+		prevStderr := res.Stderr
+		res.Stderr = enrichPermissionStderr(res.Stderr, spec)
+		if spec.Stderr != nil && len(res.Stderr) > len(prevStderr) {
+			_, _ = io.WriteString(spec.Stderr, res.Stderr[len(prevStderr):])
+		}
 	}
 
 	if timedOut {

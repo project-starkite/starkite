@@ -109,7 +109,7 @@ func (m *Module) readFile(thread *starlark.Thread, fn *starlark.Builtin, args st
 	}
 	data, err := os.ReadFile(p.Path)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "read", p.Path, err)
 	}
 	return starlark.String(data), nil
 }
@@ -155,7 +155,7 @@ func (m *Module) write(thread *starlark.Thread, fn *starlark.Builtin, args starl
 	}
 
 	if err := os.WriteFile(path, data, fs.FileMode(mode)); err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "write", path, err)
 	}
 	return starlark.None, nil
 }
@@ -173,7 +173,7 @@ func (m *Module) readBytes(thread *starlark.Thread, fn *starlark.Builtin, args s
 
 	data, err := os.ReadFile(p.Path)
 	if err != nil {
-		return nil, err
+		return nil, libkite.WrapOSPermissionError("fs", "read", p.Path, err)
 	}
 	return starlark.Bytes(data), nil
 }

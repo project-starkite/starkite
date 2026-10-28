@@ -81,6 +81,9 @@ func TestWindowsDriver_NoExecBlocksChildProcess(t *testing.T) {
 	if res != nil {
 		combined = res.Stdout + res.Stderr
 		exitCode = res.ExitCode
+		if !strings.Contains(res.Stderr, "Hint: pass --sandbox-exec-allow=") {
+			t.Errorf("expected Stderr to contain exec hint, got: %q", res.Stderr)
+		}
 	}
 	t.Logf("NoExec child block result: exit=%v output=%q err=%v", exitCode, combined, err)
 }
@@ -131,8 +134,44 @@ func TestWindowsDriver_OSBaselineCheck(t *testing.T) {
 	if err := validateWindowsVersion(10, minWindowsBuild24H2); err != nil {
 		t.Errorf("validateWindowsVersion(10, %d) failed: %v", minWindowsBuild24H2, err)
 	}
-	if err := validateWindowsVersion(10, 20348); err == nil {
+	err := validateWindowsVersion(10, 20348)
+	if err == nil {
 		t.Errorf("expected validateWindowsVersion(10, 20348) to fail below baseline %d", minWindowsBuild24H2)
+	} else {
+		msg := err.Error()
+		if !strings.Contains(msg, "Error: Refusing to execute insecurely under default Zero-Trust policy.") {
+			t.Errorf("missing error refusal in message: %q", msg)
+		}
+		if !strings.Contains(msg, "Hint: To run unconfined on this unsupported host, explicitly disable sandboxing via --sandbox-enabled=false") {
+			t.Errorf("missing remediation hint in message: %q", msg)
+		}
+	}
+}
+
+func TestWindowsDriver_VolumeACLSupportCheck(t *testing.T) {
+	// 1. Volumes without FILE_PERSISTENT_ACLS must fail closed
+	err := validateVolumeACLSupport(`D:\workspace`, "FAT32", 0)
+	if err == nil {
+		t.Fatalf("expected validateVolumeACLSupport on FAT32 to fail")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "resides on a \"FAT32\" volume that does not support persistent ACLs") {
+		t.Errorf("missing volume error in message: %q", msg)
+	}
+	if !strings.Contains(msg, "Hint: Move the workspace to an NTFS volume") {
+		t.Errorf("missing volume hint in message: %q", msg)
+	}
+
+	// 2. Volumes with FILE_PERSISTENT_ACLS must pass
+	if err := validateVolumeACLSupport(`C:\workspace`, "NTFS", filePersistentACLs); err != nil {
+		t.Errorf("expected validateVolumeACLSupport on NTFS with ACLs to pass: %v", err)
+	}
+
+	// 3. Current host TempDir must support ACLs
+	if d := NewWindowsDriver(); d.Available() {
+		if err := checkPathSupportsACLs(os.TempDir()); err != nil {
+			t.Errorf("checkPathSupportsACLs(os.TempDir()) failed on native Windows host: %v", err)
+		}
 	}
 }
 
@@ -196,8 +235,7 @@ func TestWindowsDriver_NetworkNone_BlocksSocket(t *testing.T) {
 	// WFP blocks all socket creation with WSAEACCES (10013).
 	spec := &ExecutionSpec{
 		Command: []string{
-			"powershell.exe", "-NoProfile", "-NonInteractive",
-			"-Command", "try { $c = New-Object System.Net.Sockets.TcpClient('1.1.1.1', 53); exit 0 } catch { exit 10013 }",
+			"curl.exe", "-s", "-S", "--connect-timeout", "2", "http://1.1.1.1",
 		},
 		Network: NetworkNone,
 		Timeout: 5 * time.Second,
@@ -210,6 +248,9 @@ func TestWindowsDriver_NetworkNone_BlocksSocket(t *testing.T) {
 	var exitCode int
 	if res != nil {
 		exitCode = res.ExitCode
+		if !strings.Contains(res.Stderr, "Hint: pass --sandbox-net on CLI") {
+			t.Errorf("expected Stderr to contain network hint, got: %q", res.Stderr)
+		}
 	}
 	t.Logf("NetworkNone socket block result: exit=%d (err: %v)", exitCode, err)
 }

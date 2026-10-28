@@ -12,14 +12,139 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 )
 
-// FormatPermissionError wraps OS-level EACCES/EPERM errors with actionable
+// Win32 and Winsock error numbers defined portably for cross-platform
+// error classification and unit testing.
+const (
+	winErrorAccessDenied     syscall.Errno = 5     // ERROR_ACCESS_DENIED
+	winErrorInvalidAccess    syscall.Errno = 12    // ERROR_INVALID_ACCESS
+	winErrorSharingViolation syscall.Errno = 32    // ERROR_SHARING_VIOLATION
+	winErrorPrivilegeNotHeld syscall.Errno = 1314  // ERROR_PRIVILEGE_NOT_HELD
+	winErrorNotEnoughQuota   syscall.Errno = 1816  // ERROR_NOT_ENOUGH_QUOTA
+	wsaErrorAccessDenied     syscall.Errno = 10013 // WSAEACCES
+	wsaErrorAddrNotAvail     syscall.Errno = 10049 // WSAEADDRNOTAVAIL
+	wsaErrorNetUnreach       syscall.Errno = 10051 // WSAENETUNREACH
+	wsaErrorHostUnreach      syscall.Errno = 10065 // WSAEHOSTUNREACH
+)
+
+func isOSPermissionError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrPermission) ||
+		errors.Is(err, syscall.EACCES) ||
+		errors.Is(err, syscall.EPERM) ||
+		errors.Is(err, winErrorAccessDenied) ||
+		errors.Is(err, winErrorInvalidAccess) ||
+		errors.Is(err, winErrorSharingViolation) ||
+		errors.Is(err, winErrorPrivilegeNotHeld) ||
+		errors.Is(err, winErrorNotEnoughQuota) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "permission denied") ||
+		strings.Contains(lower, "operation not permitted") ||
+		strings.Contains(lower, "access is denied") ||
+		strings.Contains(lower, "a required privilege is not held") ||
+		strings.Contains(lower, "not enough quota is available") ||
+		strings.Contains(lower, "unauthorizedaccessexception")
+}
+
+func isOSNetworkDeniedError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, os.ErrPermission) ||
+		errors.Is(err, syscall.EACCES) ||
+		errors.Is(err, syscall.EPERM) ||
+		errors.Is(err, winErrorAccessDenied) ||
+		errors.Is(err, wsaErrorAccessDenied) ||
+		errors.Is(err, wsaErrorAddrNotAvail) ||
+		errors.Is(err, wsaErrorNetUnreach) ||
+		errors.Is(err, wsaErrorHostUnreach) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "operation not permitted") ||
+		strings.Contains(lower, "permission denied") ||
+		strings.Contains(lower, "access is denied") ||
+		strings.Contains(lower, "network is unreachable") ||
+		strings.Contains(lower, "forbidden by its access permissions") ||
+		strings.Contains(lower, "wsaeacces") ||
+		strings.Contains(lower, "no route to host")
+}
+
+func isQuotaExceededError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, winErrorNotEnoughQuota) {
+		return true
+	}
+	lower := strings.ToLower(err.Error())
+	return strings.Contains(lower, "not enough quota")
+}
+
+func stripExtendedPathPrefix(p string) string {
+	if strings.HasPrefix(p, `\\?\`) || strings.HasPrefix(p, `\??\`) {
+		return p[4:]
+	}
+	return p
+}
+
+func normalizeDiagPath(p string) string {
+	raw := stripExtendedPathPrefix(strings.TrimSpace(p))
+	// Convert backslashes to forward slashes and ensure separators are forward slashes
+	// consistently across both Unix and Windows hosts.
+	slash := strings.ReplaceAll(raw, "\\", "/")
+	return filepath.ToSlash(filepath.Clean(slash))
+}
+
+func equalOrHasPathPrefixFold(target, prefix string) bool {
+	if prefix == "" || target == "" {
+		return false
+	}
+	targetSlash := filepath.ToSlash(target)
+	prefixSlash := filepath.ToSlash(prefix)
+	if strings.EqualFold(targetSlash, prefixSlash) {
+		return true
+	}
+	slashPrefix := prefixSlash
+	if !strings.HasSuffix(slashPrefix, "/") {
+		slashPrefix += "/"
+	}
+	return len(targetSlash) > len(prefixSlash) && strings.EqualFold(targetSlash[:len(slashPrefix)], slashPrefix)
+}
+
+func isScratchPath(cleanTarget string) bool {
+	slash := filepath.ToSlash(cleanTarget)
+	if slash == "/tmp" || strings.HasPrefix(slash, "/tmp/") ||
+		slash == "/private/tmp" || strings.HasPrefix(slash, "/private/tmp/") {
+		return true
+	}
+	if strings.Contains(strings.ToLower(slash), "/starkite-sbx-") {
+		return true
+	}
+	return false
+}
+
+func trimExecutableExt(name string) string {
+	lower := strings.ToLower(name)
+	for _, ext := range []string{".exe", ".cmd", ".bat", ".ps1", ".com"} {
+		if strings.HasSuffix(lower, ext) {
+			return name[:len(name)-len(ext)]
+		}
+	}
+	return name
+}
+
+// FormatPermissionError wraps OS-level EACCES/EPERM/Win32 errors with actionable
 // sandbox policy attribution and CLI/config remediation hints explaining why
 // the operation was denied and how to grant the required capability.
 func FormatPermissionError(err error, targetPath string, spec *ExecutionSpec) error {
 	if err == nil {
 		return nil
 	}
-	if !errors.Is(err, os.ErrPermission) && !errors.Is(err, syscall.EACCES) && !errors.Is(err, syscall.EPERM) {
+	if !isOSPermissionError(err) {
 		return err
 	}
 	if spec == nil {
@@ -29,43 +154,59 @@ func FormatPermissionError(err error, targetPath string, spec *ExecutionSpec) er
 		}
 		return fmt.Errorf("sandbox: permission denied: %w", err)
 	}
+
+	if isQuotaExceededError(err) {
+		if spec.NoExec {
+			return fmt.Errorf("sandbox: subprocess execution denied by no_exec policy (active process limit): %w\n  Hint: pass --sandbox-exec-allow=* on CLI, or add \"*\" to sandbox.<profile>.exec.allow in config.yaml", err)
+		}
+		return fmt.Errorf("sandbox: process resource limit exceeded (quota exhausted): %w\n  Hint: adjust memory or process limits in your sandbox profile or flags", err)
+	}
+
 	if spec.NoExec && targetPath == "" {
 		return fmt.Errorf("sandbox: subprocess execution denied by no_exec policy: %w\n  Hint: pass --sandbox-exec-allow=* on CLI, or add \"*\" to sandbox.<profile>.exec.allow in config.yaml", err)
 	}
+
 	if targetPath != "" {
-		cleanTarget := filepath.ToSlash(filepath.Clean(targetPath))
+		cleanTarget := normalizeDiagPath(targetPath)
 		if cleanTarget == "/dev/shm" || strings.HasPrefix(cleanTarget, "/dev/shm/") ||
 			cleanTarget == "/run/shm" || strings.HasPrefix(cleanTarget, "/run/shm/") {
 			return fmt.Errorf("sandbox: access to %q denied by shared memory (/dev/shm) isolation: %w\n  Hint: shared memory segments (/dev/shm) are isolated by default; use /tmp for scratch files", targetPath, err)
 		}
-		if cleanTarget == "/tmp" || strings.HasPrefix(cleanTarget, "/tmp/") ||
-			cleanTarget == "/private/tmp" || strings.HasPrefix(cleanTarget, "/private/tmp/") {
-			bin := filepath.Base(cleanTarget)
-			return fmt.Errorf("sandbox: execution or access of %q denied on writable scratch mount (W^X noexec policy): %w\n  Hint: pass --sandbox-exec-allow=%s on CLI, or place executables on a read-only path", targetPath, err, bin)
+		if isScratchPath(cleanTarget) {
+			suggestBin := trimExecutableExt(filepath.Base(cleanTarget))
+			return fmt.Errorf("sandbox: execution or access of %q denied on writable scratch mount (W^X noexec policy): %w\n  Hint: pass --sandbox-exec-allow=%s on CLI, or place executables on a read-only path", targetPath, err, suggestBin)
 		}
 		for _, m := range spec.Mounts {
-			dst := filepath.ToSlash(filepath.Clean(m.Destination))
-			src := filepath.ToSlash(filepath.Clean(m.Source))
+			dst := normalizeDiagPath(m.Destination)
+			src := normalizeDiagPath(m.Source)
 			if (m.Mode == MountRW || m.Type == MountTmpfs) &&
-				(cleanTarget == dst || strings.HasPrefix(cleanTarget, dst+"/") ||
-					(m.Source != "" && (cleanTarget == src || strings.HasPrefix(cleanTarget, src+"/")))) {
-				bin := filepath.Base(cleanTarget)
-				return fmt.Errorf("sandbox: execution of %q denied on writable mount %q (W^X noexec policy): %w\n  Hint: pass --sandbox-exec-allow=%s on CLI, or mount %q read-only (--sandbox-path-read)", targetPath, m.Destination, err, bin, m.Destination)
+				(equalOrHasPathPrefixFold(cleanTarget, dst) || (src != "" && equalOrHasPathPrefixFold(cleanTarget, src))) {
+				suggestBin := trimExecutableExt(filepath.Base(cleanTarget))
+				return fmt.Errorf("sandbox: execution of %q denied on writable mount %q (W^X noexec policy): %w\n  Hint: pass --sandbox-exec-allow=%s on CLI, or mount %q read-only (--sandbox-path-read)", targetPath, m.Destination, err, suggestBin, m.Destination)
 			}
 		}
-		if home, homeErr := os.UserHomeDir(); homeErr == nil && home != "" {
-			cleanHome := filepath.ToSlash(filepath.Clean(home))
-			if cleanTarget == cleanHome || strings.HasPrefix(cleanTarget, cleanHome+"/") {
+
+		userHome := os.Getenv("USERPROFILE")
+		if userHome == "" {
+			userHome, _ = os.UserHomeDir()
+		}
+		if userHome == "" {
+			userHome = os.Getenv("HOME")
+		}
+		if userHome != "" {
+			cleanHome := normalizeDiagPath(userHome)
+			if equalOrHasPathPrefixFold(cleanTarget, cleanHome) {
 				return fmt.Errorf("sandbox: access to %q denied by home directory isolation ($HOME is not mounted by default; add an explicit mount in your sandbox profile): %w\n  Hint: pass --sandbox-path-read=%s on CLI, or add %q to sandbox.<profile>.paths.read in config.yaml", targetPath, err, cleanTarget, cleanTarget)
 			}
 		}
+
 		if spec.NoExec {
-			bin := filepath.Base(cleanTarget)
-			return fmt.Errorf("sandbox: execution of %q denied by no_exec policy: %w\n  Hint: pass --sandbox-exec-allow=%s on CLI, or add %q to sandbox.<profile>.exec.allow in config.yaml", targetPath, err, bin, bin)
+			suggestBin := trimExecutableExt(filepath.Base(cleanTarget))
+			return fmt.Errorf("sandbox: execution of %q denied by no_exec policy: %w\n  Hint: pass --sandbox-exec-allow=%s on CLI, or add %q to sandbox.<profile>.exec.allow in config.yaml", targetPath, err, suggestBin, suggestBin)
 		}
 		if len(spec.AllowedExecPaths) > 0 {
-			bin := filepath.Base(cleanTarget)
-			return fmt.Errorf("sandbox: execution of %q denied by allowed_exec_paths policy: %w\n  Hint: pass --sandbox-exec-allow=%s on CLI, or add %q to sandbox.<profile>.exec.allow in config.yaml", targetPath, err, bin, bin)
+			suggestBin := trimExecutableExt(filepath.Base(cleanTarget))
+			return fmt.Errorf("sandbox: execution of %q denied by allowed_exec_paths policy: %w\n  Hint: pass --sandbox-exec-allow=%s on CLI, or add %q to sandbox.<profile>.exec.allow in config.yaml", targetPath, err, suggestBin, suggestBin)
 		}
 		hint := libkite.SuggestCapabilityHint("fs", "read", "", targetPath)
 		return fmt.Errorf("sandbox: access to %q denied by sandbox policy (path is outside active mounts or read-only): %w\n  Hint: %s", targetPath, err, hint)
@@ -79,16 +220,7 @@ func FormatNetworkError(err error, endpoint string, spec *ExecutionSpec) error {
 	if err == nil {
 		return nil
 	}
-	isDenied := errors.Is(err, os.ErrPermission) ||
-		errors.Is(err, syscall.EACCES) ||
-		errors.Is(err, syscall.EPERM)
-	if !isDenied {
-		lower := strings.ToLower(err.Error())
-		isDenied = strings.Contains(lower, "operation not permitted") ||
-			strings.Contains(lower, "permission denied") ||
-			strings.Contains(lower, "network is unreachable")
-	}
-	if !isDenied {
+	if !isOSNetworkDeniedError(err) {
 		return err
 	}
 	mode := NetworkNone
@@ -112,6 +244,51 @@ func FormatEnvScrubbedDiagnostic(varName string) string {
 	return libkite.FormatEnvScrubbedDiagnostic(varName)
 }
 
+// extractCommandTarget extracts the probable target executable from command tokens,
+// skipping shell wrappers such as /bin/sh, cmd.exe, and powershell.exe.
+func extractCommandTarget(cmd []string) string {
+	target := ""
+	for i := range cmd {
+		arg := cmd[i]
+		tokens := strings.Fields(arg)
+		for j, tok := range tokens {
+			cleanTok := strings.Trim(tok, "'\"`;|&()")
+			lowerTok := strings.ToLower(cleanTok)
+			baseName := strings.ToLower(filepath.Base(cleanTok))
+
+			// Skip shell wrappers
+			if baseName == "sh" || baseName == "bash" || baseName == "zsh" ||
+				baseName == "env" || baseName == "cmd.exe" || baseName == "cmd" ||
+				baseName == "powershell.exe" || baseName == "powershell" ||
+				baseName == "pwsh.exe" || baseName == "pwsh" {
+				continue
+			}
+			// Skip shell flags
+			if strings.HasPrefix(cleanTok, "-") || strings.HasPrefix(cleanTok, "/") && len(cleanTok) == 2 {
+				continue
+			}
+
+			// Path-qualified or explicit executable extension
+			hasSlash := strings.Contains(cleanTok, "/") || strings.Contains(cleanTok, "\\")
+			hasExt := strings.HasSuffix(lowerTok, ".exe") || strings.HasSuffix(lowerTok, ".cmd") ||
+				strings.HasSuffix(lowerTok, ".bat") || strings.HasSuffix(lowerTok, ".ps1") ||
+				strings.HasSuffix(lowerTok, ".sh")
+
+			if hasSlash || hasExt {
+				target = cleanTok
+				break
+			}
+			if target == "" && j == 0 && !strings.Contains(cleanTok, "=") {
+				target = cleanTok
+			}
+		}
+		if target != "" {
+			break
+		}
+	}
+	return target
+}
+
 // enrichPermissionStderr appends actionable sandbox policy attribution from
 // FormatPermissionError or FormatNetworkError when a sandboxed process fails
 // with a permission error.
@@ -130,14 +307,27 @@ func enrichPermissionStderr(stderr string, spec *ExecutionSpec) string {
 		return stderr
 	}
 
-	if spec.Network == NetworkNone &&
+	netDenied := (spec.Network == NetworkNone || spec.Network == NetworkLoopback) &&
 		(strings.Contains(lower, "socket:") ||
 			strings.Contains(lower, "network is unreachable") ||
 			strings.Contains(lower, "dial tcp") ||
-			strings.Contains(lower, "dial udp")) &&
+			strings.Contains(lower, "dial udp") ||
+			strings.Contains(lower, "forbidden by its access permissions") ||
+			strings.Contains(lower, "wsaeacces") ||
+			strings.Contains(lower, "10013") ||
+			strings.Contains(lower, "failed to connect") ||
+			strings.Contains(lower, "could not resolve host")) &&
 		(strings.Contains(lower, "operation not permitted") ||
 			strings.Contains(lower, "permission denied") ||
-			strings.Contains(lower, "network is unreachable")) {
+			strings.Contains(lower, "network is unreachable") ||
+			strings.Contains(lower, "access is denied") ||
+			strings.Contains(lower, "forbidden by its access permissions") ||
+			strings.Contains(lower, "could not resolve host") ||
+			strings.Contains(lower, "failed to connect") ||
+			strings.Contains(lower, "10013") ||
+			strings.Contains(lower, "wsaeacces"))
+
+	if netDenied {
 		diag := FormatNetworkError(syscall.EPERM, "", spec).Error()
 		if stderr == "" {
 			return diag + "\n"
@@ -148,26 +338,24 @@ func enrichPermissionStderr(stderr string, spec *ExecutionSpec) string {
 		return stderr + diag + "\n"
 	}
 
-	if !strings.Contains(lower, "permission denied") &&
-		!strings.Contains(lower, "operation not permitted") &&
-		!strings.Contains(lower, "not permitted") &&
-		!spec.NoExec && len(spec.AllowedExecPaths) == 0 {
+	hasPermString := strings.Contains(lower, "permission denied") ||
+		strings.Contains(lower, "operation not permitted") ||
+		strings.Contains(lower, "not permitted") ||
+		strings.Contains(lower, "access is denied") ||
+		strings.Contains(lower, "unauthorizedaccessexception") ||
+		strings.Contains(lower, "a required privilege is not held") ||
+		strings.Contains(lower, "not enough quota is available")
+
+	if !hasPermString && !spec.NoExec && len(spec.AllowedExecPaths) == 0 {
 		return stderr
 	}
 
-	target := ""
-	for _, arg := range spec.Command {
-		for tok := range strings.FieldsSeq(arg) {
-			cleanTok := strings.Trim(tok, "'\"`;|&()")
-			if strings.HasPrefix(cleanTok, "/") {
-				target = cleanTok
-				if cleanTok != "/bin/sh" && cleanTok != "/bin/bash" && cleanTok != "/usr/bin/env" {
-					break
-				}
-			}
-		}
+	target := extractCommandTarget(spec.Command)
+	var errToFormat error = syscall.EACCES
+	if strings.Contains(lower, "not enough quota") {
+		errToFormat = winErrorNotEnoughQuota
 	}
-	diag := FormatPermissionError(syscall.EACCES, target, spec).Error()
+	diag := FormatPermissionError(errToFormat, target, spec).Error()
 	if stderr == "" {
 		return diag + "\n"
 	}

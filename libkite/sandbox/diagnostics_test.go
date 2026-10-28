@@ -199,3 +199,106 @@ func TestDiagnostics_PolicySummary(t *testing.T) {
 		t.Errorf("DisplayPath = %q, want build.star", summary.DisplayPath)
 	}
 }
+
+func TestDiagnostics_Win32PermissionErrors(t *testing.T) {
+	spec := &ExecutionSpec{
+		Cwd:    `C:\workspace`,
+		NoExec: true,
+		Mounts: []Mount{
+			{Source: `C:\scratch`, Destination: `C:\scratch`, Mode: MountRW},
+		},
+		AllowedExecPaths: []string{`C:\Windows\System32\cmd.exe`},
+	}
+
+	tests := []struct {
+		name       string
+		err        error
+		targetPath string
+		spec       *ExecutionSpec
+		wantSubstr []string
+	}{
+		{
+			name:       "winErrorAccessDenied on scratch mount",
+			err:        winErrorAccessDenied,
+			targetPath: `C:\Users\alice\AppData\Local\Temp\starkite-sbx-1234\payload.exe`,
+			spec:       spec,
+			wantSubstr: []string{"W^X noexec policy", "Hint: pass --sandbox-exec-allow=payload on CLI"},
+		},
+		{
+			name:       "winErrorAccessDenied on writable mount",
+			err:        winErrorAccessDenied,
+			targetPath: `C:\scratch\run.bat`,
+			spec:       spec,
+			wantSubstr: []string{"denied on writable mount", "W^X noexec policy", "Hint: pass --sandbox-exec-allow=run on CLI"},
+		},
+		{
+			name:       "winErrorAccessDenied on exec under NoExec",
+			err:        winErrorAccessDenied,
+			targetPath: `C:\Windows\System32\whoami.exe`,
+			spec:       spec,
+			wantSubstr: []string{"denied by no_exec policy", "Hint: pass --sandbox-exec-allow=whoami on CLI"},
+		},
+		{
+			name:       "winErrorNotEnoughQuota under NoExec",
+			err:        winErrorNotEnoughQuota,
+			spec:       spec,
+			wantSubstr: []string{"subprocess execution denied by no_exec policy (active process limit)", "Hint: pass --sandbox-exec-allow=* on CLI"},
+		},
+		{
+			name:       "wsaErrorAccessDenied in FormatNetworkError",
+			err:        wsaErrorAccessDenied,
+			spec:       &ExecutionSpec{Network: NetworkNone},
+			wantSubstr: []string{"outbound network socket creation denied for host \"api.github.com:443\"", "Hint: pass --sandbox-net on CLI"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var got error
+			if tt.name == "wsaErrorAccessDenied in FormatNetworkError" {
+				got = FormatNetworkError(tt.err, "api.github.com:443", tt.spec)
+			} else {
+				got = FormatPermissionError(tt.err, tt.targetPath, tt.spec)
+			}
+			if got == nil {
+				t.Fatal("expected non-nil error")
+			}
+			errMsg := got.Error()
+			for _, w := range tt.wantSubstr {
+				if !strings.Contains(errMsg, w) {
+					t.Errorf("got %q, missing substring %q", errMsg, w)
+				}
+			}
+		})
+	}
+}
+
+func TestDiagnostics_EnrichPermissionStderr_Windows(t *testing.T) {
+	// 1. Windows subprocess exec denial under NoExec
+	specExec := &ExecutionSpec{
+		Command: []string{"cmd.exe", "/c", "whoami.exe"},
+		NoExec:  true,
+	}
+	rawExecStderr := "Access is denied."
+	enrichedExec := enrichPermissionStderr(rawExecStderr, specExec)
+	if !strings.Contains(enrichedExec, "sandbox: execution of \"whoami.exe\" denied by no_exec policy") {
+		t.Errorf("enrichPermissionStderr exec failed: %q", enrichedExec)
+	}
+	if !strings.Contains(enrichedExec, "Hint: pass --sandbox-exec-allow=whoami on CLI") {
+		t.Errorf("enrichPermissionStderr exec hint failed: %q", enrichedExec)
+	}
+
+	// 2. Windows socket denial in stderr
+	specNet := &ExecutionSpec{
+		Command: []string{"powershell.exe", "-Command", "New-Object System.Net.Sockets.TcpClient('1.1.1.1', 80)"},
+		Network: NetworkNone,
+	}
+	rawNetStderr := "An attempt was made to access a socket in a way forbidden by its access permissions."
+	enrichedNet := enrichPermissionStderr(rawNetStderr, specNet)
+	if !strings.Contains(enrichedNet, "sandbox: outbound network socket creation denied") {
+		t.Errorf("enrichPermissionStderr network failed: %q", enrichedNet)
+	}
+	if !strings.Contains(enrichedNet, "Hint: pass --sandbox-net on CLI") {
+		t.Errorf("enrichPermissionStderr hint failed: %q", enrichedNet)
+	}
+}

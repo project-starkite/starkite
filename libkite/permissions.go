@@ -97,8 +97,13 @@ func (c *PermissionChecker) Check(module, category, function, resource string) e
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	res := resource
+	if res != "" && filepath.IsAbs(res) {
+		res = CanonicalizePath(res)
+	}
+
 	for _, rule := range c.deny {
-		if rule.Matches(module, category, function, resource) {
+		if rule.Matches(module, category, function, res) {
 			return &PermissionError{
 				Module:   module,
 				Category: category,
@@ -111,7 +116,7 @@ func (c *PermissionChecker) Check(module, category, function, resource string) e
 	}
 
 	for _, rule := range c.allow {
-		if rule.Matches(module, category, function, resource) {
+		if rule.Matches(module, category, function, res) {
 			return nil
 		}
 	}
@@ -140,13 +145,18 @@ func (c *PermissionChecker) allows(module, category, function, resource string) 
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
+	res := resource
+	if res != "" && filepath.IsAbs(res) {
+		res = CanonicalizePath(res)
+	}
+
 	for _, rule := range c.deny {
-		if rule.Matches(module, category, function, resource) {
+		if rule.Matches(module, category, function, res) {
 			return false
 		}
 	}
 	for _, rule := range c.allow {
-		if rule.Matches(module, category, function, resource) {
+		if rule.Matches(module, category, function, res) {
 			return true
 		}
 	}
@@ -349,9 +359,6 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 			return true
 		}
 		res := filepath.ToSlash(resource)
-		if isAbs {
-			res = filepath.ToSlash(CanonicalizePath(resource))
-		}
 		if (module == "os" || module == "*") && (category == "exec" || category == "*") && !isAbs && !strings.Contains(pattern, "/") && !strings.Contains(pattern, "*") {
 			base := filepath.Base(res)
 			if base == pattern || strings.EqualFold(trimWindowsExecExt(base), trimWindowsExecExt(pattern)) {
@@ -922,7 +929,7 @@ func suggestPathForResource(resource string) string {
 	if r == "" || r == "." || r == "./" || r == "$CWD" || strings.HasPrefix(r, "$CWD/") {
 		return "."
 	}
-	if !filepath.IsAbs(r) && !strings.HasPrefix(r, "/") && !strings.HasPrefix(r, "$HOME") && !strings.HasPrefix(r, "~") {
+	if !filepath.IsAbs(r) && !strings.HasPrefix(r, "/") && !strings.HasPrefix(r, "$HOME") && !strings.HasPrefix(r, "~") && filepath.VolumeName(r) == "" {
 		cleanRel := filepath.ToSlash(filepath.Clean(r))
 		if cleanRel == "." || !strings.HasPrefix(cleanRel, "..") {
 			return "."
@@ -933,8 +940,8 @@ func suggestPathForResource(resource string) string {
 		canonCwd := filepath.ToSlash(CanonicalizePath(cwd))
 		cleanRes := filepath.ToSlash(filepath.Clean(r))
 		canonRes := filepath.ToSlash(CanonicalizePath(r))
-		if cleanRes == cleanCwd || strings.HasPrefix(cleanRes, cleanCwd+"/") ||
-			canonRes == canonCwd || strings.HasPrefix(canonRes, canonCwd+"/") {
+		if strings.EqualFold(cleanRes, cleanCwd) || strings.HasPrefix(strings.ToLower(cleanRes), strings.ToLower(cleanCwd)+"/") ||
+			strings.EqualFold(canonRes, canonCwd) || strings.HasPrefix(strings.ToLower(canonRes), strings.ToLower(canonCwd)+"/") {
 			return "."
 		}
 	}
@@ -1005,7 +1012,7 @@ func FormatEnvScrubbedDiagnostic(varName string) string {
 }
 
 // WrapOSPermissionError inspects an OS/syscall error and, if it represents a
-// kernel-level permission or socket denial (EACCES, EPERM, os.ErrPermission),
+// kernel-level permission or socket denial (EACCES, EPERM, os.ErrPermission, or Win32/Winsock equivalents),
 // appends an actionable remediation hint for the corresponding module capability.
 func WrapOSPermissionError(module, category, resource string, err error) error {
 	if err == nil {
@@ -1016,11 +1023,19 @@ func WrapOSPermissionError(module, category, resource string, err error) error {
 	}
 	isPerm := errors.Is(err, os.ErrPermission) ||
 		errors.Is(err, syscall.EACCES) ||
-		errors.Is(err, syscall.EPERM)
+		errors.Is(err, syscall.EPERM) ||
+		errors.Is(err, syscall.Errno(5)) || // ERROR_ACCESS_DENIED
+		errors.Is(err, syscall.Errno(1314)) || // ERROR_PRIVILEGE_NOT_HELD
+		errors.Is(err, syscall.Errno(1816)) || // ERROR_NOT_ENOUGH_QUOTA
+		errors.Is(err, syscall.Errno(10013)) // WSAEACCES
 	if !isPerm {
 		lower := strings.ToLower(err.Error())
 		isPerm = strings.Contains(lower, "operation not permitted") ||
-			strings.Contains(lower, "permission denied")
+			strings.Contains(lower, "permission denied") ||
+			strings.Contains(lower, "access is denied") ||
+			strings.Contains(lower, "a required privilege is not held") ||
+			strings.Contains(lower, "forbidden by its access permissions") ||
+			strings.Contains(lower, "unauthorizedaccessexception")
 	}
 	if !isPerm {
 		return err
