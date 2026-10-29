@@ -63,6 +63,8 @@ type landlockExecPayload struct {
 	TargetArgv       []string      `json:"target_argv"`
 	Cwd              string        `json:"cwd"`
 	Network          NetworkMode   `json:"network"`
+	NetworkAllow     []string      `json:"network_allow,omitempty"`
+	NetworkDeny      []string      `json:"network_deny,omitempty"`
 	Mounts           []Mount       `json:"mounts"`
 	MaxMemoryMB      int64         `json:"max_memory_mb"`
 	MaxPIDs          int64         `json:"max_pids"`
@@ -98,6 +100,8 @@ func runLandlockSelfReexec(raw string) {
 		Command:          payload.TargetArgv,
 		Cwd:              payload.Cwd,
 		Network:          payload.Network,
+		NetworkAllow:     payload.NetworkAllow,
+		NetworkDeny:      payload.NetworkDeny,
 		Mounts:           payload.Mounts,
 		MaxMemoryMB:      payload.MaxMemoryMB,
 		MaxPIDs:          payload.MaxPIDs,
@@ -283,7 +287,7 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 			_ = addLandlockPathRule(int(rulesetFd), p, readDataAccess)
 		}
 	}
-	if spec.Network == NetworkHost {
+	if spec.Network == NetworkHost || len(spec.NetworkAllow) > 0 {
 		for _, p := range systemNetworkPaths {
 			if _, statErr := os.Stat(p); statErr == nil {
 				_ = addLandlockPathRule(int(rulesetFd), p, readDataAccess)
@@ -526,6 +530,8 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 				TargetArgv:       spec.Command,
 				Cwd:              spec.Cwd,
 				Network:          spec.Network,
+				NetworkAllow:     spec.NetworkAllow,
+				NetworkDeny:      spec.NetworkDeny,
 				Mounts:           spec.Mounts,
 				MaxMemoryMB:      spec.MaxMemoryMB,
 				MaxPIDs:          spec.MaxPIDs,

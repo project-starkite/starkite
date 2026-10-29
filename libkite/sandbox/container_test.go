@@ -126,7 +126,7 @@ func TestContainerDriver_StarkiteImageEntrypoint(t *testing.T) {
 	// When using the default starkite image, kite binary prefix should be stripped
 	// since the OCI entrypoint is already /ko-app/kite.
 	spec := &ExecutionSpec{
-		Command: []string{"/path/to/kite", "run", "deploy.star", "--sandbox-net"},
+		Command: []string{"/path/to/kite", "run", "deploy.star", "--sandbox-net-allow"},
 	}
 
 	args := d.BuildArgs(spec)
@@ -135,7 +135,7 @@ func TestContainerDriver_StarkiteImageEntrypoint(t *testing.T) {
 	if strings.Contains(joined, "/path/to/kite") || strings.Contains(joined, "/usr/local/bin/kite") {
 		t.Errorf("expected kite binary to be stripped, got args: %s", joined)
 	}
-	expectedTail := "ghcr.io/project-starkite/starkite:latest run deploy.star --sandbox-net"
+	expectedTail := "ghcr.io/project-starkite/starkite:latest run deploy.star --sandbox-net-allow"
 	if !strings.HasSuffix(joined, expectedTail) {
 		t.Errorf("expected args to end with %q, got: %s", expectedTail, joined)
 	}

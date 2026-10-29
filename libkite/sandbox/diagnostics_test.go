@@ -110,7 +110,7 @@ func TestDiagnostics_FormatNetworkError(t *testing.T) {
 	if !strings.Contains(msg, "outbound network socket creation denied for host \"api.github.com:443\" (sandbox network: none)") {
 		t.Errorf("FormatNetworkError missing header: %q", msg)
 	}
-	if !strings.Contains(msg, "Hint: pass --sandbox-net on CLI, or set sandbox.<profile>.network: host in config.yaml") {
+	if !strings.Contains(msg, "Hint: pass --sandbox-net-allow=api.github.com:443 on CLI, or add \"api.github.com:443\" to sandbox.<profile>.network.allow in config.yaml") {
 		t.Errorf("FormatNetworkError missing hint: %q", msg)
 	}
 }
@@ -135,7 +135,7 @@ func TestDiagnostics_EnrichPermissionStderr(t *testing.T) {
 	if !strings.Contains(enrichedNet, "sandbox: outbound network socket creation denied") {
 		t.Errorf("enrichPermissionStderr network failed: %q", enrichedNet)
 	}
-	if !strings.Contains(enrichedNet, "Hint: pass --sandbox-net on CLI") {
+	if !strings.Contains(enrichedNet, "Hint: pass --sandbox-net-allow on CLI") {
 		t.Errorf("enrichPermissionStderr hint failed: %q", enrichedNet)
 	}
 
@@ -248,7 +248,7 @@ func TestDiagnostics_Win32PermissionErrors(t *testing.T) {
 			name:       "wsaErrorAccessDenied in FormatNetworkError",
 			err:        wsaErrorAccessDenied,
 			spec:       &ExecutionSpec{Network: NetworkNone},
-			wantSubstr: []string{"outbound network socket creation denied for host \"api.github.com:443\"", "Hint: pass --sandbox-net on CLI"},
+			wantSubstr: []string{"outbound network socket creation denied for host \"api.github.com:443\"", "Hint: pass --sandbox-net-allow=api.github.com:443 on CLI"},
 		},
 	}
 
@@ -298,7 +298,7 @@ func TestDiagnostics_EnrichPermissionStderr_Windows(t *testing.T) {
 	if !strings.Contains(enrichedNet, "sandbox: outbound network socket creation denied") {
 		t.Errorf("enrichPermissionStderr network failed: %q", enrichedNet)
 	}
-	if !strings.Contains(enrichedNet, "Hint: pass --sandbox-net on CLI") {
+	if !strings.Contains(enrichedNet, "Hint: pass --sandbox-net-allow on CLI") {
 		t.Errorf("enrichPermissionStderr hint failed: %q", enrichedNet)
 	}
 }

@@ -90,6 +90,23 @@ func TestGenerateSeatbeltSBPL_NetworkModes(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("scoped endpoints", func(t *testing.T) {
+		spec := &ExecutionSpec{
+			Network:      NetworkHost,
+			NetworkAllow: []string{"api.github.com:443", "internal.corp:8080"},
+		}
+		sbpl := GenerateSeatbeltSBPL(spec)
+		if strings.Contains(sbpl, "(allow network*)\n") {
+			t.Errorf("scoped endpoints should not contain broad (allow network*)")
+		}
+		if !strings.Contains(sbpl, `(allow network-outbound (remote tcp "*:443"))`) {
+			t.Errorf("missing remote tcp *:443 in SBPL: %s", sbpl)
+		}
+		if !strings.Contains(sbpl, `(allow network-outbound (remote tcp "*:8080"))`) {
+			t.Errorf("missing remote tcp *:8080 in SBPL: %s", sbpl)
+		}
+	})
 }
 
 func TestGenerateSeatbeltSBPL_ContainerParity(t *testing.T) {

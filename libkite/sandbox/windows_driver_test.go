@@ -248,7 +248,7 @@ func TestWindowsDriver_NetworkNone_BlocksSocket(t *testing.T) {
 	var exitCode int
 	if res != nil {
 		exitCode = res.ExitCode
-		if !strings.Contains(res.Stderr, "Hint: pass --sandbox-net on CLI") {
+		if !strings.Contains(res.Stderr, "Hint: pass --sandbox-net-allow on CLI") {
 			t.Errorf("expected Stderr to contain network hint, got: %q", res.Stderr)
 		}
 	}

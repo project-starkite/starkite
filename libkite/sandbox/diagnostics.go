@@ -231,8 +231,14 @@ func FormatNetworkError(err error, endpoint string, spec *ExecutionSpec) error {
 	if hostLabel == "" {
 		hostLabel = "outbound endpoint"
 	}
+	if endpoint != "" && endpoint != "*" {
+		return fmt.Errorf(
+			"sandbox: outbound network socket creation denied for host %q (sandbox network: %s): %w\n  Hint: pass --sandbox-net-allow=%s on CLI, or add %q to sandbox.<profile>.network.allow in config.yaml",
+			hostLabel, mode, err, endpoint, endpoint,
+		)
+	}
 	return fmt.Errorf(
-		"sandbox: outbound network socket creation denied for host %q (sandbox network: %s): %w\n  Hint: pass --sandbox-net on CLI, or set sandbox.<profile>.network: host in config.yaml",
+		"sandbox: outbound network socket creation denied for host %q (sandbox network: %s): %w\n  Hint: pass --sandbox-net-allow on CLI, or set sandbox.<profile>.network.mode: host in config.yaml",
 		hostLabel, mode, err,
 	)
 }

@@ -16,6 +16,8 @@ type ExecutionSpec struct {
 	Cwd              string        // Working directory for execution
 	Env              []string      // KEY=VALUE environment strings
 	Network          NetworkMode   // Network access mode (NetworkNone, NetworkLoopback, NetworkHost)
+	NetworkAllow     []string      // Allowed network endpoints
+	NetworkDeny      []string      // Denied network endpoints
 	Mounts           []Mount       // Filesystem mount bindings
 	MaxMemoryMB      int64         // Memory limit in megabytes (0 = unconstrained)
 	MaxCPUs          float64       // CPU quota (0.0 = unconstrained)

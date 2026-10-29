@@ -4,7 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+
+	"github.com/project-starkite/starkite/libkite"
 )
 
 func cleanSBPLPath(p string) string {
@@ -249,8 +252,24 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	b.WriteString(";; Network Access Rules\n")
 	switch spec.Network {
 	case NetworkHost:
-		b.WriteString("(allow network*)\n")
-		b.WriteString("(allow system-socket)\n")
+		if len(spec.NetworkAllow) == 0 || slices.Contains(spec.NetworkAllow, "*") {
+			b.WriteString("(allow network*)\n")
+			b.WriteString("(allow system-socket)\n")
+		} else {
+			b.WriteString("(allow system-socket)\n")
+			b.WriteString("(allow network-outbound (literal \"/private/var/run/mDNSResponder\"))\n")
+			b.WriteString("(allow network* (local ip \"localhost:*\"))\n")
+			b.WriteString("(allow network* (remote ip \"localhost:*\"))\n")
+			for _, ep := range spec.NetworkAllow {
+				_, port, hasPort := libkite.SplitEndpointHostPort(ep)
+				if hasPort && port != "" && port != "*" {
+					b.WriteString(fmt.Sprintf("(allow network-outbound (remote tcp \"*:%s\"))\n", port))
+				} else {
+					b.WriteString("(allow network-outbound (remote tcp \"*:443\"))\n")
+					b.WriteString("(allow network-outbound (remote tcp \"*:80\"))\n")
+				}
+			}
+		}
 	case NetworkLoopback:
 		b.WriteString("(allow network* (local ip \"localhost:*\"))\n")
 		b.WriteString("(allow network* (remote ip \"localhost:*\"))\n")
