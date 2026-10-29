@@ -86,7 +86,10 @@ func resetSandboxFlags() {
 	sandboxCallDeny = nil
 	sandboxExecAllow = nil
 	sandboxExecDeny = nil
-	sandboxNet = false
+	sandboxNetAllow = nil
+	sandboxNetDeny = nil
+	sandboxNetMode = ""
+	sandboxMaxMemory = ""
 
 	flags := rootCmd.PersistentFlags()
 	for _, name := range []string{
@@ -94,7 +97,8 @@ func resetSandboxFlags() {
 		"sandbox-path-read", "sandbox-path-write",
 		"sandbox-call-allow", "sandbox-call-deny",
 		"sandbox-exec-allow", "sandbox-exec-deny",
-		"sandbox-net",
+		"sandbox-net-allow", "sandbox-net-deny",
+		"sandbox-net-mode", "sandbox-max-memory",
 	} {
 		if f := flags.Lookup(name); f != nil {
 			f.Changed = false
@@ -224,7 +228,7 @@ func TestSandboxFlags(t *testing.T) {
 		sandboxCallDeny = []string{"denied.call"}
 		sandboxExecAllow = []string{"echo"}
 		sandboxExecDeny = []string{"rm"}
-		sandboxNet = true
+		sandboxNetAllow = []string{"*"}
 
 		prof, err := ResolveActiveProfile()
 		if err != nil {
@@ -260,6 +264,7 @@ func TestSandboxFlags(t *testing.T) {
 			"--sandboxed",
 			"--sandbox-opaque",
 			"--sandbox-net-access",
+			"--sandbox-net",
 			"--sandbox-host",
 			"--deny-all",
 		}
@@ -326,7 +331,11 @@ func TestStripSandboxArgs(t *testing.T) {
 		"--sandbox-call-deny=io.prompt",
 		"--sandbox-exec-allow", "echo",
 		"--sandbox-exec-deny=rm",
-		"--sandbox-net",
+		"--sandbox-net-allow",
+		"--sandbox-net-allow=api.github.com:443",
+		"--sandbox-net-deny",
+		"--sandbox-net-mode=host",
+		"--sandbox-max-memory=512MB",
 		"--var=foo=bar",
 		"script.star",
 		"arg1",
@@ -358,7 +367,7 @@ func TestNeedsImplicitRun(t *testing.T) {
 		},
 		{
 			name: "sandbox flag before script file",
-			args: []string{"kite", "--sandbox-net", "./script.star"},
+			args: []string{"kite", "--sandbox-net-allow", "./script.star"},
 			want: true,
 		},
 		{
@@ -395,5 +404,122 @@ func TestNeedsImplicitRun(t *testing.T) {
 				t.Errorf("needsImplicitRun(%v) = %v, want %v", tt.args, got, tt.want)
 			}
 		})
+	}
+}
+
+func TestFlag_SandboxNetRemovedActionableError(t *testing.T) {
+	cmd := rootCmd
+	cmd.SetArgs([]string{"run", "--sandbox-net", "test.star"})
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected error passing removed flag --sandbox-net, got nil")
+	}
+	expectedMsg := "flag '--sandbox-net' has been removed.\n  Network capabilities must be explicitly declared:\n    --sandbox-net-allow or --sandbox-net-allow=*  (allow unrestricted host network egress)\n    --sandbox-net-allow=<endpoint>                (allow specific destination host:port or CIDR)\n    --sandbox-net-deny or --sandbox-net-deny=*    (deny all network access / air-gapped)\n    --sandbox-net-deny=<endpoint>                 (deny specific destination host:port or CIDR)"
+	if !strings.Contains(err.Error(), expectedMsg) {
+		t.Errorf("error message mismatch:\ngot:  %q\nwant substring: %q", err.Error(), expectedMsg)
+	}
+}
+
+func TestFlag_SandboxNetAllow_Equivalence(t *testing.T) {
+	defer resetSandboxFlags()
+
+	t.Run("bare flag", func(t *testing.T) {
+		resetSandboxFlags()
+		if err := rootCmd.ParseFlags([]string{"--sandbox-net-allow"}); err != nil {
+			t.Fatalf("ParseFlags failed: %v", err)
+		}
+		overrides := currentCLIOverrides()
+		if len(overrides.NetworkAllow) != 1 || overrides.NetworkAllow[0] != "*" {
+			t.Errorf("bare --sandbox-net-allow got %v, want [*]", overrides.NetworkAllow)
+		}
+	})
+
+	t.Run("explicit wildcard", func(t *testing.T) {
+		resetSandboxFlags()
+		if err := rootCmd.ParseFlags([]string{"--sandbox-net-allow=*"}); err != nil {
+			t.Fatalf("ParseFlags failed: %v", err)
+		}
+		overrides := currentCLIOverrides()
+		if len(overrides.NetworkAllow) != 1 || overrides.NetworkAllow[0] != "*" {
+			t.Errorf("--sandbox-net-allow=* got %v, want [*]", overrides.NetworkAllow)
+		}
+	})
+
+	t.Run("scoped endpoint", func(t *testing.T) {
+		resetSandboxFlags()
+		if err := rootCmd.ParseFlags([]string{"--sandbox-net-allow=api.github.com:443"}); err != nil {
+			t.Fatalf("ParseFlags failed: %v", err)
+		}
+		overrides := currentCLIOverrides()
+		if len(overrides.NetworkAllow) != 1 || overrides.NetworkAllow[0] != "api.github.com:443" {
+			t.Errorf("--sandbox-net-allow=endpoint got %v, want [api.github.com:443]", overrides.NetworkAllow)
+		}
+	})
+}
+
+func TestFlag_SandboxNetDeny_Equivalence(t *testing.T) {
+	defer resetSandboxFlags()
+
+	t.Run("bare flag", func(t *testing.T) {
+		resetSandboxFlags()
+		if err := rootCmd.ParseFlags([]string{"--sandbox-net-deny"}); err != nil {
+			t.Fatalf("ParseFlags failed: %v", err)
+		}
+		overrides := currentCLIOverrides()
+		if len(overrides.NetworkDeny) != 1 || overrides.NetworkDeny[0] != "*" {
+			t.Errorf("bare --sandbox-net-deny got %v, want [*]", overrides.NetworkDeny)
+		}
+	})
+
+	t.Run("explicit wildcard", func(t *testing.T) {
+		resetSandboxFlags()
+		if err := rootCmd.ParseFlags([]string{"--sandbox-net-deny=*"}); err != nil {
+			t.Fatalf("ParseFlags failed: %v", err)
+		}
+		overrides := currentCLIOverrides()
+		if len(overrides.NetworkDeny) != 1 || overrides.NetworkDeny[0] != "*" {
+			t.Errorf("--sandbox-net-deny=* got %v, want [*]", overrides.NetworkDeny)
+		}
+	})
+
+	t.Run("scoped endpoint", func(t *testing.T) {
+		resetSandboxFlags()
+		if err := rootCmd.ParseFlags([]string{"--sandbox-net-deny=10.0.0.0/8"}); err != nil {
+			t.Fatalf("ParseFlags failed: %v", err)
+		}
+		overrides := currentCLIOverrides()
+		if len(overrides.NetworkDeny) != 1 || overrides.NetworkDeny[0] != "10.0.0.0/8" {
+			t.Errorf("--sandbox-net-deny=10.0.0.0/8 got %v, want [10.0.0.0/8]", overrides.NetworkDeny)
+		}
+	})
+}
+
+func TestFlag_SandboxNetMode(t *testing.T) {
+	defer resetSandboxFlags()
+
+	for _, mode := range []string{"host", "loopback", "none"} {
+		resetSandboxFlags()
+		if err := rootCmd.ParseFlags([]string{"--sandbox-net-mode=" + mode}); err != nil {
+			t.Fatalf("ParseFlags failed: %v", err)
+		}
+		overrides := currentCLIOverrides()
+		if overrides.NetworkMode != mode {
+			t.Errorf("NetworkMode = %q, want %q", overrides.NetworkMode, mode)
+		}
+	}
+}
+
+func TestFlag_SandboxMaxMemory(t *testing.T) {
+	defer resetSandboxFlags()
+
+	for _, mem := range []string{"512MB", "2GB"} {
+		resetSandboxFlags()
+		if err := rootCmd.ParseFlags([]string{"--sandbox-max-memory=" + mem}); err != nil {
+			t.Fatalf("ParseFlags failed: %v", err)
+		}
+		overrides := currentCLIOverrides()
+		if overrides.MaxMemory != mem {
+			t.Errorf("MaxMemory = %q, want %q", overrides.MaxMemory, mem)
+		}
 	}
 }

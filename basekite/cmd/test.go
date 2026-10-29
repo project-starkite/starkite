@@ -491,8 +491,17 @@ func childTestArgs(file string) []string {
 	for _, x := range sandboxExecDeny {
 		args = append(args, "--sandbox-exec-deny", x)
 	}
-	if sandboxNet {
-		args = append(args, "--sandbox-net")
+	for _, a := range sandboxNetAllow {
+		args = append(args, "--sandbox-net-allow="+a)
+	}
+	for _, d := range sandboxNetDeny {
+		args = append(args, "--sandbox-net-deny="+d)
+	}
+	if sandboxNetMode != "" {
+		args = append(args, "--sandbox-net-mode="+sandboxNetMode)
+	}
+	if sandboxMaxMemory != "" {
+		args = append(args, "--sandbox-max-memory="+sandboxMaxMemory)
 	}
 	if debugMode {
 		args = append(args, "--debug")

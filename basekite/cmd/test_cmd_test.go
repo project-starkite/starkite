@@ -101,7 +101,7 @@ func TestChildTestArgs(t *testing.T) {
 	oldCallDeny := sandboxCallDeny
 	oldExecAllow := sandboxExecAllow
 	oldExecDeny := sandboxExecDeny
-	oldNet := sandboxNet
+	oldNetAllow := sandboxNetAllow
 	oldEnvFlags := envFlags
 	oldEnvInherit := envInherit
 	oldVerbose := testVerbose
@@ -117,7 +117,7 @@ func TestChildTestArgs(t *testing.T) {
 		sandboxCallDeny = oldCallDeny
 		sandboxExecAllow = oldExecAllow
 		sandboxExecDeny = oldExecDeny
-		sandboxNet = oldNet
+		sandboxNetAllow = oldNetAllow
 		envFlags = oldEnvFlags
 		envInherit = oldEnvInherit
 		testVerbose = oldVerbose
@@ -133,7 +133,7 @@ func TestChildTestArgs(t *testing.T) {
 	sandboxCallDeny = []string{"io.prompt"}
 	sandboxExecAllow = []string{"echo"}
 	sandboxExecDeny = []string{"rm"}
-	sandboxNet = true
+	sandboxNetAllow = []string{"*"}
 	envFlags = []string{"FOO=bar"}
 	envInherit = true
 	testVerbose = true
@@ -155,7 +155,7 @@ func TestChildTestArgs(t *testing.T) {
 		"--sandbox-call-deny", "io.prompt",
 		"--sandbox-exec-allow", "echo",
 		"--sandbox-exec-deny", "rm",
-		"--sandbox-net",
+		"--sandbox-net-allow=*",
 		"--env=FOO=bar",
 		"--env-inherit",
 	}

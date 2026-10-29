@@ -40,7 +40,10 @@ Sandbox & Capabilities (enabled by default under the 'deny-all' profile):
   --sandbox-exec-deny=<bins>     Deny execution of specific binaries (comma-separated or repeatable)
   --sandbox-call-allow=<rules>   Allow specific Starlark module calls (e.g. fs.read, http.client)
   --sandbox-call-deny=<rules>    Deny specific Starlark module calls
-  --sandbox-net                  Grant outbound network access (equivalent to network: host)
+  --sandbox-net-allow=<target>   Allow outbound network access to endpoint(s) or '*' for unrestricted
+  --sandbox-net-deny=<target>    Deny outbound network access to endpoint(s) or '*' for air-gapping
+  --sandbox-net-mode=<mode>      Network mode (host|loopback|none)
+  --sandbox-max-memory=<limit>   Maximum memory limit (e.g. 512MB, 2GB)
   --sandbox-driver=<driver>      Select sandbox driver (auto, landlock, seatbelt, windows, podman, docker, nerdctl, gvisor)
   --sandbox-enabled=false        Disable sandbox confinement (run unconfined)
   --env, -e <KEY[=VALUE]>        Forward host environment variable (KEY) or inject assignment (KEY=VALUE)
@@ -54,10 +57,10 @@ Examples:
   kite run ./calc.star
 
   # Grant working directory read/write and outbound network access
-  kite run ./deploy.star --sandbox-path-write=. --sandbox-net
+  kite run ./deploy.star --sandbox-path-write=. --sandbox-net-allow
 
   # Grant execution of specific CLI tools and forward KUBECONFIG
-  kite run ./rollout.star --sandbox-exec-allow=kubectl,helm --sandbox-net --env KUBECONFIG
+  kite run ./rollout.star --sandbox-exec-allow=kubectl,helm --sandbox-net-allow --env KUBECONFIG
 
   # Run with variable overrides and a variable file
   kite run ./deploy.star --var env=prod --var replicas=5 --var-file=prod.yaml
@@ -292,6 +295,9 @@ func parseKnownFlags(flagSet *pflag.FlagSet, args []string) (remainder []string,
 		}
 		if strings.HasPrefix(arg, "-") && arg != "-" {
 			name := strings.TrimLeft(strings.Split(arg, "=")[0], "-")
+			if name == "sandbox-net" {
+				return nil, ErrSandboxNetRemoved
+			}
 			f := flagSet.Lookup(name)
 			if f == nil && len(name) == 1 {
 				f = flagSet.ShorthandLookup(name)

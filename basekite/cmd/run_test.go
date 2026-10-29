@@ -502,17 +502,17 @@ x = deployer.status
 	if !strings.Contains(msg, `paths.read: ["."] (active: [])`) {
 		t.Errorf("missing paths.read violation: %q", msg)
 	}
-	if !strings.Contains(msg, "Hint: rerun with required capabilities: kite run --sandbox-net --sandbox-path-read=.") {
+	if !strings.Contains(msg, "Hint: rerun with required capabilities: kite run --sandbox-net-allow --sandbox-path-read=.") {
 		t.Errorf("missing rerun hint: %q", msg)
 	}
 
 	// 2. Supplying the suggested CLI flags satisfies the trust boundary
-	oldNet := sandboxNet
+	oldNet := sandboxNetAllow
 	oldRead := sandboxPathRead
-	sandboxNet = true
+	sandboxNetAllow = []string{"*"}
 	sandboxPathRead = []string{"."}
 	defer func() {
-		sandboxNet = oldNet
+		sandboxNetAllow = oldNet
 		sandboxPathRead = oldRead
 	}()
 

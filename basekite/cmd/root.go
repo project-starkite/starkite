@@ -20,6 +20,9 @@ import (
 )
 
 var (
+	// ErrSandboxNetRemoved is returned when the legacy --sandbox-net flag is passed.
+	ErrSandboxNetRemoved = errors.New("flag '--sandbox-net' has been removed.\n  Network capabilities must be explicitly declared:\n    --sandbox-net-allow or --sandbox-net-allow=*  (allow unrestricted host network egress)\n    --sandbox-net-allow=<endpoint>                (allow specific destination host:port or CIDR)\n    --sandbox-net-deny or --sandbox-net-deny=*    (deny all network access / air-gapped)\n    --sandbox-net-deny=<endpoint>                 (deny specific destination host:port or CIDR)")
+
 	// Global flags
 	outputFormat string
 	debugMode    bool
@@ -38,7 +41,10 @@ var (
 	sandboxCallDeny  []string
 	sandboxExecAllow []string
 	sandboxExecDeny  []string
-	sandboxNet       bool
+	sandboxNetAllow  []string
+	sandboxNetDeny   []string
+	sandboxNetMode   string
+	sandboxMaxMemory string
 
 	// Environment flags
 	envFlags   []string
@@ -61,7 +67,7 @@ Examples:
   # Run with sandboxing enabled (default)
   kite ./deploy.star
   kite ./deploy.star --sandbox-profile=sandbox-net
-  kite ./deploy.star --sandbox-net
+  kite ./deploy.star --sandbox-net-allow
   kite ./deploy.star --sandbox-path-read=/data
 
   # Run unconfined
@@ -124,8 +130,32 @@ func init() {
 		"Allow execution of binary name/path or '*' (repeatable, comma-separated)")
 	rootCmd.PersistentFlags().StringArrayVar(&sandboxExecDeny, "sandbox-exec-deny", nil,
 		"Deny execution of binary name/path (repeatable, comma-separated)")
-	rootCmd.PersistentFlags().BoolVar(&sandboxNet, "sandbox-net", false,
-		"Enable outbound network access and unveil host DNS/TLS assets")
+
+	// SetFlagErrorFunc intercepts legacy removed flags like --sandbox-net and provides actionable guidance.
+	rootCmd.SetFlagErrorFunc(func(cmd *cobra.Command, err error) error {
+		if err == nil {
+			return nil
+		}
+		errStr := err.Error()
+		if strings.Contains(errStr, "--sandbox-net") || strings.Contains(errStr, "unknown flag: --sandbox-net") {
+			return ErrSandboxNetRemoved
+		}
+		return err
+	})
+
+	rootCmd.PersistentFlags().StringArrayVar(&sandboxNetAllow, "sandbox-net-allow", nil,
+		"Allow outbound network egress to endpoint(s) or '*' for unrestricted host networking (repeatable, comma-separated)")
+	rootCmd.PersistentFlags().Lookup("sandbox-net-allow").NoOptDefVal = "*"
+
+	rootCmd.PersistentFlags().StringArrayVar(&sandboxNetDeny, "sandbox-net-deny", nil,
+		"Deny outbound network egress to endpoint(s) or '*' for complete air-gapping (repeatable, comma-separated)")
+	rootCmd.PersistentFlags().Lookup("sandbox-net-deny").NoOptDefVal = "*"
+
+	rootCmd.PersistentFlags().StringVar(&sandboxNetMode, "sandbox-net-mode", "",
+		"Network confinement mode (host|loopback|none). Overrides sandbox profile network mode.")
+
+	rootCmd.PersistentFlags().StringVar(&sandboxMaxMemory, "sandbox-max-memory", "",
+		"Maximum memory limit for sandboxed process (e.g. 512MB, 2GB). Overrides sandbox profile max_memory.")
 
 	// Environment flags
 	rootCmd.PersistentFlags().StringArrayVarP(&envFlags, "env", "e", nil,
@@ -359,15 +389,18 @@ func currentCLIOverrides() sandbox.CLIOverrides {
 	}
 
 	return sandbox.CLIOverrides{
-		Enabled:   enabledOverride,
-		Driver:    drv,
-		PathRead:  sandboxPathRead,
-		PathWrite: sandboxPathWrite,
-		CallAllow: sandboxCallAllow,
-		CallDeny:  sandboxCallDeny,
-		ExecAllow: sandboxExecAllow,
-		ExecDeny:  sandboxExecDeny,
-		Net:       sandboxNet,
+		Enabled:      enabledOverride,
+		Driver:       drv,
+		PathRead:     sandboxPathRead,
+		PathWrite:    sandboxPathWrite,
+		CallAllow:    sandboxCallAllow,
+		CallDeny:     sandboxCallDeny,
+		ExecAllow:    sandboxExecAllow,
+		ExecDeny:     sandboxExecDeny,
+		NetworkAllow: sandboxNetAllow,
+		NetworkDeny:  sandboxNetDeny,
+		NetworkMode:  sandboxNetMode,
+		MaxMemory:    sandboxMaxMemory,
 	}
 }
 
@@ -433,10 +466,15 @@ func stripSandboxArgs(args []string) []string {
 		"sandbox-call-deny":  true,
 		"sandbox-exec-allow": true,
 		"sandbox-exec-deny":  true,
+		"sandbox-net-mode":   true,
+		"sandbox-max-memory": true,
+	}
+	noOptDefValFlags := map[string]bool{
+		"sandbox-net-allow": true,
+		"sandbox-net-deny":  true,
 	}
 	boolFlags := map[string]bool{
 		"sandbox-enabled": true,
-		"sandbox-net":     true,
 	}
 
 	var out []string
@@ -456,6 +494,10 @@ func stripSandboxArgs(args []string) []string {
 				// Flag value is in the next arg if present
 				i++
 			}
+			continue
+		}
+
+		if noOptDefValFlags[flagName] {
 			continue
 		}
 
@@ -586,6 +628,8 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 		Cwd:              cwd,
 		Env:              envSlice,
 		Network:          profile.Network,
+		NetworkAllow:     profile.NetworkAllow,
+		NetworkDeny:      profile.NetworkDeny,
 		Mounts:           profile.Mounts,
 		MaxMemoryMB:      profile.MaxMemoryMB,
 		Timeout:          profile.Timeout,
