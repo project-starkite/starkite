@@ -30,6 +30,15 @@ Filesystem references require a path prefix (`./`, `../`, or `/`); a bare refere
 
 A directory module or `namespace/name` is **executable** only if its `main.star` defines `main()`. A module without `main()` is a library (loaded via `load()`), and running it directly errors. A loose script file needs no `main()`.
 
+### Non-Starlark Target Guardrail
+
+`kite run` requires a valid Starkite script (`.star`), a shebang script (`#!/usr/bin/env kite`), or a module directory (`mod.yaml`). If you invoke `kite run` on an external executable binary or shell script (e.g. `./build.sh`), Starkite halts execution with an actionable guardrail error directing you to [`kite exec`](exec.md):
+
+```text
+error: target './build.sh' is not a Starkite script or module.
+  Hint: Use 'kite exec ./build.sh' to launch external processes under the sandbox engine.
+```
+
 ## Variable Injection
 
 Priority order, highest first:

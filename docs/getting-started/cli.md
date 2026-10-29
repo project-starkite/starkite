@@ -80,11 +80,28 @@ Home:     /home/alice
 
 ## kite exec
 
-The `exec` subcommand executes Starlark code passed directly as an inline string argument. This is useful for evaluating expressions, testing snippets, or running inline automation checks:
+The `exec` subcommand launches an arbitrary external native process or executable script directly under the Starkite kernel sandbox engine, completely bypassing the Starlark interpreter:
 
 ```bash
-$ kite exec 'print("Hello from exec")'
-Hello from exec
+$ kite exec /bin/echo "Running inside isolated sandbox"
+Running inside isolated sandbox
+
+# Pass child arguments and flags using the POSIX '--' delimiter:
+$ kite exec --sandbox-net-allow -- curl -s https://api.github.com/zen
+```
+
+For more details on native process execution, target resolution rules, and stdio streaming, see [`kite exec`](../references/cli/exec.md).
+
+## kite eval
+
+The `eval` subcommand evaluates Starlark expressions and snippets passed directly as an inline string argument:
+
+```bash
+$ kite eval 'print("Hello from eval")'
+Hello from eval
+
+$ kite eval 'print(json.encode({"status": "ok"}))'
+{"status":"ok"}
 ```
 
 For advanced shell pipelines, JSON/YAML processing, network queries, and script assertions, see the [Shell Integration Guide](../fundamentals/shell-integration.md).

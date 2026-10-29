@@ -80,7 +80,10 @@ Examples:
   kite fmt ./scripts/
 
   # Execute inline Starlark code
-  kite exec 'print("Hello from Starlark!")'
+  kite eval 'print("Hello from Starlark!")'
+
+  # Launch a native process under the sandbox engine
+  kite exec -- /bin/echo "Hello from isolated sandbox"
 
   # Test starlark scripts
   kite test ./tests/

@@ -16,8 +16,9 @@ Available in **every** edition (base, cloud, ai, all).
 
 | Command | Purpose |
 |---------|---------|
-| [`kite run`](run.md) | Execute a starkite script |
-| [`kite exec`](exec.md) | Execute inline Starlark code |
+| [`kite run`](run.md) | Execute a Starlark script or module directory |
+| [`kite exec`](exec.md) | Launch an external native process or shell script in the sandbox |
+| [`kite eval`](eval.md) | Evaluate inline Starlark expressions and snippets |
 | [`kite repl`](repl.md) | Start an interactive Read-Eval-Print-Loop (REPL) |
 | [`kite watch`](watch.md) | Watch and re-execute script on file changes |
 | [`kite test`](test.md) | Run test functions in `_test.star` files |

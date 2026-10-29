@@ -122,6 +122,7 @@ nav:
           - Overview: references/cli/index.md
           - run: references/cli/run.md
           - exec: references/cli/exec.md
+          - eval: references/cli/eval.md
           - test: references/cli/test.md
           - repl: references/cli/repl.md
           - watch: references/cli/watch.md

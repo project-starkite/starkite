@@ -69,7 +69,7 @@ Pre-built binaries for Linux, macOS, and Windows are available on [GitHub Releas
 Run `kite` directly via the signed Chainguard-based OCI image:
 
 ```bash
-docker run --rm ghcr.io/project-starkite/starkite:latest exec 'print(hostname())'
+docker run --rm ghcr.io/project-starkite/starkite:latest eval 'print(runtime.platform())'
 ```
 
 ### Build from Source
@@ -122,9 +122,10 @@ kite hello.star --sandbox-exec-allow=uname --var name=Alice
 ## CLI
 
 ```bash
-kite run script.star                  # Execute a script
-kite exec 'print(os.hostname())'      # Inline execution
-kite repl                             # Interactive REPL
+kite run script.star                     # Execute a script
+kite exec -- curl -s https://example.com # Run native process in sandbox
+kite eval 'print(1 + 1)'                 # Evaluate inline Starlark code
+kite repl                                # Interactive REPL
 kite test ./tests/                    # Run tests
 kite watch script.star                # Re-run on file changes
 kite validate script.star             # Syntax check
