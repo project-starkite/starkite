@@ -187,7 +187,7 @@ kite run script.star                                     # deny-all (default: pu
 kite run script.star --sandbox-path-read=.               # read files in working directory
 kite run script.star --sandbox-path-write=.              # read and write files in working directory
 kite run script.star --sandbox-exec-allow=kubectl,helm   # execute specific binaries (auto-resolved on PATH)
-kite run script.star --sandbox-net                       # allow outbound network access
+kite run script.star --sandbox-net-allow                 # allow outbound network access
 kite run script.star --env KUBECONFIG --env ENV=prod     # forward host KUBECONFIG and inject ENV=prod
 kite run script.star --sandbox-enabled=false             # run unconfined
 ```

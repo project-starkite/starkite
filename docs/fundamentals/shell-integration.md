@@ -48,7 +48,7 @@ API queries and remote service responses are handled using the built-in `http` m
 
 ```bash
 # Fetch details from remote web services without curling or writing external scripts
-$ kite exec --sandbox-net 'print(json.decode(http.url("https://httpbin.org/get").get().body)["url"])'
+$ kite exec --sandbox-net-allow 'print(json.decode(http.url("https://httpbin.org/get").get().body)["url"])'
 https://httpbin.org/get
 ```
 

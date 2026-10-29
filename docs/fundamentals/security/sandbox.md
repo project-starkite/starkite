@@ -70,7 +70,10 @@ Rather than switching whole profiles, you can selectively grant specific capabil
 | `--sandbox-exec-deny=<bins>` | Denies execution of specific binaries (takes precedence over allow rules). |
 | `--sandbox-call-allow=<rules>` | Permits specific Starlark API module calls (e.g. `fs.read`, `http.client`). |
 | `--sandbox-call-deny=<rules>` | Denies specific Starlark API module calls. |
-| `--sandbox-net` | Grants outbound network access (equivalent to `network: host`). |
+| `--sandbox-net-allow[=<target>]` | Grants outbound network access to endpoint(s), or `*` / bare flag for unrestricted host networking. |
+| `--sandbox-net-deny[=<target>]` | Denies outbound network access to endpoint(s), or `*` / bare flag for complete air-gapping. |
+| `--sandbox-net-mode=<mode>` | Selects network confinement mode (`host`, `loopback`, `none`). |
+| `--sandbox-max-memory=<limit>` | Sets maximum memory ceiling for sandboxed process (e.g. `512MB`, `2GB`). |
 | `--sandbox-driver=<driver>` | Selects the sandbox driver (`landlock`, `seatbelt`, `podman`, `docker`, `nerdctl`, `gvisor`, `auto`). |
 | `--sandbox-image=<image>` | Specifies the OCI image when using a container sandbox driver. |
 | `--sandbox-enabled=false` | Disables sandbox confinement and runs unconfined. |
@@ -82,10 +85,10 @@ Example compositions:
 kite run ./generate.star --sandbox-path-write=.
 
 # Grant specific CLI tools and network egress
-kite run ./deploy.star --sandbox-exec-allow=kubectl,helm --sandbox-net
+kite run ./deploy.star --sandbox-exec-allow=kubectl,helm --sandbox-net-allow
 
 # Grant working directory read and selective outbound HTTP
-kite run ./fetch.star --sandbox-path-read=. --sandbox-net
+kite run ./fetch.star --sandbox-path-read=. --sandbox-net-allow
 ```
 
 ### Runtime Usability Automations
@@ -94,7 +97,7 @@ Starkite eliminates common sandbox friction through automated runtime analysis:
 
 1. **Static AST `load()` Closure Pre-Loading**: Local `.star` scripts referenced by top-level `load()` statements are discovered, parsed, and cached in memory before the sandbox boundary is locked down. Scripts can import helper libraries and modules without needing filesystem read grants for `$CWD`.
 2. **Automatic Binary & Symlink Unveiling**: When you specify allowed binaries via `--sandbox-exec-allow=kubectl,go`, Starkite searches `$PATH`, resolves symlink chains (such as package manager links in `/opt/homebrew` or `/usr/local`), and mounts the underlying binary and its required directories read-only without exposing unauthorized paths.
-3. **Automatic Network Resolution Assets**: When you enable network access (`--sandbox-net` or `network: host`), the sandbox automatically unveils system DNS resolvers and TLS CA certificate bundles (`/etc/resolv.conf`, `/etc/hosts`, `/etc/ssl/certs`, `/etc/ca-certificates`, and macOS `/private/etc/ssl`).
+3. **Automatic Network Resolution Assets**: When you enable network access (`--sandbox-net-allow` or `network: host`), the sandbox automatically unveils system DNS resolvers and TLS CA certificate bundles (`/etc/resolv.conf`, `/etc/hosts`, `/etc/ssl/certs`, `/etc/ca-certificates`, and macOS `/private/etc/ssl`).
 
 ## Environment Isolation & Forwarding
 

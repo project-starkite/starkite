@@ -269,7 +269,7 @@ def main():
 
 Run with:
 ```bash
-kite run ./test_db.star --sandbox-net
+kite run ./test_db.star --sandbox-net-allow
 ```
 
 ### Container Health Diagnostic and Log Inspection
@@ -299,7 +299,7 @@ def main():
 
 Run with:
 ```bash
-kite run ./diagnose.star --sandbox-net
+kite run ./diagnose.star --sandbox-net-allow
 ```
 
 ---
@@ -315,5 +315,5 @@ Container management operations require the following capabilities:
 All of these capabilities are included in the `sandbox-net` profile:
 
 ```bash
-kite run ./manage.star --sandbox-net
+kite run ./manage.star --sandbox-net-allow
 ```

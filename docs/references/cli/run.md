@@ -87,10 +87,10 @@ kite ./deploy.star --var-file=prod.yaml
 kite ./manifest.star | kubectl apply -f -
 
 # Grant working directory read/write and outbound network
-kite ./deploy.star --sandbox-path-write=. --sandbox-net
+kite ./deploy.star --sandbox-path-write=. --sandbox-net-allow
 
 # Allow execution of specific binaries and forward KUBECONFIG
-kite ./deploy.star --sandbox-exec-allow=kubectl,helm --sandbox-net --env KUBECONFIG
+kite ./deploy.star --sandbox-exec-allow=kubectl,helm --sandbox-net-allow --env KUBECONFIG
 
 # Run inside a container sandbox driver
 kite ./deploy.star --sandbox-profile=sandbox-net --sandbox-driver=podman

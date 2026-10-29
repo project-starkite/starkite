@@ -59,8 +59,11 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--sandbox-exec-deny bins` | Deny execution of specific binaries (comma-separated or repeatable). | |
 | `--sandbox-call-allow rules` | Allow specific Starlark module calls (e.g. `fs.read`, `http.client`). | |
 | `--sandbox-call-deny rules` | Deny specific Starlark module calls. | |
-| `--sandbox-net` | Grant outbound network access (equivalent to `network: host`). | `false` |
-| `--sandbox-driver driver` | Sandbox execution driver (`auto`/`landlock`/`seatbelt`/`podman`/`docker`/`nerdctl`/`gvisor`). | `""` |
+| `--sandbox-net-allow[=targets]` | Allow outbound network access to endpoint(s) or `*` for unrestricted host networking (repeatable, comma-separated). | `*` |
+| `--sandbox-net-deny[=targets]` | Deny outbound network access to endpoint(s) or `*` for air-gapping (repeatable, comma-separated). | `*` |
+| `--sandbox-net-mode mode` | Network confinement mode (`host`, `loopback`, `none`). | `""` |
+| `--sandbox-max-memory limit` | Maximum memory limit for sandboxed process (e.g. `512MB`, `2GB`). | `""` |
+| `--sandbox-driver driver` | Sandbox execution driver (`auto`/`landlock`/`seatbelt`/`windows`/`podman`/`docker`/`nerdctl`/`gvisor`). | `""` |
 | `--sandbox-image image` | OCI image for container sandbox drivers (`podman`/`docker`/`nerdctl`). | `""` |
 | `--sandbox-enabled=false` | Disable sandbox confinement and run unconfined. Default is `true`. | `true` |
 | `--env, -e KEY[=VALUE]` | Forward host environment variable (`KEY`) or inject assignment (`KEY=VALUE`). | |

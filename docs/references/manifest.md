@@ -80,7 +80,7 @@ Before executing any code, Starkite evaluates all loaded module manifests agains
 Error: module "acme/deployer" requires capabilities exceeding active profile "default":
   - network: host (active: none)
   - exec.allow: ["kubectl", "helm"] (active: none)
-  Hint: rerun with required capabilities: kite run --sandbox-net --sandbox-exec-allow=kubectl,helm ./app.star
+  Hint: rerun with required capabilities: kite run --sandbox-net-allow --sandbox-exec-allow=kubectl,helm ./app.star
 ```
 
 This ensures that third-party or shared modules cannot covertly elevate their privileges beyond the boundaries established by the operator.

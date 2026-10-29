@@ -47,7 +47,7 @@ In Starkite, high-level sandbox settings automatically synthesize corresponding 
 - `paths.write`: Automatically generates `fs.read`, `fs.write`, and `fs.delete` rules.
 - `exec.allow`: Automatically generates `os.exec` allow rules for permitted binaries.
 - `exec.deny`: Automatically generates `os.exec` deny rules.
-- `network: host` (or `--sandbox-net`): Automatically permits network operations across `http.client`, `http.server`, `ssh`, `k8s`, and `mcp`.
+- `network: host` (or `--sandbox-net-allow`): Automatically permits network operations across `http.client`, `http.server`, `ssh`, `k8s`, and `mcp`.
 
 For fine-grained function- or resource-level authorization, configure `calls.allow` and `calls.deny` in `config.yaml` or use CLI flags (`--sandbox-call-allow`, `--sandbox-call-deny`).
 
@@ -213,5 +213,5 @@ kite run ./app.star
 # If a loaded module requires network: host under the default profile:
 # Error: module "acme/netmod" requires capabilities exceeding active profile "default":
 #   - network: host (active: none)
-#   Hint: rerun with required capabilities: kite run --sandbox-net ./app.star
+#   Hint: rerun with required capabilities: kite run --sandbox-net-allow ./app.star
 ```

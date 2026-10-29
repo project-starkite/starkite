@@ -10,7 +10,7 @@ The `sql` module provides persistent, queryable data storage for Starkite script
 
 The module provides two levels of control: a low-level interface for direct SQL execution, and a high-level interface that automates common scripting tasks such as managing transactions, streaming large datasets, and running idempotent schema migrations.
 
-Because database operations access the host system or network, Starkite enforces capability checks. Interacting with local SQLite files requires the `sandbox-path` profile (or `--sandbox-path-write=.`), while connecting to external PostgreSQL or MySQL servers requires `--sandbox-net`:
+Because database operations access the host system or network, Starkite enforces capability checks. Interacting with local SQLite files requires the `sandbox-path` profile (or `--sandbox-path-write=.`), while connecting to external PostgreSQL or MySQL servers requires `--sandbox-net-allow`:
 
 ```bash
 kite run ./store.star --sandbox-profile=sandbox-path
@@ -23,8 +23,8 @@ Initialize a database connection using `sql.open(driver, dsn)`. The driver name 
 | Driver | DSN Format / Example | Required Capability | Description |
 | :--- | :--- | :--- | :--- |
 | `sqlite` | `app.db` or `:memory:` | `--sandbox-profile=sandbox-path` | Local file-based database or in-memory ephemeral database. |
-| `postgres` | `postgres://user:pass@host:port/db?sslmode=disable` | `--sandbox-net` | External PostgreSQL server connection string. |
-| `mysql` | `user:pass@tcp(host:port)/db` | `--sandbox-net` | External MySQL or MariaDB server connection string. |
+| `postgres` | `postgres://user:pass@host:port/db?sslmode=disable` | `--sandbox-net-allow` | External PostgreSQL server connection string. |
+| `mysql` | `user:pass@tcp(host:port)/db` | `--sandbox-net-allow` | External MySQL or MariaDB server connection string. |
 
 ```python
 # Open a persistent SQLite database file

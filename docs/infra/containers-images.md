@@ -231,7 +231,7 @@ def main():
 
 Execute the script with:
 ```bash
-kite run ./deploy.star --sandbox-net
+kite run ./deploy.star --sandbox-net-allow
 ```
 
 ---
@@ -241,4 +241,4 @@ kite run ./deploy.star --sandbox-net
 * `containers.read`: Required for `client.image_list()` and `client.image_inspect()`.
 * `containers.write`: Required for `client.image_pull()`, `client.image_build()`, `client.image_remove()`, and `client.prune()`.
 
-Both capabilities are granted by default under `--sandbox-net` (or `--sandbox-profile=sandbox-net`).
+Both capabilities are granted by default under `--sandbox-net-allow` (or `--sandbox-profile=sandbox-net`).

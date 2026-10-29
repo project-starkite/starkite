@@ -93,7 +93,7 @@ To understand MCP tool serving and client patterns, read the [MCP guide](../ai/m
 
 ## Sandbox
 
-When you run code you do not fully trust, Starkite confines execution to OS-level or container isolation by default. These examples show that layer in action — a network fetch under `--sandbox-net`, offline compute over the working directory, and the sandbox composed with Starlark capability gates for defense in depth.
+When you run code you do not fully trust, Starkite confines execution to OS-level or container isolation by default. These examples show that layer in action — a network fetch under `--sandbox-net-allow`, offline compute over the working directory, and the sandbox composed with Starlark capability gates for defense in depth.
 
 | Example | Description |
 |---|---|

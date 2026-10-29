@@ -99,10 +99,10 @@ Start the controller by passing the script to `kite run`:
 
 ```bash
 # Start with default max_replicas=3
-kite run ./max-replicas-controller.star --sandbox-net --env KUBECONFIG
+kite run ./max-replicas-controller.star --sandbox-net-allow --env KUBECONFIG
 
 # Override variables at startup
-kite run ./max-replicas-controller.star --sandbox-net --env KUBECONFIG --var max_replicas=5
+kite run ./max-replicas-controller.star --sandbox-net-allow --env KUBECONFIG --var max_replicas=5
 ```
 
 Test drift correction and health probes in another terminal:

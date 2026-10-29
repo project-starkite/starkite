@@ -129,12 +129,12 @@ def main():
 
 ## Permissions
 
-Connecting to a container daemon socket requires the `containers.connect` capability. This is granted by default in the `sandbox-net` profile (or with `--sandbox-net`).
+Connecting to a container daemon socket requires the `containers.connect` capability. This is granted by default in the `sandbox-net` profile (or with `--sandbox-net-allow`).
 
 To run scripts that connect to a container daemon:
 
 ```bash
-kite run ./check_daemon.star --sandbox-net
+kite run ./check_daemon.star --sandbox-net-allow
 ```
 
 You can also grant fine-grained call rules:

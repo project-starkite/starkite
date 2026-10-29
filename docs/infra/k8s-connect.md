@@ -58,8 +58,8 @@ def print_connection_info():
 
 ## Permissions
 
-Accessing the Kubernetes API requires network access and kubeconfig availability. Run the script with `--sandbox-net` and forward your kubeconfig:
+Accessing the Kubernetes API requires network access and kubeconfig availability. Run the script with `--sandbox-net-allow` and forward your kubeconfig:
 
 ```bash
-kite run ./cluster_check.star --sandbox-net --env KUBECONFIG
+kite run ./cluster_check.star --sandbox-net-allow --env KUBECONFIG
 ```

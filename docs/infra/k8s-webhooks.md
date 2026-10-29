@@ -153,7 +153,7 @@ openssl req -x509 -newkey rsa:2048 \
 
 # Run the validating webhook locally using the certificates
 kite run ./validate-deployments.star \
-    --sandbox-net \
+    --sandbox-net-allow \
     --var tls_cert=/tmp/cert.pem \
     --var tls_key=/tmp/key.pem
 ```

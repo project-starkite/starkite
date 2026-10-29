@@ -959,7 +959,7 @@ def main():
   "mcpServers": {
     "cluster-ops": {
       "command": "kite",
-      "args": ["run", "./tools/k8s.star", "--sandbox-net"]
+      "args": ["run", "./tools/k8s.star", "--sandbox-net-allow"]
     }
   }
 }</code></pre>
@@ -976,7 +976,7 @@ description: Safely inspect cluster workloads via Starkite.
 
 ## Agent Execution Rule
 Run operational scripts within strict capability bounds:
-$ kite run ./scripts/triage.star --sandbox-net</code></pre>
+$ kite run ./scripts/triage.star --sandbox-net-allow</code></pre>
                 </div>
               </div>
             </div>

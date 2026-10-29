@@ -141,7 +141,7 @@ def main():
 
 Run with:
 ```bash
-kite run ./verify_db.star --sandbox-net
+kite run ./verify_db.star --sandbox-net-allow
 ```
 
 ---
@@ -150,8 +150,8 @@ kite run ./verify_db.star --sandbox-net
 
 Executing commands inside containers requires the `containers.write` capability.
 
-This capability is included in the `sandbox-net` profile (or `--sandbox-net`):
+This capability is included in the `sandbox-net` profile (or `--sandbox-net-allow`):
 
 ```bash
-kite run ./exec_cmd.star --sandbox-net
+kite run ./exec_cmd.star --sandbox-net-allow
 ```

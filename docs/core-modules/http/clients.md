@@ -8,10 +8,10 @@ weight: 1
 
 The `http` module provides an HTTP client to perform network requests, such as retrieving remote configurations, interacting with web APIs, or dispatching webhooks. Every request begins with the `http.url(address)` constructor, which returns a URL object. You execute requests by calling HTTP verb methods directly on the URL object.
 
-Running scripts that perform outbound HTTP requests requires network permissions. Grant access using the `--sandbox-net` flag or `--sandbox-profile=sandbox-net`:
+Running scripts that perform outbound HTTP requests requires network permissions. Grant access using the `--sandbox-net-allow` flag (optionally scoping to specific endpoints) or `--sandbox-profile=sandbox-net`:
 
 ```bash
-kite run ./fetch.star --sandbox-net
+kite run ./fetch.star --sandbox-net-allow
 ```
 
 ## Making requests

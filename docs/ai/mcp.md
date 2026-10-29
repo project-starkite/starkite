@@ -54,7 +54,7 @@ kite run ./my-mcp-server.star
 
 You rarely run it by hand, though. Because the default transport is stdio, the client launches the script as a subprocess and talks to it over the process's standard input and output — so configuring Claude Desktop to spawn `kite run /path/to/my-mcp-server.star` is what actually exposes the script's tools to the assistant. The client owns the process lifecycle; your script's job is to register its capabilities and block.
 
-One thing the server needs that a pure-compute script does not is permission. Serving over MCP is a gated capability: `mcp.serve()` is granted by the `sandbox-net` profile (or `--sandbox-net`), so a server started under a tighter profile fails at the call. Run it with at least that capability — see [Permission](../fundamentals/security/permission.md) and [Sandbox](../fundamentals/security/sandbox.md) for the full ladder.
+One thing the server needs that a pure-compute script does not is permission. Serving over MCP is a gated capability: `mcp.serve()` is granted by the `sandbox-net` profile (or `--sandbox-net-allow`), so a server started under a tighter profile fails at the call. Run it with at least that capability — see [Permission](../fundamentals/security/permission.md) and [Sandbox](../fundamentals/security/sandbox.md) for the full ladder.
 
 ## See also
 

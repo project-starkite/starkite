@@ -45,7 +45,7 @@ Every script runs inside explicit filesystem, network, and execution boundaries 
 * **Subprocess Execution**: Permitted for system binaries (`exec.allow: ["*"]`).
 * **Network**: Disabled (`network: none`).
 
-### Cloud-Native & Network Workflows (`sandbox-net` profile / `--sandbox-net`)
+### Cloud-Native & Network Workflows (`sandbox-net` profile / `--sandbox-net-allow`)
 * **Filesystem**: `$CWD` mounted read/write, `/tmp` scratch mount, and automatic read-only mounts for system DNS resolvers (`/etc/resolv.conf`, `/etc/hosts`) and TLS CA certificates.
 * **Subprocess Execution**: Permitted for system binaries.
 * **Network**: Full outbound network connectivity (`network: host`).

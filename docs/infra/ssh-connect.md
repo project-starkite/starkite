@@ -141,13 +141,13 @@ For more details on executing commands and overriding defaults on a per-call bas
 
 ## Required Permissions
 
-Establishing network connections over SSH requires explicit authorization. Starkite gates the `ssh` module behind the **`sandbox-net`** profile (or `--sandbox-net`) to prevent scripts from initiating unauthorized network connections.
+Establishing network connections over SSH requires explicit authorization. Starkite gates the `ssh` module behind the **`sandbox-net`** profile (or `--sandbox-net-allow`) to prevent scripts from initiating unauthorized network connections.
 
-To run a script that connects to remote hosts over SSH, pass the `--sandbox-net` flag at the command line:
+To run a script that connects to remote hosts over SSH, pass the `--sandbox-net-allow` flag at the command line:
 
 ```bash
 # Run the script with network permissions
-kite run ./deploy.star --sandbox-net
+kite run ./deploy.star --sandbox-net-allow
 ```
 
 Under the default `deny-all` profile, any attempt to call `ssh.config()` or interact with the `ssh` module will be blocked by the runtime.
