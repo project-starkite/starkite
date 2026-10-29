@@ -3,7 +3,9 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 
@@ -141,4 +143,62 @@ func withinDir(root, path string) bool {
 		return false
 	}
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)) && !filepath.IsAbs(rel))
+}
+
+// resolveExecTarget resolves an executable target argument for 'kite exec':
+//  1. If it has a path prefix (./, ../, /, etc.), it verifies the file exists,
+//     is not a directory, and has executable permission bits.
+//  2. Otherwise, it searches the system $PATH via exec.LookPath.
+func resolveExecTarget(target string) (string, error) {
+	if isPathArg(target) {
+		info, err := os.Stat(target)
+		if err != nil {
+			if os.IsNotExist(err) {
+				return "", fmt.Errorf("target file not found: %s", target)
+			}
+			return "", fmt.Errorf("failed to access target file %s: %w", target, err)
+		}
+		if info.IsDir() {
+			return "", fmt.Errorf("target '%s' is a directory; use 'kite run' for directory modules", target)
+		}
+
+		if !isExecutableFile(info, target) {
+			return "", fmt.Errorf("target file '%s' is not executable (missing chmod +x)", target)
+		}
+
+		cleanPath := filepath.Clean(target)
+		if !filepath.IsAbs(cleanPath) {
+			cwd, _ := os.Getwd()
+			cleanPath = filepath.Join(cwd, cleanPath)
+		}
+		return cleanPath, nil
+	}
+
+	// Bare command lookup in $PATH
+	path, err := exec.LookPath(target)
+	if err == nil {
+		return filepath.Clean(path), nil
+	}
+
+	return "", fmt.Errorf("executable '%s' not found in working directory or $PATH", target)
+}
+
+// isExecutableFile checks whether a file has execution permissions on the current OS.
+func isExecutableFile(info os.FileInfo, path string) bool {
+	if runtime.GOOS == "windows" {
+		ext := strings.ToLower(filepath.Ext(path))
+		pathext := os.Getenv("PATHEXT")
+		if pathext == "" {
+			pathext = ".COM;.EXE;.BAT;.CMD;.PS1"
+		}
+		for _, e := range filepath.SplitList(pathext) {
+			if strings.EqualFold(ext, e) {
+				return true
+			}
+		}
+		return ext == ".exe" || ext == ".bat" || ext == ".cmd"
+	}
+
+	// POSIX executable permission check: owner, group, or other
+	return info.Mode()&0111 != 0
 }
