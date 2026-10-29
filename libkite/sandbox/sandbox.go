@@ -162,6 +162,7 @@ type Profile struct {
 	Image            string          // container image (for container/podman/docker drivers)
 	Network          NetworkMode     // none | host | loopback
 	NetworkAllow     []string        // allowed network endpoints
+	NetworkDeny      []string        // denied network endpoints
 	Mounts           []Mount         // filesystem mount list
 	Paths            PathsSpec       // readable and writable host paths
 	Exec             ExecPolicySpec  // process execution policy
@@ -177,7 +178,7 @@ type Profile struct {
 // did not request a sandbox. Backends use this to short-circuit.
 func (p Profile) IsZero() bool {
 	return p.Name == "" && !p.Enabled && p.Driver == "" && p.Image == "" &&
-		p.Network == "" && len(p.NetworkAllow) == 0 &&
+		p.Network == "" && len(p.NetworkAllow) == 0 && len(p.NetworkDeny) == 0 &&
 		len(p.Mounts) == 0 && len(p.Paths.Read) == 0 && len(p.Paths.Write) == 0 &&
 		len(p.Exec.Allow) == 0 && len(p.Exec.Deny) == 0 &&
 		len(p.Calls.Allow) == 0 && len(p.Calls.Deny) == 0 &&

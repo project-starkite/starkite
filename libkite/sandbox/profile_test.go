@@ -9,6 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/project-starkite/starkite/libkite"
 )
 
@@ -120,18 +122,17 @@ func TestApplyCLIOverrides(t *testing.T) {
 		t.Fatalf("LoadProfile(deny-all): %v", err)
 	}
 
-	netVal := true
 	enabledVal := true
 	overrides := CLIOverrides{
-		Enabled:   &enabledVal,
-		Driver:    "auto",
-		PathRead:  []string{"/tmp/read1", "/tmp/read2"},
-		PathWrite: []string{"/tmp/write1"},
-		ExecAllow: []string{"git", "go"},
-		ExecDeny:  []string{"rm"},
-		CallAllow: []string{"os.env"},
-		CallDeny:  []string{"os.exit"},
-		Net:       netVal,
+		Enabled:      &enabledVal,
+		Driver:       "auto",
+		PathRead:     []string{"/tmp/read1", "/tmp/read2"},
+		PathWrite:    []string{"/tmp/write1"},
+		ExecAllow:    []string{"git", "go"},
+		ExecDeny:     []string{"rm"},
+		CallAllow:    []string{"os.env"},
+		CallDeny:     []string{"os.exit"},
+		NetworkAllow: []string{"*"},
 	}
 
 	if err := p.ApplyCLIOverrides(overrides); err != nil {
@@ -1126,4 +1127,144 @@ func TestCompilePaths_NetworkAssetAutoUnveil(t *testing.T) {
 			t.Errorf("network: none profile should not unveil %q", m.Destination)
 		}
 	}
+}
+
+func TestProfile_NetworkAllowDeny_Parity(t *testing.T) {
+	yamlConfig := `
+network:
+  mode: host
+  allow:
+    - api.github.com:443
+    - 192.168.1.0/24:80
+  deny:
+    - 10.0.0.0/8
+max_memory: 512MB
+`
+	var body ProfileBody
+	if err := yaml.Unmarshal([]byte(yamlConfig), &body); err != nil {
+		t.Fatalf("Unmarshal failed: %v", err)
+	}
+	if len(body.Network.Allow) != 2 || body.Network.Allow[0] != "api.github.com:443" {
+		t.Errorf("Network.Allow = %v, want [api.github.com:443, 192.168.1.0/24:80]", body.Network.Allow)
+	}
+	if len(body.Network.Deny) != 1 || body.Network.Deny[0] != "10.0.0.0/8" {
+		t.Errorf("Network.Deny = %v, want [10.0.0.0/8]", body.Network.Deny)
+	}
+	prof, err := profileFromBody("test-parity", body, "test")
+	if err != nil {
+		t.Fatalf("profileFromBody failed: %v", err)
+	}
+	if len(prof.NetworkAllow) != 2 || prof.NetworkAllow[0] != "api.github.com:443" {
+		t.Errorf("prof.NetworkAllow = %v, want [api.github.com:443, 192.168.1.0/24:80]", prof.NetworkAllow)
+	}
+	if len(prof.NetworkDeny) != 1 || prof.NetworkDeny[0] != "10.0.0.0/8" {
+		t.Errorf("prof.NetworkDeny = %v, want [10.0.0.0/8]", prof.NetworkDeny)
+	}
+	if prof.Network != NetworkHost {
+		t.Errorf("prof.Network = %v, want host", prof.Network)
+	}
+	if prof.MaxMemoryMB != 512 {
+		t.Errorf("prof.MaxMemoryMB = %v, want 512", prof.MaxMemoryMB)
+	}
+}
+
+func TestProfile_ApplyCLIOverrides_Network(t *testing.T) {
+	t.Run("bare allow flag sets NetworkHost and wildcard", func(t *testing.T) {
+		p := Profile{Network: NetworkNone}
+		err := p.ApplyCLIOverrides(CLIOverrides{
+			NetworkAllow: []string{"*"},
+		})
+		if err != nil {
+			t.Fatalf("ApplyCLIOverrides: %v", err)
+		}
+		if p.Network != NetworkHost {
+			t.Errorf("Network = %v, want host", p.Network)
+		}
+		if len(p.NetworkAllow) != 1 || p.NetworkAllow[0] != "*" {
+			t.Errorf("NetworkAllow = %v, want [*]", p.NetworkAllow)
+		}
+	})
+
+	t.Run("bare deny flag sets NetworkNone and wildcard", func(t *testing.T) {
+		p := Profile{Network: NetworkHost, NetworkAllow: []string{"api.github.com:443"}}
+		err := p.ApplyCLIOverrides(CLIOverrides{
+			NetworkDeny: []string{"*"},
+		})
+		if err != nil {
+			t.Fatalf("ApplyCLIOverrides: %v", err)
+		}
+		if p.Network != NetworkNone {
+			t.Errorf("Network = %v, want none", p.Network)
+		}
+		if len(p.NetworkAllow) != 0 {
+			t.Errorf("NetworkAllow = %v, want empty after wildcard deny", p.NetworkAllow)
+		}
+		if len(p.NetworkDeny) != 1 || p.NetworkDeny[0] != "*" {
+			t.Errorf("NetworkDeny = %v, want [*]", p.NetworkDeny)
+		}
+	})
+
+	t.Run("scoped allow endpoint sets NetworkHost and preserves endpoints", func(t *testing.T) {
+		p := Profile{Network: NetworkNone}
+		err := p.ApplyCLIOverrides(CLIOverrides{
+			NetworkAllow: []string{"api.github.com:443", "registry.internal:8443"},
+		})
+		if err != nil {
+			t.Fatalf("ApplyCLIOverrides: %v", err)
+		}
+		if p.Network != NetworkHost {
+			t.Errorf("Network = %v, want host", p.Network)
+		}
+		if len(p.NetworkAllow) != 2 || p.NetworkAllow[0] != "api.github.com:443" {
+			t.Errorf("NetworkAllow = %v", p.NetworkAllow)
+		}
+	})
+
+	t.Run("network mode override", func(t *testing.T) {
+		p := Profile{Network: NetworkHost}
+		err := p.ApplyCLIOverrides(CLIOverrides{
+			NetworkMode: "loopback",
+		})
+		if err != nil {
+			t.Fatalf("ApplyCLIOverrides: %v", err)
+		}
+		if p.Network != NetworkLoopback {
+			t.Errorf("Network = %v, want loopback", p.Network)
+		}
+	})
+
+	t.Run("invalid network mode returns error", func(t *testing.T) {
+		p := Profile{}
+		err := p.ApplyCLIOverrides(CLIOverrides{
+			NetworkMode: "invalid-mode",
+		})
+		if err == nil {
+			t.Fatal("expected error for invalid network mode, got nil")
+		}
+	})
+}
+
+func TestProfile_ApplyCLIOverrides_MaxMemory(t *testing.T) {
+	t.Run("valid memory override", func(t *testing.T) {
+		p := Profile{}
+		err := p.ApplyCLIOverrides(CLIOverrides{
+			MaxMemory: "1GB",
+		})
+		if err != nil {
+			t.Fatalf("ApplyCLIOverrides: %v", err)
+		}
+		if p.MaxMemoryMB != 1024 {
+			t.Errorf("MaxMemoryMB = %d, want 1024", p.MaxMemoryMB)
+		}
+	})
+
+	t.Run("invalid memory returns error", func(t *testing.T) {
+		p := Profile{}
+		err := p.ApplyCLIOverrides(CLIOverrides{
+			MaxMemory: "not-a-number",
+		})
+		if err == nil {
+			t.Fatal("expected error for invalid max memory, got nil")
+		}
+	})
 }

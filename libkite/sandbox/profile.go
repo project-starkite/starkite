@@ -53,7 +53,7 @@ func (b *ProfileBody) Validate() error {
 		len(b.Exec.Allow) > 0 || len(b.Exec.Deny) > 0 ||
 		len(b.Calls.Allow) > 0 || len(b.Calls.Deny) > 0
 
-	if (b.Enabled == nil || *b.Enabled) && b.Base == "" && b.Network.Mode == "" && len(b.Network.Allow) == 0 && !hasCapabilities {
+	if (b.Enabled == nil || *b.Enabled) && b.Base == "" && b.Network.Mode == "" && len(b.Network.Allow) == 0 && len(b.Network.Deny) == 0 && !hasCapabilities {
 		return fmt.Errorf("network mode is required")
 	}
 	if b.Network.Mode != "" {
@@ -89,6 +89,7 @@ func isBuiltinProfile(name string) bool {
 type networkSpec struct {
 	Mode  string   `yaml:"mode,omitempty"`
 	Allow []string `yaml:"allow,omitempty"`
+	Deny  []string `yaml:"deny,omitempty"`
 }
 
 func (ns *networkSpec) UnmarshalYAML(node *yaml.Node) error {
@@ -329,7 +330,9 @@ func profileFromBody(name string, body ProfileBody, origin string) (Profile, err
 				name, fmtOrigin(origin), body.Network.Mode)
 		}
 	} else if p.Network == "" {
-		if len(body.Network.Allow) > 0 {
+		if slices.Contains(body.Network.Deny, "*") {
+			p.Network = NetworkNone
+		} else if len(body.Network.Allow) > 0 {
 			p.Network = NetworkHost
 		} else {
 			p.Network = NetworkNone
@@ -337,6 +340,9 @@ func profileFromBody(name string, body ProfileBody, origin string) (Profile, err
 	}
 	if len(body.Network.Allow) > 0 {
 		p.NetworkAllow = append(p.NetworkAllow, body.Network.Allow...)
+	}
+	if len(body.Network.Deny) > 0 {
+		p.NetworkDeny = append(p.NetworkDeny, body.Network.Deny...)
 	}
 
 	// Paths
@@ -724,6 +730,14 @@ func (p Profile) CompilePermissions() *libkite.PermissionConfig {
 		cfg.Allow = append(cfg.Allow, netRules...)
 	}
 
+	if len(p.NetworkDeny) > 0 {
+		if slices.Contains(p.NetworkDeny, "*") {
+			cfg.Deny = append(cfg.Deny, libkite.NetworkAllowRules("host", nil)...)
+		} else {
+			cfg.Deny = append(cfg.Deny, libkite.SynthesizeNetworkRules(p.NetworkDeny)...)
+		}
+	}
+
 	cfg.Allow = append(cfg.Allow, p.Calls.Allow...)
 	cfg.Deny = append(cfg.Deny, p.Calls.Deny...)
 
@@ -738,15 +752,18 @@ func (p Profile) CompileEnv(hostEnv []string) []string {
 
 // CLIOverrides holds granular CLI flag overrides applied on top of a resolved Profile.
 type CLIOverrides struct {
-	Enabled   *bool
-	Driver    string
-	PathRead  []string
-	PathWrite []string
-	CallAllow []string
-	CallDeny  []string
-	ExecAllow []string
-	ExecDeny  []string
-	Net       bool
+	Enabled      *bool
+	Driver       string
+	PathRead     []string
+	PathWrite    []string
+	CallAllow    []string
+	CallDeny     []string
+	ExecAllow    []string
+	ExecDeny     []string
+	NetworkAllow []string
+	NetworkDeny  []string
+	NetworkMode  string
+	MaxMemory    string
 }
 
 // HasCapabilityOverrides reports whether any additive capability flag was set.
@@ -754,7 +771,8 @@ func (o CLIOverrides) HasCapabilityOverrides() bool {
 	return len(o.PathRead) > 0 || len(o.PathWrite) > 0 ||
 		len(o.CallAllow) > 0 || len(o.CallDeny) > 0 ||
 		len(o.ExecAllow) > 0 || len(o.ExecDeny) > 0 ||
-		o.Net
+		len(o.NetworkAllow) > 0 || len(o.NetworkDeny) > 0 ||
+		o.NetworkMode != "" || o.MaxMemory != ""
 }
 
 // splitCommaList expands comma-separated CLI flag entries and trims whitespace.
@@ -809,11 +827,50 @@ func (p *Profile) ApplyCLIOverrides(o CLIOverrides) error {
 		p.Mounts = mounts
 	}
 
-	if o.Net {
-		p.Network = NetworkHost
+	if o.NetworkMode != "" {
+		switch NetworkMode(o.NetworkMode) {
+		case NetworkHost, NetworkLoopback, NetworkNone:
+			p.Network = NetworkMode(o.NetworkMode)
+		default:
+			return fmt.Errorf("sandbox: invalid --sandbox-net-mode %q (must be host, loopback, or none)", o.NetworkMode)
+		}
 	}
-	if p.Network == NetworkHost {
+
+	netAllow := splitCommaList(o.NetworkAllow)
+	if len(netAllow) > 0 {
+		if slices.Contains(netAllow, "*") {
+			p.Network = NetworkHost
+			p.NetworkAllow = []string{"*"}
+			p.NetworkDeny = slices.DeleteFunc(p.NetworkDeny, func(d string) bool { return d == "*" })
+		} else {
+			if p.Network == "" || p.Network == NetworkNone {
+				p.Network = NetworkHost
+			}
+			p.NetworkAllow = append(p.NetworkAllow, netAllow...)
+		}
+	}
+
+	netDeny := splitCommaList(o.NetworkDeny)
+	if len(netDeny) > 0 {
+		if slices.Contains(netDeny, "*") {
+			p.Network = NetworkNone
+			p.NetworkAllow = nil
+			p.NetworkDeny = []string{"*"}
+		} else {
+			p.NetworkDeny = append(p.NetworkDeny, netDeny...)
+		}
+	}
+
+	if p.Network == NetworkHost || len(p.NetworkAllow) > 0 {
 		p.Mounts = ResolveNetworkAssetMounts(p.Mounts)
+	}
+
+	if o.MaxMemory != "" {
+		mem, err := parseMemoryMB(o.MaxMemory)
+		if err != nil {
+			return fmt.Errorf("sandbox: invalid --sandbox-max-memory %q: %w", o.MaxMemory, err)
+		}
+		p.MaxMemoryMB = mem
 	}
 
 	execAllow := splitCommaList(o.ExecAllow)
