@@ -175,7 +175,7 @@ jobs:
         run: |
           Get-ChildItem -Path tests\*_test.star | ForEach-Object {
             Write-Host "--- Testing $($_.Name) on Windows ---"
-            .\bin\kite.exe test $_.FullName --sandbox-enabled=false --env-inherit --sandbox-net --sandbox-path-write=. --sandbox-exec-allow=*
+            .\bin\kite.exe test $_.FullName --sandbox-enabled=false --env-inherit --sandbox-net-allow --sandbox-path-write=. --sandbox-exec-allow=*
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
 

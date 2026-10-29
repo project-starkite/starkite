@@ -12,7 +12,7 @@
 #   kite run ./seccomp-network-test.star --sandbox-call-allow=http.client
 #
 #   # 2. Test in allowed mode (network="host", network access permitted):
-#   kite run ./seccomp-network-test.star --sandbox-net
+#   kite run ./seccomp-network-test.star --sandbox-net-allow
 
 def main():
     print("=== Starkite Sandbox Network Test ===")

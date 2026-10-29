@@ -1166,6 +1166,32 @@ max_memory: 512MB
 	if prof.MaxMemoryMB != 512 {
 		t.Errorf("prof.MaxMemoryMB = %v, want 512", prof.MaxMemoryMB)
 	}
+
+	t.Run("inheritance with deny wildcard resets host mode", func(t *testing.T) {
+		inheritYaml := `
+base: sandbox-net
+network:
+  deny:
+    - "*"
+`
+		var inheritBody ProfileBody
+		if err := yaml.Unmarshal([]byte(inheritYaml), &inheritBody); err != nil {
+			t.Fatalf("Unmarshal failed: %v", err)
+		}
+		profInherit, err := profileFromBody("test-inherit-airgap", inheritBody, "test")
+		if err != nil {
+			t.Fatalf("profileFromBody failed: %v", err)
+		}
+		if profInherit.Network != NetworkNone {
+			t.Errorf("profInherit.Network = %v, want none", profInherit.Network)
+		}
+		if len(profInherit.NetworkAllow) != 0 {
+			t.Errorf("profInherit.NetworkAllow = %v, want empty", profInherit.NetworkAllow)
+		}
+		if len(profInherit.NetworkDeny) != 1 || profInherit.NetworkDeny[0] != "*" {
+			t.Errorf("profInherit.NetworkDeny = %v, want [*]", profInherit.NetworkDeny)
+		}
+	})
 }
 
 func TestProfile_ApplyCLIOverrides_Network(t *testing.T) {

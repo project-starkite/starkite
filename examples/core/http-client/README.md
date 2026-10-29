@@ -19,12 +19,12 @@ Demonstrates:
 
 #### Running
 
-Outbound HTTP requests require network access. Pass `--sandbox-net`:
+Outbound HTTP requests require network access. Pass `--sandbox-net-allow`:
 
 ```bash
 # Execute against live endpoints
-kite run --sandbox-net ./requests.star
+kite run --sandbox-net-allow ./requests.star
 
 # Simulate requests without making network calls
-kite run --dry-run --sandbox-net ./requests.star
+kite run --dry-run --sandbox-net-allow ./requests.star
 ```

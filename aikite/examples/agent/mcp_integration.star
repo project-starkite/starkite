@@ -2,7 +2,7 @@
 # mcp_integration.star — Discover and call tools from an MCP server.
 #
 # Usage:
-#   kite run ./mcp_integration.star --sandbox-net --sandbox-exec-allow=*
+#   kite run ./mcp_integration.star --sandbox-net-allow --sandbox-exec-allow=*
 
 # 1. Connect to an MCP server (stdio subprocess or HTTP endpoint):
 client = mcp.connect(["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp"])

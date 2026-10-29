@@ -802,7 +802,6 @@ func SynthesizeNetworkRules(endpoints []string) []string {
 
 		host, port, hasPort := splitEndpointHostPort(ep)
 		if !hasPort {
-			// Infer default HTTPS, HTTP, SSH, and SQL rules
 			rules = append(rules,
 				fmt.Sprintf("http.client(https://%s/*)", host),
 				fmt.Sprintf("http.client(http://%s/*)", host),

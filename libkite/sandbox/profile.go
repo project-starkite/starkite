@@ -329,20 +329,25 @@ func profileFromBody(name string, body ProfileBody, origin string) (Profile, err
 			return Profile{}, fmt.Errorf("sandbox: profile %q%s: unknown network mode %q",
 				name, fmtOrigin(origin), body.Network.Mode)
 		}
+	} else if slices.Contains(body.Network.Deny, "*") {
+		p.Network = NetworkNone
+		p.NetworkAllow = nil
 	} else if p.Network == "" {
-		if slices.Contains(body.Network.Deny, "*") {
-			p.Network = NetworkNone
-		} else if len(body.Network.Allow) > 0 {
+		if len(body.Network.Allow) > 0 {
 			p.Network = NetworkHost
 		} else {
 			p.Network = NetworkNone
 		}
 	}
-	if len(body.Network.Allow) > 0 {
+	if len(body.Network.Allow) > 0 && !slices.Contains(body.Network.Deny, "*") {
 		p.NetworkAllow = append(p.NetworkAllow, body.Network.Allow...)
 	}
 	if len(body.Network.Deny) > 0 {
-		p.NetworkDeny = append(p.NetworkDeny, body.Network.Deny...)
+		if slices.Contains(body.Network.Deny, "*") {
+			p.NetworkDeny = []string{"*"}
+		} else {
+			p.NetworkDeny = append(p.NetworkDeny, body.Network.Deny...)
+		}
 	}
 
 	// Paths

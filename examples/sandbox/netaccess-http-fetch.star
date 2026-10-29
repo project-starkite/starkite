@@ -5,7 +5,7 @@
 # provides the CA roots).
 #
 # Run:
-#   kite ./netaccess-http-fetch.star --sandbox-net
+#   kite ./netaccess-http-fetch.star --sandbox-net-allow
 #   STARKITE_SANDBOX_PROFILE=sandbox-net ./netaccess-http-fetch.star
 
 resp = http.url("https://example.com").get()
