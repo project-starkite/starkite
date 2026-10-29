@@ -110,3 +110,22 @@ func TestExec_TargetResolution(t *testing.T) {
 		t.Errorf("expected missing binary error, got: %v", err)
 	}
 }
+
+func TestExec_RunGuardrail_NonStarlarkScript(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission test")
+	}
+	tmpDir := t.TempDir()
+	shScript := filepath.Join(tmpDir, "deploy.sh")
+	if err := os.WriteFile(shScript, []byte("#!/bin/sh\necho deploy\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := resolveRunTarget(shScript)
+	if err == nil {
+		t.Fatal("expected error running shell script with 'kite run', got nil")
+	}
+	if !strings.Contains(err.Error(), "is not a Starkite script or module") || !strings.Contains(err.Error(), "Use 'kite exec") {
+		t.Errorf("unexpected guardrail error message: %v", err)
+	}
+}

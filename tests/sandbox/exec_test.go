@@ -1,0 +1,90 @@
+package sandbox_test
+
+import (
+	"bytes"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+)
+
+func buildTestKiteBinary(t *testing.T) string {
+	return buildKite(t)
+}
+
+func TestExec_EchoStdoutStreaming(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+	kiteBin := buildTestKiteBinary(t)
+
+	cmd := exec.Command(kiteBin, "exec", "--", "echo", "starkite-native-exec-verification")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if sandboxUnavailable(stderr.String()) {
+			t.Skipf("host cannot start a sandbox; skipping: %s", stderr.String())
+		}
+		t.Fatalf("kite exec failed: %v\nStderr: %s", err, stderr.String())
+	}
+
+	outStr := strings.TrimSpace(stdout.String())
+	if outStr != "starkite-native-exec-verification" {
+		t.Errorf("unexpected stdout output: %q", outStr)
+	}
+}
+
+func TestExec_ExitCodePropagation(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("sh script test")
+	}
+	kiteBin := buildTestKiteBinary(t)
+	tmpDir := t.TempDir()
+	script := filepath.Join(tmpDir, "exit42.sh")
+	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 42\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	cmd := exec.Command(kiteBin, "exec", script)
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("expected non-zero exit, got nil")
+	}
+
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("expected ExitError, got %T: %v", err, err)
+	}
+	if exitErr.ExitCode() != 42 {
+		t.Errorf("expected exit code 42, got %d", exitErr.ExitCode())
+	}
+}
+
+func TestExec_NetworkConfinement(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+	if _, err := exec.LookPath("curl"); err != nil {
+		t.Skip("curl not available on host")
+	}
+	kiteBin := buildTestKiteBinary(t)
+
+	// 1. Under default zero-trust (deny-all), outbound curl should fail
+	cmdDeny := exec.Command(kiteBin, "exec", "--sandbox-profile=deny-all", "--", "curl", "-s", "--connect-timeout", "2", "https://example.com")
+	if err := cmdDeny.Run(); err == nil {
+		t.Error("expected curl to fail under deny-all network profile, but succeeded")
+	}
+
+	// 2. Under explicit --sandbox-net-allow, outbound curl should succeed
+	cmdAllow := exec.Command(kiteBin, "exec", "--sandbox-net-allow", "--", "curl", "-s", "--connect-timeout", "5", "https://example.com")
+	if err := cmdAllow.Run(); err != nil {
+		t.Logf("curl with net allow failed (possible offline test env): %v", err)
+	}
+}
