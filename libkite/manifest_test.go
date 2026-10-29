@@ -49,7 +49,7 @@ sandbox:
 	if !strings.Contains(msg, `paths.read: ["."] (active: [])`) {
 		t.Errorf("missing paths.read violation: %q", msg)
 	}
-	if !strings.Contains(msg, "Hint: rerun with required capabilities: kite run --sandbox-net --sandbox-path-read=. script.star") {
+	if !strings.Contains(msg, "Hint: rerun with required capabilities: kite run --sandbox-net-allow --sandbox-path-read=. script.star") {
 		t.Errorf("missing rerun hint: %q", msg)
 	}
 }

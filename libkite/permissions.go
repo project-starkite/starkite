@@ -788,6 +788,84 @@ func ExecDenyRules(bins []string) []string {
 	return rules
 }
 
+// SynthesizeNetworkRules compiles network endpoint specifications into Starlark call permission rules.
+func SynthesizeNetworkRules(endpoints []string) []string {
+	var rules []string
+	for _, ep := range endpoints {
+		ep = strings.TrimSpace(ep)
+		if ep == "" {
+			continue
+		}
+		if ep == "*" {
+			return slices.Clone(sandboxNetRules)
+		}
+
+		host, port, hasPort := splitEndpointHostPort(ep)
+		if !hasPort {
+			// Infer default HTTPS, HTTP, SSH, and SQL rules
+			rules = append(rules,
+				fmt.Sprintf("http.client(https://%s/*)", host),
+				fmt.Sprintf("http.client(http://%s/*)", host),
+				fmt.Sprintf("http.client(https://%s:443/*)", host),
+				fmt.Sprintf("http.client(http://%s:80/*)", host),
+				fmt.Sprintf("ssh.connect(%s:22)", host),
+				fmt.Sprintf("ssh.connect(%s)", host),
+				fmt.Sprintf("sql.open(postgres://*@%s:5432/*)", host),
+				fmt.Sprintf("sql.open(mysql://*@%s:3306/*)", host),
+			)
+		} else {
+			if port == "443" {
+				rules = append(rules,
+					fmt.Sprintf("http.client(https://%s/*)", host),
+					fmt.Sprintf("http.client(https://%s:443/*)", host),
+				)
+			} else if port == "80" {
+				rules = append(rules,
+					fmt.Sprintf("http.client(http://%s/*)", host),
+					fmt.Sprintf("http.client(http://%s:80/*)", host),
+				)
+			} else {
+				rules = append(rules,
+					fmt.Sprintf("http.client(http://%s:%s/*)", host, port),
+					fmt.Sprintf("http.client(https://%s:%s/*)", host, port),
+				)
+			}
+			rules = append(rules,
+				fmt.Sprintf("ssh.connect(%s:%s)", host, port),
+				fmt.Sprintf("sql.open(postgres://*@%s:%s/*)", host, port),
+				fmt.Sprintf("sql.open(mysql://*@%s:%s/*)", host, port),
+			)
+		}
+	}
+	return rules
+}
+
+// SplitEndpointHostPort separates an endpoint string into host and port parts.
+func SplitEndpointHostPort(ep string) (string, string, bool) {
+	if strings.HasPrefix(ep, "[") {
+		idx := strings.LastIndex(ep, "]")
+		if idx != -1 && idx < len(ep)-1 && ep[idx+1] == ':' {
+			return ep[1:idx], ep[idx+2:], true
+		}
+		return strings.Trim(ep, "[]"), "", false
+	}
+	if strings.Contains(ep, "/") {
+		// CIDR with optional port: 10.0.0.0/16:443
+		if idx := strings.LastIndex(ep, ":"); idx != -1 && idx > strings.LastIndex(ep, "/") {
+			return ep[:idx], ep[idx+1:], true
+		}
+		return ep, "", false
+	}
+	if idx := strings.LastIndex(ep, ":"); idx != -1 {
+		return ep[:idx], ep[idx+1:], true
+	}
+	return ep, "", false
+}
+
+func splitEndpointHostPort(ep string) (string, string, bool) {
+	return SplitEndpointHostPort(ep)
+}
+
 // NetworkAllowRules returns the network capability rules for the given mode and allowed endpoints.
 func NetworkAllowRules(mode string, allowEndpoints []string) []string {
 	if mode == "none" && len(allowEndpoints) == 0 {
@@ -801,7 +879,13 @@ func NetworkAllowRules(mode string, allowEndpoints []string) []string {
 			"http.server",
 		}
 	}
-	if mode == "host" || len(allowEndpoints) > 0 {
+	if len(allowEndpoints) > 0 {
+		if slices.Contains(allowEndpoints, "*") {
+			return slices.Clone(sandboxNetRules)
+		}
+		return SynthesizeNetworkRules(allowEndpoints)
+	}
+	if mode == "host" {
 		return slices.Clone(sandboxNetRules)
 	}
 	return nil
@@ -895,7 +979,13 @@ func SuggestCapabilityHint(module, category, function, resource string) string {
 			target := suggestPathForResource(rest)
 			return fmt.Sprintf("pass --sandbox-path-write=%s on CLI, or add %q to sandbox.<profile>.paths.write in config.yaml", target, target)
 		}
-		return "pass --sandbox-net on CLI, or set sandbox.<profile>.network: host in config.yaml"
+		if isEndpointResource(resource) {
+			endpoint := suggestEndpoint(resource)
+			if endpoint != "" && endpoint != "*" {
+				return fmt.Sprintf("pass --sandbox-net-allow=%s on CLI, or add %q to sandbox.<profile>.network.allow in config.yaml", endpoint, endpoint)
+			}
+		}
+		return "pass --sandbox-net-allow on CLI, or set sandbox.<profile>.network.mode: host in config.yaml"
 
 	case "os":
 		if category == "exec" || category == "shell" {
@@ -911,7 +1001,13 @@ func SuggestCapabilityHint(module, category, function, resource string) string {
 		return fmt.Sprintf("pass --sandbox-call-allow=%s on CLI, or add %q to sandbox.<profile>.calls.allow in config.yaml", callTarget, callTarget)
 
 	case "http", "ssh", "k8s", "mcp", "containers", "net":
-		return "pass --sandbox-net on CLI, or set sandbox.<profile>.network: host in config.yaml"
+		if isEndpointResource(resource) {
+			endpoint := suggestEndpoint(resource)
+			if endpoint != "" && endpoint != "*" {
+				return fmt.Sprintf("pass --sandbox-net-allow=%s on CLI, or add %q to sandbox.<profile>.network.allow in config.yaml", endpoint, endpoint)
+			}
+		}
+		return "pass --sandbox-net-allow on CLI, or set sandbox.<profile>.network.mode: host in config.yaml"
 
 	default:
 		callTarget := module + "." + category
@@ -1045,4 +1141,34 @@ func WrapOSPermissionError(module, category, resource string, err error) error {
 	}
 	hint := SuggestCapabilityHint(module, category, "", resource)
 	return fmt.Errorf("%w\n  Hint: %s", err, hint)
+}
+
+// suggestEndpoint extracts a clean host:port or host endpoint from a network resource URI or connection string.
+func isEndpointResource(resource string) bool {
+	res := strings.TrimSpace(resource)
+	if res == "" || res == "*" {
+		return false
+	}
+	return strings.Contains(res, ".") || strings.Contains(res, ":") || strings.Contains(res, "/") || strings.HasPrefix(strings.ToLower(res), "localhost")
+}
+
+func suggestEndpoint(resource string) string {
+	res := strings.TrimSpace(resource)
+	if res == "" || res == "*" {
+		return "*"
+	}
+	if idx := strings.Index(res, "://"); idx != -1 {
+		res = res[idx+3:]
+	}
+	if idx := strings.IndexAny(res, "/?#"); idx != -1 {
+		res = res[:idx]
+	}
+	if idx := strings.LastIndex(res, "@"); idx != -1 {
+		res = res[idx+1:]
+	}
+	res = strings.TrimSpace(res)
+	if res == "" {
+		return "*"
+	}
+	return res
 }

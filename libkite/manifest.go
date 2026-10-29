@@ -218,10 +218,16 @@ func ValidateModuleManifest(
 	}
 
 	// 2. Check Network requirement
-	reqNet, _ := sb.NetworkModeAndAllow()
+	reqNet, reqAllow := sb.NetworkModeAndAllow()
 	if reqNet != "" && networkRank(reqNet) > networkRank(activeNet) {
 		violations = append(violations, fmt.Sprintf("network: %s (active: %s)", reqNet, activeNet))
-		addFlag("--sandbox-net")
+		if reqNet == "host" || slices.Contains(reqAllow, "*") || len(reqAllow) == 0 {
+			addFlag("--sandbox-net-allow")
+		} else {
+			for _, ep := range reqAllow {
+				addFlag(fmt.Sprintf("--sandbox-net-allow=%s", ep))
+			}
+		}
 	}
 
 	// 3. Check Paths.Read requirements (including implied "." from base rungs)

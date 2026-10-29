@@ -808,7 +808,7 @@ func TestRuleSynthesisHelpers(t *testing.T) {
 		t.Errorf("NetworkAllowRules(host) failed: %v", rHost)
 	}
 	rEndpoints := NetworkAllowRules("none", []string{"ghcr.io:443"})
-	if !slices.Contains(rEndpoints, "http.client") {
+	if !slices.Contains(rEndpoints, "http.client(https://ghcr.io/*)") || !slices.Contains(rEndpoints, "ssh.connect(ghcr.io:443)") {
 		t.Errorf("NetworkAllowRules with endpoints failed: %v", rEndpoints)
 	}
 }
@@ -878,22 +878,23 @@ func TestPermissionError_ActionableHints(t *testing.T) {
 
 	// 6. Network modules: http.client, ssh.connect, k8s.read, sql.open
 	for _, tc := range []struct {
-		module   string
-		category string
-		resource string
+		module      string
+		category    string
+		resource    string
+		expectedSub string
 	}{
-		{"http", "client", "https://api.github.com"},
-		{"ssh", "connect", "prod.example.com:22"},
-		{"k8s", "read", "pods"},
-		{"sql", "open", "postgres://localhost:5432/db"},
+		{"http", "client", "https://api.github.com", "Hint: pass --sandbox-net-allow=api.github.com on CLI"},
+		{"ssh", "connect", "prod.example.com:22", "Hint: pass --sandbox-net-allow=prod.example.com:22 on CLI"},
+		{"k8s", "read", "pods", "Hint: pass --sandbox-net-allow on CLI"},
+		{"sql", "open", "postgres://localhost:5432/db", "Hint: pass --sandbox-net-allow=localhost:5432 on CLI"},
 	} {
 		err = checker.Check(tc.module, tc.category, "connect", tc.resource)
 		if err == nil {
 			t.Fatalf("expected %s.%s denial", tc.module, tc.category)
 		}
 		msg = err.Error()
-		if !strings.Contains(msg, "Hint: pass --sandbox-net on CLI, or set sandbox.<profile>.network: host in config.yaml") {
-			t.Errorf("%s.%s hint missing, got %q", tc.module, tc.category, msg)
+		if !strings.Contains(msg, tc.expectedSub) {
+			t.Errorf("%s.%s hint missing, got %q, want substring %q", tc.module, tc.category, msg, tc.expectedSub)
 		}
 	}
 
@@ -933,5 +934,84 @@ func TestWrapOSPermissionError(t *testing.T) {
 	doubleWrapped := WrapOSPermissionError("os", "exec", "kubectl get pods", wrapped)
 	if strings.Count(doubleWrapped.Error(), "Hint:") != 1 {
 		t.Errorf("expected exactly 1 Hint, got: %v", doubleWrapped)
+	}
+}
+
+func TestSynthesizeNetworkRules(t *testing.T) {
+	t.Run("wildcard returns all sandboxNetRules", func(t *testing.T) {
+		rules := SynthesizeNetworkRules([]string{"*"})
+		if len(rules) != len(sandboxNetRules) {
+			t.Fatalf("SynthesizeNetworkRules(*) len = %d, want %d", len(rules), len(sandboxNetRules))
+		}
+	})
+
+	t.Run("scoped endpoint with port 443", func(t *testing.T) {
+		rules := SynthesizeNetworkRules([]string{"registry.internal.example.com:443"})
+		if !slices.Contains(rules, "http.client(https://registry.internal.example.com/*)") {
+			t.Errorf("missing https rule: %v", rules)
+		}
+		if !slices.Contains(rules, "http.client(https://registry.internal.example.com:443/*)") {
+			t.Errorf("missing https with port rule: %v", rules)
+		}
+		if slices.Contains(rules, "http.client(http://registry.internal.example.com/*)") {
+			t.Errorf("port 443 should not generate http:// rules: %v", rules)
+		}
+	})
+
+	t.Run("scoped endpoint with inferred port", func(t *testing.T) {
+		rules := SynthesizeNetworkRules([]string{"api.github.com"})
+		if !slices.Contains(rules, "http.client(https://api.github.com/*)") {
+			t.Errorf("missing https rule: %v", rules)
+		}
+		if !slices.Contains(rules, "http.client(http://api.github.com/*)") {
+			t.Errorf("missing http rule: %v", rules)
+		}
+		if !slices.Contains(rules, "ssh.connect(api.github.com:22)") {
+			t.Errorf("missing ssh rule: %v", rules)
+		}
+		if !slices.Contains(rules, "sql.open(postgres://*@api.github.com:5432/*)") {
+			t.Errorf("missing sql rule: %v", rules)
+		}
+	})
+
+	t.Run("wildcard domain with port", func(t *testing.T) {
+		rules := SynthesizeNetworkRules([]string{"*.corp.internal:8443"})
+		if !slices.Contains(rules, "http.client(https://*.corp.internal:8443/*)") {
+			t.Errorf("missing https wildcard domain rule: %v", rules)
+		}
+	})
+
+	t.Run("IPv6 and CIDR endpoints", func(t *testing.T) {
+		rules := SynthesizeNetworkRules([]string{"[2001:db8::1]:443", "10.0.0.0/16:443"})
+		if !slices.Contains(rules, "http.client(https://2001:db8::1/*)") {
+			t.Errorf("missing IPv6 rule: %v", rules)
+		}
+		if !slices.Contains(rules, "http.client(https://10.0.0.0/16/*)") {
+			t.Errorf("missing CIDR rule: %v", rules)
+		}
+	})
+}
+
+func TestSplitEndpointHostPort(t *testing.T) {
+	tests := []struct {
+		input   string
+		host    string
+		port    string
+		hasPort bool
+	}{
+		{"api.github.com:443", "api.github.com", "443", true},
+		{"api.github.com", "api.github.com", "", false},
+		{"[2001:db8::1]:8080", "2001:db8::1", "8080", true},
+		{"[2001:db8::1]", "2001:db8::1", "", false},
+		{"10.0.0.0/16:443", "10.0.0.0/16", "443", true},
+		{"10.0.0.0/16", "10.0.0.0/16", "", false},
+	}
+
+	for _, tt := range tests {
+		h, p, hasP := splitEndpointHostPort(tt.input)
+		if h != tt.host || p != tt.port || hasP != tt.hasPort {
+			t.Errorf("splitEndpointHostPort(%q) = (%q, %q, %v), want (%q, %q, %v)",
+				tt.input, h, p, hasP, tt.host, tt.port, tt.hasPort)
+		}
 	}
 }
