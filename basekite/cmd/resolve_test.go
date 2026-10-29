@@ -176,3 +176,41 @@ func TestResolveRunTargetInstalledRevisions(t *testing.T) {
 		}
 	})
 }
+
+func TestResolveRunTarget_GuardrailNonStarlark(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission test")
+	}
+	tmpDir := t.TempDir()
+	shScript := filepath.Join(tmpDir, "deploy.sh")
+	if err := os.WriteFile(shScript, []byte("#!/bin/sh\necho deploy\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := resolveRunTarget(shScript)
+	if err == nil {
+		t.Fatal("expected error running shell script with 'kite run', got nil")
+	}
+	if !strings.Contains(err.Error(), "is not a Starkite script or module") || !strings.Contains(err.Error(), "Use 'kite exec") {
+		t.Errorf("unexpected guardrail error message: %v", err)
+	}
+}
+
+func TestResolveRunTarget_StarlarkShebang(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission test")
+	}
+	tmpDir := t.TempDir()
+	script := filepath.Join(tmpDir, "kite-script")
+	if err := os.WriteFile(script, []byte("#!/usr/bin/env kite\nprint('hello')\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	entry, isModule, err := resolveRunTarget(script)
+	if err != nil {
+		t.Fatalf("expected successful resolution of kite shebang script, got: %v", err)
+	}
+	if entry != script || isModule {
+		t.Errorf("got (%q, %v), want (%q, false)", entry, isModule, script)
+	}
+}

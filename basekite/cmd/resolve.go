@@ -40,6 +40,12 @@ func resolveRunTarget(arg string) (entryPath string, isModule bool, err error) {
 			}
 			return filepath.Join(arg, libkite.EntryFile), true, nil
 		}
+
+		// Guardrail: Detect non-Starlark executable files
+		if !isStarlarkFile(arg) && isExecutableFile(info, arg) {
+			return "", false, fmt.Errorf("target '%s' is not a Starkite script or module.\n  Hint: Use 'kite exec %s' to launch external processes under the sandbox engine.", arg, arg)
+		}
+
 		// Loose script file.
 		return arg, false, nil
 	}
@@ -201,4 +207,25 @@ func isExecutableFile(info os.FileInfo, path string) bool {
 
 	// POSIX executable permission check: owner, group, or other
 	return info.Mode()&0111 != 0
+}
+
+// isStarlarkFile checks whether a file is intended as a Starlark script.
+func isStarlarkFile(path string) bool {
+	if strings.HasSuffix(path, ".star") {
+		return true
+	}
+	// Check shebang header for "kite"
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	header := make([]byte, 128)
+	n, _ := f.Read(header)
+	if n > 2 && header[0] == '#' && header[1] == '!' {
+		line := strings.ToLower(string(header[:n]))
+		return strings.Contains(line, "kite")
+	}
+	return false
 }
