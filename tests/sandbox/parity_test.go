@@ -26,7 +26,7 @@ func TestParity_ZeroTrustDefaultBlocksAll(t *testing.T) {
 # 1. Outbound network request must fail closed
 res_http = http.url("https://example.com").try_get()
 assert(not res_http.ok, "http get should fail under default zero-trust")
-assert("Hint: pass --sandbox-net" in res_http.error, "unexpected http error: %s" % res_http.error)
+assert("Hint: pass --sandbox-net-allow" in res_http.error, "unexpected http error: %s" % res_http.error)
 
 # 2. File write to unmounted path must fail closed
 res_fs = fs.try_write_text("./unmounted_output.txt", "blocked-content")
@@ -77,7 +77,7 @@ assert("Hint: pass --sandbox-path-write" in res_fs.error, "unexpected fs error: 
 }
 
 // TestParity_ComposableFlagsEscalation asserts that composable CLI flags
-// (--sandbox-path-read, --sandbox-path-write, --sandbox-exec-allow, and --sandbox-net)
+// (--sandbox-path-read, --sandbox-path-write, --sandbox-exec-allow, and --sandbox-net-allow)
 // grant capabilities incrementally and cleanly across all operating systems.
 func TestParity_ComposableFlagsEscalation(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
@@ -140,7 +140,7 @@ srv.shutdown()
 		"--sandbox-path-read=.",
 		"--sandbox-path-write=.",
 		allowExecArg,
-		"--sandbox-net",
+		"--sandbox-net-allow",
 	)
 	cmd.Dir = workDir
 	out, err := cmd.CombinedOutput()
@@ -321,5 +321,86 @@ assert(not res.ok, "sibling secret in $HOME must not be readable under user home
 	output := string(out)
 	if strings.Contains(output, "sensitive-user-profile-data") {
 		t.Fatalf("user profile isolation failed: secret data leaked in output: %s", output)
+	}
+}
+
+func TestLegacyFlag_SandboxNetRemoved(t *testing.T) {
+	kite := buildKite(t)
+	workDir := createNonHomeTempDir(t)
+
+	probeScript := `print("probe")`
+	if err := os.WriteFile(filepath.Join(workDir, "probe.star"), []byte(probeScript), 0o644); err != nil {
+		t.Fatalf("writing probe.star: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, kite, "run", "--sandbox-net", "./probe.star")
+	cmd.Dir = workDir
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected error running with --sandbox-net, got exit 0. Output:\n%s", out)
+	}
+	expectedMsg := "flag '--sandbox-net' has been removed."
+	if !strings.Contains(string(out), expectedMsg) {
+		t.Errorf("expected actionable migration error containing %q, got:\n%s", expectedMsg, out)
+	}
+}
+
+func TestParity_ScopedNetworkEndpoints(t *testing.T) {
+	kite := buildKite(t)
+	workDir := createNonHomeTempDir(t)
+
+	scopedScript := `
+# Approved endpoint is permitted; unapproved endpoint (example.com) fails closed
+res_denied = http.url("https://example.com").try_get()
+assert(not res_denied.ok, "unapproved endpoint must fail closed")
+assert("Hint: pass --sandbox-net-allow=example.com" in res_denied.error or "no matching allow rule" in res_denied.error,
+       "unexpected error: %s" % res_denied.error)
+`
+	if err := os.WriteFile(filepath.Join(workDir, "scoped.star"), []byte(scopedScript), 0o644); err != nil {
+		t.Fatalf("writing scoped.star: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, kite, "run", "./scoped.star", "--sandbox-net-allow=httpbin.org:443")
+	cmd.Dir = workDir
+	out, err := cmd.CombinedOutput()
+	t.Logf("kite run scoped.star output:\n%s", out)
+	if err != nil {
+		if sandboxUnavailable(string(out)) {
+			t.Skipf("host cannot start a sandbox; skipping: %s", out)
+		}
+		t.Fatalf("kite run scoped.star failed: %v\nOutput: %s", err, out)
+	}
+}
+
+func TestParity_NetworkDenyAirGapping(t *testing.T) {
+	kite := buildKite(t)
+	workDir := createNonHomeTempDir(t)
+
+	airgapScript := `
+res = http.url("https://example.com").try_get()
+assert(not res.ok, "network access must fail under --sandbox-net-deny")
+`
+	if err := os.WriteFile(filepath.Join(workDir, "airgap.star"), []byte(airgapScript), 0o644); err != nil {
+		t.Fatalf("writing airgap.star: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, kite, "run", "./airgap.star", "--sandbox-net-deny")
+	cmd.Dir = workDir
+	out, err := cmd.CombinedOutput()
+	t.Logf("kite run airgap.star output:\n%s", out)
+	if err != nil {
+		if sandboxUnavailable(string(out)) {
+			t.Skipf("host cannot start a sandbox; skipping: %s", out)
+		}
+		t.Fatalf("kite run airgap.star failed: %v\nOutput: %s", err, out)
 	}
 }

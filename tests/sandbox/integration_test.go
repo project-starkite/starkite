@@ -6,7 +6,7 @@
 // Engagement paths exercised:
 //   - Default sandbox engagement (enabled by default)
 //   - --sandbox-profile CLI flag (with = and space)
-//   - --sandbox-net CLI flag
+//   - --sandbox-net-allow CLI flag
 //   - STARKITE_SANDBOX_PROFILE env var
 //   - --sandbox-driver CLI flag and STARKITE_SANDBOX_DRIVER env var
 //
@@ -51,7 +51,7 @@ func TestSandboxNetRung_flagSpace(t *testing.T) {
 }
 
 func TestSandboxNetComposableFlag(t *testing.T) {
-	runStarTest(t, "sandbox_netaccess_test.star", "sandbox-path", viaProfileFlag, "--sandbox-net")
+	runStarTest(t, "sandbox_netaccess_test.star", "sandbox-path", viaProfileFlag, "--sandbox-net-allow")
 }
 
 func TestSandboxPathRung_flag(t *testing.T) {
@@ -200,8 +200,8 @@ func runStarTest(t *testing.T, scriptName, profile string, eng engagement, extra
 		args = append(args, "--sandbox-profile", profile)
 		label = "--sandbox-profile " + profile
 	case viaNetFlag:
-		args = append(args, "--sandbox-net")
-		label = "--sandbox-net"
+		args = append(args, "--sandbox-net-allow")
+		label = "--sandbox-net-allow"
 	case viaEnv:
 		env = append(env, "STARKITE_SANDBOX_PROFILE="+profile)
 		label = "STARKITE_SANDBOX_PROFILE=" + profile
@@ -422,7 +422,7 @@ assert("Hint: pass --sandbox-path-read=." in res_fs.error, "unexpected fs error:
 # 2. http access should fail with actionable Hint
 res_http = http.url("https://example.com").try_get()
 assert(not res_http.ok, "http get should fail under default deny-all")
-assert("Hint: pass --sandbox-net" in res_http.error, "unexpected http error: %s" % res_http.error)
+assert("Hint: pass --sandbox-net-allow" in res_http.error, "unexpected http error: %s" % res_http.error)
 
 # 3. os.env should fail with actionable Hint under default deny-all
 res_env = os.try_env("AMBIENT_HOST_SECRET")
@@ -663,7 +663,7 @@ sandbox:
 
 	output1 := string(out1)
 	wantModErr := `module "acme/netmod" requires capabilities exceeding active profile "default"`
-	wantModHint := `Hint: rerun with required capabilities: kite run --sandbox-net`
+	wantModHint := `Hint: rerun with required capabilities: kite run --sandbox-net-allow`
 	if !strings.Contains(output1, wantModErr) {
 		t.Errorf("expected module error %q in output, got:\n%s", wantModErr, output1)
 	}
@@ -671,11 +671,11 @@ sandbox:
 		t.Errorf("expected module hint %q in output, got:\n%s", wantModHint, output1)
 	}
 
-	// 2. Rerun with --sandbox-net granted by operator: must succeed
+	// 2. Rerun with --sandbox-net-allow granted by operator: must succeed
 	ctx2, cancel2 := context.WithTimeout(context.Background(), perTestTimeout)
 	defer cancel2()
 
-	cmd2 := exec.CommandContext(ctx2, kite, "run", "./app.star", "--sandbox-net")
+	cmd2 := exec.CommandContext(ctx2, kite, "run", "./app.star", "--sandbox-net-allow")
 	cmd2.Dir = workDir
 	if runtime.GOOS == "darwin" && os.Getenv("STARKITE_SANDBOX_DRIVER") == "" {
 		cmd2.Env = append(os.Environ(), "STARKITE_SANDBOX_DRIVER=seatbelt")
@@ -685,11 +685,11 @@ sandbox:
 	}
 
 	out2, err2 := cmd2.CombinedOutput()
-	t.Logf("kite run app.star (--sandbox-net) output:\n%s", out2)
+	t.Logf("kite run app.star (--sandbox-net-allow) output:\n%s", out2)
 	if err2 != nil {
 		if sandboxUnavailable(string(out2)) {
 			t.Skipf("host cannot start a sandbox; skipping: %s", out2)
 		}
-		t.Fatalf("kite run app.star --sandbox-net failed: %v\nOutput: %s", err2, out2)
+		t.Fatalf("kite run app.star --sandbox-net-allow failed: %v\nOutput: %s", err2, out2)
 	}
 }
