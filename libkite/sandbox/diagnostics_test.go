@@ -320,7 +320,7 @@ func TestDiagnostics_EnrichExecDiagnostics(t *testing.T) {
 		Stderr:   "Traceback (most recent call last):\nModuleNotFoundError: No module named 'requests'",
 	}
 	EnrichExecDiagnostics(resPy, nil)
-	wantPy := "Hint: pass --sandbox-profile=python-env on CLI, or add dependencies via --sandbox-path-read=<path>"
+	wantPy := "Hint: grant access to dependencies via --sandbox-path-read=<path> or --sandbox-mount <host-path>:<target-path>:ro"
 	if !strings.Contains(resPy.Stderr, wantPy) {
 		t.Errorf("expected python hint in stderr, got: %q", resPy.Stderr)
 	}
@@ -331,7 +331,7 @@ func TestDiagnostics_EnrichExecDiagnostics(t *testing.T) {
 		Stderr:   "Error: Cannot find module 'axios'\nRequire stack:\n- /app/index.js",
 	}
 	EnrichExecDiagnostics(resNode, nil)
-	wantNode := "Hint: pass --sandbox-profile=node-env on CLI, or grant access via --sandbox-path-read=node_modules"
+	wantNode := "Hint: grant access to dependencies via --sandbox-path-read=node_modules or --sandbox-mount <host-path>:<target-path>:ro"
 	if !strings.Contains(resNode.Stderr, wantNode) {
 		t.Errorf("expected node hint in stderr, got: %q", resNode.Stderr)
 	}
@@ -342,7 +342,7 @@ func TestDiagnostics_EnrichExecDiagnostics(t *testing.T) {
 		Stderr:   "<internal:/usr/lib/ruby/rubygems/core_ext/kernel_require.rb>:85:in `require': cannot load such file -- colorize (LoadError)",
 	}
 	EnrichExecDiagnostics(resRuby, nil)
-	wantRuby := "Hint: pass --sandbox-profile=ruby-env on CLI, or add dependencies via --sandbox-path-read=<path>"
+	wantRuby := "Hint: grant access to dependencies via --sandbox-path-read=<path> or --sandbox-mount <host-path>:<target-path>:ro"
 	if !strings.Contains(resRuby.Stderr, wantRuby) {
 		t.Errorf("expected ruby hint in stderr, got: %q", resRuby.Stderr)
 	}

@@ -382,7 +382,7 @@ func EnrichExecDiagnostics(res *ExecResult, spec *ExecutionSpec) {
 	lower := strings.ToLower(res.Stderr)
 
 	if strings.Contains(lower, "modulenotfounderror: no module named") {
-		hint := "Hint: pass --sandbox-profile=python-env on CLI, or add dependencies via --sandbox-path-read=<path>"
+		hint := "Hint: grant access to dependencies via --sandbox-path-read=<path> or --sandbox-mount <host-path>:<target-path>:ro"
 		if !strings.Contains(res.Stderr, hint) {
 			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
 				res.Stderr += "\n"
@@ -392,7 +392,7 @@ func EnrichExecDiagnostics(res *ExecResult, spec *ExecutionSpec) {
 	}
 
 	if strings.Contains(lower, "cannot find module") {
-		hint := "Hint: pass --sandbox-profile=node-env on CLI, or grant access via --sandbox-path-read=node_modules"
+		hint := "Hint: grant access to dependencies via --sandbox-path-read=node_modules or --sandbox-mount <host-path>:<target-path>:ro"
 		if !strings.Contains(res.Stderr, hint) {
 			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
 				res.Stderr += "\n"
@@ -402,7 +402,7 @@ func EnrichExecDiagnostics(res *ExecResult, spec *ExecutionSpec) {
 	}
 
 	if strings.Contains(lower, "cannot load such file") || strings.Contains(lower, "loaderror") {
-		hint := "Hint: pass --sandbox-profile=ruby-env on CLI, or add dependencies via --sandbox-path-read=<path>"
+		hint := "Hint: grant access to dependencies via --sandbox-path-read=<path> or --sandbox-mount <host-path>:<target-path>:ro"
 		if !strings.Contains(res.Stderr, hint) {
 			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
 				res.Stderr += "\n"
