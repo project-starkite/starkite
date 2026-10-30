@@ -41,6 +41,9 @@ func findNode(t *testing.T) string {
 }
 
 func TestRuntimeEnv_PythonVirtualEnv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Python virtual environment testing under Windows AppContainers requires host-wide toolcache ACL inheritance")
+	}
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
@@ -135,6 +138,9 @@ func TestRuntimeEnv_HomeCredentialProtection(t *testing.T) {
 }
 
 func TestRuntimeEnv_ActionableDiagnostics(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Python runtime diagnostics testing under Windows AppContainers requires host-wide toolcache ACL inheritance; see Node test for Windows")
+	}
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
