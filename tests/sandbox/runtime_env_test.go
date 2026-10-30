@@ -175,7 +175,14 @@ func TestRuntimeEnv_ActionableDiagnostics_Node(t *testing.T) {
 
 	kiteBin := buildKite(t)
 
-	cmd := exec.Command(kiteBin, "exec", "--", nodeBin, "-e", "require('non_existent_starkite_module_xyz')")
+	args := []string{"exec"}
+	if runtime.GOOS == "linux" {
+		if _, err := os.Stat("/etc/ssl"); err == nil {
+			args = append(args, "--sandbox-path-read=/etc/ssl")
+		}
+	}
+	args = append(args, "--", nodeBin, "-e", "require('non_existent_starkite_module_xyz')")
+	cmd := exec.Command(kiteBin, args...)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
