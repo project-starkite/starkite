@@ -53,7 +53,7 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--debug` | Enable debug logging | `false` |
 | `--dry-run` | Preview commands without executing | `false` |
 | `--timeout seconds` | Script execution timeout | `300` |
-| `--sandbox-profile name` | Sandbox profile name: a built-in rung (`deny-all`/`sandbox-path`/`sandbox-exec`/`sandbox-net`/`unconfined`) or a `config.yaml` profile. Default is `deny-all`. | `""` |
+| `--sandbox-profile name` | Sandbox profile name: a built-in rung (`deny-all`/`python-env`/`node-env`/`ruby-env`/`sandbox-path`/`sandbox-exec`/`sandbox-net`/`unconfined`) or a `config.yaml` profile. Default is `deny-all`. | `""` |
 | `--sandbox-path-read paths` | Grant read access to host paths (comma-separated or repeatable). | |
 | `--sandbox-path-write paths` | Grant read/write access to host paths (comma-separated or repeatable). | |
 | `--sandbox-exec-allow bins` | Allow execution of specific binaries, paths, or `*` (comma-separated or repeatable). | |

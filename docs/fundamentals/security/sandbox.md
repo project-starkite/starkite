@@ -48,6 +48,26 @@ Privileges are organized into a five-rung capability ladder, where each profile 
 | `sandbox-net` | `host` | `$CWD` read/write, `/tmp` scratch + DNS/TLS certs | Allowed (`exec.allow: ["*"]`) | Full cloud-native workflows (`http`, `ssh`, `k8s`, `mcp`, `containers`). |
 | `unconfined` | `host` | Unrestricted host filesystem | Unrestricted | Completely disables OS sandbox confinement and Starlark permission checks (`--sandbox-enabled=false`). |
 
+## Runtime Environment Profiles
+
+For executing interpreted scripts and language runtimes under native process execution (`kite exec`) or script evaluation, Starkite provides pre-configured runtime profiles. These profiles build on `deny-all` isolation, dynamically resolving and mounting language-specific package stores and virtual environments while keeping host credentials strictly inaccessible:
+
+| Profile | Base | Runtime | Auto-Resolved Mounts | Credential Protection |
+|---|---|---|---|---|
+| `python-env` | `deny-all` | Python | Active `$VIRTUAL_ENV`, `./.venv`, `./venv`, system library paths | Blocks `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg` |
+| `node-env` | `deny-all` | Node.js | Project `./node_modules`, global `$NVM_BIN` modules, system module paths | Blocks `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg` |
+| `ruby-env` | `deny-all` | Ruby | `$GEM_HOME`, `$GEM_PATH`, system gem libraries | Blocks `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg` |
+
+### Path Dependency Resolution & Home Credential Protection
+
+When a runtime profile is active, Starkite scans the environment to unveil standard interpreter libraries and project dependencies read-only:
+
+- **Python Virtual Environments**: If `$VIRTUAL_ENV` is set, or if `./.venv` or `./venv` exists in the working directory, Starkite mounts the directory read-only into the sandbox. System library locations (`/usr/lib/python3*`, `/opt/homebrew/lib/python3*`, or Windows `%LOCALAPPDATA%\Programs\Python`) are detected and unveiled.
+- **Node.js Modules**: Local `./node_modules` and global `$NVM_BIN` package directories are mounted read-only.
+- **Ruby Gems**: Gem directories declared in `$GEM_HOME` and `$GEM_PATH` are mounted read-only.
+
+**Credential Invariant**: Even if a virtual environment or project directory is situated within your home directory, Starkite enforces an inviolable credential barrier. Sensitive paths including `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg`, `~/.config/gcloud`, `~/.docker`, and `~/.gitconfig` are excluded from auto-mounts and denied.
+
 Select a profile with `--sandbox-profile=<name>`:
 
 ```bash
@@ -178,6 +198,33 @@ When running under `--debug`, Starkite also alerts you if a script requests an e
 ```text
 [DEBUG] env "KUBECONFIG" requested by script is present on host but scrubbed by sandbox.
   Hint: pass --env KUBECONFIG on CLI, or declare "KUBECONFIG:" in sandbox.<profile>.env in config.yaml
+```
+
+### Process Execution Diagnostics & Telemetry
+
+When launching external processes with `kite exec`, Starkite inspects child exit codes and standard error to diagnose kernel sandbox denials versus application dependency failures:
+
+- **Python Missing Modules**: If a Python command fails with `ModuleNotFoundError: No module named '<name>'`, Starkite appends remediation guidance:
+  ```text
+  Hint: pass --sandbox-profile=python-env on CLI, or add dependencies via --sandbox-path-read=<path>
+  ```
+- **Node.js Missing Modules**: If Node.js terminates with `Error: Cannot find module '<name>'`, Starkite suggests:
+  ```text
+  Hint: pass --sandbox-profile=node-env on CLI, or grant access via --sandbox-path-read=node_modules
+  ```
+- **Dynamic Linker Failures**: When an executable fails due to an unmounted shared library (`cannot open shared object file` or `image not found`), Starkite recommends:
+  ```text
+  Hint: grant read access to library location via --sandbox-path-read=<dir>
+  ```
+- **Isolated Network Failures**: When network connectivity fails under an isolated network profile:
+  ```text
+  Hint: pass --sandbox-net-allow on CLI, or add endpoint to sandbox.<profile>.network.allow in config.yaml
+  ```
+
+Under `--debug`, `kite exec` emits structured telemetry to standard error reporting command, exit code, execution duration, timeout status, and authoritative sandbox driver:
+
+```text
+[telemetry] command="python3 test.py" exit_code=0 duration=42.1ms timed_out=false driver=seatbelt
 ```
 
 ## Security Invariants

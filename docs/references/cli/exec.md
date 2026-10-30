@@ -81,13 +81,54 @@ kite exec --env CI_COMMIT_SHA --env DEPLOY_ENV=staging ./scripts/release.sh
 kite exec --sandbox-net-allow -- python3 -c "import urllib.request; print(urllib.request.urlopen('https://example.com').status)"
 ```
 
+### Running Python with Virtual Environment Access
+
+```bash
+kite exec --sandbox-profile=python-env -- python3 script.py
+```
+
+### Running Node.js with Dependency Modules
+
+```bash
+kite exec --sandbox-profile=node-env -- node app.js
+```
+
+## Runtime Environment Profiles
+
+Starkite includes built-in profiles tailored for language ecosystems:
+
+| Profile | Target Runtime | Baseline Isolation | Automatic Mounts |
+|---------|----------------|---------------------|------------------|
+| `python-env` | Python (`python3`, `python`) | `deny-all` | `$VIRTUAL_ENV`, `./.venv`, `./venv`, standard library and site-packages |
+| `node-env` | Node.js (`node`, `npm`, `npx`) | `deny-all` | `./node_modules`, `$NVM_BIN`, global module paths |
+| `ruby-env` | Ruby (`ruby`, `bundle`) | `deny-all` | `$GEM_HOME`, `$GEM_PATH`, system gem repositories |
+
+### Credential Protection
+
+Runtime profiles automatically discover and mount dependency trees read-only while shielding sensitive user paths in `$HOME`:
+* Shielded paths: `.ssh`, `.aws`, `.kube`, `.gnupg`, `.config/gcloud`, `.docker`, `.gitconfig`.
+* Dependency stores or virtual environments located inside shielded directories are blocked from automatic mounting.
+
+### Execution Denial Diagnostics & Telemetry
+
+When a command terminates with a non-zero exit status, Starkite analyzes standard error and appends actionable remediation guidance:
+* **Missing Python Modules** (`ModuleNotFoundError`): Suggests passing `--sandbox-profile=python-env` or adding explicit paths via `--sandbox-path-read=<path>`.
+* **Missing Node.js Modules** (`Cannot find module`): Suggests passing `--sandbox-profile=node-env` or adding `--sandbox-path-read=node_modules`.
+* **Missing Shared Libraries** (`cannot open shared object file`, `image not found`): Suggests granting read access to library paths via `--sandbox-path-read=<dir>`.
+* **Blocked Outbound Network Connections**: When running under network isolation (`--sandbox-net-deny` or default `none`), detects connection and DNS resolution failures and hints to pass `--sandbox-net-allow`.
+
+Under `--debug`, `kite exec` emits structured execution telemetry to standard error reporting command, exit code, duration, timeout status, and driver:
+```text
+[telemetry] command="python3 script.py" exit_code=0 duration=25.4ms timed_out=false driver=landlock
+```
+
 ## Flags
 
 `kite exec` supports all standard sandbox runner flags:
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--sandbox-profile name` | Built-in profile (`deny-all`, `sandbox-path`, etc.) or named profile in `config.yaml` | `""` |
+| `--sandbox-profile name` | Built-in profile (`deny-all`, `python-env`, `node-env`, `ruby-env`, `sandbox-path`, etc.) or named profile in `config.yaml` | `""` |
 | `--sandbox-driver driver` | Kernel isolation driver (`auto`, `landlock`, `seatbelt`, `windows`, `podman`, `docker`) | `""` |
 | `--sandbox-path-read path` | Grant read access to host path (repeatable) | |
 | `--sandbox-path-write path` | Grant read and write access to host path (repeatable) | |
