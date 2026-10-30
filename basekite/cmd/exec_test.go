@@ -96,12 +96,16 @@ func TestExec_TargetResolution(t *testing.T) {
 	}
 
 	// 4. $PATH lookup
-	resolvedEcho, err := resolveExecTarget("echo")
-	if err != nil {
-		t.Fatalf("expected 'echo' in PATH, got: %v", err)
+	lookupTarget := "echo"
+	if runtime.GOOS == "windows" {
+		lookupTarget = "cmd"
 	}
-	if resolvedEcho == "" {
-		t.Error("expected non-empty path for echo")
+	resolvedTarget, err := resolveExecTarget(lookupTarget)
+	if err != nil {
+		t.Fatalf("expected '%s' in PATH, got: %v", lookupTarget, err)
+	}
+	if resolvedTarget == "" {
+		t.Errorf("expected non-empty path for %s", lookupTarget)
 	}
 
 	// 5. Missing binary lookup

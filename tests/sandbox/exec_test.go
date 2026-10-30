@@ -20,7 +20,12 @@ func TestExec_EchoStdoutStreaming(t *testing.T) {
 	}
 	kiteBin := buildTestKiteBinary(t)
 
-	cmd := exec.Command(kiteBin, "exec", "--", "echo", "starkite-native-exec-verification")
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command(kiteBin, "exec", "--", "cmd.exe", "/c", "echo starkite-native-exec-verification")
+	} else {
+		cmd = exec.Command(kiteBin, "exec", "--", "echo", "starkite-native-exec-verification")
+	}
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -42,17 +47,21 @@ func TestExec_ExitCodePropagation(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
-	if runtime.GOOS == "windows" {
-		t.Skip("sh script test")
-	}
 	kiteBin := buildTestKiteBinary(t)
-	tmpDir := t.TempDir()
-	script := filepath.Join(tmpDir, "exit42.sh")
-	if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 42\n"), 0755); err != nil {
-		t.Fatal(err)
-	}
 
-	cmd := exec.Command(kiteBin, "exec", script)
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command(kiteBin, "exec", "--", "cmd.exe", "/c", "exit 42")
+	} else {
+		tmpDir := createNonHomeTempDir(t)
+		script := filepath.Join(tmpDir, "exit42.sh")
+		if err := os.WriteFile(script, []byte("#!/bin/sh\nexit 42\n"), 0755); err != nil {
+			t.Fatal(err)
+		}
+		cmd = exec.Command(kiteBin, "exec", script)
+	}
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err == nil {
 		t.Fatal("expected non-zero exit, got nil")
@@ -60,10 +69,10 @@ func TestExec_ExitCodePropagation(t *testing.T) {
 
 	exitErr, ok := err.(*exec.ExitError)
 	if !ok {
-		t.Fatalf("expected ExitError, got %T: %v", err, err)
+		t.Fatalf("expected ExitError, got %T: %v\nStderr: %s", err, err, stderr.String())
 	}
 	if exitErr.ExitCode() != 42 {
-		t.Errorf("expected exit code 42, got %d", exitErr.ExitCode())
+		t.Errorf("expected exit code 42, got %d\nStderr: %s", exitErr.ExitCode(), stderr.String())
 	}
 }
 

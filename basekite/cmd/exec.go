@@ -135,6 +135,7 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		MaxMemoryMB:      profile.MaxMemoryMB,
 		Timeout:          execTimeout,
 		Image:            profile.Image,
+		ScriptFile:       resolvedTarget,
 		NoExec:           false,
 		AllowedExecPaths: profile.AllowedExecPaths,
 		Stdin:            os.Stdin,
