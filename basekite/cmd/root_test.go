@@ -80,6 +80,7 @@ func resetSandboxFlags() {
 	sandboxEnabled = true
 	sandboxProfile = ""
 	sandboxDriver = ""
+	sandboxMounts = nil
 	sandboxPathRead = nil
 	sandboxPathWrite = nil
 	sandboxCallAllow = nil
@@ -94,7 +95,7 @@ func resetSandboxFlags() {
 	flags := rootCmd.PersistentFlags()
 	for _, name := range []string{
 		"sandbox-enabled", "sandbox-profile", "sandbox-driver",
-		"sandbox-path-read", "sandbox-path-write",
+		"sandbox-mount", "sandbox-path-read", "sandbox-path-write",
 		"sandbox-call-allow", "sandbox-call-deny",
 		"sandbox-exec-allow", "sandbox-exec-deny",
 		"sandbox-net-allow", "sandbox-net-deny",

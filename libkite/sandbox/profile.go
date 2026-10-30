@@ -758,6 +758,7 @@ func (p Profile) CompileEnv(hostEnv []string) []string {
 type CLIOverrides struct {
 	Enabled      *bool
 	Driver       string
+	Mounts       []string
 	PathRead     []string
 	PathWrite    []string
 	CallAllow    []string
@@ -772,7 +773,7 @@ type CLIOverrides struct {
 
 // HasCapabilityOverrides reports whether any additive capability flag was set.
 func (o CLIOverrides) HasCapabilityOverrides() bool {
-	return len(o.PathRead) > 0 || len(o.PathWrite) > 0 ||
+	return len(o.Mounts) > 0 || len(o.PathRead) > 0 || len(o.PathWrite) > 0 ||
 		len(o.CallAllow) > 0 || len(o.CallDeny) > 0 ||
 		len(o.ExecAllow) > 0 || len(o.ExecDeny) > 0 ||
 		len(o.NetworkAllow) > 0 || len(o.NetworkDeny) > 0 ||
@@ -837,6 +838,27 @@ func (p *Profile) ApplyCLIOverrides(o CLIOverrides) error {
 			return fmt.Errorf("sandbox: cli path overrides: %w", err)
 		}
 		p.Mounts = mounts
+	}
+
+	if len(o.Mounts) > 0 {
+		for _, spec := range o.Mounts {
+			m, err := ParseMountFlag(spec, cwd, home)
+			if err != nil {
+				return fmt.Errorf("sandbox: invalid --sandbox-mount %q: %w", spec, err)
+			}
+			replaced := false
+			cleanDst := filepath.Clean(m.Destination)
+			for j, em := range p.Mounts {
+				if strings.EqualFold(filepath.Clean(em.Destination), cleanDst) {
+					p.Mounts[j] = m
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				p.Mounts = append(p.Mounts, m)
+			}
+		}
 	}
 
 	if o.NetworkMode != "" {

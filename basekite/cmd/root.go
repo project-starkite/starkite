@@ -35,6 +35,7 @@ var (
 	sandboxEnabled   bool
 	sandboxProfile   string
 	sandboxDriver    string
+	sandboxMounts    []string
 	sandboxPathRead  []string
 	sandboxPathWrite []string
 	sandboxCallAllow []string
@@ -121,6 +122,8 @@ func init() {
 		"Sandbox profile name: a built-in (deny-all|sandbox-path|sandbox-exec|sandbox-net|unconfined) or a profile in config.yaml")
 	rootCmd.PersistentFlags().StringVar(&sandboxDriver, "sandbox-driver", "",
 		"Sandbox execution driver (auto|landlock|seatbelt|windows|appcontainer|podman|docker|nerdctl|gvisor). Overrides the driver configured in the sandbox profile.")
+	rootCmd.PersistentFlags().StringArrayVar(&sandboxMounts, "sandbox-mount", nil,
+		"Mount host path or tmpfs into sandbox: <source>[:<dest>[:ro|rw]] or tmpfs:<dest> (repeatable)")
 	rootCmd.PersistentFlags().StringArrayVar(&sandboxPathRead, "sandbox-path-read", nil,
 		"Grant read access to host path (repeatable)")
 	rootCmd.PersistentFlags().StringArrayVar(&sandboxPathWrite, "sandbox-path-write", nil,
@@ -394,6 +397,7 @@ func currentCLIOverrides() sandbox.CLIOverrides {
 	return sandbox.CLIOverrides{
 		Enabled:      enabledOverride,
 		Driver:       drv,
+		Mounts:       sandboxMounts,
 		PathRead:     sandboxPathRead,
 		PathWrite:    sandboxPathWrite,
 		CallAllow:    sandboxCallAllow,
@@ -463,6 +467,7 @@ func stripSandboxArgs(args []string) []string {
 	valueFlags := map[string]bool{
 		"sandbox-profile":    true,
 		"sandbox-driver":     true,
+		"sandbox-mount":      true,
 		"sandbox-path-read":  true,
 		"sandbox-path-write": true,
 		"sandbox-call-allow": true,
