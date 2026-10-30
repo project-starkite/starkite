@@ -160,7 +160,6 @@ type Profile struct {
 	Enabled          bool            `yaml:"enabled,omitempty" json:"enabled,omitempty"`                       // true when OS sandbox confinement is active; false for unconfined
 	Driver           string          `yaml:"driver,omitempty" json:"driver,omitempty"`                         // driver name: "default", "podman", "docker", "landlock", "seatbelt", etc.
 	Image            string          `yaml:"image,omitempty" json:"image,omitempty"`                           // container image (for container/podman/docker drivers)
-	Runtime          RuntimeType     `yaml:"runtime,omitempty" json:"runtime,omitempty"`                       // language runtime environment: "python", "node", "ruby"
 	Network          NetworkMode     `yaml:"network,omitempty" json:"network,omitempty"`                       // none | host | loopback
 	NetworkAllow     []string        `yaml:"network_allow,omitempty" json:"network_allow,omitempty"`           // allowed network endpoints
 	NetworkDeny      []string        `yaml:"network_deny,omitempty" json:"network_deny,omitempty"`             // denied network endpoints
@@ -179,7 +178,6 @@ type Profile struct {
 // did not request a sandbox. Backends use this to short-circuit.
 func (p Profile) IsZero() bool {
 	return p.Name == "" && !p.Enabled && p.Driver == "" && p.Image == "" &&
-		p.Runtime == "" &&
 		p.Network == "" && len(p.NetworkAllow) == 0 && len(p.NetworkDeny) == 0 &&
 		len(p.Mounts) == 0 && len(p.Paths.Read) == 0 && len(p.Paths.Write) == 0 &&
 		len(p.Exec.Allow) == 0 && len(p.Exec.Deny) == 0 &&
@@ -197,9 +195,6 @@ const (
 	ProfileSandboxExec = "sandbox-exec"
 	ProfileSandboxNet  = "sandbox-net"
 	ProfileUnconfined  = "unconfined"
-	ProfilePythonEnv   = "python-env"
-	ProfileNodeEnv     = "node-env"
-	ProfileRubyEnv     = "ruby-env"
 )
 
 // DefaultProfileName is the reserved profile name in config.yaml's sandbox:
