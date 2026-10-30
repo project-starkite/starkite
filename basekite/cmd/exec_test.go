@@ -113,7 +113,6 @@ func TestExec_WarnStarlarkPermissionFlags(t *testing.T) {
 func TestExec_TargetResolution(t *testing.T) {
 	tmpDir := t.TempDir()
 
-	// 1. Directory rejection
 	subDir := filepath.Join(tmpDir, "submodule")
 	if err := os.Mkdir(subDir, 0755); err != nil {
 		t.Fatal(err)
@@ -123,7 +122,6 @@ func TestExec_TargetResolution(t *testing.T) {
 		t.Errorf("expected directory rejection error, got: %v", err)
 	}
 
-	// 2. Non-executable file rejection (POSIX)
 	if runtime.GOOS != "windows" {
 		nonExecFile := filepath.Join(tmpDir, "script.sh")
 		if err := os.WriteFile(nonExecFile, []byte("#!/bin/sh\necho hi\n"), 0644); err != nil {
@@ -134,7 +132,6 @@ func TestExec_TargetResolution(t *testing.T) {
 			t.Errorf("expected non-executable rejection error, got: %v", err)
 		}
 
-		// 3. Executable file resolution
 		if err := os.Chmod(nonExecFile, 0755); err != nil {
 			t.Fatal(err)
 		}
@@ -147,7 +144,6 @@ func TestExec_TargetResolution(t *testing.T) {
 		}
 	}
 
-	// 4. $PATH lookup
 	lookupTarget := "echo"
 	if runtime.GOOS == "windows" {
 		lookupTarget = "cmd"
@@ -160,7 +156,6 @@ func TestExec_TargetResolution(t *testing.T) {
 		t.Errorf("expected non-empty path for %s", lookupTarget)
 	}
 
-	// 5. Missing binary lookup
 	_, err = resolveExecTarget("nonexistent_binary_xyz_123")
 	if err == nil || !strings.Contains(err.Error(), "not found in working directory or $PATH") {
 		t.Errorf("expected missing binary error, got: %v", err)

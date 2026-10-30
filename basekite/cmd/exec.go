@@ -26,7 +26,7 @@ Security Boundary:
 
 POSIX Flag Delimiter:
   Use '--' to cleanly separate Starkite runner flags from child arguments:
-    kite exec --sandboxed --sandbox-net-allow -- curl -s https://example.com
+    kite exec --sandbox-net-allow -- curl -s https://example.com
 
 Examples:
   # Launch a system tool under the default zero-trust sandbox
@@ -149,7 +149,7 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 
 	res, execErr := driver.Exec(ctx, spec)
 	if execErr != nil {
-		if res != nil && res.ExitCode != 0 {
+		if res != nil && res.ExitCode > 0 {
 			return &libkite.ExitError{Code: res.ExitCode}
 		}
 		return &libkite.ScriptError{

@@ -81,13 +81,11 @@ func TestExec_NetworkConfinement(t *testing.T) {
 	}
 	kiteBin := buildKite(t)
 
-	// 1. Under default zero-trust (deny-all), outbound curl should fail
 	cmdDeny := exec.Command(kiteBin, "exec", "--sandbox-profile=deny-all", "--", "curl", "-s", "--connect-timeout", "2", "https://example.com")
 	if err := cmdDeny.Run(); err == nil {
 		t.Error("expected curl to fail under deny-all network profile, but succeeded")
 	}
 
-	// 2. Under explicit --sandbox-net-allow, outbound curl should succeed
 	cmdAllow := exec.Command(kiteBin, "exec", "--sandbox-net-allow", "--", "curl", "-s", "--connect-timeout", "5", "https://example.com")
 	if err := cmdAllow.Run(); err != nil {
 		t.Logf("curl with net allow failed (possible offline test env): %v", err)

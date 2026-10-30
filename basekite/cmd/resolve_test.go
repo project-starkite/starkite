@@ -214,3 +214,62 @@ func TestResolveRunTarget_StarlarkShebang(t *testing.T) {
 		t.Errorf("got (%q, %v), want (%q, false)", entry, isModule, script)
 	}
 }
+
+func TestResolveRunTarget_ShebangMultiLineComment(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission test")
+	}
+	tmpDir := t.TempDir()
+	script := filepath.Join(tmpDir, "sh-with-kite-comment.sh")
+	content := []byte("#!/bin/bash\n# kite helper script\necho test\n")
+	if err := os.WriteFile(script, content, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	_, _, err := resolveRunTarget(script)
+	if err == nil {
+		t.Fatal("expected error running non-Starlark script despite 'kite' in comment")
+	}
+	if !strings.Contains(err.Error(), "is not a Starkite script or module") {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestResolveExecTarget_RelativePathWithoutDotSlash(t *testing.T) {
+	tmpDir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origDir) }()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatal(err)
+	}
+
+	subDir := filepath.Join(tmpDir, "subdir")
+	if err := os.Mkdir(subDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	scriptName := "run.sh"
+	if runtime.GOOS == "windows" {
+		scriptName = "run.bat"
+	}
+	targetRel := filepath.Join("subdir", scriptName)
+	targetAbs := filepath.Join(tmpDir, targetRel)
+
+	if err := os.WriteFile(targetAbs, []byte("#!/bin/sh\necho ok\n"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	resolved, err := resolveExecTarget(targetRel)
+	if err != nil {
+		t.Fatalf("expected successful resolution for relative path without dot slash, got: %v", err)
+	}
+	if !filepath.IsAbs(resolved) {
+		t.Errorf("expected absolute resolved path, got: %s", resolved)
+	}
+	if resolved != targetAbs {
+		t.Errorf("resolved = %q, want %q", resolved, targetAbs)
+	}
+}

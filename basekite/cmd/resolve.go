@@ -152,11 +152,11 @@ func withinDir(root, path string) bool {
 }
 
 // resolveExecTarget resolves an executable target argument for 'kite exec':
-//  1. If it has a path prefix (./, ../, /, etc.), it verifies the file exists,
-//     is not a directory, and has executable permission bits.
-//  2. Otherwise, it searches the system $PATH via exec.LookPath.
+// If it has a path prefix or path separator, it verifies the file exists,
+// is not a directory, and has executable permission bits.
+// Otherwise, it searches the system $PATH via exec.LookPath.
 func resolveExecTarget(target string) (string, error) {
-	if isPathArg(target) {
+	if isPathArg(target) || strings.Contains(target, "/") || strings.Contains(target, string(filepath.Separator)) {
 		info, err := os.Stat(target)
 		if err != nil {
 			if os.IsNotExist(err) {
@@ -183,7 +183,12 @@ func resolveExecTarget(target string) (string, error) {
 	// Bare command lookup in $PATH
 	path, err := exec.LookPath(target)
 	if err == nil {
-		return filepath.Clean(path), nil
+		clean := filepath.Clean(path)
+		if !filepath.IsAbs(clean) {
+			cwd, _ := os.Getwd()
+			clean = filepath.Join(cwd, clean)
+		}
+		return clean, nil
 	}
 
 	return "", fmt.Errorf("executable '%s' not found in working directory or $PATH", target)
@@ -224,8 +229,11 @@ func isStarlarkFile(path string) bool {
 	header := make([]byte, 128)
 	n, _ := f.Read(header)
 	if n > 2 && header[0] == '#' && header[1] == '!' {
-		line := strings.ToLower(string(header[:n]))
-		return strings.Contains(line, "kite")
+		firstLine := string(header[:n])
+		if idx := strings.IndexByte(firstLine, '\n'); idx != -1 {
+			firstLine = firstLine[:idx]
+		}
+		return strings.Contains(strings.ToLower(firstLine), "kite")
 	}
 	return false
 }
