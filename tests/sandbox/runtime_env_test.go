@@ -198,7 +198,12 @@ func TestRuntimeEnv_TmpfsScratch(t *testing.T) {
 
 	kiteBin := buildKite(t)
 
-	cmd := exec.Command(kiteBin, "exec", "--sandbox-mount", "tmpfs:/scratch", "--", "sh", "-c", "echo ok > /scratch/test && cat /scratch/test")
+	tmpScratch := filepath.Join(os.TempDir(), "starkite-test-scratch")
+	_ = os.MkdirAll(tmpScratch, 0755)
+	defer os.RemoveAll(tmpScratch)
+
+	testFile := filepath.Join(tmpScratch, "test")
+	cmd := exec.Command(kiteBin, "exec", "--sandbox-mount", "tmpfs:"+tmpScratch, "--", "sh", "-c", "echo ok > "+testFile+" && cat "+testFile)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
