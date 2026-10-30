@@ -245,8 +245,12 @@ func TestResolveExecTarget_RelativePathWithoutDotSlash(t *testing.T) {
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatal(err)
 	}
+	cwd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	subDir := filepath.Join(tmpDir, "subdir")
+	subDir := filepath.Join(cwd, "subdir")
 	if err := os.Mkdir(subDir, 0755); err != nil {
 		t.Fatal(err)
 	}
@@ -256,7 +260,7 @@ func TestResolveExecTarget_RelativePathWithoutDotSlash(t *testing.T) {
 		scriptName = "run.bat"
 	}
 	targetRel := filepath.Join("subdir", scriptName)
-	targetAbs := filepath.Join(tmpDir, targetRel)
+	targetAbs := filepath.Join(cwd, targetRel)
 
 	if err := os.WriteFile(targetAbs, []byte("#!/bin/sh\necho ok\n"), 0755); err != nil {
 		t.Fatal(err)
