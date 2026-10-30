@@ -65,7 +65,6 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 1. Resolve executable target path
 	resolvedTarget, err := resolveExecTarget(targetCmd)
 	if err != nil {
 		return &libkite.ScriptError{
@@ -74,10 +73,6 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// 2. Starlark Permission Flag Guardrail Notice
-	warnIfStarlarkPermissionFlagsPassed()
-
-	// 3. Resolve active sandbox profile & driver
 	profile, err := ResolveActiveProfile()
 	if err != nil {
 		return &libkite.ScriptError{
@@ -85,6 +80,12 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 			ExitCode: libkite.ExitConfigError,
 		}
 	}
+
+	profName := profile.Name
+	if profName == "" {
+		profName = sandbox.DefaultProfileName
+	}
+	warnIfStarlarkPermissionFlagsPassed(profName)
 
 	drvName := profile.Driver
 	if drvName == "" || drvName == sandbox.DriverDefault || drvName == "auto" {
@@ -146,7 +147,6 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 	ctx, cancel := execContext(timeout)
 	defer cancel()
 
-	// 4. Authoritative kernel sandbox execution
 	res, execErr := driver.Exec(ctx, spec)
 	if execErr != nil {
 		if res != nil && res.ExitCode != 0 {
@@ -165,7 +165,6 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// parseExecCommandLine splits args into runner flags, target executable, and child arguments.
 func parseExecCommandLine(flagSet *pflag.FlagSet, rawArgs []string) (target string, childArgs []string, err error) {
 	var dashDashIdx = -1
 	for i, a := range rawArgs {
@@ -179,6 +178,9 @@ func parseExecCommandLine(flagSet *pflag.FlagSet, rawArgs []string) (target stri
 		runnerArgs := rawArgs[:dashDashIdx]
 		if len(runnerArgs) > 0 {
 			if err := flagSet.Parse(runnerArgs); err != nil {
+				if strings.Contains(err.Error(), "--sandbox-net") || strings.Contains(err.Error(), "unknown flag: --sandbox-net") {
+					return "", nil, ErrSandboxNetRemoved
+				}
 				return "", nil, err
 			}
 		}
@@ -189,7 +191,6 @@ func parseExecCommandLine(flagSet *pflag.FlagSet, rawArgs []string) (target stri
 		return child[0], child[1:], nil
 	}
 
-	// When no '--' delimiter is provided, parse flags until the first positional argument
 	var targetIdx = -1
 	for i := 0; i < len(rawArgs); i++ {
 		arg := rawArgs[i]
@@ -221,7 +222,9 @@ func parseExecCommandLine(flagSet *pflag.FlagSet, rawArgs []string) (target stri
 			}
 			continue
 		}
-		// Unknown flag before target — stop flag parsing and treat as target
+		if err := flagSet.Parse([]string{arg}); err != nil {
+			return "", nil, err
+		}
 		targetIdx = i
 		break
 	}
@@ -232,10 +235,8 @@ func parseExecCommandLine(flagSet *pflag.FlagSet, rawArgs []string) (target stri
 	return rawArgs[targetIdx], rawArgs[targetIdx+1:], nil
 }
 
-// warnIfStarlarkPermissionFlagsPassed checks if Starlark-specific permission flags
-// were passed to kite exec and emits an informational notice.
-func warnIfStarlarkPermissionFlagsPassed() {
+func warnIfStarlarkPermissionFlagsPassed(profileName string) {
 	if len(sandboxCallAllow) > 0 || len(sandboxCallDeny) > 0 {
-		fmt.Fprintf(os.Stderr, "notice: target is a native process; Starlark permissions ignored. Applying kernel sandbox profile [%s].\n", sandboxProfile)
+		fmt.Fprintf(os.Stderr, "notice: target is a native process; Starlark permissions ignored. Applying kernel sandbox profile [%s].\n", profileName)
 	}
 }

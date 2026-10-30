@@ -10,15 +10,11 @@ import (
 	"testing"
 )
 
-func buildTestKiteBinary(t *testing.T) string {
-	return buildKite(t)
-}
-
 func TestExec_EchoStdoutStreaming(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
-	kiteBin := buildTestKiteBinary(t)
+	kiteBin := buildKite(t)
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
@@ -47,7 +43,7 @@ func TestExec_ExitCodePropagation(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
-	kiteBin := buildTestKiteBinary(t)
+	kiteBin := buildKite(t)
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
@@ -83,7 +79,7 @@ func TestExec_NetworkConfinement(t *testing.T) {
 	if _, err := exec.LookPath("curl"); err != nil {
 		t.Skip("curl not available on host")
 	}
-	kiteBin := buildTestKiteBinary(t)
+	kiteBin := buildKite(t)
 
 	// 1. Under default zero-trust (deny-all), outbound curl should fail
 	cmdDeny := exec.Command(kiteBin, "exec", "--sandbox-profile=deny-all", "--", "curl", "-s", "--connect-timeout", "2", "https://example.com")

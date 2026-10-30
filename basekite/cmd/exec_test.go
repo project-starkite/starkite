@@ -1,6 +1,9 @@
 package cmd
 
 import (
+	"bytes"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -56,6 +59,55 @@ func TestExec_CommandLineParsing(t *testing.T) {
 			t.Error("expected sandboxed=true")
 		}
 	})
+
+	t.Run("intercepts --sandbox-net with dash-dash", func(t *testing.T) {
+		args := []string{"--sandbox-net", "--", "curl"}
+		_, _, err := parseExecCommandLine(flags, args)
+		if !errors.Is(err, ErrSandboxNetRemoved) {
+			t.Errorf("expected ErrSandboxNetRemoved, got: %v", err)
+		}
+	})
+
+	t.Run("intercepts --sandbox-net without dash-dash", func(t *testing.T) {
+		args := []string{"--sandbox-net", "curl"}
+		_, _, err := parseExecCommandLine(flags, args)
+		if !errors.Is(err, ErrSandboxNetRemoved) {
+			t.Errorf("expected ErrSandboxNetRemoved, got: %v", err)
+		}
+	})
+
+	t.Run("rejects unknown runner flag without dash-dash", func(t *testing.T) {
+		args := []string{"--unknown-runner-flag", "echo"}
+		_, _, err := parseExecCommandLine(flags, args)
+		if err == nil || !strings.Contains(err.Error(), "unknown flag: --unknown-runner-flag") {
+			t.Errorf("expected unknown flag error, got: %v", err)
+		}
+	})
+}
+
+func TestExec_WarnStarlarkPermissionFlags(t *testing.T) {
+	oldAllow := sandboxCallAllow
+	defer func() { sandboxCallAllow = oldAllow }()
+	sandboxCallAllow = []string{"fs.read"}
+
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	oldStderr := os.Stderr
+	os.Stderr = w
+
+	warnIfStarlarkPermissionFlagsPassed("custom-profile")
+	w.Close()
+	os.Stderr = oldStderr
+
+	var buf bytes.Buffer
+	_, _ = io.Copy(&buf, r)
+	out := buf.String()
+	want := "notice: target is a native process; Starlark permissions ignored. Applying kernel sandbox profile [custom-profile].\n"
+	if out != want {
+		t.Errorf("unexpected notice output: got %q, want %q", out, want)
+	}
 }
 
 func TestExec_TargetResolution(t *testing.T) {

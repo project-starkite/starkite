@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/project-starkite/starkite/libkite"
@@ -70,7 +71,6 @@ func evalCode(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	// Create module config
 	moduleConfig := &libkite.ModuleConfig{
 		DryRun:   dryRun,
 		Debug:    debugMode,
@@ -78,10 +78,8 @@ func evalCode(cmd *cobra.Command, args []string) error {
 		Env:      envMap,
 	}
 
-	// Create registry with all modules
 	registry := NewRegistry(moduleConfig)
 
-	// Create runtime configuration
 	cfg := &libkite.Config{
 		ScriptPath:   "<inline>",
 		OutputFormat: outputFormat,
@@ -94,7 +92,6 @@ func evalCode(cmd *cobra.Command, args []string) error {
 		EntryPoint:   "main",
 	}
 
-	// Create and run the runtime
 	rt, err := libkite.New(cfg)
 	if err != nil {
 		return &libkite.ScriptError{
@@ -107,17 +104,13 @@ func evalCode(cmd *cobra.Command, args []string) error {
 	ctx, cancel := execContext(timeout)
 	defer cancel()
 
-	// Execute the code
 	if err := rt.Execute(ctx, code); err != nil {
-		// Check if it's already a typed error
-		if _, ok := err.(*libkite.ScriptError); ok {
+		if _, ok := errors.AsType[*libkite.ScriptError](err); ok {
 			return err
 		}
-		if _, ok := err.(*libkite.ExitError); ok {
+		if _, ok := errors.AsType[*libkite.ExitError](err); ok {
 			return err
 		}
-		// Wrap other errors — use err.Error() as Message without Cause
-		// to avoid double-nesting (ScriptError.Error() concatenates Message + Cause)
 		return &libkite.ScriptError{
 			Message:  fmt.Sprintf("%v", err),
 			ExitCode: libkite.ExitScriptError,

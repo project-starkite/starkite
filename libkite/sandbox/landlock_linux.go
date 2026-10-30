@@ -265,12 +265,14 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		}
 		for _, allowed := range spec.AllowedExecPaths {
 			cleanAllowed := filepath.Clean(allowed)
-			if _, statErr := os.Stat(cleanAllowed); statErr == nil {
-				_ = addLandlockPathRule(int(rulesetFd), cleanAllowed, execAccess)
-			}
-			if resolved, evalErr := filepath.EvalSymlinks(cleanAllowed); evalErr == nil && resolved != cleanAllowed {
-				if _, statErr := os.Stat(resolved); statErr == nil {
-					_ = addLandlockPathRule(int(rulesetFd), resolved, execAccess)
+			if !isScratchPath(cleanAllowed) {
+				if _, statErr := os.Stat(cleanAllowed); statErr == nil {
+					_ = addLandlockPathRule(int(rulesetFd), cleanAllowed, execAccess|readDataAccess)
+				}
+				if resolved, evalErr := filepath.EvalSymlinks(cleanAllowed); evalErr == nil && resolved != cleanAllowed && !isScratchPath(resolved) {
+					if _, statErr := os.Stat(resolved); statErr == nil {
+						_ = addLandlockPathRule(int(rulesetFd), resolved, execAccess|readDataAccess)
+					}
 				}
 			}
 		}
