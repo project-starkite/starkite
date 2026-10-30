@@ -110,6 +110,16 @@ func TestExecutionSpec_Validate(t *testing.T) {
 			wantErr: false,
 		},
 		{
+			name: "mount paths with commas are valid",
+			spec: ExecutionSpec{
+				Command: []string{"ls"},
+				Mounts: []Mount{
+					{Type: MountBind, Source: "/data,store/2026", Destination: "/app,store/2026"},
+				},
+			},
+			wantErr: false,
+		},
+		{
 			name: "windows drive prefix backslash is valid",
 			spec: ExecutionSpec{
 				Command: []string{"cmd.exe", "/c", "dir"},

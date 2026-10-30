@@ -171,6 +171,35 @@ func TestApplyCLIOverrides(t *testing.T) {
 	}
 }
 
+func TestApplyCLIOverrides_LiteralCommas(t *testing.T) {
+	p, err := LoadProfile(ProfileDenyAll)
+	if err != nil {
+		t.Fatalf("LoadProfile(deny-all): %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	commaDir := filepath.Join(tmpDir, "data,2026")
+	if err := os.MkdirAll(commaDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	overrides := CLIOverrides{
+		PathRead:  []string{commaDir},
+		PathWrite: []string{commaDir},
+	}
+
+	if err := p.ApplyCLIOverrides(overrides); err != nil {
+		t.Fatalf("ApplyCLIOverrides: %v", err)
+	}
+
+	if !slices.Contains(p.Paths.Read, commaDir) {
+		t.Errorf("expected Paths.Read to contain %q verbatim, got %v", commaDir, p.Paths.Read)
+	}
+	if !slices.Contains(p.Paths.Write, commaDir) {
+		t.Errorf("expected Paths.Write to contain %q verbatim, got %v", commaDir, p.Paths.Write)
+	}
+}
+
 func TestLoadProfile_defaultReserved(t *testing.T) {
 	t.Run("no config: bare default falls back to deny-all", func(t *testing.T) {
 		home := t.TempDir()

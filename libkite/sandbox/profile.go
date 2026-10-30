@@ -822,8 +822,16 @@ func (p *Profile) ApplyCLIOverrides(o CLIOverrides) error {
 	home, _ := os.UserHomeDir()
 
 	if len(o.PathRead) > 0 || len(o.PathWrite) > 0 {
-		p.Paths.Read = append(p.Paths.Read, splitCommaList(o.PathRead)...)
-		p.Paths.Write = append(p.Paths.Write, splitCommaList(o.PathWrite)...)
+		for _, raw := range o.PathRead {
+			if trimmed := strings.TrimSpace(raw); trimmed != "" {
+				p.Paths.Read = append(p.Paths.Read, trimmed)
+			}
+		}
+		for _, raw := range o.PathWrite {
+			if trimmed := strings.TrimSpace(raw); trimmed != "" {
+				p.Paths.Write = append(p.Paths.Write, trimmed)
+			}
+		}
 		mounts, err := compilePaths(cwd, home, p.Paths, nil, p.Mounts)
 		if err != nil {
 			return fmt.Errorf("sandbox: cli path overrides: %w", err)

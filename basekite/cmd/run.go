@@ -34,8 +34,8 @@ Variables can be injected from multiple sources (highest to lowest priority):
 
 Sandbox & Capabilities (enabled by default under the 'deny-all' profile):
   --sandbox-profile=<name>       Select sandbox profile (deny-all, sandbox-path, sandbox-exec, sandbox-net, unconfined, or custom)
-  --sandbox-path-read=<paths>    Grant read access to host paths (comma-separated or repeatable)
-  --sandbox-path-write=<paths>   Grant read/write access to host paths (comma-separated or repeatable)
+  --sandbox-path-read=<path>     Grant read access to host path (repeatable)
+  --sandbox-path-write=<path>    Grant read/write access to host path (repeatable)
   --sandbox-exec-allow=<bins>    Allow execution of specific binaries or '*' (comma-separated or repeatable)
   --sandbox-exec-deny=<bins>     Deny execution of specific binaries (comma-separated or repeatable)
   --sandbox-call-allow=<rules>   Allow specific Starlark module calls (e.g. fs.read, http.client)

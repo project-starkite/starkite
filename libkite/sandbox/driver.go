@@ -58,8 +58,8 @@ func (s *ExecutionSpec) Validate() error {
 		if m.Type == MountBind && m.Source == "" {
 			return fmt.Errorf("sandbox: mount[%d]: bind mount requires source", i)
 		}
-		if strings.ContainsAny(stripDriveLetter(m.Destination), ":,\"\n\r\x00") || strings.ContainsAny(stripDriveLetter(m.Source), ":,\"\n\r\x00") {
-			return fmt.Errorf("sandbox: mount[%d]: source and destination must not contain ':', ',', quotes, newlines, or NUL bytes", i)
+		if strings.ContainsAny(stripDriveLetter(m.Destination), ":\"\n\r\x00") || strings.ContainsAny(stripDriveLetter(m.Source), ":\"\n\r\x00") {
+			return fmt.Errorf("sandbox: mount[%d]: source and destination must not contain ':', quotes, newlines, or NUL bytes", i)
 		}
 	}
 	for i, p := range s.AllowedExecPaths {
