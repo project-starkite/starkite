@@ -33,6 +33,7 @@ type SandboxConfig struct {
 type ProfileBody struct {
 	Enabled          *bool           `yaml:"enabled,omitempty"`
 	Base             string          `yaml:"base,omitempty"`
+	Runtime          RuntimeType     `yaml:"runtime,omitempty" json:"runtime,omitempty"`
 	Driver           string          `yaml:"driver,omitempty"`
 	Image            string          `yaml:"image,omitempty"`
 	Network          networkSpec     `yaml:"network,omitempty"`
@@ -47,14 +48,49 @@ type ProfileBody struct {
 	AllowedExecPaths []string        `yaml:"allowed_exec_paths,omitempty"`
 }
 
+// BuiltinProfileDef defines the configuration and documentation for built-in sandbox profiles.
+type BuiltinProfileDef struct {
+	Base        string      `yaml:"base,omitempty" json:"base,omitempty"`
+	Runtime     RuntimeType `yaml:"runtime,omitempty" json:"runtime,omitempty"`
+	Description string      `yaml:"description,omitempty" json:"description,omitempty"`
+}
+
+// BuiltinProfiles registers the standard built-in sandbox profiles.
+var BuiltinProfiles = map[string]BuiltinProfileDef{
+	ProfilePythonEnv: {
+		Base:        ProfileDenyAll,
+		Runtime:     RuntimePython,
+		Description: "Restricted sandbox tailored for Python scripts and virtualenvs",
+	},
+	ProfileNodeEnv: {
+		Base:        ProfileDenyAll,
+		Runtime:     RuntimeNode,
+		Description: "Restricted sandbox tailored for Node.js applications and node_modules",
+	},
+	ProfileRubyEnv: {
+		Base:        ProfileDenyAll,
+		Runtime:     RuntimeRuby,
+		Description: "Restricted sandbox tailored for Ruby scripts and gem stores",
+	},
+}
+
 // Validate checks that the profile body has valid network and limit specifications.
 func (b *ProfileBody) Validate() error {
 	hasCapabilities := len(b.Paths.Read) > 0 || len(b.Paths.Write) > 0 ||
 		len(b.Exec.Allow) > 0 || len(b.Exec.Deny) > 0 ||
-		len(b.Calls.Allow) > 0 || len(b.Calls.Deny) > 0
+		len(b.Calls.Allow) > 0 || len(b.Calls.Deny) > 0 ||
+		b.Runtime != ""
 
 	if (b.Enabled == nil || *b.Enabled) && b.Base == "" && b.Network.Mode == "" && len(b.Network.Allow) == 0 && len(b.Network.Deny) == 0 && !hasCapabilities {
 		return fmt.Errorf("network mode is required")
+	}
+	if b.Runtime != "" {
+		switch b.Runtime {
+		case RuntimePython, RuntimeNode, RuntimeRuby:
+		default:
+			return fmt.Errorf("unknown runtime %q (want %q, %q, or %q)",
+				b.Runtime, RuntimePython, RuntimeNode, RuntimeRuby)
+		}
 	}
 	if b.Network.Mode != "" {
 		switch NetworkMode(b.Network.Mode) {
@@ -79,7 +115,8 @@ func (b *ProfileBody) Validate() error {
 
 func isBuiltinProfile(name string) bool {
 	switch name {
-	case ProfileDenyAll, ProfileSandboxPath, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined:
+	case ProfileDenyAll, ProfileSandboxPath, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined,
+		ProfilePythonEnv, ProfileNodeEnv, ProfileRubyEnv:
 		return true
 	default:
 		return false
@@ -260,6 +297,7 @@ func profileFromBody(name string, body ProfileBody, origin string) (Profile, err
 		Enabled:          true,
 		Driver:           base.Driver,
 		Image:            base.Image,
+		Runtime:          base.Runtime,
 		Network:          base.Network,
 		NetworkAllow:     append([]string(nil), base.NetworkAllow...),
 		MaxMemoryMB:      base.MaxMemoryMB,
@@ -350,6 +388,10 @@ func profileFromBody(name string, body ProfileBody, origin string) (Profile, err
 		}
 	}
 
+	if body.Runtime != "" {
+		p.Runtime = body.Runtime
+	}
+
 	// Paths
 	p.Paths.Read = append(p.Paths.Read, body.Paths.Read...)
 	p.Paths.Write = append(p.Paths.Write, body.Paths.Write...)
@@ -363,6 +405,26 @@ func profileFromBody(name string, body ProfileBody, origin string) (Profile, err
 		mounts = ResolveNetworkAssetMounts(mounts)
 	}
 	p.Mounts = mounts
+
+	if p.Runtime != "" {
+		rtMounts, err := ResolveRuntimeEnvMounts(p.Runtime, cwd, home)
+		if err != nil {
+			return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
+		}
+		for _, rtm := range rtMounts {
+			replaced := false
+			for j, em := range p.Mounts {
+				if em.Destination == rtm.Destination {
+					p.Mounts[j] = rtm
+					replaced = true
+					break
+				}
+			}
+			if !replaced {
+				p.Mounts = append(p.Mounts, rtm)
+			}
+		}
+	}
 
 	// Exec & W^X
 	p.Exec.Allow = append(p.Exec.Allow, body.Exec.Allow...)
@@ -987,7 +1049,7 @@ func ResolvePermissions(profileName string, cfg *SandboxConfig) (*libkite.Permis
 	}
 
 	switch profileName {
-	case ProfileDenyAll:
+	case ProfileDenyAll, ProfilePythonEnv, ProfileNodeEnv, ProfileRubyEnv:
 		return libkite.DenyAllPermissions(), nil
 	case ProfileSandboxPath:
 		return libkite.SandboxPathPermissions(), nil
@@ -1024,6 +1086,29 @@ func loadProfileResolved(value string) (Profile, error) {
 			Mounts: []Mount{
 				{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
 			},
+		}, nil
+	case ProfilePythonEnv, ProfileNodeEnv, ProfileRubyEnv:
+		def, ok := BuiltinProfiles[value]
+		if !ok {
+			return Profile{}, fmt.Errorf("unknown built-in profile %q", value)
+		}
+		cwd, _ := os.Getwd()
+		home, _ := os.UserHomeDir()
+		rtMounts, _ := ResolveRuntimeEnvMounts(def.Runtime, cwd, home)
+		mounts := []Mount{
+			{Destination: "/tmp", Type: MountTmpfs, Mode: MountRW},
+		}
+		mounts = append(mounts, rtMounts...)
+		return Profile{
+			Name:    value,
+			Enabled: true,
+			Driver:  DriverDefault,
+			Runtime: def.Runtime,
+			Paths:   PathsSpec{Read: nil, Write: nil},
+			Exec:    ExecPolicySpec{Deny: []string{"*"}},
+			NoExec:  true,
+			Network: NetworkNone,
+			Mounts:  mounts,
 		}, nil
 	case ProfileSandboxPath:
 		cwd, _ := os.Getwd()
@@ -1132,8 +1217,9 @@ func loadNamed(name string) (Profile, error) {
 		}
 	}
 
-	builtinList := fmt.Sprintf("%s, %s, %s, %s, %s",
-		ProfileDenyAll, ProfileSandboxPath, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined)
+	builtinList := fmt.Sprintf("%s, %s, %s, %s, %s, %s, %s, %s",
+		ProfileDenyAll, ProfileSandboxPath, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined,
+		ProfilePythonEnv, ProfileNodeEnv, ProfileRubyEnv)
 
 	if len(searched) == 0 {
 		return Profile{}, fmt.Errorf(

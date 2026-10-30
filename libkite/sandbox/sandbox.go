@@ -156,28 +156,30 @@ type EnvPolicySpec struct {
 // Profile is the resolved sandbox configuration: the platform-agnostic
 // description that the runtime backend translates to a driver execution spec.
 type Profile struct {
-	Name             string          // empty for "no sandbox"
-	Enabled          bool            // true when OS sandbox confinement is active; false for unconfined
-	Driver           string          // driver name: "default", "podman", "docker", "landlock", "seatbelt", etc.
-	Image            string          // container image (for container/podman/docker drivers)
-	Network          NetworkMode     // none | host | loopback
-	NetworkAllow     []string        // allowed network endpoints
-	NetworkDeny      []string        // denied network endpoints
-	Mounts           []Mount         // filesystem mount list
-	Paths            PathsSpec       // readable and writable host paths
-	Exec             ExecPolicySpec  // process execution policy
-	Calls            CallsPolicySpec // Starlark API call policy
-	Env              EnvPolicySpec   // environment policy
-	MaxMemoryMB      int64           // memory limit in megabytes (0 = unconstrained)
-	Timeout          time.Duration   // execution timeout (0 = unconstrained)
-	NoExec           bool            // disable subprocess execution inside the sandbox
-	AllowedExecPaths []string        // explicit allowlist of executable paths
+	Name             string          `yaml:"name,omitempty" json:"name,omitempty"`                             // empty for "no sandbox"
+	Enabled          bool            `yaml:"enabled,omitempty" json:"enabled,omitempty"`                       // true when OS sandbox confinement is active; false for unconfined
+	Driver           string          `yaml:"driver,omitempty" json:"driver,omitempty"`                         // driver name: "default", "podman", "docker", "landlock", "seatbelt", etc.
+	Image            string          `yaml:"image,omitempty" json:"image,omitempty"`                           // container image (for container/podman/docker drivers)
+	Runtime          RuntimeType     `yaml:"runtime,omitempty" json:"runtime,omitempty"`                       // language runtime environment: "python", "node", "ruby"
+	Network          NetworkMode     `yaml:"network,omitempty" json:"network,omitempty"`                       // none | host | loopback
+	NetworkAllow     []string        `yaml:"network_allow,omitempty" json:"network_allow,omitempty"`           // allowed network endpoints
+	NetworkDeny      []string        `yaml:"network_deny,omitempty" json:"network_deny,omitempty"`             // denied network endpoints
+	Mounts           []Mount         `yaml:"mounts,omitempty" json:"mounts,omitempty"`                         // filesystem mount list
+	Paths            PathsSpec       `yaml:"paths,omitempty" json:"paths"`                                     // readable and writable host paths
+	Exec             ExecPolicySpec  `yaml:"exec,omitempty" json:"exec"`                                       // process execution policy
+	Calls            CallsPolicySpec `yaml:"calls,omitempty" json:"calls"`                                     // Starlark API call policy
+	Env              EnvPolicySpec   `yaml:"env,omitempty" json:"env"`                                         // environment policy
+	MaxMemoryMB      int64           `yaml:"max_memory_mb,omitempty" json:"max_memory_mb,omitempty"`           // memory limit in megabytes (0 = unconstrained)
+	Timeout          time.Duration   `yaml:"timeout,omitempty" json:"timeout,omitempty"`                       // execution timeout (0 = unconstrained)
+	NoExec           bool            `yaml:"no_exec,omitempty" json:"no_exec,omitempty"`                       // disable subprocess execution inside the sandbox
+	AllowedExecPaths []string        `yaml:"allowed_exec_paths,omitempty" json:"allowed_exec_paths,omitempty"` // explicit allowlist of executable paths
 }
 
 // IsZero reports whether the profile is the empty value, i.e. the caller
 // did not request a sandbox. Backends use this to short-circuit.
 func (p Profile) IsZero() bool {
 	return p.Name == "" && !p.Enabled && p.Driver == "" && p.Image == "" &&
+		p.Runtime == "" &&
 		p.Network == "" && len(p.NetworkAllow) == 0 && len(p.NetworkDeny) == 0 &&
 		len(p.Mounts) == 0 && len(p.Paths.Read) == 0 && len(p.Paths.Write) == 0 &&
 		len(p.Exec.Allow) == 0 && len(p.Exec.Deny) == 0 &&
@@ -195,6 +197,9 @@ const (
 	ProfileSandboxExec = "sandbox-exec"
 	ProfileSandboxNet  = "sandbox-net"
 	ProfileUnconfined  = "unconfined"
+	ProfilePythonEnv   = "python-env"
+	ProfileNodeEnv     = "node-env"
+	ProfileRubyEnv     = "ruby-env"
 )
 
 // DefaultProfileName is the reserved profile name in config.yaml's sandbox:
