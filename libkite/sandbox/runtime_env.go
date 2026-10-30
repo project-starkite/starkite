@@ -3,6 +3,7 @@ package sandbox
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -182,6 +183,28 @@ func pythonSearchPaths() []string {
 				}
 			}
 		}
+		if toolCache := os.Getenv("RUNNER_TOOL_CACHE"); toolCache != "" {
+			if matches, err := filepath.Glob(filepath.Join(toolCache, "Python", "*", "*")); err == nil {
+				for _, m := range matches {
+					if fi, err := os.Stat(m); err == nil && fi.IsDir() {
+						paths = append(paths, m)
+					}
+				}
+			}
+		}
+		if matches, err := filepath.Glob(`C:\hostedtoolcache\windows\Python\*\*`); err == nil {
+			for _, m := range matches {
+				if fi, err := os.Stat(m); err == nil && fi.IsDir() {
+					paths = append(paths, m)
+				}
+			}
+		}
+		for _, name := range []string{"python", "python3"} {
+			if p, err := exec.LookPath(name); err == nil {
+				dir := filepath.Dir(p)
+				paths = append(paths, dir, filepath.Join(dir, "Lib"), filepath.Join(dir, "DLLs"), filepath.Join(dir, "Scripts"))
+			}
+		}
 	}
 	return paths
 }
@@ -194,6 +217,9 @@ func nodeSearchPaths() []string {
 			"/usr/local/lib/node_modules",
 			"/usr/lib/node_modules",
 			"/opt/homebrew/lib/node_modules",
+		}
+		if runtime.GOOS == "linux" {
+			candidates = append(candidates, "/etc/ssl")
 		}
 		for _, c := range candidates {
 			if fi, err := os.Stat(c); err == nil && fi.IsDir() {

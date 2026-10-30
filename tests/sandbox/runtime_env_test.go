@@ -10,10 +10,8 @@ import (
 	"testing"
 )
 
-func TestRuntimeEnv_PythonVirtualEnv(t *testing.T) {
-	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
-		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
-	}
+func findPython(t *testing.T) string {
+	t.Helper()
 	pyBin, err := exec.LookPath("python3")
 	if err != nil {
 		if runtime.GOOS == "windows" {
@@ -23,6 +21,30 @@ func TestRuntimeEnv_PythonVirtualEnv(t *testing.T) {
 			t.Skip("python not available on host")
 		}
 	}
+	// Verify python is actually functional on host (guards against WindowsApps reparse points)
+	if err := exec.Command(pyBin, "--version").Run(); err != nil {
+		t.Skipf("python executable %q found but not runnable: %v", pyBin, err)
+	}
+	return pyBin
+}
+
+func findNode(t *testing.T) string {
+	t.Helper()
+	nodeBin, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node not available on host")
+	}
+	if err := exec.Command(nodeBin, "--version").Run(); err != nil {
+		t.Skipf("node executable %q found but not runnable: %v", nodeBin, err)
+	}
+	return nodeBin
+}
+
+func TestRuntimeEnv_PythonVirtualEnv(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+	pyBin := findPython(t)
 
 	kiteBin := buildKite(t)
 	workDir := createNonHomeTempDir(t)
@@ -41,6 +63,7 @@ func TestRuntimeEnv_PythonVirtualEnv(t *testing.T) {
 	pyCode := "import sys, starkite_dummy; sys.stdout.write(starkite_dummy.GREETING)"
 	cmd := exec.Command(kiteBin, "exec", "--sandbox-profile=python-env", "--env", "PYTHONPATH="+venvDir, "--", pyBin, "-c", pyCode)
 	cmd.Dir = workDir
+	cmd.Env = append(os.Environ(), "PYTHONPATH="+venvDir)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -61,15 +84,7 @@ func TestRuntimeEnv_HomeCredentialProtection(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
-	pyBin, err := exec.LookPath("python3")
-	if err != nil {
-		if runtime.GOOS == "windows" {
-			pyBin, err = exec.LookPath("python")
-		}
-		if err != nil {
-			t.Skip("python not available on host")
-		}
-	}
+	pyBin := findPython(t)
 
 	kiteBin := buildKite(t)
 	fakeHome := createNonHomeTempDir(t)
@@ -105,13 +120,13 @@ func TestRuntimeEnv_HomeCredentialProtection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(kiteBin, "exec", "--sandbox-profile=python-env", "--env", "HOME="+fakeHome, "--", pyBin, pyScript)
+	cmd := exec.Command(kiteBin, "exec", "--sandbox-profile=python-env", "--", pyBin, pyScript)
+	cmd.Env = envWithFakeHome(fakeHome)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err = cmd.Run()
-	if err == nil {
+	if err := cmd.Run(); err == nil {
 		t.Errorf("expected failure when accessing %q, but execution succeeded; stdout=%q", secretKey, stdout.String())
 	}
 	if strings.Contains(stdout.String(), "secret-ssh-private-key") {
@@ -123,19 +138,11 @@ func TestRuntimeEnv_ActionableDiagnostics(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
-	pyBin, err := exec.LookPath("python3")
-	if err != nil {
-		if runtime.GOOS == "windows" {
-			pyBin, err = exec.LookPath("python")
-		}
-		if err != nil {
-			t.Skip("python not available on host")
-		}
-	}
+	pyBin := findPython(t)
 
 	kiteBin := buildKite(t)
 
-	cmd := exec.Command(kiteBin, "exec", "--", pyBin, "-c", "import non_existent_starkite_module_xyz")
+	cmd := exec.Command(kiteBin, "exec", "--sandbox-profile=python-env", "--", pyBin, "-c", "import non_existent_starkite_module_xyz")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -152,14 +159,11 @@ func TestRuntimeEnv_ActionableDiagnostics_Node(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
-	nodeBin, err := exec.LookPath("node")
-	if err != nil {
-		t.Skip("node not available on host")
-	}
+	nodeBin := findNode(t)
 
 	kiteBin := buildKite(t)
 
-	cmd := exec.Command(kiteBin, "exec", "--", nodeBin, "-e", "require('non_existent_starkite_module_xyz')")
+	cmd := exec.Command(kiteBin, "exec", "--sandbox-profile=node-env", "--", nodeBin, "-e", "require('non_existent_starkite_module_xyz')")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

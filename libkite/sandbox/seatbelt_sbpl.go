@@ -174,11 +174,9 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 				continue
 			}
 
-			// If mount is inside $HOME, explicitly allow read
-			if cleanHome != "" && strings.HasPrefix(cleanTarget, cleanHome) {
-				for _, variant := range sbplPathVariants(cleanTarget) {
-					b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", variant))
-				}
+			// Explicitly allow read access for any mount (ensures subpaths under denied $HOME or CWD can be read)
+			for _, variant := range sbplPathVariants(cleanTarget) {
+				b.WriteString(fmt.Sprintf("(allow file-read* (subpath %q))\n", variant))
 			}
 
 			if m.Type == MountTmpfs || m.Mode == MountRW {

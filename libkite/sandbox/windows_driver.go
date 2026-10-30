@@ -289,6 +289,19 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		}
 	}
 
+	// Unveil target executable if located outside system directories.
+	sysRoot := os.Getenv("SystemRoot")
+	if sysRoot == "" {
+		sysRoot = `C:\Windows`
+	}
+	if exePath != "" && !strings.HasPrefix(strings.ToLower(exePath), strings.ToLower(sysRoot)) {
+		addGrant(exePath, execAccessMask)
+		exeDir := filepath.Dir(exePath)
+		if !isHomeOrRoot && (cleanHome == "" || !strings.EqualFold(exeDir, cleanHome)) {
+			addGrant(exeDir, readOnlyAccessMask)
+		}
+	}
+
 	// Record lease in journal.
 	lease := windowsLease{
 		PID:             os.Getpid(),
