@@ -298,7 +298,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		addGrant(exePath, execAccessMask)
 		exeDir := filepath.Dir(exePath)
 		if !isHomeOrRoot && (cleanHome == "" || !strings.EqualFold(exeDir, cleanHome)) {
-			addGrant(exeDir, readOnlyAccessMask)
+			addGrant(exeDir, execAccessMask)
 		}
 	}
 

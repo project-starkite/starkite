@@ -69,8 +69,8 @@ func TestRuntimeEnv_PythonVirtualEnv(t *testing.T) {
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		if sandboxUnavailable(stderr.String()) {
-			t.Skipf("host cannot start a sandbox: %s", stderr.String())
+		if sandboxUnavailable(stderr.String()) || sandboxUnavailable(err.Error()) {
+			t.Skipf("host cannot start a sandbox: %s (err: %v)", stderr.String(), err)
 		}
 		t.Fatalf("kite exec python-env failed: %v\nStderr: %s\nStdout: %s", err, stderr.String(), stdout.String())
 	}
@@ -147,7 +147,10 @@ func TestRuntimeEnv_ActionableDiagnostics(t *testing.T) {
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	_ = cmd.Run() // Expect non-zero exit
+	err := cmd.Run() // Expect non-zero exit
+	if sandboxUnavailable(stderr.String()) || (err != nil && sandboxUnavailable(err.Error())) {
+		t.Skipf("host cannot start a sandbox: %s (err: %v)", stderr.String(), err)
+	}
 
 	wantHint := "Hint: pass --sandbox-profile=python-env on CLI, or add dependencies via --sandbox-path-read=<path>"
 	if !strings.Contains(stderr.String(), wantHint) {

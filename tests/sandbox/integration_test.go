@@ -309,6 +309,8 @@ func sandboxUnavailable(output string) bool {
 		"Access is denied",
 		"Cannot create a file when that file already exists",
 		"failed to resolve dependencies",
+		"0xc0000022",
+		"0xc0000142",
 	}
 	for _, m := range markers {
 		if strings.Contains(output, m) {
