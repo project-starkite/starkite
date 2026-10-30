@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -232,6 +233,104 @@ func TestBoundedBuffer(t *testing.T) {
 		want := "defghi"
 		if buf.String() != want {
 			t.Errorf("String() = %q, want %q", buf.String(), want)
+		}
+	})
+}
+
+func TestExec_SandboxMountAndPathReadFlags(t *testing.T) {
+	defer resetSandboxFlags()
+
+	t.Run("repeatable sandbox-mount and comma path-read", func(t *testing.T) {
+		resetSandboxFlags()
+		tmpDir := t.TempDir()
+		dataDir := filepath.Join(tmpDir, "data,2026")
+		if err := os.MkdirAll(dataDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		mountDir1 := filepath.Join(tmpDir, "m1")
+		if err := os.MkdirAll(mountDir1, 0755); err != nil {
+			t.Fatal(err)
+		}
+		mountDir2 := filepath.Join(tmpDir, "m2")
+		if err := os.MkdirAll(mountDir2, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+		flags.StringArrayVar(&sandboxMounts, "sandbox-mount", nil, "")
+		flags.StringArrayVar(&sandboxPathRead, "sandbox-path-read", nil, "")
+
+		args := []string{
+			"--sandbox-mount", mountDir1 + ":/m1:ro",
+			"--sandbox-mount", mountDir2 + ":/m2:rw",
+			"--sandbox-mount", "tmpfs:/scratch",
+			"--sandbox-path-read", dataDir,
+			"--", "echo", "ok",
+		}
+
+		target, child, err := parseExecCommandLine(flags, args)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if target != "echo" {
+			t.Errorf("target = %q, want echo", target)
+		}
+		if len(child) != 1 || child[0] != "ok" {
+			t.Errorf("child = %v, want ['ok']", child)
+		}
+
+		if len(sandboxMounts) != 3 {
+			t.Fatalf("expected 3 mounts, got %d: %v", len(sandboxMounts), sandboxMounts)
+		}
+		if len(sandboxPathRead) != 1 || sandboxPathRead[0] != dataDir {
+			t.Fatalf("expected comma path preserved in sandboxPathRead, got %v", sandboxPathRead)
+		}
+
+		// Verify resolution onto profile
+		p, err := ResolveActiveProfile()
+		if err != nil {
+			t.Fatalf("ResolveActiveProfile: %v", err)
+		}
+
+		// Verify literal comma path in p.Paths.Read
+		if !slices.Contains(p.Paths.Read, dataDir) {
+			t.Errorf("p.Paths.Read missing %q: %v", dataDir, p.Paths.Read)
+		}
+
+		// Verify mounts
+		var foundM1, foundM2, foundScratch bool
+		for _, m := range p.Mounts {
+			if m.Destination == "/m1" && m.Mode == "ro" {
+				foundM1 = true
+			}
+			if m.Destination == "/m2" && m.Mode == "rw" {
+				foundM2 = true
+			}
+			if m.Destination == "/scratch" && m.Type == "tmpfs" {
+				foundScratch = true
+			}
+		}
+		if !foundM1 {
+			t.Error("missing /m1:ro mount")
+		}
+		if !foundM2 {
+			t.Error("missing /m2:rw mount")
+		}
+		if !foundScratch {
+			t.Error("missing tmpfs:/scratch mount")
+		}
+	})
+
+	t.Run("non-existent bind mount source returns error", func(t *testing.T) {
+		resetSandboxFlags()
+		sandboxMounts = []string{"/non/existent/src/12345:/app:ro"}
+
+		_, err := ResolveActiveProfile()
+		if err == nil {
+			t.Fatal("expected error for non-existent bind mount source, got nil")
+		}
+		if !strings.Contains(err.Error(), "does not exist on the host") {
+			t.Errorf("error %q does not contain 'does not exist on the host'", err.Error())
 		}
 	})
 }

@@ -62,9 +62,10 @@ func TestRuntimeEnv_PythonVirtualEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Run python under python-env profile with PYTHONPATH pointing to .venv
+	// Run python with explicit --sandbox-mount for the virtual environment
+	mountArg := venvDir + ":" + venvDir + ":ro"
 	pyCode := "import sys, starkite_dummy; sys.stdout.write(starkite_dummy.GREETING)"
-	cmd := exec.Command(kiteBin, "exec", "--sandbox-profile=python-env", "--env", "PYTHONPATH="+venvDir, "--", pyBin, "-c", pyCode)
+	cmd := exec.Command(kiteBin, "exec", "--sandbox-mount", mountArg, "--env", "PYTHONPATH="+venvDir, "--", pyBin, "-c", pyCode)
 	cmd.Dir = workDir
 	cmd.Env = append(os.Environ(), "PYTHONPATH="+venvDir)
 	var stdout, stderr bytes.Buffer
@@ -75,7 +76,7 @@ func TestRuntimeEnv_PythonVirtualEnv(t *testing.T) {
 		if sandboxUnavailable(stderr.String()) || sandboxUnavailable(err.Error()) {
 			t.Skipf("host cannot start a sandbox: %s (err: %v)", stderr.String(), err)
 		}
-		t.Fatalf("kite exec python-env failed: %v\nStderr: %s\nStdout: %s", err, stderr.String(), stdout.String())
+		t.Fatalf("kite exec with --sandbox-mount failed: %v\nStderr: %s\nStdout: %s", err, stderr.String(), stdout.String())
 	}
 
 	if out := strings.TrimSpace(stdout.String()); out != "starkite-runtime-ok" {
@@ -110,8 +111,8 @@ func TestRuntimeEnv_HomeCredentialProtection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Python script attempting to read shielded credential paths
-	pyScript := filepath.Join(fakeHome, "probe.py")
+	workDir := createNonHomeTempDir(t)
+	pyScript := filepath.Join(workDir, "probe.py")
 	probeCode := "import sys\n" +
 		"try:\n" +
 		"    with open('" + filepath.ToSlash(secretKey) + "') as f:\n" +
@@ -123,7 +124,9 @@ func TestRuntimeEnv_HomeCredentialProtection(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	cmd := exec.Command(kiteBin, "exec", "--sandbox-profile=python-env", "--", pyBin, pyScript)
+	mountArg := workDir + ":" + workDir + ":ro"
+	cmd := exec.Command(kiteBin, "exec", "--sandbox-mount", mountArg, "--", pyBin, pyScript)
+	cmd.Dir = workDir
 	cmd.Env = envWithFakeHome(fakeHome)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -148,7 +151,7 @@ func TestRuntimeEnv_ActionableDiagnostics(t *testing.T) {
 
 	kiteBin := buildKite(t)
 
-	cmd := exec.Command(kiteBin, "exec", "--sandbox-profile=python-env", "--", pyBin, "-c", "import non_existent_starkite_module_xyz")
+	cmd := exec.Command(kiteBin, "exec", "--", pyBin, "-c", "import non_existent_starkite_module_xyz")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
@@ -158,7 +161,7 @@ func TestRuntimeEnv_ActionableDiagnostics(t *testing.T) {
 		t.Skipf("host cannot start a sandbox: %s (err: %v)", stderr.String(), err)
 	}
 
-	wantHint := "Hint: pass --sandbox-profile=python-env on CLI, or add dependencies via --sandbox-path-read=<path>"
+	wantHint := "Hint: grant access to dependencies via --sandbox-path-read=<path> or --sandbox-mount <host-path>:<target-path>:ro"
 	if !strings.Contains(stderr.String(), wantHint) {
 		t.Errorf("expected python diagnostic hint in stderr, got:\n%s", stderr.String())
 	}
@@ -172,15 +175,42 @@ func TestRuntimeEnv_ActionableDiagnostics_Node(t *testing.T) {
 
 	kiteBin := buildKite(t)
 
-	cmd := exec.Command(kiteBin, "exec", "--sandbox-profile=node-env", "--", nodeBin, "-e", "require('non_existent_starkite_module_xyz')")
+	cmd := exec.Command(kiteBin, "exec", "--", nodeBin, "-e", "require('non_existent_starkite_module_xyz')")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
 	_ = cmd.Run()
 
-	wantHint := "Hint: pass --sandbox-profile=node-env on CLI, or grant access via --sandbox-path-read=node_modules"
+	wantHint := "Hint: grant access to dependencies via --sandbox-path-read=node_modules or --sandbox-mount <host-path>:<target-path>:ro"
 	if !strings.Contains(stderr.String(), wantHint) {
 		t.Errorf("expected node diagnostic hint in stderr, got:\n%s", stderr.String())
+	}
+}
+
+func TestRuntimeEnv_TmpfsScratch(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("tmpfs scratch testing is POSIX-oriented")
+	}
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+
+	kiteBin := buildKite(t)
+
+	cmd := exec.Command(kiteBin, "exec", "--sandbox-mount", "tmpfs:/scratch", "--", "sh", "-c", "echo ok > /scratch/test && cat /scratch/test")
+	var stdout, stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		if sandboxUnavailable(stderr.String()) || sandboxUnavailable(err.Error()) {
+			t.Skipf("host cannot start a sandbox: %s (err: %v)", stderr.String(), err)
+		}
+		t.Fatalf("kite exec with tmpfs failed: %v\nStderr: %s\nStdout: %s", err, stderr.String(), stdout.String())
+	}
+
+	if out := strings.TrimSpace(stdout.String()); out != "ok" {
+		t.Errorf("stdout = %q, want 'ok'", out)
 	}
 }
