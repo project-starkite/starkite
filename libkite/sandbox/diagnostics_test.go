@@ -302,3 +302,96 @@ func TestDiagnostics_EnrichPermissionStderr_Windows(t *testing.T) {
 		t.Errorf("enrichPermissionStderr hint failed: %q", enrichedNet)
 	}
 }
+
+func TestDiagnostics_EnrichExecDiagnostics(t *testing.T) {
+	// 1. Nil result
+	EnrichExecDiagnostics(nil, nil)
+
+	// 2. Success exit code: no modifications
+	resOk := &ExecResult{ExitCode: 0, Stderr: "ModuleNotFoundError: No module named 'foo'"}
+	EnrichExecDiagnostics(resOk, nil)
+	if strings.Contains(resOk.Stderr, "Hint:") {
+		t.Errorf("expected no hint for ExitCode=0, got: %q", resOk.Stderr)
+	}
+
+	// 3. Python ModuleNotFoundError
+	resPy := &ExecResult{
+		ExitCode: 1,
+		Stderr:   "Traceback (most recent call last):\nModuleNotFoundError: No module named 'requests'",
+	}
+	EnrichExecDiagnostics(resPy, nil)
+	wantPy := "Hint: pass --sandbox-profile=python-env on CLI, or add dependencies via --sandbox-path-read=<path>"
+	if !strings.Contains(resPy.Stderr, wantPy) {
+		t.Errorf("expected python hint in stderr, got: %q", resPy.Stderr)
+	}
+
+	// 4. Node.js Cannot find module
+	resNode := &ExecResult{
+		ExitCode: 1,
+		Stderr:   "Error: Cannot find module 'axios'\nRequire stack:\n- /app/index.js",
+	}
+	EnrichExecDiagnostics(resNode, nil)
+	wantNode := "Hint: pass --sandbox-profile=node-env on CLI, or grant access via --sandbox-path-read=node_modules"
+	if !strings.Contains(resNode.Stderr, wantNode) {
+		t.Errorf("expected node hint in stderr, got: %q", resNode.Stderr)
+	}
+
+	// 5. Shared library missing (Linux and Darwin)
+	resSo := &ExecResult{
+		ExitCode: 127,
+		Stderr:   "./app: error while loading shared libraries: libssl.so.3: cannot open shared object file: No such file or directory",
+	}
+	EnrichExecDiagnostics(resSo, nil)
+	wantLib := "Hint: grant read access to library location via --sandbox-path-read=<dir>"
+	if !strings.Contains(resSo.Stderr, wantLib) {
+		t.Errorf("expected library hint in stderr, got: %q", resSo.Stderr)
+	}
+
+	resDylib := &ExecResult{
+		ExitCode: 127,
+		Stderr:   "dyld[100]: Library not loaded: @rpath/libfoo.dylib\nReason: image not found",
+	}
+	EnrichExecDiagnostics(resDylib, nil)
+	if !strings.Contains(resDylib.Stderr, wantLib) {
+		t.Errorf("expected library hint in stderr for dyld, got: %q", resDylib.Stderr)
+	}
+
+	// 6. Network failure under isolated network
+	specNetNone := &ExecutionSpec{
+		Network: NetworkNone,
+	}
+	resNet := &ExecResult{
+		ExitCode: 7,
+		Stderr:   "curl: (7) Failed to connect to api.example.com: Connection refused",
+	}
+	EnrichExecDiagnostics(resNet, specNetNone)
+	wantNet := "Hint: pass --sandbox-net-allow on CLI, or add endpoint to sandbox.<profile>.network.allow in config.yaml"
+	if !strings.Contains(resNet.Stderr, wantNet) {
+		t.Errorf("expected network hint in stderr, got: %q", resNet.Stderr)
+	}
+
+	// 7. Network failure under NetworkHost: hint should not be added
+	specNetHost := &ExecutionSpec{
+		Network: NetworkHost,
+	}
+	resNetHost := &ExecResult{
+		ExitCode: 7,
+		Stderr:   "curl: (7) Failed to connect to api.example.com: Connection refused",
+	}
+	EnrichExecDiagnostics(resNetHost, specNetHost)
+	if strings.Contains(resNetHost.Stderr, wantNet) {
+		t.Errorf("expected no network hint under NetworkHost, got: %q", resNetHost.Stderr)
+	}
+
+	// 8. Idempotency
+	resIdempotent := &ExecResult{
+		ExitCode: 1,
+		Stderr:   "ModuleNotFoundError: No module named 'test'",
+	}
+	EnrichExecDiagnostics(resIdempotent, nil)
+	firstPass := resIdempotent.Stderr
+	EnrichExecDiagnostics(resIdempotent, nil)
+	if resIdempotent.Stderr != firstPass {
+		t.Errorf("expected idempotent stderr, got second pass:\n%s\nfirst pass:\n%s", resIdempotent.Stderr, firstPass)
+	}
+}
