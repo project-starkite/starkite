@@ -48,7 +48,7 @@ The host agent reads the printed JSON the same way it would from a script run â€
 
 ## Make it safe
 
-The reason to reach for `kite` at all is that the host agent may run logic you do not fully trust. That trust gap is exactly what the [permission engine](../fundamentals/security/permission.md) and the [sandbox](../fundamentals/security/sandbox.md) are for. Every invocation runs sandboxed by default under the zero-trust `deny-all` profile, bounding privileges until explicitly granted:
+The reason to reach for `kite` at all is that the host agent may run logic you do not fully trust. That trust gap is exactly what the [execution sandbox](../fundamentals/security/sandbox.md) is for. Every invocation runs sandboxed by default under the zero-trust `deny-all` profile, bounding privileges until explicitly granted:
 
 ```bash
 # Default: pure compute, print, and log (isolated filesystem, network, and environment)

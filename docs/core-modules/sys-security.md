@@ -19,7 +19,7 @@ When a script attempts to execute an operating system command (`os.exec()`, `os.
 * **Process Permissions**: All process execution (including explicit shell invocations like `os.exec("sh", ["-c", "..."])`) is governed uniformly by standard `os.exec` permission rules.
 * **Identity Switching (POSIX)**: Executing a command under a specific user or group identity (using the `userid` and `groupid` optional keyword arguments) is a privileged operation requiring the `unconfined` profile or explicit `os.exec(switch_identity:...)` capability grant.
 
-For instructions on defining custom execution rules and composing profiles, see the [Script Permissions Guide](../fundamentals/security/permission.md).
+For instructions on defining custom execution rules and composing profiles, see the [Execution Sandbox Guide](../fundamentals/security/sandbox.md).
 
 ---
 

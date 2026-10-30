@@ -134,4 +134,4 @@ On subsequent runs, the runtime enforces lockfile constraints:
 
 Imported modules run within the security context of the parent script. Loading a module does not expand permissions. If a module attempts an action (such as filesystem or network access) that exceeds the parent script's permissions, the runtime raises a permission error and blocks execution.
 
-For detailed security boundaries and sandboxing, see the [Permission Guide](security/permission.md#loaded-modules).
+For detailed security boundaries and sandboxing, see the [Sandbox Guide](security/sandbox.md#10-module-trust-boundaries-modyaml).

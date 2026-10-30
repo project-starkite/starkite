@@ -225,7 +225,7 @@ kite run ./backup.star --sandbox-profile=sandbox-path
 kite run ./backup.star --sandbox-path-write=.
 ```
 
-For more details, see the [Permission Guide](../fundamentals/security/permission.md) and [Sandbox Guide](../fundamentals/security/sandbox.md).
+For more details, see the [Execution Sandbox Guide](../fundamentals/security/sandbox.md).
 
 ## Failure handling
 

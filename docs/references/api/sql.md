@@ -194,7 +194,7 @@ db.driver    # → "sqlite"
 
 ## Permissions
 
-`sql.open` is gated per driver in the [capability ladder](../../fundamentals/security/permission.md):
+`sql.open` is gated per driver in the [capability ladder](../../fundamentals/security/sandbox.md):
 
 | Profile | Grants |
 |---------|--------|
@@ -245,4 +245,4 @@ srv.serve(port=8080)
 ## Related
 
 - [Modules](../../fundamentals/modules.md) — installing and loading modules
-- [Permission](../../fundamentals/security/permission.md) — the profile ladder
+- [Security](../../fundamentals/security/sandbox.md) — capability ladder and sandbox profiles

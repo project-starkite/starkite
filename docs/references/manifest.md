@@ -88,7 +88,6 @@ This ensures that third-party or shared modules cannot covertly elevate their pr
 ## Related
 
 - [Modules concept](../fundamentals/modules.md) — module layout, `load()`, dependencies, `mod.lock`
-- [Sandbox guide](../fundamentals/security/sandbox.md) — zero-trust isolation and capability profiles
-- [Permission guide](../fundamentals/security/permission.md) — language-level capability enforcement
+- [Sandbox guide](../fundamentals/security/sandbox.md) — zero-trust isolation, Starlark call gates, and capability profiles
 - [`kite module`](cli/module.md) — install, list, info, verify, update, remove
 - [`kite init`](cli/init.md) — scaffold a module with a starter `mod.yaml`

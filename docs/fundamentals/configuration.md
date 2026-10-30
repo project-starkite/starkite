@@ -103,7 +103,7 @@ Starkite loads its global configuration from `~/.starkite/config.yaml` and `./co
 | Section | Purpose |
 |---|---|
 | `config` | Holds runtime settings and user-defined variables |
-| `sandbox` | Named sandbox and capability profiles, selectable via `--sandbox-profile=<name>`. See [Sandbox Guide](security/sandbox.md) and [Permission Guide](security/permission.md). |
+| `sandbox` | Named sandbox and capability profiles, selectable via `--sandbox-profile=<name>`. See [Sandbox Guide](security/sandbox.md). |
 
 The `config` section contains both runtime parameters and user variables. Four reserved keys are parsed into runtime state and cannot be accessed via `var_*`:
 

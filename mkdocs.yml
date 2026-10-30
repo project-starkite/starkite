@@ -73,9 +73,7 @@ nav:
           - Language:       fundamentals/language.md
           - Modules:        fundamentals/modules.md
           - Configuration:  fundamentals/configuration.md
-          - Security:
-              - Permission: fundamentals/security/permission.md
-              - Sandbox:    fundamentals/security/sandbox.md
+          - Security:       fundamentals/security/sandbox.md
           - Testing:        fundamentals/testing.md
           - Editions:       fundamentals/editions.md
           - Running scripts: fundamentals/running.md

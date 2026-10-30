@@ -86,7 +86,7 @@ kite test ./tests/ --parallel 4    # Run up to four files concurrently
 
 ## Sandbox profiles and capabilities
 
-Tests run under the same [sandbox](security/sandbox.md) and [permission](security/permission.md) rules as standard executions. Without explicit flags, tests run under the zero-trust `deny-all` profile. If your tests perform I/O, network requests, or shell commands, pass an appropriate sandbox profile or composable flags:
+Tests run under the same [sandbox](security/sandbox.md) rules as standard executions. Without explicit flags, tests run under the zero-trust `deny-all` profile. If your tests perform I/O, network requests, or shell commands, pass an appropriate sandbox profile or composable flags:
 
 ```bash
 kite test ./tests/ --sandbox-profile=sandbox-net
