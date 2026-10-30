@@ -371,6 +371,61 @@ func enrichPermissionStderr(stderr string, spec *ExecutionSpec) string {
 	return stderr + diag + "\n"
 }
 
+// EnrichExecDiagnostics inspects an ExecResult for failed commands and appends
+// actionable sandbox remediation hints to res.Stderr for common denial patterns
+// such as missing language runtime dependencies or network isolation.
+func EnrichExecDiagnostics(res *ExecResult, spec *ExecutionSpec) {
+	if res == nil || res.ExitCode == 0 {
+		return
+	}
+
+	lower := strings.ToLower(res.Stderr)
+
+	if strings.Contains(res.Stderr, "ModuleNotFoundError: No module named") ||
+		strings.Contains(lower, "modulenotfounderror: no module named") {
+		hint := "Hint: pass --sandbox-profile=python-env on CLI, or add dependencies via --sandbox-path-read=<path>"
+		if !strings.Contains(res.Stderr, hint) {
+			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
+				res.Stderr += "\n"
+			}
+			res.Stderr += hint + "\n"
+		}
+	}
+
+	if strings.Contains(res.Stderr, "Error: Cannot find module") ||
+		strings.Contains(lower, "error: cannot find module") {
+		hint := "Hint: pass --sandbox-profile=node-env on CLI, or grant access via --sandbox-path-read=node_modules"
+		if !strings.Contains(res.Stderr, hint) {
+			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
+				res.Stderr += "\n"
+			}
+			res.Stderr += hint + "\n"
+		}
+	}
+
+	if strings.Contains(lower, "cannot open shared object file") || strings.Contains(lower, "image not found") {
+		hint := "Hint: grant read access to library location via --sandbox-path-read=<dir>"
+		if !strings.Contains(res.Stderr, hint) {
+			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
+				res.Stderr += "\n"
+			}
+			res.Stderr += hint + "\n"
+		}
+	}
+
+	if spec != nil && (spec.Network == NetworkNone || len(spec.NetworkDeny) > 0) {
+		if strings.Contains(lower, "failed to connect") || strings.Contains(lower, "could not resolve host") {
+			hint := "Hint: pass --sandbox-net-allow on CLI, or add endpoint to sandbox.<profile>.network.allow in config.yaml"
+			if !strings.Contains(res.Stderr, hint) {
+				if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
+					res.Stderr += "\n"
+				}
+				res.Stderr += hint + "\n"
+			}
+		}
+	}
+}
+
 // PolicySummary constructs a libkite.SandboxPolicySummary from the resolved
 // Profile and CLI environment flags so the runtime and module loader can
 // enforce module trust boundary non-escalation.

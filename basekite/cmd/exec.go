@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -125,6 +127,7 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		execTimeout = profile.Timeout
 	}
 
+	var stderrBuf bytes.Buffer
 	spec := &sandbox.ExecutionSpec{
 		Command:          fullCommand,
 		Cwd:              cwd,
@@ -141,13 +144,30 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		AllowedExecPaths: profile.AllowedExecPaths,
 		Stdin:            os.Stdin,
 		Stdout:           os.Stdout,
-		Stderr:           os.Stderr,
+		Stderr:           io.MultiWriter(os.Stderr, &stderrBuf),
 	}
 
 	ctx, cancel := execContext(timeout)
 	defer cancel()
 
 	res, execErr := driver.Exec(ctx, spec)
+	if res != nil {
+		if res.Stderr == "" && stderrBuf.Len() > 0 {
+			res.Stderr = stderrBuf.String()
+		}
+		prevLen := len(res.Stderr)
+		sandbox.EnrichExecDiagnostics(res, spec)
+		if len(res.Stderr) > prevLen {
+			_, _ = io.WriteString(os.Stderr, res.Stderr[prevLen:])
+		}
+		if debugMode {
+			fmt.Fprintf(os.Stderr, "[telemetry] command=%q exit_code=%d duration=%v timed_out=%v driver=%s\n",
+				strings.Join(spec.Command, " "), res.ExitCode, res.Duration, res.TimedOut, driver.Name())
+		}
+	} else if debugMode {
+		fmt.Fprintf(os.Stderr, "[telemetry] command=%q exit_code=%d duration=%v timed_out=%v driver=%s\n",
+			strings.Join(spec.Command, " "), 1, 0, false, driver.Name())
+	}
 	if execErr != nil {
 		if res != nil && res.ExitCode > 0 {
 			return &libkite.ExitError{Code: res.ExitCode}
