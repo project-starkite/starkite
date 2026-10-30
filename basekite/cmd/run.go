@@ -34,6 +34,7 @@ Variables can be injected from multiple sources (highest to lowest priority):
 
 Sandbox & Capabilities (enabled by default under the 'deny-all' profile):
   --sandbox-profile=<name>       Select sandbox profile (deny-all, sandbox-path, sandbox-exec, sandbox-net, unconfined, or custom)
+  --sandbox-mount=<spec>         Mount host path or tmpfs into sandbox: <source>[:<dest>[:ro|rw]] or tmpfs:<dest> (repeatable)
   --sandbox-path-read=<path>     Grant read access to host path (repeatable)
   --sandbox-path-write=<path>    Grant read/write access to host path (repeatable)
   --sandbox-exec-allow=<bins>    Allow execution of specific binaries or '*' (comma-separated or repeatable)

@@ -115,7 +115,12 @@ func ParseMountFlag(spec, cwd, home string) (Mount, error) {
 	if cwd != "" && !isMountAbs(src) && !strings.HasPrefix(srcRaw, "~") && !strings.HasPrefix(srcRaw, "$") {
 		src = filepath.Join(cwd, src)
 	}
-	dst := expandPath(dstRaw, cwd, home)
+	var dst string
+	if dstRaw == srcRaw {
+		dst = src
+	} else {
+		dst = expandPath(dstRaw, cwd, home)
+	}
 
 	if !isMountAbs(src) {
 		return Mount{}, fmt.Errorf("source %q must be an absolute path", srcRaw)
