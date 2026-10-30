@@ -7,6 +7,9 @@
 
 ## Features
 
+- **Execution Triad** — Execute Starlark scripts (`kite run`), run native host binaries under kernel isolation (`kite exec`), or evaluate inline expressions (`kite eval`)
+- **Zero-trust sandbox by default** — Kernel-enforced isolation (Linux Landlock ABI v1–v5 + Seccomp-BPF, macOS Seatbelt, Windows AppContainers + Job Objects) paired with in-VM Starlark call gates
+- **First-class filesystem mounts** — Composable host bind mounts (`--sandbox-mount src:dst:ro`), identity mounts, and isolated memory scratch filesystems (`tmpfs:dest`)
 - **Go stdlib as modules** — Type-safe, scriptable access to Go's standard library
 - **Python-like syntax** — Uses Starlark, a deterministic, hermetic Python dialect
 - **General-purpose automation** — System tasks, scripting, data processing
@@ -15,7 +18,6 @@
 - **27+ built-in modules** — OS, filesystem, HTTP (client + server), SSH, JSON, YAML, CSV, concurrency, retry, and more
 - **SSH operations** — Multi-host concurrent execution, jump hosts, SCP upload/download
 - **Resilience patterns** — Retry with exponential backoff, concurrent map/each/exec
-- **Safe by default** — Permission sandboxing with fine-grained allow/deny rules
 - **Built-in test runner** — Test framework with assertions, filtering, and setup/teardown
 
 ## Editions
@@ -121,16 +123,21 @@ kite hello.star --sandbox-exec-allow=uname --var name=Alice
 
 ## CLI
 
+The Starkite CLI is structured around the **execution triad** (`run`, `exec`, `eval`) alongside development and verification utilities:
+
 ```bash
-kite run script.star                     # Execute a script
-kite exec -- curl -s https://example.com # Run native process in sandbox
-kite eval 'print(1 + 1)'                 # Evaluate inline Starlark code
-kite repl                                # Interactive REPL
-kite test ./tests/                    # Run tests
-kite watch script.star                # Re-run on file changes
-kite validate script.star             # Syntax check
-kite module install <repo>            # Install a module
-kite update                           # Self-update
+# Execution Triad
+kite run script.star                                # Execute Starlark script under kernel sandbox
+kite exec --sandbox-mount ./data:/data:ro -- curl   # Run native process in kernel sandbox (no Starlark VM)
+kite eval 'print(1 + 1)'                            # Evaluate inline Starlark expression
+
+# Development & Operations
+kite repl                                           # Interactive REPL
+kite test ./tests/                                  # Run test suites
+kite watch script.star                              # Re-run script on file changes
+kite validate script.star                           # Verify script syntax and static structure
+kite module install <repo>                          # Install external Starlark module
+kite update                                         # Self-update binary
 ```
 
 See the [CLI reference](https://starkite.dev/references/cli/) for all commands and flags.
@@ -179,20 +186,27 @@ See the [API reference](https://starkite.dev/references/api/) for full module do
 
 ## Zero-Trust Sandboxing & Capability Profiles
 
-starkite enforces zero-trust execution by default. Every script runs inside an OS-level sandbox (`landlock` + `seccomp-bpf` on Linux, `seatbelt` on macOS, AppContainer + Job Objects on Windows) and Starlark capability gate under the `deny-all` profile: pure computation, print, and log are allowed, while host filesystem, outbound network, subprocess execution, and ambient host environment variables are strictly isolated.
+Starkite enforces zero-trust isolation by default. Every script (`kite run`) and isolated command (`kite exec`) runs inside an OS-level kernel sandbox (Linux Landlock ABI v1–v5 + Seccomp-BPF, macOS Seatbelt, Windows AppContainers + Job Objects) under the `deny-all` profile: pure computation, print, and log are allowed, while host filesystem, outbound network, subprocess execution, and ambient host environment variables are strictly isolated. Starlark scripts additionally enforce in-VM call gates (`calls.allow` / `calls.deny`) over module APIs.
 
-Grant privileges with composable CLI flags:
+Grant capabilities with composable CLI flags:
 
 ```bash
-kite run script.star                                     # deny-all (default: pure compute, isolated env & fs)
-kite run script.star --sandbox-path-read=.               # read files in working directory
-kite run script.star --sandbox-path-write=.              # read and write files in working directory
-kite run script.star --sandbox-mount ./data:/data:ro     # mount host path into sandbox
-kite run script.star --sandbox-mount tmpfs:/scratch      # ephemeral in-memory scratch space
-kite run script.star --sandbox-exec-allow=kubectl,helm   # execute specific binaries (auto-resolved on PATH)
-kite run script.star --sandbox-net-allow                 # allow outbound network access
-kite run script.star --env KUBECONFIG --env ENV=prod     # forward host KUBECONFIG and inject ENV=prod
-kite run script.star --sandbox-enabled=false             # run unconfined
+kite run script.star                                          # deny-all (default: pure compute, isolated env & fs)
+kite run script.star --sandbox-path-read=. --sandbox-path-read=/usr/share # repeatable read-only path access
+kite run script.star --sandbox-path-write=./dist              # repeatable read-write path access
+kite run script.star --sandbox-mount ./data:/data:ro          # read-only bind mount into sandbox destination
+kite run script.star --sandbox-mount /opt/app                 # identity bind mount (same host & container path)
+kite run script.star --sandbox-mount tmpfs:/scratch           # ephemeral in-memory scratch filesystem
+kite run script.star --sandbox-exec-allow=kubectl,helm        # execute specific binaries (auto-resolved on PATH)
+kite run script.star --sandbox-net-allow                      # allow outbound network access
+kite run script.star --env KUBECONFIG --env ENV=prod          # forward host KUBECONFIG and inject ENV=prod
+kite run script.star --sandbox-enabled=false                  # run unconfined
+```
+
+Native executables can be confined directly without Starlark VM overhead via `kite exec`:
+
+```bash
+kite exec --sandbox-mount ./app:/app:ro --sandbox-mount tmpfs:/tmp -- python3 /app/server.py
 ```
 
 The five built-in profiles form a capability ladder, each a superset of the prior: `deny-all` ⊂ `sandbox-path` ⊂ `sandbox-exec` ⊂ `sandbox-net` ⊂ `unconfined`.
@@ -210,6 +224,12 @@ sandbox:
     paths:
       read: ["."]
       write: ["./build"]
+    mounts:
+      - src: "./data"
+        dst: "/data"
+        mode: "ro"
+      - type: "tmpfs"
+        dst: "/scratch"
     exec:
       allow: ["kubectl", "helm"]
     calls:
@@ -219,7 +239,7 @@ sandbox:
       DEPLOY_ENV: production
 ```
 
-Select a profile with `--sandbox-profile=<name>`. See the [sandbox guide](https://starkite.dev/fundamentals/security/sandbox/) and [permissions reference](https://starkite.dev/fundamentals/security/permission/) for details.
+Select a profile with `--sandbox-profile=<name>`. See the [sandbox guide](https://starkite.dev/fundamentals/security/sandbox/) for details.
 
 ## Error Handling
 
