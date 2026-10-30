@@ -48,26 +48,6 @@ Privileges are organized into a five-rung capability ladder, where each profile 
 | `sandbox-net` | `host` | `$CWD` read/write, `/tmp` scratch + DNS/TLS certs | Allowed (`exec.allow: ["*"]`) | Full cloud-native workflows (`http`, `ssh`, `k8s`, `mcp`, `containers`). |
 | `unconfined` | `host` | Unrestricted host filesystem | Unrestricted | Completely disables OS sandbox confinement and Starlark permission checks (`--sandbox-enabled=false`). |
 
-## Runtime Environment Profiles
-
-For executing interpreted scripts and language runtimes under native process execution (`kite exec`) or script evaluation, Starkite provides pre-configured runtime profiles. These profiles build on `deny-all` isolation, dynamically resolving and mounting language-specific package stores and virtual environments while keeping host credentials strictly inaccessible:
-
-| Profile | Base | Runtime | Auto-Resolved Mounts | Credential Protection |
-|---|---|---|---|---|
-| `python-env` | `deny-all` | Python | Active `$VIRTUAL_ENV`, `./.venv`, `./venv`, system library paths | Blocks `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg` |
-| `node-env` | `deny-all` | Node.js | Project `./node_modules`, global `$NVM_BIN` modules, system module paths | Blocks `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg` |
-| `ruby-env` | `deny-all` | Ruby | `$GEM_HOME`, `$GEM_PATH`, system gem libraries | Blocks `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg` |
-
-### Path Dependency Resolution & Home Credential Protection
-
-When a runtime profile is active, Starkite scans the environment to unveil standard interpreter libraries and project dependencies read-only:
-
-- **Python Virtual Environments**: If `$VIRTUAL_ENV` is set, or if `./.venv` or `./venv` exists in the working directory, Starkite mounts the directory read-only into the sandbox. System library locations (`/usr/lib/python3*`, `/opt/homebrew/lib/python3*`, or Windows `%LOCALAPPDATA%\Programs\Python`) are detected and unveiled.
-- **Node.js Modules**: Local `./node_modules` and global `$NVM_BIN` package directories are mounted read-only.
-- **Ruby Gems**: Gem directories declared in `$GEM_HOME` and `$GEM_PATH` are mounted read-only.
-
-**Credential Invariant**: Even if a virtual environment or project directory is situated within your home directory, Starkite enforces an inviolable credential barrier. Sensitive paths including `~/.ssh`, `~/.aws`, `~/.kube`, `~/.gnupg`, `~/.config/gcloud`, `~/.docker`, and `~/.gitconfig` are excluded from auto-mounts and denied.
-
 Select a profile with `--sandbox-profile=<name>`:
 
 ```bash
@@ -78,14 +58,77 @@ kite run ./deploy_stack.star --sandbox-profile=sandbox-net
 kite run ./untrusted.star --sandbox-enabled=false         # Disables sandbox (runs unconfined)
 ```
 
+## Filesystem Mounts and Scratch Storage
+
+For workflows requiring explicit host-to-sandbox path mappings, third-party package dependencies, or temporary in-memory scratch storage, Starkite provides the first-class `--sandbox-mount` flag. Mounts are enforced directly by the kernel sandbox driver (`landlock`, `seatbelt`, `windows`, or OCI containers):
+
+### Mount Syntax
+
+The `--sandbox-mount` flag supports three formats:
+
+1. **Full Bind Mount**: `<source>:<destination>[:<mode>]`  
+   Maps a host `<source>` directory or file to an absolute `<destination>` inside the sandbox. Relative host paths resolve against the working directory; `~` and `$HOME` expand against the user's home directory. Mode defaults to read-only (`ro`); pass `rw` for read-write access.
+   ```bash
+   kite exec --sandbox-mount ./data:/app/data:ro -- app
+   kite exec --sandbox-mount /var/log:/var/log:rw -- app
+   ```
+
+2. **Identity Bind Mount**: `<source>[:<mode>]`  
+   Maps `<source>` to the identical destination path inside the sandbox. Mode defaults to `ro`.
+   ```bash
+   kite exec --sandbox-mount /opt/custom-tools:ro -- tool
+   kite exec --sandbox-mount /tmp/build-cache:rw -- build-tool
+   ```
+
+3. **In-Memory Tmpfs Mount**: `tmpfs:<destination>[:<mode>]`  
+   Mounts an isolated in-memory scratch filesystem at `<destination>` with default mode `rw`. Ideal for build outputs, scratch work, and compiler intermediate files.
+   ```bash
+   kite exec --sandbox-mount tmpfs:/scratch -- make
+   ```
+
+Windows paths with drive letters are fully supported:
+```powershell
+kite exec --sandbox-mount C:\data:C:\app\data:ro -- app.exe
+kite exec --sandbox-mount tmpfs:C:\scratch -- build.exe
+```
+
+### Interpreter & Dependency Recipes
+
+Starkite's unopinionated mount and path primitives provide explicit, reproducible recipes for common interpreter ecosystems:
+
+#### Python Virtual Environments
+To execute a Python script with its associated virtual environment:
+```bash
+kite exec --sandbox-mount .venv:.venv:ro --env PYTHONPATH=.venv -- python3 script.py
+```
+Or grant read access using `--sandbox-path-read`:
+```bash
+kite exec --sandbox-path-read=.venv --env PYTHONPATH=.venv -- python3 script.py
+```
+
+#### Node.js Modules
+To run a Node.js application accessing project modules:
+```bash
+kite exec --sandbox-mount node_modules:node_modules:ro -- node app.js
+# Or:
+kite exec --sandbox-path-read=node_modules -- node app.js
+```
+
+#### Ephemeral Scratch Builds
+To run compilation steps in an isolated in-memory scratch workspace:
+```bash
+kite exec --sandbox-mount tmpfs:/scratch -- sh -c "echo ok > /scratch/out"
+```
+
 ## Composable CLI Capability Flags
 
 Rather than switching whole profiles, you can selectively grant specific capabilities from the command line on top of the zero-trust default:
 
 | CLI Flag | Description |
 |---|---|
-| `--sandbox-path-read=<paths>` | Grants read access to specific host paths (comma-separated or repeatable). |
-| `--sandbox-path-write=<paths>` | Grants read and write access to specific host paths (comma-separated or repeatable). |
+| `--sandbox-mount=<spec>` | Mounts a host path or tmpfs scratch directory into the sandbox (`<source>[:<dest>[:ro\|rw]]` or `tmpfs:<dest>`) (repeatable). |
+| `--sandbox-path-read=<path>` | Grants read access to a specific host path (repeatable). Paths with literal commas are preserved verbatim. |
+| `--sandbox-path-write=<path>` | Grants read and write access to a specific host path (repeatable). Paths with literal commas are preserved verbatim. |
 | `--sandbox-exec-allow=<bins>` | Permits execution of specific binary names, absolute paths, or `*`. |
 | `--sandbox-exec-deny=<bins>` | Denies execution of specific binaries (takes precedence over allow rules). |
 | `--sandbox-call-allow=<rules>` | Permits specific Starlark API module calls (e.g. `fs.read`, `http.client`). |
@@ -206,11 +249,15 @@ When launching external processes with `kite exec`, Starkite inspects child exit
 
 - **Python Missing Modules**: If a Python command fails with `ModuleNotFoundError: No module named '<name>'`, Starkite appends remediation guidance:
   ```text
-  Hint: pass --sandbox-profile=python-env on CLI, or add dependencies via --sandbox-path-read=<path>
+  Hint: grant access to dependencies via --sandbox-path-read=<path> or --sandbox-mount <host-path>:<target-path>:ro
   ```
 - **Node.js Missing Modules**: If Node.js terminates with `Error: Cannot find module '<name>'`, Starkite suggests:
   ```text
-  Hint: pass --sandbox-profile=node-env on CLI, or grant access via --sandbox-path-read=node_modules
+  Hint: grant access to dependencies via --sandbox-path-read=node_modules or --sandbox-mount <host-path>:<target-path>:ro
+  ```
+- **Ruby Missing Gems**: If Ruby terminates with `LoadError: cannot load such file -- <name>`, Starkite suggests:
+  ```text
+  Hint: grant access to dependencies via --sandbox-path-read=<path> or --sandbox-mount <host-path>:<target-path>:ro
   ```
 - **Dynamic Linker Failures**: When an executable fails due to an unmounted shared library (`cannot open shared object file` or `image not found`), Starkite recommends:
   ```text

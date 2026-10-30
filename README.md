@@ -187,6 +187,8 @@ Grant privileges with composable CLI flags:
 kite run script.star                                     # deny-all (default: pure compute, isolated env & fs)
 kite run script.star --sandbox-path-read=.               # read files in working directory
 kite run script.star --sandbox-path-write=.              # read and write files in working directory
+kite run script.star --sandbox-mount ./data:/data:ro     # mount host path into sandbox
+kite run script.star --sandbox-mount tmpfs:/scratch      # ephemeral in-memory scratch space
 kite run script.star --sandbox-exec-allow=kubectl,helm   # execute specific binaries (auto-resolved on PATH)
 kite run script.star --sandbox-net-allow                 # allow outbound network access
 kite run script.star --env KUBECONFIG --env ENV=prod     # forward host KUBECONFIG and inject ENV=prod

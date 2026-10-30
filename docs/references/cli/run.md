@@ -98,6 +98,10 @@ kite ./manifest.star | kubectl apply -f -
 # Grant working directory read/write and outbound network
 kite ./deploy.star --sandbox-path-write=. --sandbox-net-allow
 
+# Mount host directory read-only or provide ephemeral scratch
+kite ./deploy.star --sandbox-mount ./data:/data:ro
+kite ./deploy.star --sandbox-mount tmpfs:/scratch
+
 # Allow execution of specific binaries and forward KUBECONFIG
 kite ./deploy.star --sandbox-exec-allow=kubectl,helm --sandbox-net-allow --env KUBECONFIG
 

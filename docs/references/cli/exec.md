@@ -84,36 +84,33 @@ kite exec --sandbox-net-allow -- python3 -c "import urllib.request; print(urllib
 ### Running Python with Virtual Environment Access
 
 ```bash
-kite exec --sandbox-profile=python-env -- python3 script.py
+kite exec --sandbox-mount .venv:.venv:ro --env PYTHONPATH=.venv -- python3 script.py
 ```
 
 ### Running Node.js with Dependency Modules
 
 ```bash
-kite exec --sandbox-profile=node-env -- node app.js
+kite exec --sandbox-mount node_modules:node_modules:ro -- node app.js
 ```
 
-## Runtime Environment Profiles
+### Running with Ephemeral Scratch Storage
 
-Starkite includes built-in profiles tailored for language ecosystems:
+```bash
+kite exec --sandbox-mount tmpfs:/scratch -- make
+```
 
-| Profile | Target Runtime | Baseline Isolation | Automatic Mounts |
-|---------|----------------|---------------------|------------------|
-| `python-env` | Python (`python3`, `python`) | `deny-all` | `$VIRTUAL_ENV`, `./.venv`, `./venv`, standard library and site-packages |
-| `node-env` | Node.js (`node`, `npm`, `npx`) | `deny-all` | `./node_modules`, `$NVM_BIN`, global module paths |
-| `ruby-env` | Ruby (`ruby`, `bundle`) | `deny-all` | `$GEM_HOME`, `$GEM_PATH`, system gem repositories |
+## Filesystem Mounts and Dependencies
 
-### Credential Protection
-
-Runtime profiles automatically discover and mount dependency trees read-only while shielding sensitive user paths in `$HOME`:
-* Shielded paths: `.ssh`, `.aws`, `.kube`, `.gnupg`, `.config/gcloud`, `.docker`, `.gitconfig`.
-* Dependency stores or virtual environments located inside shielded directories are blocked from automatic mounting.
+Starkite provides explicit mount and path controls for executing third-party tools and runtimes:
+* **Bind Mounts**: `--sandbox-mount <source>:<dest>[:ro|rw]` or identity mount `--sandbox-mount <source>[:ro|rw]`.
+* **Tmpfs Scratch**: `--sandbox-mount tmpfs:<dest>[:ro|rw]` for fast in-memory compilation and scratch work.
+* **Path Overrides**: Repeatable `--sandbox-path-read=<path>` and `--sandbox-path-write=<path>`. Literal commas in paths are preserved verbatim.
 
 ### Execution Denial Diagnostics & Telemetry
 
 When a command terminates with a non-zero exit status, Starkite analyzes standard error and appends actionable remediation guidance:
-* **Missing Python Modules** (`ModuleNotFoundError`): Suggests passing `--sandbox-profile=python-env` or adding explicit paths via `--sandbox-path-read=<path>`.
-* **Missing Node.js Modules** (`Cannot find module`): Suggests passing `--sandbox-profile=node-env` or adding `--sandbox-path-read=node_modules`.
+* **Missing Python Modules** (`ModuleNotFoundError`): Suggests granting read access via `--sandbox-path-read=<path>` or `--sandbox-mount <host-path>:<target-path>:ro`.
+* **Missing Node.js Modules** (`Cannot find module`): Suggests granting read access via `--sandbox-path-read=node_modules` or `--sandbox-mount <host-path>:<target-path>:ro`.
 * **Missing Shared Libraries** (`cannot open shared object file`, `image not found`): Suggests granting read access to library paths via `--sandbox-path-read=<dir>`.
 * **Blocked Outbound Network Connections**: When running under network isolation (`--sandbox-net-deny` or default `none`), detects connection and DNS resolution failures and hints to pass `--sandbox-net-allow`.
 
@@ -128,8 +125,9 @@ Under `--debug`, `kite exec` emits structured execution telemetry to standard er
 
 | Flag | Description | Default |
 |------|-------------|---------|
-| `--sandbox-profile name` | Built-in profile (`deny-all`, `python-env`, `node-env`, `ruby-env`, `sandbox-path`, etc.) or named profile in `config.yaml` | `""` |
+| `--sandbox-profile name` | Built-in profile (`deny-all`, `sandbox-path`, `sandbox-exec`, `sandbox-net`, `unconfined`) or named profile in `config.yaml` | `""` |
 | `--sandbox-driver driver` | Kernel isolation driver (`auto`, `landlock`, `seatbelt`, `windows`, `podman`, `docker`) | `""` |
+| `--sandbox-mount spec` | Mount host path or tmpfs into sandbox: `<source>[:<dest>[:ro\|rw]]` or `tmpfs:<dest>` (repeatable) | |
 | `--sandbox-path-read path` | Grant read access to host path (repeatable) | |
 | `--sandbox-path-write path` | Grant read and write access to host path (repeatable) | |
 | `--sandbox-net-allow` | Allow outbound network access | |

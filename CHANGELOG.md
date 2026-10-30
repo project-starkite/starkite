@@ -1,5 +1,18 @@
 # Changelog
 
+## v0.10.9
+
+### Added & Enhanced
+
+- **First-Class `--sandbox-mount` CLI Flag**: Repeatable `--sandbox-mount` flag for explicit host-to-sandbox path bind mounts (`<source>[:<dest>[:ro|rw]]`), identity mounts (`<source>[:<mode>]`), and ephemeral in-memory filesystems (`tmpfs:<dest>[:ro|rw]`). Mounts are enforced across Linux (Landlock), macOS (Seatbelt), Windows (AppContainers), and OCI container runtimes.
+- **Repeatable-Only Path Overrides**: `--sandbox-path-read` and `--sandbox-path-write` flags are strictly repeatable without comma splitting, preserving literal commas in filesystem paths without parsing ambiguity.
+- **Driver Validation Support for Path Commas**: Mount source and destination path validation allows literal commas while retaining strict rejection of colons outside volume specifiers, quotes, newlines, and NUL characters.
+- **Actionable Interpreter Diagnostics**: Missing dependency diagnostics across Python (`ModuleNotFoundError`), Node.js (`cannot find module`), and Ruby (`LoadError`) suggest explicit `--sandbox-path-read` or `--sandbox-mount` grants.
+
+### Removed
+
+- **Hard-Coded Language Runtime Profiles**: Removed built-in language environment profiles (`python-env`, `node-env`, `ruby-env`) and automated host filesystem scanning heuristics in favor of explicit, composable mount and path primitives.
+
 ## v0.10.0
 
 ### Added & Enhanced

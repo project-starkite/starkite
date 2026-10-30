@@ -53,9 +53,10 @@ Available in `kite` (all-in-one) and `kitecloud`.
 | `--debug` | Enable debug logging | `false` |
 | `--dry-run` | Preview commands without executing | `false` |
 | `--timeout seconds` | Script execution timeout | `300` |
-| `--sandbox-profile name` | Sandbox profile name: a built-in rung (`deny-all`/`python-env`/`node-env`/`ruby-env`/`sandbox-path`/`sandbox-exec`/`sandbox-net`/`unconfined`) or a `config.yaml` profile. Default is `deny-all`. | `""` |
-| `--sandbox-path-read paths` | Grant read access to host paths (comma-separated or repeatable). | |
-| `--sandbox-path-write paths` | Grant read/write access to host paths (comma-separated or repeatable). | |
+| `--sandbox-profile name` | Sandbox profile name: a built-in rung (`deny-all`/`sandbox-path`/`sandbox-exec`/`sandbox-net`/`unconfined`) or a `config.yaml` profile. Default is `deny-all`. | `""` |
+| `--sandbox-mount spec` | Mount host path or tmpfs into sandbox: `<source>[:<dest>[:ro\|rw]]` or `tmpfs:<dest>` (repeatable). | |
+| `--sandbox-path-read path` | Grant read access to host path (repeatable). | |
+| `--sandbox-path-write path` | Grant read/write access to host path (repeatable). | |
 | `--sandbox-exec-allow bins` | Allow execution of specific binaries, paths, or `*` (comma-separated or repeatable). | |
 | `--sandbox-exec-deny bins` | Deny execution of specific binaries (comma-separated or repeatable). | |
 | `--sandbox-call-allow rules` | Allow specific Starlark module calls (e.g. `fs.read`, `http.client`). | |
