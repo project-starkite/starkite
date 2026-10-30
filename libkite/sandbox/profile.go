@@ -55,7 +55,7 @@ type BuiltinProfileDef struct {
 	Description string      `yaml:"description,omitempty" json:"description,omitempty"`
 }
 
-// BuiltinProfiles registers the standard built-in sandbox profiles.
+// BuiltinProfiles registers the built-in language runtime environment profiles.
 var BuiltinProfiles = map[string]BuiltinProfileDef{
 	ProfilePythonEnv: {
 		Base:        ProfileDenyAll,
@@ -406,7 +406,7 @@ func profileFromBody(name string, body ProfileBody, origin string) (Profile, err
 	}
 	p.Mounts = mounts
 
-	if p.Runtime != "" {
+	if body.Runtime != "" || (p.Runtime != "" && body.Base == "") {
 		rtMounts, err := ResolveRuntimeEnvMounts(p.Runtime, cwd, home)
 		if err != nil {
 			return Profile{}, fmt.Errorf("sandbox: profile %q%s: %w", name, fmtOrigin(origin), err)
@@ -728,7 +728,6 @@ func errWithOrigin(err error, origin string) error {
 }
 
 // CompilePermissions compiles a sandbox.Profile into a *libkite.PermissionConfig.
-// CompilePermissions compiles a sandbox.Profile into a *libkite.PermissionConfig.
 func (p Profile) CompilePermissions() *libkite.PermissionConfig {
 	if !p.Enabled {
 		return &libkite.PermissionConfig{
@@ -1049,7 +1048,7 @@ func ResolvePermissions(profileName string, cfg *SandboxConfig) (*libkite.Permis
 	}
 
 	switch profileName {
-	case ProfileDenyAll, ProfilePythonEnv, ProfileNodeEnv, ProfileRubyEnv:
+	case ProfileDenyAll:
 		return libkite.DenyAllPermissions(), nil
 	case ProfileSandboxPath:
 		return libkite.SandboxPathPermissions(), nil

@@ -336,7 +336,18 @@ func TestDiagnostics_EnrichExecDiagnostics(t *testing.T) {
 		t.Errorf("expected node hint in stderr, got: %q", resNode.Stderr)
 	}
 
-	// 5. Shared library missing (Linux and Darwin)
+	// 5. Ruby LoadError / cannot load such file
+	resRuby := &ExecResult{
+		ExitCode: 1,
+		Stderr:   "<internal:/usr/lib/ruby/rubygems/core_ext/kernel_require.rb>:85:in `require': cannot load such file -- colorize (LoadError)",
+	}
+	EnrichExecDiagnostics(resRuby, nil)
+	wantRuby := "Hint: pass --sandbox-profile=ruby-env on CLI, or add dependencies via --sandbox-path-read=<path>"
+	if !strings.Contains(resRuby.Stderr, wantRuby) {
+		t.Errorf("expected ruby hint in stderr, got: %q", resRuby.Stderr)
+	}
+
+	// 6. Shared library missing (Linux and Darwin)
 	resSo := &ExecResult{
 		ExitCode: 127,
 		Stderr:   "./app: error while loading shared libraries: libssl.so.3: cannot open shared object file: No such file or directory",
@@ -354,6 +365,16 @@ func TestDiagnostics_EnrichExecDiagnostics(t *testing.T) {
 	EnrichExecDiagnostics(resDylib, nil)
 	if !strings.Contains(resDylib.Stderr, wantLib) {
 		t.Errorf("expected library hint in stderr for dyld, got: %q", resDylib.Stderr)
+	}
+
+	// Generic "image not found" without dyld or library context must NOT trigger library hint (Finding MED-04)
+	resGenericImg := &ExecResult{
+		ExitCode: 1,
+		Stderr:   "docker: Error response from daemon: image not found: my-image:latest",
+	}
+	EnrichExecDiagnostics(resGenericImg, nil)
+	if strings.Contains(resGenericImg.Stderr, wantLib) {
+		t.Errorf("generic 'image not found' should not trigger library hint, got: %q", resGenericImg.Stderr)
 	}
 
 	// 6. Network failure under isolated network

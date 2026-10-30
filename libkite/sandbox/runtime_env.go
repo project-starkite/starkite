@@ -33,19 +33,68 @@ func isSensitiveHomeDir(target, home string) bool {
 	if home == "" || target == "" {
 		return false
 	}
-	cleanTarget := filepath.Clean(target)
 	cleanHome := filepath.Clean(home)
+	if !filepath.IsAbs(cleanHome) {
+		if abs, err := filepath.Abs(cleanHome); err == nil {
+			cleanHome = abs
+		}
+	}
+	resolvedHome := cleanHome
+	if rHome, err := filepath.EvalSymlinks(cleanHome); err == nil && rHome != "" {
+		resolvedHome = rHome
+	}
 
-	if strings.EqualFold(cleanTarget, cleanHome) {
+	cleanTarget := filepath.Clean(target)
+	if !filepath.IsAbs(cleanTarget) {
+		if checkSensitivePath(filepath.Join(cleanHome, cleanTarget), cleanHome) ||
+			checkSensitivePath(filepath.Join(resolvedHome, cleanTarget), resolvedHome) {
+			return true
+		}
+		if abs, err := filepath.Abs(cleanTarget); err == nil {
+			cleanTarget = abs
+		}
+	}
+
+	if checkSensitivePath(cleanTarget, cleanHome) || checkSensitivePath(cleanTarget, resolvedHome) {
 		return true
 	}
 
-	rel, err := filepath.Rel(cleanHome, cleanTarget)
-	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
-		return false
+	if resolved, err := filepath.EvalSymlinks(cleanTarget); err == nil && resolved != cleanTarget {
+		if checkSensitivePath(resolved, cleanHome) || checkSensitivePath(resolved, resolvedHome) {
+			return true
+		}
 	}
 
-	relSlash := filepath.ToSlash(rel)
+	return false
+}
+
+func checkSensitivePath(target, home string) bool {
+	if home == "" || target == "" {
+		return false
+	}
+	cleanTargetSlash := filepath.ToSlash(filepath.Clean(target))
+	cleanHomeSlash := filepath.ToSlash(filepath.Clean(home))
+
+	if strings.EqualFold(cleanTargetSlash, cleanHomeSlash) {
+		return true
+	}
+
+	prefix := cleanHomeSlash
+	if !strings.HasSuffix(prefix, "/") {
+		prefix += "/"
+	}
+
+	var relSlash string
+	if len(cleanTargetSlash) >= len(prefix) && strings.EqualFold(cleanTargetSlash[:len(prefix)], prefix) {
+		relSlash = cleanTargetSlash[len(prefix):]
+	} else {
+		rel, err := filepath.Rel(cleanHomeSlash, cleanTargetSlash)
+		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+			return false
+		}
+		relSlash = filepath.ToSlash(rel)
+	}
+
 	for _, shielded := range shieldedHomePaths {
 		shieldedSlash := filepath.ToSlash(shielded)
 		if strings.EqualFold(relSlash, shieldedSlash) ||
@@ -108,13 +157,18 @@ func pythonSearchPaths() []string {
 		if localAppData != "" {
 			progPython := filepath.Join(localAppData, "Programs", "Python")
 			if fi, err := os.Stat(progPython); err == nil && fi.IsDir() {
-				paths = append(paths, progPython)
+				var versionDirs []string
 				if entries, err := os.ReadDir(progPython); err == nil {
 					for _, e := range entries {
 						if e.IsDir() {
-							paths = append(paths, filepath.Join(progPython, e.Name()))
+							versionDirs = append(versionDirs, filepath.Join(progPython, e.Name()))
 						}
 					}
+				}
+				if len(versionDirs) > 0 {
+					paths = append(paths, versionDirs...)
+				} else {
+					paths = append(paths, progPython)
 				}
 			}
 		}
@@ -251,6 +305,13 @@ func ResolveRuntimeEnvMounts(rtType RuntimeType, cwd, home string) ([]Mount, err
 		if venv := os.Getenv("VIRTUAL_ENV"); venv != "" {
 			candidates = append(candidates, venv)
 		}
+		if pyPath := os.Getenv("PYTHONPATH"); pyPath != "" {
+			for _, p := range filepath.SplitList(pyPath) {
+				if p != "" {
+					candidates = append(candidates, p)
+				}
+			}
+		}
 		if cwd != "" {
 			candidates = append(candidates, filepath.Join(cwd, ".venv"))
 			candidates = append(candidates, filepath.Join(cwd, "venv"))
@@ -260,6 +321,13 @@ func ResolveRuntimeEnvMounts(rtType RuntimeType, cwd, home string) ([]Mount, err
 	case RuntimeNode:
 		if cwd != "" {
 			candidates = append(candidates, filepath.Join(cwd, "node_modules"))
+		}
+		if nodePath := os.Getenv("NODE_PATH"); nodePath != "" {
+			for _, p := range filepath.SplitList(nodePath) {
+				if p != "" {
+					candidates = append(candidates, p)
+				}
+			}
 		}
 		if nvmBin := os.Getenv("NVM_BIN"); nvmBin != "" {
 			candidates = append(candidates, nvmBin)
@@ -285,6 +353,15 @@ func ResolveRuntimeEnvMounts(rtType RuntimeType, cwd, home string) ([]Mount, err
 		return nil, fmt.Errorf("sandbox: unsupported runtime environment %q", rtType)
 	}
 
+	realHome := home
+	if home != "" {
+		cleanHome := filepath.Clean(home)
+		realHome = cleanHome
+		if rHome, err := filepath.EvalSymlinks(cleanHome); err == nil && rHome != "" {
+			realHome = rHome
+		}
+	}
+
 	var mounts []Mount
 	seen := make(map[string]bool)
 
@@ -296,13 +373,22 @@ func ResolveRuntimeEnvMounts(rtType RuntimeType, cwd, home string) ([]Mount, err
 		if seen[clean] {
 			continue
 		}
-		if isSensitiveHomeDir(clean, home) {
-			continue
-		}
 		if _, err := os.Stat(clean); err != nil {
 			continue
 		}
+		realPath := clean
+		if rPath, err := filepath.EvalSymlinks(clean); err == nil && rPath != "" {
+			realPath = rPath
+		}
+		if seen[realPath] {
+			continue
+		}
+		if isSensitiveHomeDir(clean, home) || isSensitiveHomeDir(clean, realHome) ||
+			isSensitiveHomeDir(realPath, home) || isSensitiveHomeDir(realPath, realHome) {
+			continue
+		}
 		seen[clean] = true
+		seen[realPath] = true
 		mounts = append(mounts, Mount{
 			Source:      clean,
 			Destination: clean,

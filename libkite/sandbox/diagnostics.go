@@ -381,8 +381,7 @@ func EnrichExecDiagnostics(res *ExecResult, spec *ExecutionSpec) {
 
 	lower := strings.ToLower(res.Stderr)
 
-	if strings.Contains(res.Stderr, "ModuleNotFoundError: No module named") ||
-		strings.Contains(lower, "modulenotfounderror: no module named") {
+	if strings.Contains(lower, "modulenotfounderror: no module named") {
 		hint := "Hint: pass --sandbox-profile=python-env on CLI, or add dependencies via --sandbox-path-read=<path>"
 		if !strings.Contains(res.Stderr, hint) {
 			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
@@ -392,8 +391,7 @@ func EnrichExecDiagnostics(res *ExecResult, spec *ExecutionSpec) {
 		}
 	}
 
-	if strings.Contains(res.Stderr, "Error: Cannot find module") ||
-		strings.Contains(lower, "error: cannot find module") {
+	if strings.Contains(lower, "cannot find module") {
 		hint := "Hint: pass --sandbox-profile=node-env on CLI, or grant access via --sandbox-path-read=node_modules"
 		if !strings.Contains(res.Stderr, hint) {
 			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
@@ -403,7 +401,18 @@ func EnrichExecDiagnostics(res *ExecResult, spec *ExecutionSpec) {
 		}
 	}
 
-	if strings.Contains(lower, "cannot open shared object file") || strings.Contains(lower, "image not found") {
+	if strings.Contains(lower, "cannot load such file") || strings.Contains(lower, "loaderror") {
+		hint := "Hint: pass --sandbox-profile=ruby-env on CLI, or add dependencies via --sandbox-path-read=<path>"
+		if !strings.Contains(res.Stderr, hint) {
+			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
+				res.Stderr += "\n"
+			}
+			res.Stderr += hint + "\n"
+		}
+	}
+
+	isDyldFailure := strings.Contains(lower, "image not found") && (strings.Contains(lower, "dyld") || strings.Contains(lower, "library not loaded"))
+	if strings.Contains(lower, "cannot open shared object file") || isDyldFailure {
 		hint := "Hint: grant read access to library location via --sandbox-path-read=<dir>"
 		if !strings.Contains(res.Stderr, hint) {
 			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {

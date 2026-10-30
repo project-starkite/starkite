@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io"
@@ -127,7 +126,7 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		execTimeout = profile.Timeout
 	}
 
-	var stderrBuf bytes.Buffer
+	stderrBuf := newBoundedBuffer(maxStderrDiagnosticCap)
 	spec := &sandbox.ExecutionSpec{
 		Command:          fullCommand,
 		Cwd:              cwd,
@@ -144,7 +143,7 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		AllowedExecPaths: profile.AllowedExecPaths,
 		Stdin:            os.Stdin,
 		Stdout:           os.Stdout,
-		Stderr:           io.MultiWriter(os.Stderr, &stderrBuf),
+		Stderr:           io.MultiWriter(os.Stderr, stderrBuf),
 	}
 
 	ctx, cancel := execContext(timeout)
@@ -259,4 +258,47 @@ func warnIfStarlarkPermissionFlagsPassed(profileName string) {
 	if len(sandboxCallAllow) > 0 || len(sandboxCallDeny) > 0 {
 		fmt.Fprintf(os.Stderr, "notice: target is a native process; Starlark permissions ignored. Applying kernel sandbox profile [%s].\n", profileName)
 	}
+}
+
+const maxStderrDiagnosticCap = 2 * 1024 * 1024 // 2MB
+
+// boundedBuffer is an io.Writer that retains at most maxCap bytes in memory,
+// discarding the oldest bytes when capacity is exceeded to prevent unbounded
+// memory growth during diagnostic inspection of long-running or verbose processes.
+type boundedBuffer struct {
+	buf    []byte
+	maxCap int
+}
+
+func newBoundedBuffer(maxCap int) *boundedBuffer {
+	return &boundedBuffer{
+		buf:    make([]byte, 0, min(maxCap, 64*1024)),
+		maxCap: maxCap,
+	}
+}
+
+func (b *boundedBuffer) Write(p []byte) (n int, err error) {
+	n = len(p)
+	if b.maxCap <= 0 {
+		return n, nil
+	}
+	if len(p) >= b.maxCap {
+		b.buf = append(b.buf[:0], p[len(p)-b.maxCap:]...)
+		return n, nil
+	}
+	overflow := (len(b.buf) + len(p)) - b.maxCap
+	if overflow > 0 {
+		copy(b.buf, b.buf[overflow:])
+		b.buf = b.buf[:len(b.buf)-overflow]
+	}
+	b.buf = append(b.buf, p...)
+	return n, nil
+}
+
+func (b *boundedBuffer) String() string {
+	return string(b.buf)
+}
+
+func (b *boundedBuffer) Len() int {
+	return len(b.buf)
 }

@@ -1072,7 +1072,7 @@ func TestResolvePermissions(t *testing.T) {
 		t.Error("expected ResolvePermissions(allow-fs) to fail (removed legacy name)")
 	}
 
-	for _, name := range []string{ProfileDenyAll, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined} {
+	for _, name := range []string{ProfileDenyAll, ProfileSandboxExec, ProfileSandboxNet, ProfileUnconfined, ProfilePythonEnv, ProfileNodeEnv, ProfileRubyEnv} {
 		pLadder, err := ResolvePermissions(name, cfg)
 		if err != nil {
 			t.Fatalf("ResolvePermissions(%s): %v", name, err)

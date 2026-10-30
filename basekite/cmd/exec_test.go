@@ -180,3 +180,58 @@ func TestExec_RunGuardrail_NonStarlarkScript(t *testing.T) {
 		t.Errorf("unexpected guardrail error message: %v", err)
 	}
 }
+
+func TestBoundedBuffer(t *testing.T) {
+	t.Run("within capacity", func(t *testing.T) {
+		buf := newBoundedBuffer(100)
+		n, err := buf.Write([]byte("hello world"))
+		if err != nil || n != 11 {
+			t.Fatalf("unexpected Write result: (%d, %v)", n, err)
+		}
+		if buf.Len() != 11 {
+			t.Errorf("Len() = %d, want 11", buf.Len())
+		}
+		if buf.String() != "hello world" {
+			t.Errorf("String() = %q, want 'hello world'", buf.String())
+		}
+	})
+
+	t.Run("exceeding capacity discards oldest bytes", func(t *testing.T) {
+		buf := newBoundedBuffer(10)
+		_, _ = buf.Write([]byte("12345678"))
+		_, _ = buf.Write([]byte("abcdef")) // total 14 bytes, cap is 10
+		if buf.Len() != 10 {
+			t.Errorf("Len() = %d, want 10", buf.Len())
+		}
+		want := "5678abcdef"
+		if buf.String() != want {
+			t.Errorf("String() = %q, want %q", buf.String(), want)
+		}
+	})
+
+	t.Run("single write larger than capacity keeps trailing bytes", func(t *testing.T) {
+		buf := newBoundedBuffer(5)
+		_, _ = buf.Write([]byte("0123456789"))
+		if buf.Len() != 5 {
+			t.Errorf("Len() = %d, want 5", buf.Len())
+		}
+		want := "56789"
+		if buf.String() != want {
+			t.Errorf("String() = %q, want %q", buf.String(), want)
+		}
+	})
+
+	t.Run("multiple overflow writes", func(t *testing.T) {
+		buf := newBoundedBuffer(6)
+		_, _ = buf.Write([]byte("abc"))
+		_, _ = buf.Write([]byte("def"))
+		_, _ = buf.Write([]byte("ghi"))
+		if buf.Len() != 6 {
+			t.Errorf("Len() = %d, want 6", buf.Len())
+		}
+		want := "defghi"
+		if buf.String() != want {
+			t.Errorf("String() = %q, want %q", buf.String(), want)
+		}
+	})
+}

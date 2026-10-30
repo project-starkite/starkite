@@ -1,8 +1,10 @@
 package sandbox
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -50,6 +52,57 @@ func TestIsSensitiveHomeDir(t *testing.T) {
 		if isSensitiveHomeDir(p, home) {
 			t.Errorf("isSensitiveHomeDir(%q, %q) = true, want false", p, home)
 		}
+	}
+
+	// Test relative sensitive paths
+	relSensitiveCases := []string{
+		".ssh",
+		".ssh/id_rsa",
+		".aws",
+		".aws/credentials",
+		".kube/config",
+		".gnupg",
+		".config/gcloud",
+		".gitconfig",
+	}
+	for _, rel := range relSensitiveCases {
+		if !isSensitiveHomeDir(rel, home) {
+			t.Errorf("isSensitiveHomeDir(relative %q, %q) = false, want true", rel, home)
+		}
+	}
+
+	// Test symlinks pointing to sensitive home directories
+	tmpDir := t.TempDir()
+	realSSH := filepath.Join(tmpDir, "home", ".ssh")
+	if err := os.MkdirAll(realSSH, 0700); err != nil {
+		t.Fatal(err)
+	}
+	symlinkPath := filepath.Join(tmpDir, "external_link_to_ssh")
+	if err := os.Symlink(realSSH, symlinkPath); err == nil {
+		if !isSensitiveHomeDir(symlinkPath, filepath.Join(tmpDir, "home")) {
+			t.Errorf("isSensitiveHomeDir symlink %q pointing to %q = false, want true", symlinkPath, realSSH)
+		}
+	}
+
+	// Test case-insensitive sensitive path traversal (Finding HIGH-02)
+	caseInsensitiveHome := "/Users/Developer"
+	caseInsensitiveSensitiveCases := []string{
+		"/users/developer/.ssh",
+		"/users/developer/.ssh/id_ed25519",
+		"/USERS/DEVELOPER/.SSH",
+		"/Users/Developer/.aws",
+		"/users/developer/.kube",
+		"/users/developer/.gnupg",
+		"/users/developer/.config/gcloud",
+		"/users/developer/.gitconfig",
+	}
+	for _, p := range caseInsensitiveSensitiveCases {
+		if !isSensitiveHomeDir(p, caseInsensitiveHome) {
+			t.Errorf("isSensitiveHomeDir(%q, %q) = false, want true", p, caseInsensitiveHome)
+		}
+	}
+	if isSensitiveHomeDir("/users/developer/projects/repo", caseInsensitiveHome) {
+		t.Errorf("isSensitiveHomeDir(/users/developer/projects/repo, %q) = true, want false", caseInsensitiveHome)
 	}
 
 	if isSensitiveHomeDir("", "") {
@@ -121,6 +174,59 @@ func TestResolveRuntimeEnvMounts_Python(t *testing.T) {
 			t.Errorf("sensitive path %q must not be mounted", sensitiveVenv)
 		}
 	}
+
+	// Test symlink candidate pointing to sensitive directory under home (Finding HIGH-01)
+	symlinkToSensitive := filepath.Join(tmpCwd, "external_link_ssh")
+	if err := os.Symlink(sensitiveVenv, symlinkToSensitive); err == nil {
+		t.Setenv("VIRTUAL_ENV", symlinkToSensitive)
+		mountsSymlink, err := ResolveRuntimeEnvMounts(RuntimePython, tmpCwd, tmpHome)
+		if err != nil {
+			t.Fatalf("ResolveRuntimeEnvMounts with symlink: %v", err)
+		}
+		for _, m := range mountsSymlink {
+			if m.Destination == symlinkToSensitive {
+				t.Errorf("symlink %q pointing to sensitive path %q must not be mounted", symlinkToSensitive, sensitiveVenv)
+			}
+		}
+	}
+
+	// Test duplicate mount elimination via symlink (Finding HIGH-01)
+	altVenv := filepath.Join(tmpCwd, "alt_venv")
+	if err := os.Symlink(venvDir, altVenv); err == nil {
+		t.Setenv("VIRTUAL_ENV", altVenv)
+		mountsDup, err := ResolveRuntimeEnvMounts(RuntimePython, tmpCwd, tmpHome)
+		if err != nil {
+			t.Fatalf("ResolveRuntimeEnvMounts with symlink alias: %v", err)
+		}
+		seenCount := 0
+		for _, m := range mountsDup {
+			if m.Destination == venvDir || m.Destination == altVenv {
+				seenCount++
+			}
+		}
+		if seenCount > 1 {
+			t.Errorf("expected at most 1 mount for target and symlink, got %d", seenCount)
+		}
+	}
+
+	// Test PYTHONPATH environment discovery
+	t.Setenv("VIRTUAL_ENV", "")
+	pyPathDir := t.TempDir()
+	t.Setenv("PYTHONPATH", pyPathDir)
+
+	mountsPyPath, err := ResolveRuntimeEnvMounts(RuntimePython, tmpCwd, tmpHome)
+	if err != nil {
+		t.Fatalf("ResolveRuntimeEnvMounts with PYTHONPATH: %v", err)
+	}
+	foundPyPath := false
+	for _, m := range mountsPyPath {
+		if m.Destination == pyPathDir {
+			foundPyPath = true
+		}
+	}
+	if !foundPyPath {
+		t.Errorf("expected PYTHONPATH %q in mounts, got %v", pyPathDir, mountsPyPath)
+	}
 }
 
 func TestResolveRuntimeEnvMounts_Node(t *testing.T) {
@@ -170,6 +276,24 @@ func TestResolveRuntimeEnvMounts_Node(t *testing.T) {
 	}
 	if !foundNvm {
 		t.Errorf("expected %q in mounts, got %v", nvmBin, mountsNvm)
+	}
+
+	// Test NODE_PATH environment discovery
+	nodePathDir := t.TempDir()
+	t.Setenv("NODE_PATH", nodePathDir)
+
+	mountsNodePath, err := ResolveRuntimeEnvMounts(RuntimeNode, tmpCwd, tmpHome)
+	if err != nil {
+		t.Fatalf("ResolveRuntimeEnvMounts with NODE_PATH: %v", err)
+	}
+	foundNodePath := false
+	for _, m := range mountsNodePath {
+		if m.Destination == nodePathDir {
+			foundNodePath = true
+		}
+	}
+	if !foundNodePath {
+		t.Errorf("expected NODE_PATH %q in mounts, got %v", nodePathDir, mountsNodePath)
 	}
 }
 
@@ -253,5 +377,49 @@ func TestBuiltinProfiles_RuntimeProfiles(t *testing.T) {
 				t.Errorf("expected /tmp mount in profile %q", tt.name)
 			}
 		})
+	}
+}
+
+func TestResolvePermissions_RuntimeProfiles(t *testing.T) {
+	tmpCwd := t.TempDir()
+	venv := filepath.Join(tmpCwd, ".venv")
+	if err := os.MkdirAll(venv, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	origWd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(tmpCwd); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = os.Chdir(origWd) }()
+
+	perms, err := ResolvePermissions(ProfilePythonEnv, nil)
+	if err != nil {
+		t.Fatalf("ResolvePermissions(ProfilePythonEnv) failed: %v", err)
+	}
+	if perms == nil {
+		t.Fatal("expected non-nil permissions")
+	}
+
+	// Verify that compiled permissions include read rules for auto-discovered runtime mount
+	foundRule := false
+	expectedPrefix := fmt.Sprintf("fs.read(%s", filepath.Clean(venv))
+	realVenv, err := filepath.EvalSymlinks(venv)
+	var realPrefix string
+	if err == nil {
+		realPrefix = fmt.Sprintf("fs.read(%s", realVenv)
+	}
+
+	for _, rule := range perms.Allow {
+		if strings.HasPrefix(rule, expectedPrefix) || (realPrefix != "" && strings.HasPrefix(rule, realPrefix)) {
+			foundRule = true
+			break
+		}
+	}
+	if !foundRule {
+		t.Errorf("expected read permission rule starting with %q (or %q) in %v", expectedPrefix, realPrefix, perms.Allow)
 	}
 }
