@@ -826,8 +826,8 @@
         <div class="tx-hero__left">
           <h1 class="tx-hero__headline">Scripting Runtime for <span class="tx-hero__accent">Cloud-Native and Agentic</span> Workload Automation</h1>
           <p class="tx-hero__subhead">
-            Starkite is a single-binary, dependency-free runtime for high-performance, testable, and portable Starlark scripts. 
-            Use it to automate system operations, cloud-native workflows, and agentic tool loops in a secure, sandboxed execution environment.
+            Starkite is a single-binary, dependency-free runtime for high-performance, testable, and portable Starlark scripts and native binaries. 
+            Use it to automate system operations, cloud-native workflows, and agentic tool loops in a zero-trust, kernel-sandboxed execution environment.
           </p>
         </div>
 
@@ -986,12 +986,18 @@ $ kite run ./scripts/triage.star --sandbox-net-allow</code></pre>
               <!-- Slide 0: Capability Permissions -->
               <div class="hero-slide active" data-filename="config.yaml">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-sec-0" class="language-yaml"># Use the Starkite configuration file to define 
-# capabilities and sandbox boundaries for scripts
+                  <pre><code id="code-sec-0" class="language-yaml"># Configure kernel sandbox boundaries, mounts,
+# and in-VM Starlark call gates
 sandbox:
   agent-job:
     paths:
       read: ["."]
+    mounts:
+      - src: "./data"
+        dst: "/data"
+        mode: "ro"
+      - type: "tmpfs"
+        dst: "/scratch"
     calls:
       allow:
         - "k8s.read"
@@ -1002,14 +1008,14 @@ sandbox:
               <!-- Slide 1: Kernel & Container Sandboxing CLI -->
               <div class="hero-slide" data-filename="sandbox_run.sh">
                 <div class="hero-terminal__code">
-                  <pre><code id="code-sec-1" class="language-bash"># Run with capability-based sandbox profile
+                  <pre><code id="code-sec-1" class="language-bash"># Execute Starlark script under named sandbox profile
 $ kite run ./agent_tool.star --sandbox-profile=agent-job
 
-# Run with default zero-trust script sandbox
-$ kite run ./untrusted.star
+# Confine native binaries directly via kernel isolation
+$ kite exec --sandbox-mount ./data:/data:ro --sandbox-mount tmpfs:/scratch -- python3 server.py
 
-# Use container isolation to sandbox running scripts
-$ kite run ./eval.star --sandbox-driver=podman</code></pre>
+# Enforce zero-trust filesystem isolation on host scripts
+$ kite run ./job.star --sandbox-path-read=.</code></pre>
                 </div>
               </div>
             </div>
@@ -1233,19 +1239,20 @@ mcp.serve(
 <section class="feature-section">
   <div class="feature-section__split">
     <div class="feature-section__text">
-      <p>Two layers of defense apply to every script. Permission profiles gate module calls at the API layer under a deny-by-default policy (<code>os.exec</code> denied, <code>fs.read</code> allowed). Pluggable OS-level sandboxing isolates the script across native kernel primitives (Landlock/Seatbelt) and container runtimes. Named profiles are defined in <code>~/.starkite/config.yaml</code> and apply to any invocation via a single command-line flag.</p>
-      <a href="fundamentals/security/permission/" class="feature-section__cta">Read the security model</a>
+      <p>Starkite enforces kernel-level isolation by default across Linux (Landlock ABI v1–v5 + Seccomp-BPF), macOS (Seatbelt), and Windows (AppContainers + Job Objects). Every execution runs under zero-trust <code>deny-all</code>: filesystem, network, and subprocess access require explicit capabilities or first-class mounts (<code>--sandbox-mount</code>). Starlark scripts additionally enforce in-VM API call gates (<code>calls.allow</code>/<code>calls.deny</code>) for defense-in-depth.</p>
+      <a href="fundamentals/security/sandbox/" class="feature-section__cta">Read the security model</a>
     </div>
     <div class="feature-section__code">
-      <pre><code class="language-bash"># Named profile from ~/.starkite/config.yaml
-$ kite run ./job.star --sandbox-profile=ci
+      <pre><code class="language-bash"># Confine native binaries directly with kernel sandboxing
+$ kite exec --sandbox-mount ./data:/data:ro -- curl -s https://example.com
+kite: sandbox: operation not permitted (network is denied)
 
-# Built-in ladder profile — no config file needed
-$ kite run ./job.star --sandbox-profile=sandbox-path
+# Run Starlark script under composable path and network rules
+$ kite run ./job.star --sandbox-path-read=. --sandbox-net-allow
 
-# Default zero-trust sandbox for untrusted code
+# Default zero-trust execution blocks unauthorized calls
 $ kite run ./untrusted.star
-Error: permission denied: os.exec is not allowed</code></pre>
+Error: script error: permission denied: os.exec exec("/bin/sh") - no matching allow rule</code></pre>
     </div>
   </div>
 </section>
