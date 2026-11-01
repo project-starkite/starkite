@@ -121,3 +121,31 @@ func TestDocNotFound(t *testing.T) {
 		t.Errorf("expected unknown module error message, got: %v", err)
 	}
 }
+
+func TestDocJSONSymbol(t *testing.T) {
+	out, err := executeDocCmd("fs.path", "--json")
+	if err != nil {
+		t.Fatalf("unexpected error running kite doc fs.path --json: %v", err)
+	}
+	var data SymbolDocJSON
+	if err := json.Unmarshal([]byte(out), &data); err != nil {
+		t.Fatalf("invalid JSON output: %v\nOutput: %s", err, out)
+	}
+	if data.Symbol.Name != "path" || data.Symbol.Owner != "fs" {
+		t.Errorf("expected symbol fs.path, got %+v", data.Symbol)
+	}
+	if len(data.Methods) == 0 {
+		t.Errorf("expected fs.path type methods in JSON output, got 0")
+	}
+}
+
+func TestDocInvalidSymbolFormat(t *testing.T) {
+	for _, bad := range []string{".", ".foo", "foo."} {
+		_, err := executeDocCmd(bad)
+		if err == nil {
+			t.Errorf("expected error for invalid symbol format %q, got nil", bad)
+		} else if !strings.Contains(err.Error(), "invalid symbol format") {
+			t.Errorf("expected 'invalid symbol format' error for %q, got: %v", bad, err)
+		}
+	}
+}

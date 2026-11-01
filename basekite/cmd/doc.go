@@ -326,6 +326,10 @@ func renderMember(w io.Writer, cat *catalog.Catalog, target string, asJSON bool)
 	owner := target[:lastDot]
 	memberName := target[lastDot+1:]
 
+	if owner == "" || memberName == "" {
+		return fmt.Errorf("invalid symbol format %q. Expected \"<module>.<symbol>\" (e.g. \"fs.path\").", target)
+	}
+
 	sym, found := cat.LookupMember(owner, memberName)
 	if !found {
 		// Check if the target itself is an exported type (e.g. "fs.path")
@@ -368,8 +372,12 @@ func renderMember(w io.Writer, cat *catalog.Catalog, target string, asJSON bool)
 	if !strings.HasPrefix(sym.Name, "try_") {
 		tryName := "try_" + sym.Name
 		if trySym, ok := cat.LookupMember(owner, tryName); ok {
+			trySig := trySym.Signature
+			if trySig == "" {
+				trySig = fmt.Sprintf("%s.%s()", owner, tryName)
+			}
 			fmt.Fprintln(w)
-			fmt.Fprintf(w, "Safe Variant:\n  %s (returns Result with .ok, .value, .err)\n", trySym.Signature)
+			fmt.Fprintf(w, "Safe Variant:\n  %s (returns Result with .ok, .value, .err)\n", trySig)
 		}
 	}
 

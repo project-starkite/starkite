@@ -133,6 +133,9 @@ func (idx *DocIndex) LookupMember(owner, name string) (DocEntry, bool) {
 			} else {
 				e.Doc = "Returns a Result instead of raising."
 			}
+			if e.Signature != "" && !strings.Contains(e.Signature, name) {
+				e.Signature = strings.Replace(e.Signature, base, name, 1)
+			}
 			return e, true
 		}
 	}
