@@ -1,10 +1,5 @@
 // Starkite language client for VS Code.
-//
-// The client connects to the kitelsp standalone language server (or "kite lsp" fallback)
-// over stdio. Everything an editor displays — diagnostics, completion, hover — comes
-// from the server.
-
-const { workspace, window } = require("vscode");
+const { workspace, window, commands } = require("vscode");
 const { LanguageClient, TransportKind } = require("vscode-languageclient/node");
 
 let client;
@@ -13,8 +8,6 @@ function activate(context) {
   const config = workspace.getConfiguration("starkite");
   const command = config.get("serverPath") || "kitelsp";
 
-  // If command is "kite" or points to a kite binary, pass ["lsp"] as argument.
-  // If command is "kitelsp", execute directly with no arguments.
   const isKiteBinary = /(^|[\\/])kite(\.exe)?$/.test(command);
   const serverArgs = isKiteBinary ? ["lsp"] : [];
 
@@ -45,6 +38,46 @@ function activate(context) {
         `(make build-kitelsp) or configure starkite.serverPath in settings. (${err.message})`
     );
   });
+
+  // Command: Restart Server
+  context.subscriptions.push(
+    commands.registerCommand("starkite.restartServer", async () => {
+      if (!client) {
+        return;
+      }
+      await client.stop();
+      await client.start();
+      window.showInformationMessage("Starkite Language Server restarted.");
+    })
+  );
+
+  // Command: Run Current Script
+  context.subscriptions.push(
+    commands.registerCommand("starkite.runFile", () => {
+      const editor = window.activeTextEditor;
+      if (!editor) {
+        return;
+      }
+      const filePath = editor.document.fileName;
+      const terminal = window.createTerminal("Starkite Runner");
+      terminal.show();
+      terminal.sendText(`kite run "${filePath}"`);
+    })
+  );
+
+  // Command: Validate File
+  context.subscriptions.push(
+    commands.registerCommand("starkite.validateFile", () => {
+      const editor = window.activeTextEditor;
+      if (!editor) {
+        return;
+      }
+      const filePath = editor.document.fileName;
+      const terminal = window.createTerminal("Starkite Validator");
+      terminal.show();
+      terminal.sendText(`kite validate --lint "${filePath}"`);
+    })
+  );
 
   context.subscriptions.push({ dispose: () => client && client.stop() });
 }

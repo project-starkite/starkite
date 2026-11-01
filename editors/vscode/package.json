@@ -1,8 +1,8 @@
 {
   "name": "starkite",
   "displayName": "Starkite",
-  "description": "Language support for Starkite automation scripts, backed by the kitelsp language server.",
-  "version": "0.11.2",
+  "description": "Language intelligence, static diagnostics, and execution support for Starkite automation scripts.",
+  "version": "0.11.4",
   "publisher": "project-starkite",
   "license": "Apache-2.0",
   "repository": {
@@ -10,15 +10,24 @@
     "url": "https://github.com/project-starkite/starkite.git",
     "directory": "editors/vscode"
   },
+  "keywords": [
+    "starkite",
+    "starlark",
+    "automation",
+    "language-server",
+    "lsp"
+  ],
   "engines": {
     "vscode": "^1.75.0"
   },
   "categories": [
-    "Programming Languages"
+    "Programming Languages",
+    "Linters",
+    "Snippets"
   ],
   "main": "./extension.js",
   "scripts": {
-    "package": "vsce package",
+    "package": "vsce package --no-dependencies",
     "vscode:prepublish": "npm run package"
   },
   "activationEvents": [
@@ -39,6 +48,44 @@
         "configuration": "./language-configuration.json"
       }
     ],
+    "commands": [
+      {
+        "command": "starkite.restartServer",
+        "title": "Starkite: Restart Language Server",
+        "category": "Starkite"
+      },
+      {
+        "command": "starkite.validateFile",
+        "title": "Starkite: Validate Script (with Lints)",
+        "category": "Starkite"
+      },
+      {
+        "command": "starkite.runFile",
+        "title": "Starkite: Run Current Script in Sandbox",
+        "category": "Starkite"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "starkite.runFile",
+          "when": "editorLangId == starkite",
+          "group": "navigation"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "starkite.validateFile",
+          "when": "editorLangId == starkite",
+          "group": "starkite"
+        },
+        {
+          "command": "starkite.runFile",
+          "when": "editorLangId == starkite",
+          "group": "starkite"
+        }
+      ]
+    },
     "configuration": {
       "title": "Starkite",
       "properties": {
@@ -55,7 +102,7 @@
             "verbose"
           ],
           "default": "off",
-          "description": "Log the traffic between the editor and the language server."
+          "description": "Log traffic between editor and language server."
         }
       }
     }
