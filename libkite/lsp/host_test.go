@@ -1,3 +1,5 @@
+//go:build lsp
+
 package lsp_test
 
 import (

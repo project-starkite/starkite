@@ -1,3 +1,5 @@
+//go:build lsp
+
 // Package apidocs turns Starkite's API reference documents into signature and
 // prose entries the language server can attach to hover and signature help.
 //
