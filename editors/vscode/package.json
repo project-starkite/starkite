@@ -1,0 +1,62 @@
+{
+  "name": "starkite",
+  "displayName": "Starkite",
+  "description": "Language support for Starkite automation scripts, backed by the kite language server.",
+  "version": "0.1.0",
+  "publisher": "project-starkite",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/project-starkite/starkite.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:starkite"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "starkite",
+        "aliases": [
+          "Starkite",
+          "starlark"
+        ],
+        "extensions": [
+          ".star"
+        ],
+        "firstLine": "^#!.*\\bkite\\b",
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configuration": {
+      "title": "Starkite",
+      "properties": {
+        "starkite.serverPath": {
+          "type": "string",
+          "default": "kite",
+          "description": "Path to the kite binary. It must be built with the `lsp` build tag."
+        },
+        "starkite.trace.server": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Log the traffic between the editor and the language server."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

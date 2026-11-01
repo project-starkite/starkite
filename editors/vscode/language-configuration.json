@@ -1,0 +1,34 @@
+{
+  "comments": {
+    "lineComment": "#"
+  },
+  "brackets": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"]
+  ],
+  "autoClosingPairs": [
+    { "open": "{", "close": "}" },
+    { "open": "[", "close": "]" },
+    { "open": "(", "close": ")" },
+    { "open": "\"", "close": "\"", "notIn": ["string"] },
+    { "open": "'", "close": "'", "notIn": ["string"] }
+  ],
+  "surroundingPairs": [
+    ["{", "}"],
+    ["[", "]"],
+    ["(", ")"],
+    ["\"", "\""],
+    ["'", "'"]
+  ],
+  "indentationRules": {
+    "increaseIndentPattern": "^\\s*(def|if|elif|else|for|while)\\b.*:\\s*(#.*)?$",
+    "decreaseIndentPattern": "^\\s*(elif|else)\\b.*:\\s*(#.*)?$"
+  },
+  "onEnterRules": [
+    {
+      "beforeText": "^\\s*(def|if|elif|else|for|while)\\b.*:\\s*(#.*)?$",
+      "action": { "indent": "indent" }
+    }
+  ]
+}
