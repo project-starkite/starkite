@@ -52,6 +52,7 @@ fmt: fix ## Run go fix, go fmt, and verify formatting across all files
 	@for dir in $(MODULES); do \
 		(cd $$dir && go fmt ./...); \
 	done
+	@(cd libkite/lsp && go fmt ./...)
 	@DIFFS=$$(gofmt -l .); \
 	if [ -n "$$DIFFS" ]; then \
 		echo "Formatting differences found in the following files:"; \
@@ -97,7 +98,7 @@ test-all: ## Run all-edition tests (registry composition guard)
 	cd kite && go test ./...
 
 test-lsp: ## Run all tests including LSP packages under build tags
-	cd libkite && go test -tags lsp ./lsp/...
+	cd libkite/lsp && go test -tags lsp ./...
 	cd basekite && go test -tags '$(LSP_TAGS)' ./...
 
 test-install-script: ## Dry-run test the installer script

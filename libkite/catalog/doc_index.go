@@ -105,8 +105,8 @@ func (idx *DocIndex) LookupMember(owner, name string) (DocEntry, bool) {
 	}
 
 	module := owner
-	if dot := strings.Index(owner, "."); dot >= 0 {
-		module = owner[:dot]
+	if before, _, ok := strings.Cut(owner, "."); ok {
+		module = before
 	}
 	if bucket, ok := idx.byObject[module]; ok {
 		if e, ok := bucket[name]; ok {

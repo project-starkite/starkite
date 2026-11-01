@@ -350,4 +350,3 @@ func (m *Module) ExportedTypes() []libkite.TypeDescriptor {
 		},
 	}
 }
-

@@ -145,7 +145,6 @@ func toLspKind(k catalog.Kind) starlsp.Kind {
 	}
 }
 
-
 // Lint reports the Starkite conventions the language does not know about.
 func (h *Host) Lint(doc *starlsp.Document, file *syntax.File) []starlsp.Diagnostic {
 	return h.conventionLints(doc, file)

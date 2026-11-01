@@ -570,4 +570,3 @@ func TestNewTryModule_NoDoublePrefixAndNoDuplicates(t *testing.T) {
 		}
 	}
 }
-

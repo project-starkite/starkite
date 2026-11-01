@@ -1,6 +1,7 @@
 package catalog
 
 import (
+	"maps"
 	"sort"
 	"strings"
 
@@ -71,9 +72,7 @@ func Build(reg *libkite.Registry) *Catalog {
 		docs:           NewDocIndex(apidocs.Table),
 	}
 
-	for k, v := range defaultFactoryReturns {
-		c.factoryReturns[k] = v
-	}
+	maps.Copy(c.factoryReturns, defaultFactoryReturns)
 
 	loaded, _ := reg.LoadAll()
 
@@ -254,8 +253,6 @@ func (c *Catalog) LookupMember(owner, name string) (Symbol, bool) {
 // Modules returns all registered module names and descriptions.
 func (c *Catalog) Modules() map[string]string {
 	out := make(map[string]string, len(c.modules))
-	for k, v := range c.modules {
-		out[k] = v
-	}
+	maps.Copy(out, c.modules)
 	return out
 }

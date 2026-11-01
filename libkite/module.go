@@ -101,4 +101,3 @@ type TypedModule interface {
 	Module
 	ExportedTypes() []TypeDescriptor
 }
-
