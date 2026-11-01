@@ -32,6 +32,11 @@ build-cloud: $(BIN_DIR) ## Build the lean cloud edition binary (kitecloud)
 build-ai: $(BIN_DIR) ## Build the lean ai edition binary (kiteai)
 	cd aikite && go build $(AI_LDFLAGS) -o ../$(BIN_DIR)/kiteai .
 
+LSP_TAGS=lsp,grammar_subset,grammar_subset_starlark
+
+build-lsp: $(BIN_DIR) ## Build the language server enabled binary (kite-lsp)
+	cd kite && go build -tags '$(LSP_TAGS)' $(ALL_LDFLAGS) -o ../$(BIN_DIR)/kite-lsp .
+
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)/ dist/
 
@@ -90,6 +95,10 @@ test-ai: ## Run ai tests
 
 test-all: ## Run all-edition tests (registry composition guard)
 	cd kite && go test ./...
+
+test-lsp: ## Run all tests including LSP packages under build tags
+	cd libkite && go test -tags lsp ./lsp/...
+	cd basekite && go test -tags '$(LSP_TAGS)' ./...
 
 test-install-script: ## Dry-run test the installer script
 	@echo "Testing install.sh script in dry-run mode..."
