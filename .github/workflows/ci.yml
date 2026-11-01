@@ -30,7 +30,7 @@ jobs:
 
       - name: Verify go fix (AST modernizations across linux, darwin, windows)
         run: |
-          for dir in libkite basekite cloudkite aikite kite tests/sandbox; do
+          for dir in libkite basekite cloudkite aikite kite tests/sandbox tests/dogfood; do
             echo "=== Checking go fix in $dir ==="
             for os in linux darwin windows; do
               (cd "$dir" && CGO_ENABLED=0 GOOS=$os GOARCH=amd64 go fix ./...)
@@ -53,7 +53,7 @@ jobs:
 
       - name: Run go vet
         run: |
-          for dir in libkite basekite cloudkite aikite kite tests/sandbox; do
+          for dir in libkite basekite cloudkite aikite kite tests/sandbox tests/dogfood; do
             echo "=== Vetting $dir ==="
             (cd "$dir" && go vet ./...)
           done
@@ -62,7 +62,7 @@ jobs:
         run: go install honnef.co/go/tools/cmd/staticcheck@latest
 
       - name: Run staticcheck
-        run: staticcheck ./libkite/... ./basekite/... ./cloudkite/... ./aikite/... ./kite/... ./tests/sandbox/...
+        run: staticcheck ./libkite/... ./basekite/... ./cloudkite/... ./aikite/... ./kite/... ./tests/sandbox/... ./tests/dogfood/...
 
       - name: Verify API doc table synchronization (check-api-docs)
         run: make check-api-docs
@@ -73,7 +73,7 @@ jobs:
       - name: Build all workspace modules and kite binaries
         run: |
           mkdir -p bin
-          for dir in libkite basekite cloudkite aikite tests/sandbox; do
+          for dir in libkite basekite cloudkite aikite tests/sandbox tests/dogfood; do
             echo "=== Building $dir ==="
             (cd "$dir" && go build -v ./...)
           done
@@ -85,9 +85,24 @@ jobs:
       - name: Run LSP unit and probe test suite
         run: make test-lsp
 
+      - name: Run Dialect Linter Unit Tests
+        run: make test-lint
+
+      - name: Validate All In-Tree Scripts (kite validate --lint)
+        run: make lint-scripts
+
+      - name: Run Autonomous Agent Dogfooding Test Harness
+        run: make test-dogfood
+
+      - name: Verify VS Code Extension Packaging
+        run: |
+          cd editors/vscode
+          npm install
+          npx vsce package --no-dependencies
+
       - name: Run Go unit tests with race detection
         run: |
-          for dir in libkite basekite cloudkite aikite kite; do
+          for dir in libkite basekite cloudkite aikite kite tests/dogfood; do
             echo "=== Testing $dir ==="
             (cd "$dir" && go test -race ./...)
           done
@@ -193,7 +208,7 @@ jobs:
 
       - name: Run Go unit tests on Windows
         run: |
-          @("libkite", "basekite", "cloudkite", "aikite", "kite") | ForEach-Object {
+          @("libkite", "basekite", "cloudkite", "aikite", "kite", "tests/dogfood") | ForEach-Object {
             Write-Host "=== Testing $_ on Windows ==="
             Push-Location $_
             go test ./...

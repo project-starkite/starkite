@@ -3,7 +3,7 @@
 # This shows how to deploy everything using Starlark instead of YAML
 
 # Load and apply CRD
-load("resource.star", "crd")
+load("./resource.star", "crd")
 k8s.apply(crd)
 
 # Create namespace

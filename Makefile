@@ -11,9 +11,10 @@ CLOUD_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkit
 AI_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/basekite/version.Edition=ai"
 ALL_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/basekite/version.Edition=all"
 
-MODULES=libkite basekite cloudkite aikite kite tests/sandbox
+MODULES=libkite basekite cloudkite aikite kite tests/sandbox tests/dogfood
 
-.PHONY: kite all build-base build-cloud build-ai build-kitelsp clean test test-libkite test-base test-cloud test-ai test-all test-install-script install deps lint fmt fix vet test-race preflight run-example repl help
+.PHONY: kite all build-base build-cloud build-ai build-kitelsp clean test test-libkite test-base test-cloud test-ai test-all test-lsp test-lint test-dogfood lint-scripts package-vscode test-install-script install deps lint fmt fix vet test-race preflight run-example repl help
+
 
 kite: $(BIN_DIR) ## Build the default all-in-one binary (kite)
 	cd kite && go build $(ALL_LDFLAGS) -o ../$(BIN_DIR)/$(BINARY_NAME) .
@@ -111,8 +112,30 @@ check-agent-skills: kite ## Verify in-tree agent skills are synchronized with ru
 	rm -rf "$$CHECK_DIR"; \
 	echo "=== In-tree agent skills verified in sync ==="
 
-preflight: check-api-docs check-agent-skills fix fmt vet test-race lint ## Run complete Go code hygiene and pre-flight verification suite
+preflight: check-api-docs check-agent-skills fix fmt vet test-race lint test-lint lint-scripts ## Run complete Go code hygiene and pre-flight verification suite
 	@echo "=== Pre-flight verification passed cleanly ==="
+
+test-lint: ## Run unit tests for static analysis and dialect linter
+	cd libkite/lint && go test ./...
+	cd libkite/lsp && go test -tags lsp -run TestLinter ./...
+	cd basekite && go test -run TestValidate ./cmd
+
+test-dogfood: kite ## Run autonomous agent closed-loop dogfooding test harness
+	go test -v ./tests/dogfood/...
+
+lint-scripts: kite ## Validate all in-tree Starlark test and example scripts
+	@echo "Validating all examples/*.star..."
+	@find examples -name "*.star" -exec ./$(BIN_DIR)/$(BINARY_NAME) validate --lint {} +
+	@echo "All example scripts validated cleanly."
+
+package-vscode: ## Verify packaging of VS Code extension into .vsix
+	@if command -v npx >/dev/null 2>&1; then \
+		echo "Packaging VS Code extension..."; \
+		(cd editors/vscode && npm install --silent && npx vsce package --no-dependencies); \
+	else \
+		echo "npx not found, skipping vsce package"; \
+	fi
+
 
 test: test-libkite test-base test-cloud test-ai test-all test-install-script ## Run all tests
 
