@@ -925,14 +925,14 @@ func (r *ExecResult) Attr(name string) (starlark.Value, error) {
 		return starlark.String(r.stderr), nil
 	case "code":
 		return starlark.MakeInt(r.exitCode), nil
-	case "error":
+	case "error", "err":
 		return starlark.String(r.errorString()), nil
 	}
 	return nil, nil
 }
 
 func (r *ExecResult) AttrNames() []string {
-	return []string{"code", "error", "ok", "stderr", "stdout"}
+	return []string{"code", "err", "error", "ok", "stderr", "stdout"}
 }
 
 // which finds an executable in PATH.

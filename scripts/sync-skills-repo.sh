@@ -2,13 +2,16 @@
 # scripts/sync-skills-repo.sh: Synchronize generated agent skills to project-starkite/skills.
 set -euo pipefail
 
-SKILLS_REPO_DIR="${1:-../skills}"
-KITE_BIN="${2:-./bin/kite}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+
+SKILLS_REPO_DIR="${1:-$REPO_ROOT/../skills}"
+KITE_BIN="${2:-$REPO_ROOT/bin/kite}"
 
 if [ ! -x "$KITE_BIN" ]; then
     echo "ERROR: kite binary not found at $KITE_BIN. Building..."
-    mkdir -p bin
-    (cd kite && go build -ldflags="-s -w" -o ../bin/kite .)
+    mkdir -p "$REPO_ROOT/bin"
+    (cd "$REPO_ROOT/kite" && go build -ldflags="-s -w" -o "$REPO_ROOT/bin/kite" .)
 fi
 
 mkdir -p "$SKILLS_REPO_DIR"

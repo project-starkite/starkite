@@ -76,12 +76,23 @@ func TestResultString(t *testing.T) {
 func TestResultAttrNames(t *testing.T) {
 	r := ResultOK(starlark.None)
 	names := r.AttrNames()
-	if len(names) != 3 {
-		t.Fatalf("AttrNames() len = %d, want 3", len(names))
+	if len(names) != 4 {
+		t.Fatalf("AttrNames() len = %d, want 4", len(names))
 	}
-	// Should be sorted: error, ok, value
-	if names[0] != "error" || names[1] != "ok" || names[2] != "value" {
+	// Should be sorted: err, error, ok, value
+	if names[0] != "err" || names[1] != "error" || names[2] != "ok" || names[3] != "value" {
 		t.Fatalf("AttrNames() = %v", names)
+	}
+
+	// Verify both error and err return the same string on failure
+	fail := ResultErr("boom")
+	v1, err := fail.Attr("error")
+	if err != nil || v1.String() != `"boom"` {
+		t.Fatalf("Attr(error) = %v, %v", v1, err)
+	}
+	v2, err := fail.Attr("err")
+	if err != nil || v2.String() != `"boom"` {
+		t.Fatalf("Attr(err) = %v, %v", v2, err)
 	}
 }
 

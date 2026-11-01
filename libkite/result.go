@@ -66,7 +66,7 @@ func (r *Result) Attr(name string) (starlark.Value, error) {
 		return starlark.Bool(r.ok), nil
 	case "value":
 		return r.value, nil
-	case "error":
+	case "error", "err":
 		return starlark.String(r.err), nil
 	default:
 		return nil, nil
@@ -74,7 +74,7 @@ func (r *Result) Attr(name string) (starlark.Value, error) {
 }
 
 func (r *Result) AttrNames() []string {
-	return []string{"error", "ok", "value"}
+	return []string{"err", "error", "ok", "value"}
 }
 
 // TryWrap wraps a *starlark.Builtin so that it returns a Result instead of

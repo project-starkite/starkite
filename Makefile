@@ -100,15 +100,16 @@ generate-agent-skills: kite ## Generate in-tree .agent/skills/ definitions using
 	@echo "=== Agent skills generated successfully ==="
 
 check-agent-skills: kite ## Verify in-tree agent skills are synchronized with runtime catalog
-	@mkdir -p /tmp/starkite-skills-check/starkite /tmp/starkite-skills-check/starkite-k8s /tmp/starkite-skills-check/starkite-cloud
-	@./$(BIN_DIR)/$(BINARY_NAME) doc --skills > /tmp/starkite-skills-check/starkite/SKILL.md
-	@./$(BIN_DIR)/$(BINARY_NAME) doc k8s --skills > /tmp/starkite-skills-check/starkite-k8s/SKILL.md
-	@./$(BIN_DIR)/$(BINARY_NAME) doc --skills --category=cloud > /tmp/starkite-skills-check/starkite-cloud/SKILL.md
-	@diff -u .agent/skills/starkite/SKILL.md /tmp/starkite-skills-check/starkite/SKILL.md || (echo "ERROR: .agent/skills/starkite/SKILL.md out of sync. Run 'make generate-agent-skills'"; rm -rf /tmp/starkite-skills-check; exit 1)
-	@diff -u .agent/skills/starkite-k8s/SKILL.md /tmp/starkite-skills-check/starkite-k8s/SKILL.md || (echo "ERROR: .agent/skills/starkite-k8s/SKILL.md out of sync. Run 'make generate-agent-skills'"; rm -rf /tmp/starkite-skills-check; exit 1)
-	@diff -u .agent/skills/starkite-cloud/SKILL.md /tmp/starkite-skills-check/starkite-cloud/SKILL.md || (echo "ERROR: .agent/skills/starkite-cloud/SKILL.md out of sync. Run 'make generate-agent-skills'"; rm -rf /tmp/starkite-skills-check; exit 1)
-	@rm -rf /tmp/starkite-skills-check
-	@echo "=== In-tree agent skills verified in sync ==="
+	@CHECK_DIR=$$(mktemp -d); \
+	mkdir -p "$$CHECK_DIR/starkite" "$$CHECK_DIR/starkite-k8s" "$$CHECK_DIR/starkite-cloud"; \
+	./$(BIN_DIR)/$(BINARY_NAME) doc --skills > "$$CHECK_DIR/starkite/SKILL.md"; \
+	./$(BIN_DIR)/$(BINARY_NAME) doc k8s --skills > "$$CHECK_DIR/starkite-k8s/SKILL.md"; \
+	./$(BIN_DIR)/$(BINARY_NAME) doc --skills --category=cloud > "$$CHECK_DIR/starkite-cloud/SKILL.md"; \
+	diff -u .agent/skills/starkite/SKILL.md "$$CHECK_DIR/starkite/SKILL.md" || (echo "ERROR: .agent/skills/starkite/SKILL.md out of sync. Run 'make generate-agent-skills'"; rm -rf "$$CHECK_DIR"; exit 1); \
+	diff -u .agent/skills/starkite-k8s/SKILL.md "$$CHECK_DIR/starkite-k8s/SKILL.md" || (echo "ERROR: .agent/skills/starkite-k8s/SKILL.md out of sync. Run 'make generate-agent-skills'"; rm -rf "$$CHECK_DIR"; exit 1); \
+	diff -u .agent/skills/starkite-cloud/SKILL.md "$$CHECK_DIR/starkite-cloud/SKILL.md" || (echo "ERROR: .agent/skills/starkite-cloud/SKILL.md out of sync. Run 'make generate-agent-skills'"; rm -rf "$$CHECK_DIR"; exit 1); \
+	rm -rf "$$CHECK_DIR"; \
+	echo "=== In-tree agent skills verified in sync ==="
 
 preflight: check-api-docs check-agent-skills fix fmt vet test-race lint ## Run complete Go code hygiene and pre-flight verification suite
 	@echo "=== Pre-flight verification passed cleanly ==="

@@ -4,6 +4,8 @@ import (
 	"bufio"
 	"strings"
 	"testing"
+
+	"go.starlark.net/syntax"
 )
 
 func TestSkillsMarkdownTableIntegrity(t *testing.T) {
@@ -23,7 +25,9 @@ func TestSkillsMarkdownTableIntegrity(t *testing.T) {
 		trimmed := strings.TrimSpace(line)
 
 		if strings.HasPrefix(trimmed, "|") && strings.HasSuffix(trimmed, "|") {
-			pipes := strings.Count(trimmed, "|")
+			// Ignore escaped pipes when counting table columns
+			cleanPipes := strings.ReplaceAll(trimmed, "\\|", "")
+			pipes := strings.Count(cleanPipes, "|")
 			if !inTable {
 				inTable = true
 				expectedPipes = pipes
@@ -80,5 +84,44 @@ func TestSkillsFrontmatterYAMLValidity(t *testing.T) {
 		if !strings.Contains(frontmatter, "description:") {
 			t.Errorf("frontmatter missing 'description:' field in %s", tc.target)
 		}
+	}
+}
+
+func TestSkillsRecipeSyntaxValidation(t *testing.T) {
+	out, err := executeSkillsCmd("--skills")
+	if err != nil {
+		t.Fatalf("unexpected error generating skills: %v", err)
+	}
+
+	scanner := bufio.NewScanner(strings.NewReader(out))
+	inCodeBlock := false
+	var currentSnippet strings.Builder
+	var recipeCount int
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if strings.HasPrefix(line, "```python") {
+			inCodeBlock = true
+			currentSnippet.Reset()
+			continue
+		}
+		if inCodeBlock && strings.HasPrefix(line, "```") {
+			inCodeBlock = false
+			recipeCount++
+			code := currentSnippet.String()
+			_, parseErr := syntax.Parse("recipe.star", []byte(code), 0)
+			if parseErr != nil {
+				t.Errorf("recipe %d failed Starlark syntax validation: %v\nCode:\n%s", recipeCount, parseErr, code)
+			}
+			continue
+		}
+		if inCodeBlock {
+			currentSnippet.WriteString(line)
+			currentSnippet.WriteString("\n")
+		}
+	}
+
+	if recipeCount == 0 {
+		t.Fatalf("expected at least one recipe code block to test, found 0")
 	}
 }

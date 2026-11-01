@@ -3,7 +3,7 @@ name: starkite-cloud
 description: >-
   Automate cloud operations, infrastructure lifecycles, and data workflows
   using Starkite. Use when authoring or debugging Starkite automation scripts
-  targeting cloud modules (http, k8s, concur, sql, ssh, containers).
+  targeting cloud modules (http, k8s, concur, sql, ssh, containers, fleet).
 ---
 
 # Starkite Cloud Operations Skill
@@ -21,8 +21,8 @@ Autonomous agents generating Starkite scripts MUST adhere to four load-bearing e
 
 2. **Error Handling via `try_` Result Pattern**:
    - Built-in functions have safe `try_` variants (e.g. `fs.try_read_text`, `os.try_exec`, `http.try_get`).
-   - Safe functions return a `Result` struct with three fields: `res.ok` (bool), `res.value` (any), and `res.err` (string).
-   - **ALWAYS** check `res.ok` before reading `res.value`. If `res.ok` is False, handle `res.err` gracefully.
+   - Safe functions return a `Result` (or `ExecResult`) with status fields: `res.ok` (bool), `res.value` (any), and `res.error` / `res.err` (string).
+   - **ALWAYS** check `res.ok` before reading `res.value`. If `res.ok` is False, handle `res.error` (or `res.err`) gracefully.
    - Direct functions (e.g. `fs.read_text`) raise uncatchable runtime failures on error.
 
 3. **Kernel Sandbox Isolation Constraints**:
@@ -32,36 +32,37 @@ Autonomous agents generating Starkite scripts MUST adhere to four load-bearing e
    - Scripts requiring network or write access must use appropriate CLI flags (`--sandbox-net-allow`, `--sandbox-path-write`).
 
 4. **Auto-Loaded Standard Library Modules**:
-   - Standard modules (`fs`, `http`, `os`, `json`, `yaml`, `concur`, `time`, `log`, `csv`, `zip`, `gzip`, `semver`, `crypto`, `math`, `strings`) are predeclared globals.
+   - Standard modules (`fs`, `http`, `os`, `json`, `yaml`, `concur`, `time`, `log`, `csv`, `zip`, `gzip`, `base64`, `hash`, `table`, `template`, `strings`, `args`, `runtime`, `regexp`, `uuid`) are predeclared globals.
    - **DO NOT** write `import fs` or `load("fs", ...)` for built-in modules.
    - Use `load("//path/to/script.star", "symbol")` strictly for relative or installed user modules.
 
 ## Tier 2: Scripting Idioms & Production Recipes
 
-### 4. Concurrent Fan-Out & Rate-Limited Pipelines
+### Concurrent Fan-Out & Rate-Limited Pipelines
 ```python
 def check_endpoint(target):
     res = http.try_get("https://" + target + "/healthz")
     return {"target": target, "alive": res.ok and res.value.status_code == 200}
 
-endpoints = ["node1.internal", "node2.internal", "node3.internal"]
-# Concurrently check endpoints with worker pool limit of 2
-results = concur.each(endpoints, check_endpoint, limit=2)
-for r in results:
-    log.info("Endpoint %s alive=%s", r["target"], r["alive"])
+def main():
+    endpoints = ["node1.internal", "node2.internal", "node3.internal"]
+    # Concurrently check endpoints with worker pool limit of 2
+    results = concur.map(endpoints, check_endpoint, workers=2)
+    for r in results:
+        log.info("Endpoint %s alive=%s" % (r["target"], r["alive"]))
 ```
 
-### 5. Kubernetes Cluster Triage & Resource Inspection
+### Kubernetes Cluster Triage & Resource Inspection
 ```python
-client = k8s.client()
-pods_res = client.try_list("pods", namespace="default")
-if pods_res.ok:
-    for pod in pods_res.value:
-        phase = pod.status.phase
-        if phase != "Running":
-            log.warn("Pod %s is in state: %s", pod.metadata.name, phase)
-else:
-    log.error("Failed to query cluster: %s", pods_res.err)
+def main():
+    pods_res = k8s.try_list("pods", namespace="default")
+    if pods_res.ok:
+        for pod in pods_res.value:
+            phase = pod.status.phase
+            if phase != "Running":
+                log.warn("Pod %s is in state: %s" % (pod.metadata.name, phase))
+    else:
+        log.error("Failed to query cluster: %s" % pods_res.error)
 ```
 
 ## Tier 3: Complete Module & Member Reference Tables
@@ -97,6 +98,17 @@ containers provides container engine management: config() returns a client for d
 | `remove` | `containers.remove()` | `None` | - | `containers.try_remove` |
 | `run` | `containers.run()` | `None` | - | `containers.try_run` |
 | `stop` | `containers.stop()` | `None` | - | `containers.try_stop` |
+
+### Module `fleet`
+
+fleet provides compute resource fleet management: new, file, hosts_file
+
+| Member | Signature | Returns | Description | Safe Variant |
+|---|---|---|---|---|
+| `file` | `fleet.file(path)` | `Fleet` | Load a fleet from a static YAML or JSON file. Alias for `fleet.new(file=path)`. | `fleet.try_file` |
+| `host_file` | `fleet.host_file(path="/etc/hosts", loopback=False)` | `Fleet` | Alias for `fleet.hosts_file()`. | `fleet.try_host_file` |
+| `hosts_file` | `fleet.hosts_file(path="/etc/hosts", loopback=False)` | `Fleet` | Ingest compute resources from a standard POSIX hosts file. | `fleet.try_hosts_file` |
+| `new` | `fleet.new()` | `None` | - | `fleet.try_new` |
 
 ### Module `http`
 

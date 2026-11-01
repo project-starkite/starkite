@@ -21,8 +21,8 @@ Autonomous agents generating Starkite scripts MUST adhere to four load-bearing e
 
 2. **Error Handling via `try_` Result Pattern**:
    - Built-in functions have safe `try_` variants (e.g. `fs.try_read_text`, `os.try_exec`, `http.try_get`).
-   - Safe functions return a `Result` struct with three fields: `res.ok` (bool), `res.value` (any), and `res.err` (string).
-   - **ALWAYS** check `res.ok` before reading `res.value`. If `res.ok` is False, handle `res.err` gracefully.
+   - Safe functions return a `Result` (or `ExecResult`) with status fields: `res.ok` (bool), `res.value` (any), and `res.error` / `res.err` (string).
+   - **ALWAYS** check `res.ok` before reading `res.value`. If `res.ok` is False, handle `res.error` (or `res.err`) gracefully.
    - Direct functions (e.g. `fs.read_text`) raise uncatchable runtime failures on error.
 
 3. **Kernel Sandbox Isolation Constraints**:
@@ -32,23 +32,23 @@ Autonomous agents generating Starkite scripts MUST adhere to four load-bearing e
    - Scripts requiring network or write access must use appropriate CLI flags (`--sandbox-net-allow`, `--sandbox-path-write`).
 
 4. **Auto-Loaded Standard Library Modules**:
-   - Standard modules (`fs`, `http`, `os`, `json`, `yaml`, `concur`, `time`, `log`, `csv`, `zip`, `gzip`, `semver`, `crypto`, `math`, `strings`) are predeclared globals.
+   - Standard modules (`fs`, `http`, `os`, `json`, `yaml`, `concur`, `time`, `log`, `csv`, `zip`, `gzip`, `base64`, `hash`, `table`, `template`, `strings`, `args`, `runtime`, `regexp`, `uuid`) are predeclared globals.
    - **DO NOT** write `import fs` or `load("fs", ...)` for built-in modules.
    - Use `load("//path/to/script.star", "symbol")` strictly for relative or installed user modules.
 
 ## Tier 2: Scripting Idioms & Production Recipes
 
-### 5. Kubernetes Cluster Triage & Resource Inspection
+### Kubernetes Cluster Triage & Resource Inspection
 ```python
-client = k8s.client()
-pods_res = client.try_list("pods", namespace="default")
-if pods_res.ok:
-    for pod in pods_res.value:
-        phase = pod.status.phase
-        if phase != "Running":
-            log.warn("Pod %s is in state: %s", pod.metadata.name, phase)
-else:
-    log.error("Failed to query cluster: %s", pods_res.err)
+def main():
+    pods_res = k8s.try_list("pods", namespace="default")
+    if pods_res.ok:
+        for pod in pods_res.value:
+            phase = pod.status.phase
+            if phase != "Running":
+                log.warn("Pod %s is in state: %s" % (pod.metadata.name, phase))
+    else:
+        log.error("Failed to query cluster: %s" % pods_res.error)
 ```
 
 ## Tier 3: Complete Module & Member Reference Tables

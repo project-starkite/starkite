@@ -117,9 +117,12 @@ func runDoc(cmd *cobra.Command, args []string) error {
 	reg := NewRegistry(&libkite.ModuleConfig{})
 	cat := catalog.Build(reg)
 
-	// Validate mutually exclusive flags
+	// Validate flag combinations
 	if docSkills && docJSON {
 		return fmt.Errorf("cannot specify both --skills and --json")
+	}
+	if docCategory != "" && !docSkills {
+		return fmt.Errorf("--category flag requires --skills")
 	}
 
 	// Dispatch to Agent Skills Generator

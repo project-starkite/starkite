@@ -147,3 +147,23 @@ func TestSkillsInvalidCategory(t *testing.T) {
 		t.Errorf("expected unknown category error, got: %v", err)
 	}
 }
+
+func TestSkillsCategoryWithoutSkills(t *testing.T) {
+	_, err := executeSkillsCmd("--category=cloud")
+	if err == nil {
+		t.Fatalf("expected error when passing --category without --skills, got nil")
+	}
+	if !strings.Contains(err.Error(), "--category flag requires --skills") {
+		t.Errorf("expected '--category flag requires --skills' error, got: %v", err)
+	}
+}
+
+func TestSkillsModuleWithCategory(t *testing.T) {
+	_, err := executeSkillsCmd("k8s", "--skills", "--category=cloud")
+	if err == nil {
+		t.Fatalf("expected error when passing both module arg and --category, got nil")
+	}
+	if !strings.Contains(err.Error(), "cannot specify both a module argument and --category") {
+		t.Errorf("expected 'cannot specify both a module argument and --category' error, got: %v", err)
+	}
+}

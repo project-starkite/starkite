@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"io"
+	"slices"
 	"sort"
 	"strings"
 
@@ -17,10 +18,10 @@ var (
 
 // categoryModules maps category names to their respective module namespaces.
 var categoryModules = map[string][]string{
-	"cloud": {"http", "k8s", "concur", "sql", "ssh", "containers"},
+	"cloud": {"http", "k8s", "concur", "sql", "ssh", "containers", "fleet"},
 	"k8s":   {"k8s"},
-	"data":  {"json", "yaml", "csv", "zip", "gzip", "semver"},
-	"sys":   {"fs", "os", "time", "log", "crypto", "math", "strings", "args", "env", "runtime"},
+	"data":  {"json", "yaml", "csv", "zip", "gzip", "base64", "table", "template"},
+	"sys":   {"fs", "os", "time", "log", "hash", "strings", "args", "runtime", "regexp", "uuid"},
 }
 
 // SkillConfig defines generation parameters for an agent skill document.
@@ -44,6 +45,10 @@ func runSkills(cmd *cobra.Command, cat *catalog.Catalog, args []string, category
 
 // resolveSkillConfig calculates skill metadata and module list from arguments.
 func resolveSkillConfig(cat *catalog.Catalog, args []string, category string) (SkillConfig, error) {
+	if len(args) > 0 && category != "" {
+		return SkillConfig{}, fmt.Errorf("cannot specify both a module argument and --category")
+	}
+
 	// Case 1: Targeted module (e.g. "kite doc k8s --skills")
 	if len(args) > 0 {
 		target := args[0]
@@ -157,8 +162,8 @@ func renderTier1Invariants(w io.Writer) {
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "2. **Error Handling via `try_` Result Pattern**:")
 	fmt.Fprintln(w, "   - Built-in functions have safe `try_` variants (e.g. `fs.try_read_text`, `os.try_exec`, `http.try_get`).")
-	fmt.Fprintln(w, "   - Safe functions return a `Result` struct with three fields: `res.ok` (bool), `res.value` (any), and `res.err` (string).")
-	fmt.Fprintln(w, "   - **ALWAYS** check `res.ok` before reading `res.value`. If `res.ok` is False, handle `res.err` gracefully.")
+	fmt.Fprintln(w, "   - Safe functions return a `Result` (or `ExecResult`) with status fields: `res.ok` (bool), `res.value` (any), and `res.error` / `res.err` (string).")
+	fmt.Fprintln(w, "   - **ALWAYS** check `res.ok` before reading `res.value`. If `res.ok` is False, handle `res.error` (or `res.err`) gracefully.")
 	fmt.Fprintln(w, "   - Direct functions (e.g. `fs.read_text`) raise uncatchable runtime failures on error.")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "3. **Kernel Sandbox Isolation Constraints**:")
@@ -168,7 +173,7 @@ func renderTier1Invariants(w io.Writer) {
 	fmt.Fprintln(w, "   - Scripts requiring network or write access must use appropriate CLI flags (`--sandbox-net-allow`, `--sandbox-path-write`).")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "4. **Auto-Loaded Standard Library Modules**:")
-	fmt.Fprintln(w, "   - Standard modules (`fs`, `http`, `os`, `json`, `yaml`, `concur`, `time`, `log`, `csv`, `zip`, `gzip`, `semver`, `crypto`, `math`, `strings`) are predeclared globals.")
+	fmt.Fprintln(w, "   - Standard modules (`fs`, `http`, `os`, `json`, `yaml`, `concur`, `time`, `log`, `csv`, `zip`, `gzip`, `base64`, `hash`, `table`, `template`, `strings`, `args`, `runtime`, `regexp`, `uuid`) are predeclared globals.")
 	fmt.Fprintln(w, "   - **DO NOT** write `import fs` or `load(\"fs\", ...)` for built-in modules.")
 	fmt.Fprintln(w, "   - Use `load(\"//path/to/script.star\", \"symbol\")` strictly for relative or installed user modules.")
 	fmt.Fprintln(w)
@@ -179,70 +184,76 @@ func renderTier2Recipes(w io.Writer, cfg SkillConfig) {
 
 	// File I/O & Path Recipe
 	if containsAny(cfg.Modules, "fs") {
-		io.WriteString(w, "### 1. Robust File I/O & Path Traversal\n```python\n"+
-			"p = fs.path(\"data/config.json\")\n"+
-			"if p.exists():\n"+
-			"    # Safe read with Result handling\n"+
-			"    res = fs.try_read_text(p)\n"+
-			"    if res.ok:\n"+
-			"        log.info(\"Read %d bytes from %s\", len(res.value), p.base())\n"+
-			"    else:\n"+
-			"        log.error(\"Read failed: %s\", res.err)\n"+
+		io.WriteString(w, "### Robust File I/O & Path Traversal\n```python\n"+
+			"def main():\n"+
+			"    p = fs.path(\"data/config.json\")\n"+
+			"    if p.exists():\n"+
+			"        # Safe read with Result handling\n"+
+			"        res = p.try_read_text()\n"+
+			"        if res.ok:\n"+
+			"            log.info(\"Read %d bytes from %s\" % (len(res.value), p.name))\n"+
+			"        else:\n"+
+			"            log.error(\"Read failed: %s\" % res.error)\n"+
 			"```\n\n")
 	}
 
 	// Subprocess & Command Execution Recipe
 	if containsAny(cfg.Modules, "os") {
-		io.WriteString(w, "### 2. Subprocess Execution & Command Piping\n```python\n"+
-			"# Execute system command with argument vector (prevents shell injection)\n"+
-			"res = os.try_exec([\"git\", \"status\", \"--porcelain\"])\n"+
-			"if res.ok:\n"+
-			"    stdout = res.value.stdout.strip()\n"+
-			"    if stdout:\n"+
-			"        log.warn(\"Uncommitted changes:\\n%s\", stdout)\n"+
-			"else:\n"+
-			"    log.error(\"Command failed with exit code %d: %s\", res.value.exit_code, res.err)\n"+
+		io.WriteString(w, "### Subprocess Execution & Command Piping\n```python\n"+
+			"def main():\n"+
+			"    # Execute system command with argument vector (prevents shell injection)\n"+
+			"    res = os.try_exec(\"git\", [\"status\", \"--porcelain\"])\n"+
+			"    if res.ok:\n"+
+			"        stdout = res.stdout.strip()\n"+
+			"        if stdout:\n"+
+			"            log.warn(\"Uncommitted changes:\\n%s\" % stdout)\n"+
+			"    else:\n"+
+			"        log.error(\"Command failed with exit code %d: %s\" % (res.code, res.error))\n"+
 			"```\n\n")
 	}
 
 	// Structured Data Transform Recipe
 	if containsAny(cfg.Modules, "json", "yaml") {
-		io.WriteString(w, "### 3. Structured Data Transformation (JSON to YAML)\n```python\n"+
-			"raw_json = '{\"service\": \"api\", \"replicas\": 3, \"enabled\": true}'\n"+
-			"data = json.decode(raw_json)\n"+
-			"data[\"environment\"] = \"production\"\n\n"+
-			"# Encode transformed data directly into YAML\n"+
-			"yaml_out = yaml.encode(data)\n"+
-			"fs.write_text(\"deploy.yaml\", yaml_out)\n"+
+		io.WriteString(w, "### Structured Data Transformation (JSON to YAML)\n```python\n"+
+			"def main():\n"+
+			"    raw_json = '{\"service\": \"api\", \"replicas\": 3, \"enabled\": true}'\n"+
+			"    data = json.decode(raw_json)\n"+
+			"    data[\"environment\"] = \"production\"\n"+
+			"\n"+
+			"    # Encode transformed data directly into YAML\n"+
+			"    yaml_out = yaml.encode(data)\n"+
+			"    fs.write_text(\"deploy.yaml\", yaml_out)\n"+
 			"```\n\n")
 	}
 
 	// Concurrency Recipe
 	if containsAny(cfg.Modules, "concur", "http") {
-		io.WriteString(w, "### 4. Concurrent Fan-Out & Rate-Limited Pipelines\n```python\n"+
+		io.WriteString(w, "### Concurrent Fan-Out & Rate-Limited Pipelines\n```python\n"+
 			"def check_endpoint(target):\n"+
 			"    res = http.try_get(\"https://\" + target + \"/healthz\")\n"+
-			"    return {\"target\": target, \"alive\": res.ok and res.value.status_code == 200}\n\n"+
-			"endpoints = [\"node1.internal\", \"node2.internal\", \"node3.internal\"]\n"+
-			"# Concurrently check endpoints with worker pool limit of 2\n"+
-			"results = concur.each(endpoints, check_endpoint, limit=2)\n"+
-			"for r in results:\n"+
-			"    log.info(\"Endpoint %s alive=%s\", r[\"target\"], r[\"alive\"])\n"+
+			"    return {\"target\": target, \"alive\": res.ok and res.value.status_code == 200}\n"+
+			"\n"+
+			"def main():\n"+
+			"    endpoints = [\"node1.internal\", \"node2.internal\", \"node3.internal\"]\n"+
+			"    # Concurrently check endpoints with worker pool limit of 2\n"+
+			"    results = concur.map(endpoints, check_endpoint, workers=2)\n"+
+			"    for r in results:\n"+
+			"        log.info(\"Endpoint %s alive=%s\" % (r[\"target\"], r[\"alive\"]))\n"+
 			"```\n\n")
 	}
 
 	// Kubernetes Cluster Automation Recipe
 	if containsAny(cfg.Modules, "k8s") {
-		io.WriteString(w, "### 5. Kubernetes Cluster Triage & Resource Inspection\n```python\n"+
-			"client = k8s.client()\n"+
-			"pods_res = client.try_list(\"pods\", namespace=\"default\")\n"+
-			"if pods_res.ok:\n"+
-			"    for pod in pods_res.value:\n"+
-			"        phase = pod.status.phase\n"+
-			"        if phase != \"Running\":\n"+
-			"            log.warn(\"Pod %s is in state: %s\", pod.metadata.name, phase)\n"+
-			"else:\n"+
-			"    log.error(\"Failed to query cluster: %s\", pods_res.err)\n"+
+		io.WriteString(w, "### Kubernetes Cluster Triage & Resource Inspection\n```python\n"+
+			"def main():\n"+
+			"    pods_res = k8s.try_list(\"pods\", namespace=\"default\")\n"+
+			"    if pods_res.ok:\n"+
+			"        for pod in pods_res.value:\n"+
+			"            phase = pod.status.phase\n"+
+			"            if phase != \"Running\":\n"+
+			"                log.warn(\"Pod %s is in state: %s\" % (pod.metadata.name, phase))\n"+
+			"    else:\n"+
+			"        log.error(\"Failed to query cluster: %s\" % pods_res.error)\n"+
 			"```\n\n")
 	}
 }
@@ -327,10 +338,8 @@ func renderTier3References(w io.Writer, cat *catalog.Catalog, cfg SkillConfig) {
 
 func containsAny(slice []string, items ...string) bool {
 	for _, s := range slice {
-		for _, item := range items {
-			if s == item {
-				return true
-			}
+		if slices.Contains(items, s) {
+			return true
 		}
 	}
 	return false
@@ -341,7 +350,7 @@ func cleanDoc(doc string) string {
 	if doc == "" {
 		return "-"
 	}
-	firstLine := strings.Split(doc, "\n")[0]
+	firstLine, _, _ := strings.Cut(doc, "\n")
 	return escapePipes(firstLine)
 }
 
