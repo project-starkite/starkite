@@ -67,6 +67,7 @@ vet: ## Run go vet across all workspace modules (linux, darwin, windows)
 			(cd $$dir && CGO_ENABLED=0 GOOS=$$os GOARCH=amd64 go vet ./...) || exit 1; \
 		done; \
 	done
+	@(cd libkite/lsp && go vet -tags lsp ./...)
 
 test-race: ## Run all Go unit tests with race detection
 	@for dir in $(MODULES); do \

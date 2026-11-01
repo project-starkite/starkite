@@ -74,6 +74,10 @@ func Build(reg *libkite.Registry) *Catalog {
 
 	maps.Copy(c.factoryReturns, defaultFactoryReturns)
 
+	if reg == nil {
+		return c
+	}
+
 	loaded, _ := reg.LoadAll()
 
 	// Pass 1: Module namespaces, members, and declarative types
