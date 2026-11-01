@@ -23,6 +23,30 @@ builds:
       - -X github.com/project-starkite/starkite/basekite/version.Edition=all
       - -X github.com/project-starkite/starkite/libkite/modules/runtime.Version={{.Version}}
 
+  - id: kitelsp
+    dir: ./cmd/kitelsp
+    main: .
+    binary: kitelsp
+    tags:
+      - lsp
+      - grammar_subset
+      - grammar_subset_starlark
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+    ignore:
+      - goos: windows
+        goarch: arm64
+    ldflags:
+      - -s -w
+      - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}
+      - -X github.com/project-starkite/starkite/basekite/version.BuildTime={{.Date}}
+      - -X github.com/project-starkite/starkite/basekite/version.GitCommit={{.Commit}}
+
 archives:
 
   - id: kite-raw
@@ -41,6 +65,23 @@ archives:
       - goos: windows
         formats: [zip]
     name_template: "kite_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+
+  - id: kitelsp-raw
+    ids:
+      - kitelsp
+    formats:
+      - binary
+    name_template: "kitelsp-{{ .Os }}-{{ .Arch }}"
+
+  - id: kitelsp-pkg
+    ids:
+      - kitelsp
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    name_template: "kitelsp_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
 
 brews:
   - name: kite

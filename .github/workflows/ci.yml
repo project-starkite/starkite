@@ -20,10 +20,12 @@ jobs:
           go-version: stable
           cache-dependency-path: |
             libkite/go.sum
+            libkite/lsp/go.sum
             basekite/go.sum
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
+            cmd/kitelsp/go.sum
             tests/sandbox/go.sum
 
       - name: Verify go fix (AST modernizations across linux, darwin, windows)
@@ -62,6 +64,9 @@ jobs:
       - name: Run staticcheck
         run: staticcheck ./libkite/... ./basekite/... ./cloudkite/... ./aikite/... ./kite/... ./tests/sandbox/...
 
+      - name: Verify API doc table synchronization (check-api-docs)
+        run: make check-api-docs
+
       - name: Build all workspace modules and kite binaries
         run: |
           mkdir -p bin
@@ -70,6 +75,12 @@ jobs:
             (cd "$dir" && go build -v ./...)
           done
           make all
+
+      - name: Verify kitelsp probe diagnostics
+        run: ./bin/kitelsp --probe | head -n 30
+
+      - name: Run LSP unit and probe test suite
+        run: make test-lsp
 
       - name: Run Go unit tests with race detection
         run: |
@@ -121,11 +132,18 @@ jobs:
           go-version: stable
           cache-dependency-path: |
             libkite/go.sum
+            libkite/lsp/go.sum
             basekite/go.sum
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
+            cmd/kitelsp/go.sum
             tests/sandbox/go.sum
+
+      - name: Build and probe kitelsp on macOS
+        run: |
+          make build-kitelsp
+          ./bin/kitelsp --probe | head -n 30
 
       - name: Run macOS Seatbelt sandbox integration tests
         env:
@@ -148,10 +166,12 @@ jobs:
           go-version: stable
           cache-dependency-path: |
             libkite/go.sum
+            libkite/lsp/go.sum
             basekite/go.sum
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
+            cmd/kitelsp/go.sum
             tests/sandbox/go.sum
 
       - name: Build kite.exe on Windows
@@ -160,6 +180,13 @@ jobs:
           Set-Location kite
           go build -v -o ..\bin\kite.exe .
           Set-Location ..
+
+      - name: Build and probe kitelsp.exe on Windows
+        run: |
+          Set-Location cmd\kitelsp
+          go build -tags 'lsp,grammar_subset,grammar_subset_starlark' -ldflags "-s -w" -o ..\..\bin\kitelsp.exe .
+          Set-Location ..\..
+          .\bin\kitelsp.exe --probe | Select-Object -First 30
 
       - name: Run Go unit tests on Windows
         run: |
