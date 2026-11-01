@@ -131,6 +131,9 @@ func Build(reg *libkite.Registry) *Catalog {
 	for name, value := range reg.Predeclared() {
 		addGlobal(name, value)
 	}
+	for name, value := range starlark.Universe {
+		addGlobal(name, value)
+	}
 
 	sort.Slice(c.globals, func(i, j int) bool { return c.globals[i].Name < c.globals[j].Name })
 	return c
