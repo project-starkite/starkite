@@ -113,10 +113,15 @@ func NewTryModule(name string, members starlark.StringDict) *TryModule {
 	names := make([]string, 0, len(members)*2)
 	for k, v := range members {
 		names = append(names, k)
+		if strings.HasPrefix(k, "try_") {
+			continue
+		}
 		if b, ok := v.(*starlark.Builtin); ok {
 			tryName := "try_" + k
-			tryMembers[tryName] = TryWrap(name+"."+tryName, b)
-			names = append(names, tryName)
+			if _, exists := members[tryName]; !exists {
+				tryMembers[tryName] = TryWrap(name+"."+tryName, b)
+				names = append(names, tryName)
+			}
 		}
 	}
 	sort.Strings(names)
@@ -168,8 +173,14 @@ func (m *TryModule) AttrNames() []string {
 	names := make([]string, 0, len(m.members)*2)
 	for k, v := range m.members {
 		names = append(names, k)
+		if strings.HasPrefix(k, "try_") {
+			continue
+		}
 		if _, ok := v.(*starlark.Builtin); ok {
-			names = append(names, "try_"+k)
+			tryName := "try_" + k
+			if _, exists := m.members[tryName]; !exists {
+				names = append(names, tryName)
+			}
 		}
 	}
 	sort.Strings(names)

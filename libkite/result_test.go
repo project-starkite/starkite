@@ -525,3 +525,49 @@ func TestRetryResultFreeze(t *testing.T) {
 		t.Fatal("expected error appending to frozen list")
 	}
 }
+
+func TestNewTryModule_NoDoublePrefixAndNoDuplicates(t *testing.T) {
+	customTryExec := starlark.NewBuiltin("custom_try_exec", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		return starlark.String("custom"), nil
+	})
+	plainExec := starlark.NewBuiltin("plain_exec", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		return starlark.String("plain"), nil
+	})
+	other := starlark.NewBuiltin("other", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+		return starlark.String("other"), nil
+	})
+
+	members := starlark.StringDict{
+		"exec":     plainExec,
+		"try_exec": customTryExec,
+		"other":    other,
+	}
+
+	mod := NewTryModule("testmod", members)
+	names := mod.AttrNames()
+
+	wantNames := []string{"exec", "other", "try_exec", "try_other"}
+	if len(names) != len(wantNames) {
+		t.Fatalf("AttrNames() len = %d, want %d: %v", len(names), len(wantNames), names)
+	}
+	for i, want := range wantNames {
+		if names[i] != want {
+			t.Errorf("AttrNames()[%d] = %q, want %q", i, names[i], want)
+		}
+	}
+
+	val, err := mod.Attr("try_exec")
+	if err != nil {
+		t.Fatalf("Attr(try_exec) err: %v", err)
+	}
+	if val != customTryExec {
+		t.Errorf("Attr(try_exec) = %v, want custom builtin instance", val)
+	}
+
+	for _, n := range names {
+		if n == "try_try_exec" {
+			t.Errorf("found unwanted try_try_exec attribute in TryModule")
+		}
+	}
+}
+
