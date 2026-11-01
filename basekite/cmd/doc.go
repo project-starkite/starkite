@@ -50,6 +50,8 @@ Examples:
 
 func init() {
 	docCmd.Flags().BoolVar(&docJSON, "json", false, "output documentation in JSON format")
+	docCmd.Flags().BoolVar(&docSkills, "skills", false, "generate structured agent skill documentation (SKILL.md)")
+	docCmd.Flags().StringVar(&docCategory, "category", "", "scope skill generation by category (cloud, k8s, data, sys)")
 	rootCmd.AddCommand(docCmd)
 }
 
@@ -114,6 +116,16 @@ func runDoc(cmd *cobra.Command, args []string) error {
 	out := cmd.OutOrStdout()
 	reg := NewRegistry(&libkite.ModuleConfig{})
 	cat := catalog.Build(reg)
+
+	// Validate mutually exclusive flags
+	if docSkills && docJSON {
+		return fmt.Errorf("cannot specify both --skills and --json")
+	}
+
+	// Dispatch to Agent Skills Generator
+	if docSkills {
+		return runSkills(cmd, cat, args, docCategory)
+	}
 
 	// Case 1: Bare "kite doc" -> Overview of modules and globals
 	if len(args) == 0 {
