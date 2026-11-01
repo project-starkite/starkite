@@ -29,6 +29,7 @@ github.com/rogpeppe/go-internal v1.9.0/go.mod h1:WtVeX8xhTBvf0smdhujwtBcq4Qrzq/f
 github.com/rogpeppe/go-internal v1.14.1 h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=
 github.com/rogpeppe/go-internal v1.14.1/go.mod h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=
 github.com/spf13/pflag v1.0.9 h1:9exaQaMOCwffKiiiYk6/BndUBv+iRViNW+4lEMi0PvY=
+github.com/spf13/pflag v1.0.9/go.mod h1:McXfInJRrz4CZXVZOBLb0bTZqETkiAhM9Iw0y3An2Bg=
 github.com/vladimirvivien/startype v0.7.1 h1:mYbWXCh9a0sYPy1gJXHU+zcHyJNYsmMtG3OKoZfK+H4=
 github.com/vladimirvivien/startype v0.7.1/go.mod h1:QKG/vq7+GcmC6UqmZjh4PBNCY+iRN7+gEqLw1BtUeC4=
 go.starlark.net v0.0.0-20260326113308-fadfc96def35 h1:VYAqieSOJNxBDX8KJneTAwvdf4J4zRDE2u+UFXtt9h4=
@@ -81,9 +82,3 @@ modernc.org/strutil v1.2.1 h1:UneZBkQA+DX2Rp35KcM69cSsNES9ly8mQWD71HKlOA0=
 modernc.org/strutil v1.2.1/go.mod h1:EHkiggD70koQxjVdSBM3JKM7k6L0FbGE5eymy9i3B9A=
 modernc.org/token v1.1.0 h1:Xl7Ap9dKaEs5kLoOQeQmPWevfnk/DM5qcLcYlA8ys6Y=
 modernc.org/token v1.1.0/go.mod h1:UGzOrNV1mAFSEB63lOFHIpNRUVMvYTc6yu1SMY/XTDM=
-github.com/M31-Labs/starlsp v0.1.0 h1:oJjjVc3HFzAZo0XLAFMdXE0tL+/UeZ/siNhiQO/ivk0=
-github.com/M31-Labs/starlsp v0.1.0/go.mod h1:Aojk7Es/4MyzvmUj47Xkerh1eEpl8wCUzFHbq74eSs8=
-github.com/M31-Labs/starlsp v0.1.1 h1:681zIu/4sG9DGu9zTs7Sf0H3zYZAmV8mElkcWnshFM0=
-github.com/M31-Labs/starlsp v0.1.1/go.mod h1:Aojk7Es/4MyzvmUj47Xkerh1eEpl8wCUzFHbq74eSs8=
-github.com/odvcencio/gotreesitter v0.50.1 h1:NAqsvBHOV+MW/gj9TpDqOaqH1CJ4xd/drDwJRAZXxA4=
-github.com/odvcencio/gotreesitter v0.50.1/go.mod h1:hBVkghd0paaYAVwd2087vfwdeU984bQbMo9LvpE0moo=

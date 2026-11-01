@@ -21,3 +21,6 @@ require (
 	golang.org/x/term v0.41.0 // indirect
 	gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c // indirect
 )
+
+replace github.com/project-starkite/starkite/libkite/lsp => ../libkite/lsp
+

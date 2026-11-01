@@ -22,16 +22,15 @@ import (
 	"go.starlark.net/syntax"
 
 	"github.com/project-starkite/starkite/libkite"
-	"github.com/project-starkite/starkite/libkite/lsp/apidocs"
+	"github.com/project-starkite/starkite/libkite/catalog"
 )
 
 // Host is the Starkite dialect, as the language server sees it.
 type Host struct {
 	newRegistry func(*libkite.ModuleConfig) *libkite.Registry
 
-	once    sync.Once
-	catalog *catalog
-	docs    *docIndex
+	once sync.Once
+	cat  *catalog.Catalog
 }
 
 // NewHost builds the Starkite host. The registry factory is the edition's own,
@@ -46,29 +45,32 @@ func (h *Host) Name() string { return "starkite" }
 // and is never used pays nothing.
 func (h *Host) build() {
 	h.once.Do(func() {
-		h.docs = newDocIndex(apidocs.Table)
-		h.catalog = buildCatalog(h.newRegistry(&libkite.ModuleConfig{}), h.docs)
+		h.cat = catalog.Build(h.newRegistry(&libkite.ModuleConfig{}))
 	})
 }
 
 func (h *Host) Globals() []starlsp.Symbol {
 	h.build()
-	return h.catalog.globals
+	syms := h.cat.Globals()
+	out := make([]starlsp.Symbol, len(syms))
+	for i, s := range syms {
+		out[i] = toLspSymbol(s)
+	}
+	return out
 }
 
 func (h *Host) Members(owner string) []starlsp.Symbol {
 	h.build()
-	return h.catalog.members[owner]
+	syms := h.cat.Members(owner)
+	out := make([]starlsp.Symbol, len(syms))
+	for i, s := range syms {
+		out[i] = toLspSymbol(s)
+	}
+	return out
 }
 
 // ResolveType maps a receiver expression to the module or object type whose
 // members it exposes.
-//
-// The inference is deliberately shallow: a module name owns itself, and a call
-// to a known factory owns the type that factory returns. That covers how
-// Starkite scripts are written. The server has already followed a bare
-// identifier to its binding before asking, so `p = fs.path(...)` then `p.`
-// arrives here as the call.
 func (h *Host) ResolveType(req starlsp.TypeRequest) (string, bool) {
 	h.build()
 	expr := strings.TrimSpace(req.Expr)
@@ -76,7 +78,7 @@ func (h *Host) ResolveType(req starlsp.TypeRequest) (string, bool) {
 		return "", false
 	}
 
-	if h.catalog.isModule(expr) {
+	if h.cat.IsModule(expr) {
 		return expr, true
 	}
 
@@ -84,14 +86,14 @@ func (h *Host) ResolveType(req starlsp.TypeRequest) (string, bool) {
 	if !isCall {
 		return "", false
 	}
-	if typ, ok := h.catalog.factoryReturns[callee]; ok {
+	if typ, ok := h.cat.FactoryReturns(callee); ok {
 		return typ, true
 	}
 	// A method call on an object that itself returns an object:
 	// fs.path("x").parent.read_text() and similar chains.
 	if owner, member, ok := splitLast(callee); ok {
 		if base, found := req.Resolve(owner); found {
-			if typ, ok := h.catalog.factoryReturns[base+"."+member]; ok {
+			if typ, ok := h.cat.FactoryReturns(base + "." + member); ok {
 				return typ, true
 			}
 		}
@@ -103,21 +105,46 @@ func (h *Host) ResolveType(req starlsp.TypeRequest) (string, bool) {
 // neither, which is every Starlark builtin.
 func (h *Host) Document(owner, name string) (starlsp.Symbol, bool) {
 	h.build()
-	entry, ok := h.docs.lookupMember(owner, name)
-	if !ok && owner == "" {
-		entry, ok = h.docs.lookupGlobal(name)
+	var sym catalog.Symbol
+	var ok bool
+	if owner != "" {
+		sym, ok = h.cat.LookupMember(owner, name)
+	} else {
+		sym, ok = h.cat.LookupGlobal(name)
 	}
 	if !ok {
 		return starlsp.Symbol{}, false
 	}
-	return starlsp.Symbol{
-		Name:      name,
-		Owner:     owner,
-		Signature: entry.signature,
-		Returns:   entry.returns,
-		Doc:       entry.doc,
-	}, true
+	return toLspSymbol(sym), true
 }
+
+func toLspSymbol(s catalog.Symbol) starlsp.Symbol {
+	return starlsp.Symbol{
+		Name:      s.Name,
+		Owner:     s.Owner,
+		Kind:      toLspKind(s.Kind),
+		Doc:       s.Doc,
+		Signature: s.Signature,
+		Returns:   s.Returns,
+		SortText:  s.SortText,
+	}
+}
+
+func toLspKind(k catalog.Kind) starlsp.Kind {
+	switch k {
+	case catalog.KindNamespace:
+		return starlsp.KindNamespace
+	case catalog.KindFunction:
+		return starlsp.KindFunction
+	case catalog.KindVariable:
+		return starlsp.KindVariable
+	case catalog.KindProperty:
+		return starlsp.KindProperty
+	default:
+		return starlsp.KindVariable
+	}
+}
+
 
 // Lint reports the Starkite conventions the language does not know about.
 func (h *Host) Lint(doc *starlsp.Document, file *syntax.File) []starlsp.Diagnostic {
