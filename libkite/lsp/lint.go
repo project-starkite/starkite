@@ -3,156 +3,74 @@
 package lsp
 
 import (
+	"fmt"
+	"path/filepath"
+
 	"github.com/M31-Labs/starlsp"
 	"go.starlark.net/syntax"
+
+	"github.com/project-starkite/starkite/libkite/lint"
 )
 
-// conventionLints reports the Starkite conventions that the Starlark
-// specification knows nothing about.
-//
-// The language server already reports what the language forbids — a top-level
-// if or for, an undefined name. What is left is the runtime's own behaviour:
-// the automatic entry point, and the try_ error pattern.
-//
-// These run on the resolved syntax tree rather than on the tree-sitter tree,
-// because the runtime's own detection runs on the same tree. When the file
-// does not parse, file is nil and there is nothing honest to say.
+// conventionLints executes dialect convention, security, and static analysis lints
+// against the parsed Starlark document.
 func (h *Host) conventionLints(doc *starlsp.Document, file *syntax.File) []starlsp.Diagnostic {
-	if file == nil {
+	if file == nil || doc == nil {
 		return nil
 	}
 
-	var (
-		out         []starlsp.Diagnostic
-		definesMain bool
-		mainCalls   []*syntax.CallExpr
-	)
+	docPath := doc.Path()
+	callerDir := filepath.Dir(docPath)
+	opts := lint.DefaultOptions(callerDir)
 
-	for _, stmt := range file.Stmts {
-		switch s := stmt.(type) {
-		case *syntax.DefStmt:
-			if s.Name != nil && s.Name.Name == "main" {
-				definesMain = true
-			}
-		case *syntax.ExprStmt:
-			call, ok := s.X.(*syntax.CallExpr)
-			if !ok {
-				continue
-			}
-			if ident, ok := call.Fn.(*syntax.Ident); ok && ident.Name == "main" {
-				mainCalls = append(mainCalls, call)
-			}
-		}
+	findings := lint.Lint(file, docPath, opts)
+	if len(findings) == 0 {
+		return nil
 	}
 
-	// The runtime detects a top-level main() call and skips its automatic
-	// invocation, logging that it did. Saying so here explains the log before
-	// the user meets it.
-	if definesMain {
-		for _, call := range mainCalls {
-			out = append(out, starlsp.Diagnostic{
-				Range:    doc.SpanRange(call),
-				Severity: starlsp.SeverityHint,
-				Source:   "kite",
-				Message:  "the runtime detects this top-level call and skips its automatic main() invocation",
-			})
+	out := make([]starlsp.Diagnostic, len(findings))
+	for i, f := range findings {
+		startLine := f.Range.Start.Line - 1
+		if startLine < 0 {
+			startLine = 0
+		}
+		startChar := f.Range.Start.Column - 1
+		if startChar < 0 {
+			startChar = 0
+		}
+		endLine := f.Range.End.Line - 1
+		if endLine < 0 {
+			endLine = 0
+		}
+		endChar := f.Range.End.Column - 1
+		if endChar < 0 {
+			endChar = 0
+		}
+
+		out[i] = starlsp.Diagnostic{
+			Range: starlsp.Range{
+				Start: starlsp.Position{Line: startLine, Character: startChar},
+				End:   starlsp.Position{Line: endLine, Character: endChar},
+			},
+			Severity: toLspSeverity(f.Severity),
+			Source:   f.Source,
+			Message:  fmt.Sprintf("[%s] %s", f.Code, f.Message),
 		}
 	}
-
-	out = append(out, h.tryResultLints(doc, file)...)
 	return out
 }
 
-// tryResultLints reports a try_ call whose Result is never checked.
-//
-// A try_ variant returns a Result rather than raising, which is only useful if
-// something reads ok. Binding one and then using it as though it were the
-// value is the mistake the pattern invites, and it fails at run time with a
-// confusing message about a Result having no such attribute. Discarding the
-// return value of a try_ call in an expression statement is also reported.
-func (h *Host) tryResultLints(doc *starlsp.Document, file *syntax.File) []starlsp.Diagnostic {
-	var out []starlsp.Diagnostic
-
-	syntax.Walk(file, func(n syntax.Node) bool {
-		switch s := n.(type) {
-		case *syntax.ExprStmt:
-			call, ok := s.X.(*syntax.CallExpr)
-			if ok && isTryCall(call) {
-				out = append(out, starlsp.Diagnostic{
-					Range:    doc.SpanRange(call),
-					Severity: starlsp.SeverityWarning,
-					Source:   "kite",
-					Message:  "result of try_ call is discarded: check res.ok or call the plain variant to raise on failure",
-				})
-			}
-		case *syntax.AssignStmt:
-			if s.Op != syntax.EQ {
-				return true
-			}
-			call, ok := s.RHS.(*syntax.CallExpr)
-			if !ok || !isTryCall(call) {
-				return true
-			}
-			target, ok := s.LHS.(*syntax.Ident)
-			if !ok {
-				return true
-			}
-			if resultIsChecked(file, target) {
-				return true
-			}
-			out = append(out, starlsp.Diagnostic{
-				Range:    doc.SpanRange(s.LHS),
-				Severity: starlsp.SeverityWarning,
-				Source:   "kite",
-				Message: "a try_ call returns a Result: read " + target.Name +
-					".ok before " + target.Name + ".value, or call the plain variant to raise on failure",
-			})
-		}
-		return true
-	})
-	return out
-}
-
-// isTryCall reports whether a call names a try_ variant.
-func isTryCall(call *syntax.CallExpr) bool {
-	switch fn := call.Fn.(type) {
-	case *syntax.Ident:
-		return hasTryPrefix(fn.Name)
-	case *syntax.DotExpr:
-		return fn.Name != nil && hasTryPrefix(fn.Name.Name)
+func toLspSeverity(s lint.Severity) starlsp.DiagnosticSeverity {
+	switch s {
+	case lint.SeverityError:
+		return starlsp.SeverityError
+	case lint.SeverityWarning:
+		return starlsp.SeverityWarning
+	case lint.SeverityInformation:
+		return starlsp.SeverityInformation
+	case lint.SeverityHint:
+		return starlsp.SeverityHint
+	default:
+		return starlsp.SeverityInformation
 	}
-	return false
-}
-
-func hasTryPrefix(name string) bool {
-	return len(name) > 4 && name[:4] == "try_"
-}
-
-// resultIsChecked reports whether anything reads .ok on the bound name.
-//
-// Reading .ok is the contract. Reading .error or passing the Result on are
-// also legitimate, so both count as checked; only a binding nothing inspects
-// is reported.
-func resultIsChecked(file *syntax.File, target *syntax.Ident) bool {
-	checked := false
-	syntax.Walk(file, func(n syntax.Node) bool {
-		if checked {
-			return false
-		}
-		dot, ok := n.(*syntax.DotExpr)
-		if !ok || dot.Name == nil {
-			return true
-		}
-		ident, ok := dot.X.(*syntax.Ident)
-		if !ok || ident.Name != target.Name {
-			return true
-		}
-		switch dot.Name.Name {
-		case "ok", "error":
-			checked = true
-			return false
-		}
-		return true
-	})
-	return checked
 }

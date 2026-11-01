@@ -254,3 +254,57 @@ if res.ok:
 		}
 	}
 }
+
+func TestLinterDeprecatedSymbol(t *testing.T) {
+	src := `os.system("echo hello")
+`
+	diags := collectKiteDiagnostics(t, src)
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, "is deprecated") {
+			found = true
+			if d.Severity != starlsp.SeverityWarning {
+				t.Errorf("expected severity Warning (2), got %v", d.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected deprecation diagnostic, got %v", diags)
+	}
+}
+
+func TestLinterSandboxPolicyHint(t *testing.T) {
+	src := `os.exec(["ls"])
+`
+	diags := collectKiteDiagnostics(t, src)
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, "--sandbox-exec-allow") {
+			found = true
+			if d.Severity != starlsp.SeverityHint {
+				t.Errorf("expected severity Hint (4), got %v", d.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected sandbox hint diagnostic, got %v", diags)
+	}
+}
+
+func TestLinterLoadBareStar(t *testing.T) {
+	src := `load("helper.star", "greet")
+`
+	diags := collectKiteDiagnostics(t, src)
+	found := false
+	for _, d := range diags {
+		if strings.Contains(d.Message, "bare .star name") {
+			found = true
+			if d.Severity != starlsp.SeverityError {
+				t.Errorf("expected severity Error (1), got %v", d.Severity)
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected bare .star diagnostic, got %v", diags)
+	}
+}

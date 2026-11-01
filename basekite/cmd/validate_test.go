@@ -107,3 +107,71 @@ func TestWithinDirEdgeCases(t *testing.T) {
 		t.Fatalf("withinDir(%q, %q) = true, want false for parent", dir, parentDir)
 	}
 }
+
+func TestValidateLintAndStrict(t *testing.T) {
+	dir := t.TempDir()
+
+	cleanFile := filepath.Join(dir, "clean.star")
+	if err := os.WriteFile(cleanFile, []byte("x = 1\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	lintWarningFile := filepath.Join(dir, "lint_warn.star")
+	if err := os.WriteFile(lintWarningFile, []byte("def main():\n    os.system(\"ls\")\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	// 1. Without --lint: Warning file should pass validation without diagnostics
+	validateLint = false
+	validateStrict = false
+	res, isFileErr := validateScript(lintWarningFile)
+	if isFileErr || !res.Valid || len(res.Diagnostics) != 0 {
+		t.Fatalf("expected clean pass without --lint, got %+v", res)
+	}
+
+	// 2. With --lint: Warning file should have diagnostics
+	validateLint = true
+	validateStrict = false
+	res, isFileErr = validateScript(lintWarningFile)
+	if isFileErr || !res.Valid || len(res.Diagnostics) == 0 {
+		t.Fatalf("expected diagnostics with --lint, got %+v", res)
+	}
+	foundDeprecation := false
+	for _, d := range res.Diagnostics {
+		if d.Code == "L003" {
+			foundDeprecation = true
+			break
+		}
+	}
+	if !foundDeprecation {
+		t.Fatalf("expected L003 deprecation diagnostic, got %+v", res.Diagnostics)
+	}
+
+	// 3. With --lint (non-strict): runValidate should succeed (exit 0)
+	validateLint = true
+	validateStrict = false
+	if err := runValidate(nil, []string{lintWarningFile}); err != nil {
+		t.Fatalf("expected non-strict validate to succeed with warnings, got: %v", err)
+	}
+
+	// 4. With --lint --strict: runValidate should fail (exit 1) on warning
+	validateLint = true
+	validateStrict = true
+	err := runValidate(nil, []string{lintWarningFile})
+	if err == nil {
+		t.Fatal("expected strict validate to fail on warnings, got nil")
+	}
+	scriptErr, ok := errors.AsType[*libkite.ScriptError](err)
+	if !ok || scriptErr.ExitCode != libkite.ExitScriptError {
+		t.Fatalf("expected ScriptError with ExitScriptError, got: %v", err)
+	}
+
+	// 5. With --lint --strict on clean file: runValidate should succeed
+	if err := runValidate(nil, []string{cleanFile}); err != nil {
+		t.Fatalf("expected strict validate to pass on clean file, got: %v", err)
+	}
+
+	// Reset flags
+	validateLint = false
+	validateStrict = false
+}
