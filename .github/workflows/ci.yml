@@ -67,6 +67,9 @@ jobs:
       - name: Verify API doc table synchronization (check-api-docs)
         run: make check-api-docs
 
+      - name: Verify agent skills synchronization (check-agent-skills)
+        run: make check-agent-skills
+
       - name: Build all workspace modules and kite binaries
         run: |
           mkdir -p bin
