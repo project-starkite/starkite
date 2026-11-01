@@ -13,3 +13,5 @@ use ./aikite
 use ./kite
 
 use ./tests/sandbox
+
+use ./cmd/kitelsp

@@ -13,12 +13,12 @@ ALL_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/
 
 MODULES=libkite basekite cloudkite aikite kite tests/sandbox
 
-.PHONY: kite all build-base build-cloud build-ai clean test test-libkite test-base test-cloud test-ai test-all test-install-script install deps lint fmt fix vet test-race preflight run-example repl help
+.PHONY: kite all build-base build-cloud build-ai build-kitelsp clean test test-libkite test-base test-cloud test-ai test-all test-install-script install deps lint fmt fix vet test-race preflight run-example repl help
 
 kite: $(BIN_DIR) ## Build the default all-in-one binary (kite)
 	cd kite && go build $(ALL_LDFLAGS) -o ../$(BIN_DIR)/$(BINARY_NAME) .
 
-all: kite build-base build-cloud build-ai ## Build all four editions into ./bin/
+all: kite build-base build-cloud build-ai build-kitelsp ## Build all editions and kitelsp into ./bin/
 
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
@@ -37,6 +37,9 @@ LSP_TAGS=lsp,grammar_subset,grammar_subset_starlark
 build-lsp: $(BIN_DIR) ## Build the language server enabled binary (kite-lsp)
 	cd kite && go build -tags '$(LSP_TAGS)' $(ALL_LDFLAGS) -o ../$(BIN_DIR)/kite-lsp .
 
+build-kitelsp: $(BIN_DIR) ## Build the standalone language server binary (kitelsp)
+	cd cmd/kitelsp && go build -tags '$(LSP_TAGS)' $(ALL_LDFLAGS) -o ../../$(BIN_DIR)/kitelsp .
+
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)/ dist/
 
@@ -53,6 +56,7 @@ fmt: fix ## Run go fix, go fmt, and verify formatting across all files
 		(cd $$dir && go fmt ./...); \
 	done
 	@(cd libkite/lsp && go fmt ./...)
+	@(cd cmd/kitelsp && go fmt ./...)
 	@DIFFS=$$(gofmt -l .); \
 	if [ -n "$$DIFFS" ]; then \
 		echo "Formatting differences found in the following files:"; \
@@ -68,6 +72,7 @@ vet: ## Run go vet across all workspace modules (linux, darwin, windows)
 		done; \
 	done
 	@(cd libkite/lsp && go vet -tags lsp ./...)
+	@(cd cmd/kitelsp && go vet -tags '$(LSP_TAGS)' ./...)
 
 test-race: ## Run all Go unit tests with race detection
 	@for dir in $(MODULES); do \
@@ -104,9 +109,10 @@ test-ai: ## Run ai tests
 test-all: ## Run all-edition tests (registry composition guard)
 	cd kite && go test ./...
 
-test-lsp: ## Run all tests including LSP packages under build tags
+test-lsp: ## Run all tests including LSP packages and standalone kitelsp under build tags
 	cd libkite/lsp && go test -tags lsp ./...
-	cd basekite && go test -tags '$(LSP_TAGS)' ./...
+	cd basekite && go test -tags '$(LSP_TAGS)' -run TestLSP ./cmd
+	cd cmd/kitelsp && go test -tags '$(LSP_TAGS)' ./...
 
 test-install-script: ## Dry-run test the installer script
 	@echo "Testing install.sh script in dry-run mode..."
