@@ -2,4 +2,4 @@
 dist/
 site/
 *.exe
-starkite
+/starkite
