@@ -20,8 +20,9 @@ import (
 
 func main() {
 	var (
-		in  = flag.String("in", "docs/references/api", "directory of API reference markdown")
-		out = flag.String("out", "libkite/catalog/apidocs/table_gen.go", "generated Go file")
+		in    = flag.String("in", "docs/references/api", "directory of API reference markdown")
+		out   = flag.String("out", "libkite/catalog/apidocs/table_gen.go", "generated Go file")
+		check = flag.Bool("check", false, "verify that generated output matches existing file")
 	)
 	flag.Parse()
 
@@ -85,6 +86,20 @@ func main() {
 		fmt.Fprintf(os.Stderr, "gendocs: formatting output: %v\n", err)
 		os.Exit(1)
 	}
+	if *check {
+		existing, err := os.ReadFile(*out)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "gendocs: reading existing %s: %v\n", *out, err)
+			os.Exit(1)
+		}
+		if !bytes.Equal(existing, src) {
+			fmt.Fprintf(os.Stderr, "gendocs: %s is out of date with %s.\nRun 'make generate-api-docs' to synchronize.\n", *out, *in)
+			os.Exit(1)
+		}
+		fmt.Printf("gendocs: %s is in sync (%d entries)\n", *out, len(entries))
+		return
+	}
+
 	if err := os.WriteFile(*out, src, 0o644); err != nil {
 		fmt.Fprintf(os.Stderr, "gendocs: writing %s: %v\n", *out, err)
 		os.Exit(1)

@@ -78,7 +78,13 @@ test-race: ## Run all Go unit tests with race detection
 lint: ## Run staticcheck across all workspace packages
 	@PATH="$$(go env GOPATH)/bin:$$PATH" staticcheck ./libkite/... ./basekite/... ./cloudkite/... ./aikite/... ./kite/... ./tests/sandbox/...
 
-preflight: fix fmt vet test-race lint ## Run complete Go code hygiene and pre-flight verification suite
+generate-api-docs: ## Regenerate libkite/catalog/apidocs/table_gen.go from docs/references/api/*.md
+	go run ./libkite/catalog/internal/gendocs
+
+check-api-docs: ## Verify table_gen.go is in sync with docs/references/api/*.md
+	go run ./libkite/catalog/internal/gendocs -check
+
+preflight: check-api-docs fix fmt vet test-race lint ## Run complete Go code hygiene and pre-flight verification suite
 	@echo "=== Pre-flight verification passed cleanly ==="
 
 test: test-libkite test-base test-cloud test-ai test-all test-install-script ## Run all tests
