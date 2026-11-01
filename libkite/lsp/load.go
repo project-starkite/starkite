@@ -77,20 +77,21 @@ func resolveInstalledModule(callerDir, identity string) (string, bool) {
 	if root == "" {
 		return "", false
 	}
-	name := identity
-	if idx := strings.LastIndex(identity, "/"); idx >= 0 {
-		name = identity[idx+1:]
+	namespace, name, ok := strings.Cut(identity, "/")
+	if !ok {
+		return "", false
 	}
+	nsDir := filepath.Join(root, namespace)
 
 	if rev, ok := lockedRevision(callerDir, identity); ok {
-		pinned := filepath.Join(root, fmt.Sprintf("%s@%s", name, rev))
+		pinned := filepath.Join(nsDir, fmt.Sprintf("%s@%s", name, rev))
 		if entry, ok := resolveModuleDir(pinned); ok {
 			return entry, true
 		}
 	}
 
 	// No lock, or the pinned revision is absent: accept any installed revision.
-	entries, err := os.ReadDir(root)
+	entries, err := os.ReadDir(nsDir)
 	if err != nil {
 		return "", false
 	}
@@ -102,7 +103,7 @@ func resolveInstalledModule(callerDir, identity string) (string, bool) {
 		if dirName != name {
 			continue
 		}
-		if entry, ok := resolveModuleDir(filepath.Join(root, e.Name())); ok {
+		if entry, ok := resolveModuleDir(filepath.Join(nsDir, e.Name())); ok {
 			return entry, true
 		}
 	}

@@ -68,33 +68,46 @@ func (h *Host) conventionLints(doc *starlsp.Document, file *syntax.File) []starl
 // A try_ variant returns a Result rather than raising, which is only useful if
 // something reads ok. Binding one and then using it as though it were the
 // value is the mistake the pattern invites, and it fails at run time with a
-// confusing message about a Result having no such attribute.
+// confusing message about a Result having no such attribute. Discarding the
+// return value of a try_ call in an expression statement is also reported.
 func (h *Host) tryResultLints(doc *starlsp.Document, file *syntax.File) []starlsp.Diagnostic {
 	var out []starlsp.Diagnostic
 
 	syntax.Walk(file, func(n syntax.Node) bool {
-		assign, ok := n.(*syntax.AssignStmt)
-		if !ok || assign.Op != syntax.EQ {
-			return true
+		switch s := n.(type) {
+		case *syntax.ExprStmt:
+			call, ok := s.X.(*syntax.CallExpr)
+			if ok && isTryCall(call) {
+				out = append(out, starlsp.Diagnostic{
+					Range:    doc.SpanRange(call),
+					Severity: starlsp.SeverityWarning,
+					Source:   "kite",
+					Message:  "result of try_ call is discarded: check res.ok or call the plain variant to raise on failure",
+				})
+			}
+		case *syntax.AssignStmt:
+			if s.Op != syntax.EQ {
+				return true
+			}
+			call, ok := s.RHS.(*syntax.CallExpr)
+			if !ok || !isTryCall(call) {
+				return true
+			}
+			target, ok := s.LHS.(*syntax.Ident)
+			if !ok {
+				return true
+			}
+			if resultIsChecked(file, target) {
+				return true
+			}
+			out = append(out, starlsp.Diagnostic{
+				Range:    doc.SpanRange(s.LHS),
+				Severity: starlsp.SeverityWarning,
+				Source:   "kite",
+				Message: "a try_ call returns a Result: read " + target.Name +
+					".ok before " + target.Name + ".value, or call the plain variant to raise on failure",
+			})
 		}
-		call, ok := assign.RHS.(*syntax.CallExpr)
-		if !ok || !isTryCall(call) {
-			return true
-		}
-		target, ok := assign.LHS.(*syntax.Ident)
-		if !ok {
-			return true
-		}
-		if resultIsChecked(file, target) {
-			return true
-		}
-		out = append(out, starlsp.Diagnostic{
-			Range:    doc.SpanRange(assign.LHS),
-			Severity: starlsp.SeverityWarning,
-			Source:   "kite",
-			Message: "a try_ call returns a Result: read " + target.Name +
-				".ok before " + target.Name + ".value, or call the plain variant to raise on failure",
-		})
 		return true
 	})
 	return out
