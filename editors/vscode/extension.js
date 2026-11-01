@@ -1,8 +1,8 @@
 // Starkite language client for VS Code.
 //
-// The client is deliberately thin: it starts `kite lsp` and hands the buffer
-// over. Everything an editor shows — diagnostics, completion, hover — comes
-// from the server, so a feature added there needs no change here.
+// The client connects to the kitelsp standalone language server (or "kite lsp" fallback)
+// over stdio. Everything an editor displays — diagnostics, completion, hover — comes
+// from the server.
 
 const { workspace, window } = require("vscode");
 const { LanguageClient, TransportKind } = require("vscode-languageclient/node");
@@ -11,18 +11,21 @@ let client;
 
 function activate(context) {
   const config = workspace.getConfiguration("starkite");
-  const command = config.get("serverPath") || "kite";
+  const command = config.get("serverPath") || "kitelsp";
+
+  // If command is "kite" or points to a kite binary, pass ["lsp"] as argument.
+  // If command is "kitelsp", execute directly with no arguments.
+  const isKiteBinary = /(^|[\\/])kite(\.exe)?$/.test(command);
+  const serverArgs = isKiteBinary ? ["lsp"] : [];
 
   const serverOptions = {
-    run: { command, args: ["lsp"], transport: TransportKind.stdio },
-    debug: { command, args: ["lsp"], transport: TransportKind.stdio },
+    run: { command, args: serverArgs, transport: TransportKind.stdio },
+    debug: { command, args: serverArgs, transport: TransportKind.stdio },
   };
 
   const clientOptions = {
     documentSelector: [{ scheme: "file", language: "starkite" }],
     synchronize: {
-      // The server resolves load() targets through these, so a change to
-      // either can change what go-to-definition finds.
       fileEvents: workspace.createFileSystemWatcher("**/mod.{yaml,lock}"),
     },
     outputChannelName: "Starkite",
@@ -36,9 +39,10 @@ function activate(context) {
   );
 
   client.start().catch((err) => {
+    const targetDesc = command + (serverArgs.length ? " " + serverArgs.join(" ") : "");
     window.showErrorMessage(
-      `Starkite: could not start "${command} lsp". Build kite with the lsp tag: ` +
-        `go build -tags lsp ./kite. (${err.message})`
+      `Starkite: could not start "${targetDesc}". Ensure kitelsp is installed in your PATH ` +
+        `(make build-kitelsp) or configure starkite.serverPath in settings. (${err.message})`
     );
   });
 
