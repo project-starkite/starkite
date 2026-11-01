@@ -174,3 +174,15 @@ func asBytes(fnName string, args starlark.Tuple) ([]byte, error) {
 		return nil, fmt.Errorf("%s: argument must be string or bytes, got %s", fnName, args[0].Type())
 	}
 }
+
+// ExportedTypes implements libkite.TypedModule.
+func (m *Module) ExportedTypes() []libkite.TypeDescriptor {
+	return []libkite.TypeDescriptor{
+		{
+			Name:  "yaml.file",
+			Doc:   "YAML file accessor providing structured read and write operations.",
+			Value: &YamlFile{},
+		},
+	}
+}
+

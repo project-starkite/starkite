@@ -115,3 +115,15 @@ func (m *Module) decode(thread *starlark.Thread, fn *starlark.Builtin, args star
 	}
 	return result, nil
 }
+
+// ExportedTypes implements libkite.TypedModule.
+func (m *Module) ExportedTypes() []libkite.TypeDescriptor {
+	return []libkite.TypeDescriptor{
+		{
+			Name:  "json.file",
+			Doc:   "JSON file accessor providing structured read and write operations.",
+			Value: &JsonFile{},
+		},
+	}
+}
+

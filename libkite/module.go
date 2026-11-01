@@ -77,3 +77,28 @@ type StarlarkWriter interface {
 	starlark.Value
 	Writer() io.Writer
 }
+
+// TypeDescriptor describes an object type exported or returned by a module.
+type TypeDescriptor struct {
+	// Name is the qualified Starlark type name (e.g. "fs.path", "http.response", "k8s.client").
+	Name string
+
+	// Doc describes the object type.
+	Doc string
+
+	// Value is a prototype instance implementing starlark.HasAttrs (e.g. &fs.Path{})
+	// used to introspect member methods and properties without executing constructors.
+	Value starlark.HasAttrs
+
+	// Returns maps method names on this object to the types they return.
+	// E.g., on URL: "get" -> "http.response", "post" -> "http.response".
+	Returns map[string]string
+}
+
+// TypedModule is an optional interface implemented by modules that declare
+// their exported object types and method return contracts.
+type TypedModule interface {
+	Module
+	ExportedTypes() []TypeDescriptor
+}
+

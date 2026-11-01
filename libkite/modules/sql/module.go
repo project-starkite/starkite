@@ -194,3 +194,35 @@ func splitKwargs(kwargs []starlark.Tuple) ([]starlark.Tuple, poolOpts) {
 	}
 	return simple, poolOpts{kwargs: pool}
 }
+
+// ExportedTypes implements libkite.TypedModule.
+func (m *Module) ExportedTypes() []libkite.TypeDescriptor {
+	return []libkite.TypeDescriptor{
+		{
+			Name:  "sql.connection",
+			Doc:   "Database connection pool providing query, execution, and transaction primitives.",
+			Value: &Connection{},
+			Returns: map[string]string{
+				"begin":       "sql.transaction",
+				"try_begin":   "sql.transaction",
+				"prepare":     "sql.stmt",
+				"try_prepare": "sql.stmt",
+			},
+		},
+		{
+			Name:  "sql.transaction",
+			Doc:   "Active database transaction object.",
+			Value: &Transaction{},
+			Returns: map[string]string{
+				"prepare":     "sql.stmt",
+				"try_prepare": "sql.stmt",
+			},
+		},
+		{
+			Name:  "sql.stmt",
+			Doc:   "Prepared SQL statement.",
+			Value: nil,
+		},
+	}
+}
+

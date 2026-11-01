@@ -77,3 +77,15 @@ func stringValue(v starlark.Value) string {
 	}
 	return v.String()
 }
+
+// ExportedTypes implements libkite.TypedModule.
+func (m *Module) ExportedTypes() []libkite.TypeDescriptor {
+	return []libkite.TypeDescriptor{
+		{
+			Name:  "csv.file",
+			Doc:   "CSV file accessor providing tabular read and write operations.",
+			Value: &CsvFile{},
+		},
+	}
+}
+

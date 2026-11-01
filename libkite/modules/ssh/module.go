@@ -879,3 +879,15 @@ func (c *SSHClient) AttrNames() []string {
 		"upload",
 	}
 }
+
+// ExportedTypes implements libkite.TypedModule.
+func (m *Module) ExportedTypes() []libkite.TypeDescriptor {
+	return []libkite.TypeDescriptor{
+		{
+			Name:  "ssh.client",
+			Doc:   "SSH client object for remote execution, file transfer, and host management.",
+			Value: &SSHClient{},
+		},
+	}
+}
+

@@ -313,3 +313,41 @@ func (m *Module) patchFn(thread *starlark.Thread, fn *starlark.Builtin, args sta
 func (m *Module) deleteFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	return m.requestHelper("DELETE", false, thread, fn, args, kwargs)
 }
+
+// ExportedTypes implements libkite.TypedModule.
+func (m *Module) ExportedTypes() []libkite.TypeDescriptor {
+	return []libkite.TypeDescriptor{
+		{
+			Name:  "http.url",
+			Doc:   "HTTP request builder URL object.",
+			Value: &URL{},
+			Returns: map[string]string{
+				"get":         "http.response",
+				"post":        "http.response",
+				"put":         "http.response",
+				"patch":       "http.response",
+				"delete":      "http.response",
+				"head":        "http.response",
+				"options":     "http.response",
+				"try_get":     "http.response",
+				"try_post":    "http.response",
+				"try_put":     "http.response",
+				"try_patch":   "http.response",
+				"try_delete":  "http.response",
+				"try_head":    "http.response",
+				"try_options": "http.response",
+			},
+		},
+		{
+			Name:  "http.response",
+			Doc:   "HTTP response object containing status code, headers, and body accessors.",
+			Value: &Response{},
+		},
+		{
+			Name:  "http.server",
+			Doc:   "HTTP server instance for handling incoming requests.",
+			Value: &Server{},
+		},
+	}
+}
+

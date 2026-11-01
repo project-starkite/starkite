@@ -220,3 +220,19 @@ func (m *Module) glob(thread *starlark.Thread, fn *starlark.Builtin, args starla
 	}
 	return starlark.NewList(elems), nil
 }
+
+// ExportedTypes implements libkite.TypedModule.
+func (m *Module) ExportedTypes() []libkite.TypeDescriptor {
+	return []libkite.TypeDescriptor{
+		{
+			Name:  "fs.path",
+			Doc:   "Filesystem path object supporting navigation, queries, and file I/O.",
+			Value: &Path{},
+			Returns: map[string]string{
+				"parent": "fs.path",
+				"join":   "fs.path",
+			},
+		},
+	}
+}
+

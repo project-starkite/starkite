@@ -280,3 +280,15 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 
 	return starlark.StringDict{string(ModuleName): m.module}, nil
 }
+
+// ExportedTypes implements libkite.TypedModule.
+func (m *Module) ExportedTypes() []libkite.TypeDescriptor {
+	return []libkite.TypeDescriptor{
+		{
+			Name:  "k8s.client",
+			Doc:   "Kubernetes cluster client for resource queries, controllers, mutations, and node operations.",
+			Value: &K8sClient{},
+		},
+	}
+}
+
