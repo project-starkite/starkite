@@ -25,7 +25,6 @@ jobs:
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
-            cmd/kitelsp/go.sum
             tests/sandbox/go.sum
 
       - name: Verify go fix (AST modernizations across linux, darwin, windows)
@@ -79,8 +78,8 @@ jobs:
           done
           make all
 
-      - name: Verify kitelsp probe diagnostics
-        run: ./bin/kitelsp --probe | head -n 30
+      - name: Verify kite lsp probe diagnostics
+        run: ./bin/kite lsp --probe | head -n 30
 
       - name: Run LSP unit and probe test suite
         run: make test-lsp
@@ -155,13 +154,12 @@ jobs:
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
-            cmd/kitelsp/go.sum
             tests/sandbox/go.sum
 
-      - name: Build and probe kitelsp on macOS
+      - name: Build and probe kite lsp on macOS
         run: |
-          make build-kitelsp
-          ./bin/kitelsp --probe | head -n 30
+          make kite
+          ./bin/kite lsp --probe | head -n 30
 
       - name: Run macOS Seatbelt sandbox integration tests
         env:
@@ -189,22 +187,16 @@ jobs:
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
-            cmd/kitelsp/go.sum
             tests/sandbox/go.sum
 
-      - name: Build kite.exe on Windows
+      - name: Build and probe kite.exe on Windows
         run: |
           New-Item -ItemType Directory -Force -Path bin | Out-Null
           Set-Location kite
-          go build -v -o ..\bin\kite.exe .
+          go build -tags 'grammar_subset,grammar_subset_starlark' -ldflags "-s -w" -v -o ..\bin\kite.exe .
           Set-Location ..
-
-      - name: Build and probe kitelsp.exe on Windows
-        run: |
-          Set-Location cmd\kitelsp
-          go build -tags 'lsp,grammar_subset,grammar_subset_starlark' -ldflags "-s -w" -o ..\..\bin\kitelsp.exe .
-          Set-Location ..\..
-          .\bin\kitelsp.exe --probe | Select-Object -First 30
+          .\bin\kite.exe version
+          .\bin\kite.exe lsp --probe | Select-Object -First 30
 
       - name: Run Go unit tests on Windows
         run: |
