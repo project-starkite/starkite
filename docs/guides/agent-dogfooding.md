@@ -20,7 +20,7 @@ data = json.decode(fs.read("config.json"))
 filtered = [item for item in data["services"] if item["enabled"]]
 
 for svc in filtered:
-    res = os.try_exec(["systemctl", "restart", svc["name"]])
+    res = os.try_exec("systemctl", ["restart", svc["name"]])
     if not res.ok:
         log.error("Failed to restart %s", svc["name"])
 ```
@@ -41,6 +41,6 @@ Agents authoring Starkite scripts must adhere to the following execution sequenc
 |---|---|---|
 | `L001` | Top-level `main()` call | Remove the explicit `main()` call statement at the bottom of the script. |
 | `L002` | Discarded or unchecked `try_` Result | Insert `if res.ok:` guard before accessing `res.value`, or call plain variant to raise. |
-| `L003` | Deprecated member (e.g. `os.system`) | Replace with modern alternative: `os.exec(["bin", "arg"])` or `os.sh("cmd")`. |
+| `L003` | Deprecated member (e.g. `os.system`) | Replace with modern alternative: `os.exec("bin", ["arg"])` or `os.exec("cmd")`. |
 | `L004` | Sandbox policy warning | Verify script sandbox arguments or supply `--sandbox-exec-allow` / `--sandbox-path-write`. |
-| `L005` | Bare `.star` load path | Add `./` prefix to local import: `load("./helper.star", "greet")`. |
+| `L005` | Bare `.star` load path | Add `./` prefix to local import: `load("./helper.star", "helper")`. |

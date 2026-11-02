@@ -171,6 +171,22 @@ func TestValidateLintAndStrict(t *testing.T) {
 		t.Fatalf("expected strict validate to pass on clean file, got: %v", err)
 	}
 
+	// 6. With --lint on file with error diagnostic: res.Valid should be false
+	lintErrorFile := filepath.Join(dir, "lint_err.star")
+	if err := os.WriteFile(lintErrorFile, []byte("load(\"bare.star\", \"x\")\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	validateLint = true
+	validateStrict = false
+	res, isFileErr = validateScript(lintErrorFile)
+	if isFileErr || res.Valid || len(res.Diagnostics) == 0 {
+		t.Fatalf("expected res.Valid=false on error diagnostic, got %+v", res)
+	}
+	err = runValidate(nil, []string{lintErrorFile})
+	if err == nil {
+		t.Fatal("expected runValidate to fail on error diagnostic, got nil")
+	}
+
 	// Reset flags
 	validateLint = false
 	validateStrict = false

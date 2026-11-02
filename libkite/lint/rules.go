@@ -2,6 +2,7 @@ package lint
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 )
 
@@ -15,7 +16,7 @@ const (
 
 // DeprecatedSymbols maps qualified deprecated API names to modern alternatives.
 var DeprecatedSymbols = map[string]string{
-	"os.system":      "use os.exec or os.sh instead",
+	"os.system":      "use os.exec instead (or os.sh().exec)",
 	"fs.read_file":   "use fs.read or fs.path.read_text instead",
 	"fs.write_file":  "use fs.write or fs.path.write_text instead",
 	"http.request":   "use http.get, http.post, or http.url instead",
@@ -30,10 +31,10 @@ var SensitivePaths = []string{
 
 // IsSensitivePath reports whether a file path targets sensitive system locations.
 func IsSensitivePath(p string) bool {
-	clean := strings.ReplaceAll(p, "\\", "/")
+	clean := filepath.ToSlash(filepath.Clean(p))
 	for _, sp := range SensitivePaths {
-		spClean := strings.ReplaceAll(sp, "\\", "/")
-		if strings.HasPrefix(strings.ToLower(clean), strings.ToLower(spClean)) {
+		spClean := filepath.ToSlash(filepath.Clean(sp))
+		if strings.EqualFold(clean, spClean) || strings.HasPrefix(strings.ToLower(clean), strings.ToLower(spClean)+"/") {
 			return true
 		}
 	}

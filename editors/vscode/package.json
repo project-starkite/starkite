@@ -63,8 +63,14 @@
         "command": "starkite.runFile",
         "title": "Starkite: Run Current Script in Sandbox",
         "category": "Starkite"
+      },
+      {
+        "command": "starkite.showDocs",
+        "title": "Starkite: Show Documentation for Symbol",
+        "category": "Starkite"
       }
     ],
+
     "menus": {
       "editor/title": [
         {

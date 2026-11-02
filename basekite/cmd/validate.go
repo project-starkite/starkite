@@ -129,7 +129,13 @@ func runValidate(cmd *cobra.Command, args []string) error {
 			} else {
 				status := "OK (with lints)"
 				if !result.Valid {
-					status = fmt.Sprintf("FAILED (%d syntax errors)", len(result.Errors))
+					errorCount := len(result.Errors)
+					for _, d := range result.Diagnostics {
+						if d.Severity == "error" {
+							errorCount++
+						}
+					}
+					status = fmt.Sprintf("FAILED (%d errors)", errorCount)
 				}
 				fmt.Printf("%s: %s\n", result.File, status)
 				for _, err := range result.Errors {
@@ -188,6 +194,9 @@ func validateScript(path string) (ValidationResult, bool) {
 		opts := lint.DefaultOptions(callerDir)
 		findings := lint.Lint(parsedFile, path, opts)
 		for _, f := range findings {
+			if f.Severity == lint.SeverityError {
+				result.Valid = false
+			}
 			result.Diagnostics = append(result.Diagnostics, ValidationDiagnostic{
 				File:     f.File,
 				Line:     f.Range.Start.Line,

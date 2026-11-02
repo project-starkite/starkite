@@ -105,51 +105,85 @@ func checkTopLevelMain(file *syntax.File, filename string) []Diagnostic {
 	return diags
 }
 
-// checkTryResults implements L002.
+type tryAssignment struct {
+	name string
+	node syntax.Node
+}
+
+// checkTryResults implements L002 in linear time O(N) with scope isolation.
 func checkTryResults(file *syntax.File, filename string) []Diagnostic {
 	var diags []Diagnostic
-
-	syntax.Walk(file, func(n syntax.Node) bool {
-		switch s := n.(type) {
-		case *syntax.ExprStmt:
-			if call, ok := s.X.(*syntax.CallExpr); ok && isTryCall(call) {
-				diags = append(diags, Diagnostic{
-					File:     filename,
-					Range:    SpanFromNode(call),
-					Severity: SeverityWarning,
-					Code:     CodeUncheckedTry,
-					Source:   "kite",
-					Message:  "result of try_ call is discarded: check res.ok or call the plain variant to raise on failure",
-				})
-			}
-		case *syntax.AssignStmt:
-			if s.Op != syntax.EQ {
-				return true
-			}
-			call, ok := s.RHS.(*syntax.CallExpr)
-			if !ok || !isTryCall(call) {
-				return true
-			}
-			target, ok := s.LHS.(*syntax.Ident)
-			if !ok {
-				return true
-			}
-			if !resultIsChecked(file, target) {
-				diags = append(diags, Diagnostic{
-					File:     filename,
-					Range:    SpanFromNode(s.LHS),
-					Severity: SeverityWarning,
-					Code:     CodeUncheckedTry,
-					Source:   "kite",
-					Message: fmt.Sprintf("a try_ call returns a Result: read %s.ok before %s.value, or call the plain variant to raise on failure",
-						target.Name, target.Name),
-				})
-			}
-		}
-		return true
-	})
-
+	inspectTryScope(file.Stmts, filename, &diags)
 	return diags
+}
+
+func inspectTryScope(stmts []syntax.Stmt, filename string, diags *[]Diagnostic) {
+	var assignments []tryAssignment
+	checked := make(map[string]bool)
+
+	for _, stmt := range stmts {
+		if defStmt, ok := stmt.(*syntax.DefStmt); ok {
+			inspectTryScope(defStmt.Body, filename, diags)
+			continue
+		}
+
+		syntax.Walk(stmt, func(n syntax.Node) bool {
+			switch s := n.(type) {
+			case *syntax.DefStmt:
+				inspectTryScope(s.Body, filename, diags)
+				return false
+
+			case *syntax.ExprStmt:
+				if call, ok := s.X.(*syntax.CallExpr); ok && isTryCall(call) {
+					*diags = append(*diags, Diagnostic{
+						File:     filename,
+						Range:    SpanFromNode(call),
+						Severity: SeverityWarning,
+						Code:     CodeUncheckedTry,
+						Source:   "kite",
+						Message:  "result of try_ call is discarded: check res.ok or call the plain variant to raise on failure",
+					})
+				}
+
+			case *syntax.AssignStmt:
+				if s.Op == syntax.EQ {
+					if call, ok := s.RHS.(*syntax.CallExpr); ok && isTryCall(call) {
+						if target, ok := s.LHS.(*syntax.Ident); ok {
+							assignments = append(assignments, tryAssignment{
+								name: target.Name,
+								node: s.LHS,
+							})
+						}
+					}
+				}
+
+			case *syntax.DotExpr:
+				if s.Name != nil {
+					switch s.Name.Name {
+					case "ok", "error", "err":
+						if ident, ok := s.X.(*syntax.Ident); ok {
+							checked[ident.Name] = true
+						}
+					}
+				}
+			}
+			return true
+		})
+	}
+
+	for _, a := range assignments {
+		if !checked[a.name] {
+			*diags = append(*diags, Diagnostic{
+				File:     filename,
+				Range:    SpanFromNode(a.node),
+				Severity: SeverityWarning,
+				Code:     CodeUncheckedTry,
+				Source:   "kite",
+				Message: fmt.Sprintf("a try_ call returns a Result: read %s.ok before %s.value, or call the plain variant to raise on failure",
+					a.name, a.name),
+			})
+		}
+	}
 }
 
 func isTryCall(call *syntax.CallExpr) bool {
@@ -164,30 +198,6 @@ func isTryCall(call *syntax.CallExpr) bool {
 
 func hasTryPrefix(name string) bool {
 	return len(name) > 4 && strings.HasPrefix(name, "try_")
-}
-
-func resultIsChecked(file *syntax.File, target *syntax.Ident) bool {
-	checked := false
-	syntax.Walk(file, func(n syntax.Node) bool {
-		if checked {
-			return false
-		}
-		dot, ok := n.(*syntax.DotExpr)
-		if !ok || dot.Name == nil {
-			return true
-		}
-		ident, ok := dot.X.(*syntax.Ident)
-		if !ok || ident.Name != target.Name {
-			return true
-		}
-		switch dot.Name.Name {
-		case "ok", "error", "err":
-			checked = true
-			return false
-		}
-		return true
-	})
-	return checked
 }
 
 // checkCallsAndAttrs implements L003 and L004.
@@ -242,8 +252,8 @@ func checkCallsAndAttrs(file *syntax.File, filename string, opts Options) []Diag
 				})
 			}
 
-			// Privileged port binding check (http.server)
-			if owner == "http" && member == "server" {
+			// Privileged port binding check (http.server / http.try_server)
+			if owner == "http" && (member == "server" || member == "try_server") {
 				for _, arg := range call.Args {
 					if b, ok := arg.(*syntax.BinaryExpr); ok && b.Op == syntax.EQ {
 						if k, ok := b.X.(*syntax.Ident); ok && k.Name == "port" {
@@ -265,18 +275,30 @@ func checkCallsAndAttrs(file *syntax.File, filename string, opts Options) []Diag
 			}
 
 			// Sensitive filesystem path check
-			if owner == "fs" && (member == "write" || member == "remove" || member == "path") {
+			if owner == "fs" {
 				if len(call.Args) > 0 {
 					if lit, ok := call.Args[0].(*syntax.Literal); ok {
 						if p, ok := lit.Value.(string); ok && IsSensitivePath(p) {
-							diags = append(diags, Diagnostic{
-								File:     filename,
-								Range:    SpanFromNode(lit),
-								Severity: SeverityWarning,
-								Code:     CodeSandboxPolicy,
-								Source:   "kite",
-								Message:  fmt.Sprintf("mutating path %q outside workspace requires write permission (--sandbox-path-write)", p),
-							})
+							switch member {
+							case "write", "try_write", "remove", "try_remove", "append", "try_append":
+								diags = append(diags, Diagnostic{
+									File:     filename,
+									Range:    SpanFromNode(lit),
+									Severity: SeverityWarning,
+									Code:     CodeSandboxPolicy,
+									Source:   "kite",
+									Message:  fmt.Sprintf("mutating path %q outside workspace requires write permission (--sandbox-path-write)", p),
+								})
+							case "path":
+								diags = append(diags, Diagnostic{
+									File:     filename,
+									Range:    SpanFromNode(lit),
+									Severity: SeverityWarning,
+									Code:     CodeSandboxPolicy,
+									Source:   "kite",
+									Message:  fmt.Sprintf("accessing path %q outside workspace requires read permission (--sandbox-path-read)", p),
+								})
+							}
 						}
 					}
 				}
@@ -318,18 +340,38 @@ func checkLoads(file *syntax.File, filename string, opts Options) []Diagnostic {
 			continue
 		}
 
-		// 2. Relative file import check
+		// 2. Relative or absolute import check
 		if strings.HasPrefix(target, "./") || strings.HasPrefix(target, "../") || filepath.IsAbs(target) {
 			resolvedPath := target
 			if !filepath.IsAbs(resolvedPath) && callerDir != "" {
 				resolvedPath = filepath.Join(callerDir, resolvedPath)
 			}
-			if !strings.HasSuffix(resolvedPath, ".star") {
-				resolvedPath += ".star"
+
+			// Check exact path first
+			info, err := os.Stat(resolvedPath)
+			if err == nil && info.IsDir() {
+				// Directory module: must have main.star
+				entryPath := filepath.Join(resolvedPath, "main.star")
+				if entryInfo, entryErr := os.Stat(entryPath); entryErr != nil || entryInfo.IsDir() {
+					diags = append(diags, Diagnostic{
+						File:     filename,
+						Range:    SpanFromNode(loadStmt.Module),
+						Severity: SeverityError,
+						Code:     CodeUnresolvedLoad,
+						Source:   "kite",
+						Message:  fmt.Sprintf("directory module %q contains no main.star entry point", target),
+					})
+				}
+				continue
 			}
 
-			info, err := os.Stat(resolvedPath)
-			if err != nil || info.IsDir() {
+			// If exact path not found and does not have .star suffix, check with .star
+			if err != nil && !strings.HasSuffix(resolvedPath, ".star") {
+				starPath := resolvedPath + ".star"
+				info, err = os.Stat(starPath)
+			}
+
+			if err != nil || (info != nil && info.IsDir()) {
 				diags = append(diags, Diagnostic{
 					File:     filename,
 					Range:    SpanFromNode(loadStmt.Module),

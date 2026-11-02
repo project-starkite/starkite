@@ -88,7 +88,20 @@ main()
 			expectedRun: "DEPRECATED",
 		},
 		{
+			name: "Privileged port sandbox policy remediation (L004)",
+			initialScript: `def main():
+    srv = http.server(port=80)
+`,
+			expectedCode: "L004",
+			healedScript: `def main():
+    srv = http.server(port=8080)
+    print("SERVER_CONFIGURED")
+`,
+			expectedRun: "SERVER_CONFIGURED",
+		},
+		{
 			name: "Bare .star load() import syntax remediation (L005)",
+
 			initialScript: `load("helper.star", "helper")
 
 def main():

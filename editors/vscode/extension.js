@@ -79,6 +79,14 @@ function activate(context) {
     })
   );
 
+  // Command: Show Documentation for Symbol
+  context.subscriptions.push(
+    commands.registerCommand("starkite.showDocs", () => {
+      commands.executeCommand("editor.action.showHover");
+    })
+  );
+
+
   context.subscriptions.push({ dispose: () => client && client.stop() });
 }
 

@@ -123,6 +123,39 @@ func TestLinterL002_UncheckedTryResults(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("scope isolation prevents cross-function collision", func(t *testing.T) {
+		src := `def check_network():
+    res = os.try_exec("ping", ["1.1.1.1"])
+    if res.ok:
+        print("online")
+
+def bad_handler():
+    res = os.try_exec("rm", ["/tmp/scratch"])
+    print(res.value)
+`
+		file := parseScript(t, "test.star", src)
+		diags := lint.Lint(file, "test.star", lint.DefaultOptions(""))
+
+		foundBadHandlerWarning := false
+		foundCheckNetworkWarning := false
+		for _, d := range diags {
+			if d.Code == lint.CodeUncheckedTry {
+				if d.Range.Start.Line >= 6 {
+					foundBadHandlerWarning = true
+				} else {
+					foundCheckNetworkWarning = true
+				}
+			}
+		}
+
+		if !foundBadHandlerWarning {
+			t.Errorf("expected L002 in bad_handler, but it was suppressed by check_network")
+		}
+		if foundCheckNetworkWarning {
+			t.Errorf("unexpected L002 in properly checked check_network")
+		}
+	})
 }
 
 func TestLinterL003_DeprecatedSymbols(t *testing.T) {
@@ -211,6 +244,56 @@ func TestLinterL004_SandboxPolicyHints(t *testing.T) {
 			t.Errorf("expected L004 sensitive path warning, got %v", diags)
 		}
 	})
+
+	t.Run("sensitive path boundary - non-boundary does not match", func(t *testing.T) {
+		src := `def main():
+    fs.write("/etcetera/myconfig.txt", "data")
+`
+		file := parseScript(t, "test.star", src)
+		diags := lint.Lint(file, "test.star", lint.DefaultOptions(""))
+
+		for _, d := range diags {
+			if d.Code == lint.CodeSandboxPolicy && strings.Contains(d.Message, "--sandbox-path-write") {
+				t.Errorf("unexpected sensitive path warning for non-boundary path /etcetera: %v", d)
+			}
+		}
+	})
+
+	t.Run("relative path traversal detects sensitive target", func(t *testing.T) {
+		src := `def main():
+    fs.try_write("/tmp/../etc/shadow", "data")
+`
+		file := parseScript(t, "test.star", src)
+		diags := lint.Lint(file, "test.star", lint.DefaultOptions(""))
+
+		found := false
+		for _, d := range diags {
+			if d.Code == lint.CodeSandboxPolicy && strings.Contains(d.Message, "--sandbox-path-write") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected sensitive path warning on cleaned traversal path /tmp/../etc/shadow")
+		}
+	})
+
+	t.Run("fs.path on sensitive location warns about path-read", func(t *testing.T) {
+		src := `def main():
+    p = fs.path("/etc/hosts")
+`
+		file := parseScript(t, "test.star", src)
+		diags := lint.Lint(file, "test.star", lint.DefaultOptions(""))
+
+		found := false
+		for _, d := range diags {
+			if d.Code == lint.CodeSandboxPolicy && strings.Contains(d.Message, "--sandbox-path-read") {
+				found = true
+			}
+		}
+		if !found {
+			t.Errorf("expected sensitive path warning on fs.path with --sandbox-path-read, got %v", diags)
+		}
+	})
 }
 
 func TestLinterL005_LoadImports(t *testing.T) {
@@ -288,6 +371,50 @@ func TestLinterL005_LoadImports(t *testing.T) {
 		}
 		if !found {
 			t.Errorf("expected unknown module L005 warning, got %v", diags)
+		}
+	})
+
+	t.Run("directory module with main.star passes", func(t *testing.T) {
+		modDir := filepath.Join(tempDir, "mymod")
+		if err := os.MkdirAll(modDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(modDir, "main.star"), []byte("val = 42\n"), 0644); err != nil {
+			t.Fatal(err)
+		}
+
+		src := `load("./mymod", "val")`
+		file := parseScript(t, filepath.Join(tempDir, "script.star"), src)
+		diags := lint.Lint(file, filepath.Join(tempDir, "script.star"), lint.DefaultOptions(tempDir))
+
+		for _, d := range diags {
+			if d.Code == lint.CodeUnresolvedLoad {
+				t.Errorf("unexpected L005 on valid directory module: %v", d)
+			}
+		}
+	})
+
+	t.Run("directory module without main.star fails", func(t *testing.T) {
+		emptyDir := filepath.Join(tempDir, "emptymod")
+		if err := os.MkdirAll(emptyDir, 0755); err != nil {
+			t.Fatal(err)
+		}
+
+		src := `load("./emptymod", "val")`
+		file := parseScript(t, filepath.Join(tempDir, "script.star"), src)
+		diags := lint.Lint(file, filepath.Join(tempDir, "script.star"), lint.DefaultOptions(tempDir))
+
+		found := false
+		for _, d := range diags {
+			if d.Code == lint.CodeUnresolvedLoad && strings.Contains(d.Message, "contains no main.star") {
+				found = true
+				if d.Severity != lint.SeverityError {
+					t.Errorf("expected SeverityError, got %v", d.Severity)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("expected directory without main.star error, got %v", diags)
 		}
 	})
 }
