@@ -13,7 +13,7 @@ import (
 	"github.com/M31-Labs/starlsp"
 
 	"github.com/project-starkite/starkite/libkite/loader"
-	kitelsp "github.com/project-starkite/starkite/libkite/lsp"
+	"github.com/project-starkite/starkite/libkite/lsp"
 )
 
 type rpcMessage struct {
@@ -71,7 +71,7 @@ func collectKiteDiagnostics(t *testing.T, src string) []starlsp.Diagnostic {
 	clientReader, serverWriter := io.Pipe()
 	serverReader, clientWriter := io.Pipe()
 
-	h := starlsp.Hosts(starlsp.NewVanilla(), kitelsp.NewHost(loader.NewDefaultRegistry))
+	h := starlsp.Hosts(starlsp.NewVanilla(), lsp.NewHost(loader.NewDefaultRegistry))
 	srv, err := starlsp.New(starlsp.Options{
 		Host: h,
 		In:   serverReader,

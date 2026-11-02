@@ -1,6 +1,6 @@
 # Starkite VS Code Extension
 
-Provides rich language intelligence, static analysis diagnostics, and script execution for Starkite automation scripts (`.star`), powered by the `kitelsp` language server.
+Provides rich language intelligence, static analysis diagnostics, and script execution for Starkite automation scripts (`.star`), powered by the `kite lsp` embedded language server.
 
 ## Features
 
@@ -10,27 +10,27 @@ Provides rich language intelligence, static analysis diagnostics, and script exe
 - **Signature Help**: Parameter hints while authoring function calls.
 - **Definition Navigation**: Go to definition for `load()` module dependencies.
 - **Command Palette Integration**:
-  - `Starkite: Restart Language Server`: Re-initializes `kitelsp`.
+  - `Starkite: Restart Language Server`: Re-initializes the language server.
   - `Starkite: Validate Script (with Lints)`: Executes `kite validate --lint` on the active file.
   - `Starkite: Run Current Script in Sandbox`: Launches `kite run` in an integrated terminal under default sandbox containment.
 
 ## Requirements
 
-The extension communicates with `kitelsp` over standard I/O.
+The extension communicates with `kite lsp` over standard I/O.
 
-Install `kitelsp` to your `PATH`:
+Ensure `kite` is installed to your `PATH`:
 
 ```bash
 # Build from repository root
-make build-kitelsp
-sudo cp ./bin/kitelsp /usr/local/bin/
+make kite
+sudo cp ./bin/kite /usr/local/bin/
 ```
 
-Or configure `starkite.serverPath` in your VS Code settings to point to your `kitelsp` executable. If configured with `kite`, the extension will automatically append `lsp` to launch the embedded server.
+Or configure `starkite.serverPath` in your VS Code settings to point to your `kite` executable.
 
 ## Configuration
 
 | Setting | Default | Description |
 |---|---|---|
-| `starkite.serverPath` | `"kitelsp"` | Path to the `kitelsp` binary (or `kite` built with `-tags lsp`). |
+| `starkite.serverPath` | `"kite"` | Path to the Starkite binary (defaults to `kite`). |
 | `starkite.trace.server` | `"off"` | Trace language server JSON-RPC communication (`off`, `messages`, `verbose`). |

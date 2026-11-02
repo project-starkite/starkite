@@ -2,7 +2,7 @@
   "name": "starkite",
   "displayName": "Starkite",
   "description": "Language intelligence, static diagnostics, and execution support for Starkite automation scripts.",
-  "version": "0.11.4",
+  "version": "0.11.5",
   "publisher": "project-starkite",
   "license": "Apache-2.0",
   "repository": {
@@ -96,8 +96,8 @@
       "properties": {
         "starkite.serverPath": {
           "type": "string",
-          "default": "kitelsp",
-          "description": "Path to the language server binary (kitelsp, or kite built with -tags lsp)."
+          "default": "kite",
+          "description": "Path to the Starkite binary (defaults to 'kite')."
         },
         "starkite.trace.server": {
           "type": "string",

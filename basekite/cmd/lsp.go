@@ -7,7 +7,7 @@ import (
 	"github.com/M31-Labs/starlsp"
 	"github.com/spf13/cobra"
 
-	kitelsp "github.com/project-starkite/starkite/libkite/lsp"
+	"github.com/project-starkite/starkite/libkite/lsp"
 )
 
 var lspCmd = &cobra.Command{
@@ -46,7 +46,7 @@ func runLSP(cmd *cobra.Command, args []string) error {
 
 	// The Starkite host layers over the vanilla specification host, so a script
 	// receives both Starlark universe builtins and runtime standard library modules.
-	host := starlsp.Hosts(starlsp.NewVanilla(), kitelsp.NewHost(NewRegistry))
+	host := starlsp.Hosts(starlsp.NewVanilla(), lsp.NewHost(NewRegistry))
 
 	server, err := starlsp.New(starlsp.Options{
 		Host: host,

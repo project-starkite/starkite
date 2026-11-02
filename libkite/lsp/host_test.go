@@ -8,13 +8,13 @@ import (
 	"github.com/M31-Labs/starlsp"
 
 	"github.com/project-starkite/starkite/libkite/loader"
-	kitelsp "github.com/project-starkite/starkite/libkite/lsp"
+	"github.com/project-starkite/starkite/libkite/lsp"
 )
 
 // host builds the same composition the lsp subcommand builds.
 func host(t *testing.T) starlsp.Host {
 	t.Helper()
-	return starlsp.Hosts(starlsp.NewVanilla(), kitelsp.NewHost(loader.NewDefaultRegistry))
+	return starlsp.Hosts(starlsp.NewVanilla(), lsp.NewHost(loader.NewDefaultRegistry))
 }
 
 func names(symbols []starlsp.Symbol) map[string]starlsp.Symbol {
@@ -169,7 +169,7 @@ func TestEditionDecidesTheSurface(t *testing.T) {
 	// The base edition has no k8s module. The all-in-one does. The host takes
 	// whichever registry its edition supplies, which is the whole reason the
 	// factory is a parameter.
-	base := names(kitelsp.NewHost(loader.NewDefaultRegistry).Globals())
+	base := names(lsp.NewHost(loader.NewDefaultRegistry).Globals())
 	if _, ok := base["k8s"]; ok {
 		t.Error("the base edition offered the k8s module")
 	}

@@ -1,13 +1,13 @@
 ---
 title: "lsp"
-description: "Run the language server for Starkite scripts"
+description: "Run the embedded Language Server Protocol server for Starkite scripts"
 weight: 12
-keywords: [lsp, language server, editor, vscode, neovim, helix, completion, diagnostics]
+keywords: [kite lsp, lsp, language server, editor, vscode, neovim, helix, zed, completion, diagnostics]
 ---
 
 # kite lsp
 
-Run a Language Server Protocol server for Starkite scripts over standard input
+Run the embedded Language Server Protocol server for Starkite scripts over standard input
 and output. Editors start this command themselves; you rarely run it by hand.
 
 The server is [starlsp](https://github.com/M31-Labs/starlsp), a Starlark
@@ -16,40 +16,24 @@ specification; Starkite supplies its module registry, its API documentation, its
 `load()` rules, and its own conventions. Every editor feature comes from the
 shared server, so Starkite gains anything starlsp gains.
 
-```
+```bash
 kite lsp
 kite lsp --probe
 ```
 
-## Build requirement
+## Out-of-the-Box Availability
 
-The language server is behind a build tag. A default `kite` does not contain it,
-so that the runtime stays small on init containers, edge nodes, and CI runners.
+`kite lsp` is a standard, built-in subcommand of every official `kite` release.
 
-```bash
-# Default build — no language server, no size change.
-go build -o ./bin/kite ./kite
+The binary embeds the Tree-sitter engine with a specialized Starlark grammar subset, keeping total binary size compact while providing full syntax tree intelligence.
 
-# With the language server.
-go build -tags lsp -o ./bin/kite ./kite
-
-# With the language server and only the Starlark grammar embedded.
-go build -tags 'lsp,grammar_subset,grammar_subset_starlark' -o ./bin/kite ./kite
-```
-
-The third form is the one to use. The parser library ships more than 200
-grammars, and the subset tag keeps all but Starlark out of the binary.
-
-| Build | Size | Added |
+| Component | Footprint | Purpose |
 |---|---|---|
-| Default | 131.6 MB | — |
-| `lsp`, every grammar | 158.8 MB | 27.2 MB |
-| `lsp`, Starlark only | 140.3 MB | 8.7 MB |
-
-A binary built without the tag reports `unknown command "lsp"`.
-
-The Starlark-only build needs `gotreesitter` v0.50.1 or later, which `libkite`
-already requires.
+| Core Runtime & Execution Engine | ~22.5 MiB | Sandboxed scripting, CLI, stdlib |
+| Kubernetes & Container SDKs | ~38.9 MiB | Cloud-native operations |
+| Language Server & Diagnostics (`starlsp`) | ~1.8 MiB | JSON-RPC protocol loop & diagnostic bridge |
+| Starlark Tree-sitter Grammar Subset | ~3.2 MiB | Incremental AST parsing & symbol tokens |
+| **Total Unified Binary (Stripped)** | **~50.2 MiB** | Complete runtime, CLI, and editor intelligence |
 
 ## What the server provides
 
@@ -82,7 +66,7 @@ completion with no further change.
 ## Checking the server without an editor
 
 `--probe` prints what the running binary would offer and exits. Use it to
-confirm a build, or to find out why a name does not complete.
+confirm a build, or to inspect available symbol surfaces.
 
 ```console
 $ kite lsp --probe
@@ -90,33 +74,75 @@ starlsp 0.1.0
 
 host           starlark+starkite
 parser         starlark (gotreesitter, pure Go)
-globals        119
+globals        127
 hooks          members, types, loads, lint, docs
 
-namespaces  30  ai base64 concur csv fmt fs gzip hash http inventory io json k8s
-                log mcp os regexp retry runtime sql ssh strings table template
-                test time uuid vars yaml zip
-types       10  bool bytes dict float int list range set str tuple
-...
+namespaces  33  args base64 concur containers csv fleet fmt fs gzip hash http
+                inventory io json k8s log mcp os regexp retry runtime sandbox
+                sql ssh strings table template test time uuid vars yaml zip
+functions   74  abs all any assert assert_contains assert_equal assert_false
+                assert_not_equal assert_true bash bool bytes chdir chr cmdexe cwd
+                dict dir enumerate env exec exists exit fail float getattr glob
+                groupid hasattr home hostname int len list max min ord path pid
+                powershell ppid print printf println range read_bytes read_text
+                repr reversed set setenv sh shell skip sorted sprintf str
+                temp_dir try_exec tuple type userid username var_bool var_dict
+                var_float var_int var_list var_names var_str which write_bytes
+                write_text zsh
+keywords    16  and break continue def elif else for if in lambda load not or
+                pass return while
+variables    4  False None True user
 
 members
-  fs                2
-  fs.path          84
-  http              8
-  http.url         10
+  args             14
+  base64           6
+  bytes            1
+  concur           6
+  containers       26
+  csv              4
+  dict             9
+  fleet            8
+  fmt              6
+  fs               14
+  gzip             6
+  hash             6
+  http             18
+  inventory        12
+  io               4
+  json             8
+  k8s              111
+  list             7
+  log              16
+  mcp              4
+  os               42
+  regexp           12
+  retry            4
+  runtime          12
+  sandbox          8
+  set              12
+  sql              4
+  ssh              22
   string           35
-  ...
+  strings          16
+  table            4
+  template         8
+  test             16
+  time             26
+  uuid             2
+  vars             14
+  yaml             12
+  zip              2
 ```
 
 ## Editor setup
 
 ### VS Code
 
-Install the extension in `editors/vscode`, then point it at your binary:
+Install the extension in `editors/vscode`, then configure your binary path:
 
 ```json
 {
-  "starkite.serverPath": "/usr/local/bin/kite"
+  "starkite.serverPath": "kite"
 }
 ```
 
@@ -205,12 +231,7 @@ probed, so its methods are not offered.
 **Diagnostics differ from `kite run`.** They should not. Report it: the server
 and the runtime call the same parser, so a difference is a defect.
 
-**The server does not start.** Confirm the binary carries the tag:
-
-```console
-$ kite lsp --probe
-Error: unknown command "lsp" for "kite"   # built without -tags lsp
-```
+**The server does not start.** Confirm that `kite` is present in your `$PATH` and executable, or verify functionality with `kite lsp --probe`.
 
 ## Starkite-specific diagnostics
 

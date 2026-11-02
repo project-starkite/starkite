@@ -6,10 +6,8 @@ let client;
 
 function activate(context) {
   const config = workspace.getConfiguration("starkite");
-  const command = config.get("serverPath") || "kitelsp";
-
-  const isKiteBinary = /(^|[\\/])kite(\.exe)?$/.test(command);
-  const serverArgs = isKiteBinary ? ["lsp"] : [];
+  const command = config.get("serverPath") || "kite";
+  const serverArgs = ["lsp"];
 
   const serverOptions = {
     run: { command, args: serverArgs, transport: TransportKind.stdio },
@@ -32,10 +30,9 @@ function activate(context) {
   );
 
   client.start().catch((err) => {
-    const targetDesc = command + (serverArgs.length ? " " + serverArgs.join(" ") : "");
     window.showErrorMessage(
-      `Starkite: could not start "${targetDesc}". Ensure kitelsp is installed in your PATH ` +
-        `(make build-kitelsp) or configure starkite.serverPath in settings. (${err.message})`
+      `Starkite: could not start "${command} lsp". Ensure kite is installed in your PATH ` +
+        `(make kite) or configure starkite.serverPath in settings. (${err.message})`
     );
   });
 
