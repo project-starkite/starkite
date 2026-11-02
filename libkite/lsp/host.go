@@ -1,5 +1,3 @@
-//go:build lsp
-
 // Package lsp adapts Starkite to the starlsp language server.
 //
 // The language server itself lives in github.com/M31-Labs/starlsp, which knows

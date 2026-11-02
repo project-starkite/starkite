@@ -3,8 +3,10 @@ module github.com/project-starkite/starkite/basekite
 go 1.26
 
 require (
+	github.com/M31-Labs/starlsp v0.1.1
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/project-starkite/starkite/libkite v0.0.0-20260607203912-9314b285ed86
+	github.com/project-starkite/starkite/libkite/lsp v0.0.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
 	go.starlark.net v0.0.0-20260326113308-fadfc96def35
@@ -23,4 +25,3 @@ require (
 )
 
 replace github.com/project-starkite/starkite/libkite/lsp => ../libkite/lsp
-

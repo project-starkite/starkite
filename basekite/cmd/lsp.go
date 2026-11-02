@@ -1,18 +1,3 @@
-//go:build lsp
-
-// The language server is behind a build tag so the default binary is
-// unchanged. Starkite ships into init containers, edge nodes, and CI runners
-// under restricted permission profiles, where an editor server has no purpose
-// and its parser would be dead weight.
-//
-//	go build                       # no language server, no size change
-//	go build -tags lsp             # kite lsp available
-//
-// Pair it with the parser's subset tag to embed only the grammar this server
-// needs:
-//
-//	go build -tags 'lsp,grammar_subset,grammar_subset_starlark'
-
 package cmd
 
 import (
@@ -30,19 +15,19 @@ var lspCmd = &cobra.Command{
 	Short: "Run the language server for Starkite scripts",
 	Long: `Run a Language Server Protocol server for Starkite scripts over stdin and stdout.
 
-The server is starlsp, a Starlark language server, configured with a Starkite
-host. Diagnostics come from the same parser the runtime uses, so what an editor
-shows and what "kite run" reports cannot disagree. Completion, hover, and
-signature help are read from this binary's own module registry, which means they
-describe the edition you are running rather than a stored list.
+The server is powered by starlsp, a Starlark language server, configured with
+the Starkite runtime host. Diagnostics originate from the same parser the runtime
+uses, ensuring editor diagnostics and "kite run" behavior cannot disagree.
+Completion, hover, and signature help are served directly from the active module
+registry.
 
-Editors launch this command themselves; it is not usually run by hand.
+Editors launch this command automatically over stdio; it is not usually run by hand.
 
 Examples:
-  # Inspect what this binary would offer.
+  # Inspect the server's symbol catalog and surface:
   kite lsp --probe
 
-  # VS Code, Neovim, Helix, and Zed configuration.
+  # Editor configuration reference:
   see docs/references/cli/lsp.md`,
 	Args: cobra.NoArgs,
 	RunE: runLSP,
@@ -56,9 +41,11 @@ func init() {
 }
 
 func runLSP(cmd *cobra.Command, args []string) error {
-	// The Starkite host layers over the specification host, so a script gets
-	// both the Starlark builtins and the runtime's modules. On a name
-	// collision the later host wins, which is the Starkite name.
+	// SilenceUsage prevents Cobra CLI usage banners from corrupting the JSON-RPC stdio protocol stream
+	cmd.SilenceUsage = true
+
+	// The Starkite host layers over the vanilla specification host, so a script
+	// receives both Starlark universe builtins and runtime standard library modules.
 	host := starlsp.Hosts(starlsp.NewVanilla(), kitelsp.NewHost(NewRegistry))
 
 	server, err := starlsp.New(starlsp.Options{
@@ -76,8 +63,5 @@ func runLSP(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	// Cobra's error printing would write to stdout and corrupt the protocol
-	// stream, so the serve loop reports failures itself.
-	cmd.SilenceUsage = true
 	return server.Run()
 }

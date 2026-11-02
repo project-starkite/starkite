@@ -1,5 +1,3 @@
-//go:build lsp
-
 package cmd
 
 import (
@@ -28,5 +26,17 @@ func TestLSPCmdProbe(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "namespaces") || !strings.Contains(out, "globals") {
 		t.Errorf("expected probe output with namespaces and globals, got: %s", out)
+	}
+
+	expectedNamespaces := []string{
+		"args", "base64", "concur", "containers", "csv", "fleet", "fmt", "fs",
+		"gzip", "hash", "http", "inventory", "io", "json", "log",
+		"os", "regexp", "retry", "runtime", "sandbox", "sql", "ssh",
+		"strings", "table", "template", "test", "time", "uuid", "vars", "yaml", "zip",
+	}
+	for _, ns := range expectedNamespaces {
+		if !strings.Contains(out, ns) {
+			t.Errorf("expected namespace %q in probe output", ns)
+		}
 	}
 }
