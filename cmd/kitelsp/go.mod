@@ -3,7 +3,7 @@ module github.com/project-starkite/starkite/cmd/kitelsp
 go 1.26
 
 require (
-	github.com/M31-Labs/starlsp v0.1.1
+	github.com/M31-Labs/starlsp v0.4.0
 	github.com/project-starkite/starkite/basekite v0.0.0
 	github.com/project-starkite/starkite/kite v0.0.0
 	github.com/project-starkite/starkite/libkite/lsp v0.0.0
