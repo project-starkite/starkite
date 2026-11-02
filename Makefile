@@ -131,7 +131,7 @@ lint-scripts: kite ## Validate all in-tree Starlark test and example scripts
 package-vscode: ## Verify packaging of VS Code extension into .vsix
 	@if command -v npx >/dev/null 2>&1; then \
 		echo "Packaging VS Code extension..."; \
-		(cd editors/vscode && npm install --silent && npx vsce package --no-dependencies); \
+		(cd editors/vscode && npm install --silent && npx @vscode/vsce package --no-dependencies); \
 	else \
 		echo "npx not found, skipping vsce package"; \
 	fi

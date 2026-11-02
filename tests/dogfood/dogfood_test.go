@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -16,12 +17,16 @@ func locateOrBuildKite(t *testing.T) string {
 	if err != nil {
 		t.Fatalf("failed to find repo root: %v", err)
 	}
-	kiteBin := filepath.Join(repoRoot, "bin", "kite")
+	exeName := "kite"
+	if runtime.GOOS == "windows" {
+		exeName = "kite.exe"
+	}
+	kiteBin := filepath.Join(repoRoot, "bin", exeName)
 	if _, err := os.Stat(kiteBin); err == nil {
 		return kiteBin
 	}
 
-	tempKite := filepath.Join(t.TempDir(), "kite")
+	tempKite := filepath.Join(t.TempDir(), exeName)
 	buildCmd := exec.Command("go", "build", "-o", tempKite, filepath.Join(repoRoot, "kite"))
 	if out, err := buildCmd.CombinedOutput(); err != nil {
 		t.Fatalf("failed to build kite: %v\nOutput: %s", err, string(out))
@@ -64,12 +69,12 @@ main()
 		{
 			name: "Unchecked try_ Result remediation (L002)",
 			initialScript: `def main():
-    res = os.try_exec("echo", ["SAFE_EXEC"])
+    res = os.try_exec("go", ["version"])
     print(res.value)
 `,
 			expectedCode: "L002",
 			healedScript: `def main():
-    res = os.try_exec("echo", ["SAFE_EXEC"])
+    res = os.try_exec("go", ["version"])
     if res.ok:
         print("SAFE_EXEC")
 `,
@@ -82,10 +87,10 @@ main()
 `,
 			expectedCode: "L003",
 			healedScript: `def main():
-    res = os.exec("echo", ["DEPRECATED"])
-    print(res)
+    res = os.exec("go", ["version"])
+    print("SAFE_EXEC")
 `,
-			expectedRun: "DEPRECATED",
+			expectedRun: "SAFE_EXEC",
 		},
 		{
 			name: "Privileged port sandbox policy remediation (L004)",

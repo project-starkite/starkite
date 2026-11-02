@@ -27,8 +27,7 @@
   ],
   "main": "./extension.js",
   "scripts": {
-    "package": "vsce package --no-dependencies",
-    "vscode:prepublish": "npm run package"
+    "package": "vsce package --no-dependencies"
   },
   "activationEvents": [
     "onLanguage:starkite"

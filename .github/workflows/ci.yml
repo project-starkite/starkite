@@ -98,7 +98,7 @@ jobs:
         run: |
           cd editors/vscode
           npm install
-          npx vsce package --no-dependencies
+          npx @vscode/vsce package --no-dependencies
 
       - name: Run Go unit tests with race detection
         run: |
