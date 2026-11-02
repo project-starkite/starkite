@@ -15,6 +15,3 @@ use ./kite
 use ./tests/sandbox
 
 use ./tests/dogfood
-
-use ./cmd/kitelsp
-
