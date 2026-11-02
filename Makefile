@@ -11,15 +11,17 @@ CLOUD_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkit
 AI_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/basekite/version.Edition=ai"
 ALL_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/basekite/version.Edition=all"
 
+KITE_TAGS=grammar_subset,grammar_subset_starlark
+
 MODULES=libkite basekite cloudkite aikite kite tests/sandbox tests/dogfood
 
-.PHONY: kite all build-base build-cloud build-ai build-kitelsp clean test test-libkite test-base test-cloud test-ai test-all test-lsp test-lint test-dogfood lint-scripts package-vscode test-install-script install deps lint fmt fix vet test-race preflight run-example repl help
+.PHONY: kite all build-base build-cloud build-ai clean test test-libkite test-base test-cloud test-ai test-all test-lsp test-lint test-dogfood lint-scripts package-vscode test-install-script install deps lint fmt fix vet test-race preflight run-example repl help
 
 
-kite: $(BIN_DIR) ## Build the default all-in-one binary (kite)
-	cd kite && go build $(ALL_LDFLAGS) -o ../$(BIN_DIR)/$(BINARY_NAME) .
+kite: $(BIN_DIR) ## Build the default all-in-one binary with embedded language server (kite)
+	cd kite && go build -tags '$(KITE_TAGS)' $(ALL_LDFLAGS) -o ../$(BIN_DIR)/$(BINARY_NAME) .
 
-all: kite build-base build-cloud build-ai build-kitelsp ## Build all editions and kitelsp into ./bin/
+all: kite build-base build-cloud build-ai ## Build all editions into ./bin/
 
 $(BIN_DIR):
 	mkdir -p $(BIN_DIR)
@@ -32,14 +34,6 @@ build-cloud: $(BIN_DIR) ## Build the lean cloud edition binary (kitecloud)
 
 build-ai: $(BIN_DIR) ## Build the lean ai edition binary (kiteai)
 	cd aikite && go build $(AI_LDFLAGS) -o ../$(BIN_DIR)/kiteai .
-
-LSP_TAGS=lsp,grammar_subset,grammar_subset_starlark
-
-build-lsp: $(BIN_DIR) ## Build the language server enabled binary (kite-lsp)
-	cd kite && go build -tags '$(LSP_TAGS)' $(ALL_LDFLAGS) -o ../$(BIN_DIR)/kite-lsp .
-
-build-kitelsp: $(BIN_DIR) ## Build the standalone language server binary (kitelsp)
-	cd cmd/kitelsp && go build -tags '$(LSP_TAGS)' $(ALL_LDFLAGS) -o ../../$(BIN_DIR)/kitelsp .
 
 clean: ## Remove build artifacts
 	rm -rf $(BIN_DIR)/ dist/
@@ -57,7 +51,6 @@ fmt: fix ## Run go fix, go fmt, and verify formatting across all files
 		(cd $$dir && go fmt ./...); \
 	done
 	@(cd libkite/lsp && go fmt ./...)
-	@(cd cmd/kitelsp && go fmt ./...)
 	@DIFFS=$$(gofmt -l .); \
 	if [ -n "$$DIFFS" ]; then \
 		echo "Formatting differences found in the following files:"; \
@@ -72,8 +65,7 @@ vet: ## Run go vet across all workspace modules (linux, darwin, windows)
 			(cd $$dir && CGO_ENABLED=0 GOOS=$$os GOARCH=amd64 go vet ./...) || exit 1; \
 		done; \
 	done
-	@(cd libkite/lsp && go vet -tags lsp ./...)
-	@(cd cmd/kitelsp && go vet -tags '$(LSP_TAGS)' ./...)
+	@(cd libkite/lsp && go vet ./...)
 
 test-race: ## Run all Go unit tests with race detection
 	@for dir in $(MODULES); do \
@@ -117,7 +109,7 @@ preflight: check-api-docs check-agent-skills fix fmt vet test-race lint test-lin
 
 test-lint: ## Run unit tests for static analysis and dialect linter
 	cd libkite/lint && go test ./...
-	cd libkite/lsp && go test -tags lsp -run TestLinter ./...
+	cd libkite/lsp && go test -run TestLinter ./...
 	cd basekite && go test -run TestValidate ./cmd
 
 test-dogfood: kite ## Run autonomous agent closed-loop dogfooding test harness
@@ -154,17 +146,16 @@ test-ai: ## Run ai tests
 test-all: ## Run all-edition tests (registry composition guard)
 	cd kite && go test ./...
 
-test-lsp: ## Run all tests including LSP packages and standalone kitelsp under build tags
-	cd libkite/lsp && go test -tags lsp ./...
-	cd basekite && go test -tags '$(LSP_TAGS)' -run TestLSP ./cmd
-	cd cmd/kitelsp && go test -tags '$(LSP_TAGS)' ./...
+test-lsp: ## Run all tests for the embedded language server
+	cd libkite/lsp && go test ./...
+	cd basekite && go test -run TestLSP ./cmd
 
 test-install-script: ## Dry-run test the installer script
 	@echo "Testing install.sh script in dry-run mode..."
 	@INSTALL_DRY_RUN=1 ./scripts/install.sh
 
 install: kite ## Install the default kite binary to GOPATH/bin
-	cd kite && go install $(ALL_LDFLAGS) .
+	cd kite && go install -tags '$(KITE_TAGS)' $(ALL_LDFLAGS) .
 
 deps: ## Download dependencies
 	cd libkite && go mod tidy
@@ -177,7 +168,7 @@ IMAGE_NAME?=ghcr.io/project-starkite/starkite:latest
 
 kite-linux: ## Build static Linux kite binary (for container image packaging)
 	mkdir -p $(BIN_DIR)
-	cd kite && CGO_ENABLED=0 GOOS=linux go build $(ALL_LDFLAGS) -o ../$(BIN_DIR)/kite-linux .
+	cd kite && CGO_ENABLED=0 GOOS=linux go build -tags '$(KITE_TAGS)' $(ALL_LDFLAGS) -o ../$(BIN_DIR)/kite-linux .
 
 docker-build: kite-linux ## Build the starkite container image using Docker
 	docker build -t $(IMAGE_NAME) -f Dockerfile .
