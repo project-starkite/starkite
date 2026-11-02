@@ -40,3 +40,12 @@ func TestLSPCmdProbe(t *testing.T) {
 		}
 	}
 }
+
+func TestLSPCmdFlags(t *testing.T) {
+	if lspCmd.Flags().Lookup("stdio") == nil {
+		t.Error("expected --stdio flag to be registered on lsp subcommand")
+	}
+	if lspCmd.Flags().Lookup("probe") == nil {
+		t.Error("expected --probe flag to be registered on lsp subcommand")
+	}
+}

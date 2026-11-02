@@ -34,9 +34,11 @@ Examples:
 }
 
 var lspProbe bool
+var lspStdio bool
 
 func init() {
 	lspCmd.Flags().BoolVar(&lspProbe, "probe", false, "print the server's surface and exit")
+	lspCmd.Flags().BoolVar(&lspStdio, "stdio", true, "run over standard input and output (default)")
 	rootCmd.AddCommand(lspCmd)
 }
 

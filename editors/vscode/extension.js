@@ -15,7 +15,10 @@ function activate(context) {
   };
 
   const clientOptions = {
-    documentSelector: [{ scheme: "file", language: "starkite" }],
+    documentSelector: [
+      { scheme: "file", language: "starkite" },
+      { scheme: "file", language: "starlark" },
+    ],
     synchronize: {
       fileEvents: workspace.createFileSystemWatcher("**/mod.{yaml,lock}"),
     },

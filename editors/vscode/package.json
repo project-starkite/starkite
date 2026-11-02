@@ -27,10 +27,11 @@
   ],
   "main": "./extension.js",
   "scripts": {
-    "package": "vsce package --no-dependencies"
+    "package": "vsce package --skip-license"
   },
   "activationEvents": [
-    "onLanguage:starkite"
+    "onLanguage:starkite",
+    "onLanguage:starlark"
   ],
   "contributes": {
     "languages": [
