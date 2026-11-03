@@ -2,7 +2,7 @@
   "name": "starkite",
   "displayName": "Starkite",
   "description": "Language intelligence, static diagnostics, and execution support for Starkite automation scripts.",
-  "version": "0.11.6",
+  "version": "0.11.7",
   "publisher": "project-starkite",
   "license": "Apache-2.0",
   "repository": {

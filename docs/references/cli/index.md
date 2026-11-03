@@ -23,6 +23,8 @@ Available in **every** edition (base, cloud, ai, all).
 | [`kite watch`](watch.md) | Watch and re-execute script on file changes |
 | [`kite test`](test.md) | Run test functions in `_test.star` files |
 | [`kite validate`](validate.md) | Validate script syntax without executing |
+| [`kite doc`](doc.md) | Inspect runtime symbol documentation or generate agent skills |
+| [`kite lsp`](lsp.md) | Run the embedded Language Server Protocol server for editor intelligence |
 | [`kite init`](init.md) | Scaffold a new starkite module |
 
 ### Maintenance

@@ -132,10 +132,12 @@ kite exec --sandbox-mount ./data:/data:ro -- curl   # Run native process in kern
 kite eval 'print(1 + 1)'                            # Evaluate inline Starlark expression
 
 # Development & Operations
-kite repl                                           # Interactive REPL
-kite test ./tests/                                  # Run test suites
-kite watch script.star                              # Re-run script on file changes
+kite doc http.get                                   # Inspect symbol docs or generate agent skills (--skills)
+kite lsp                                            # Run Language Server Protocol server for editor IDEs
 kite validate script.star                           # Verify script syntax and static structure
+kite test ./tests/                                  # Run test suites
+kite repl                                           # Interactive REPL
+kite watch script.star                              # Re-run script on file changes
 kite module install <repo>                          # Install external Starlark module
 kite update                                         # Self-update binary
 ```
