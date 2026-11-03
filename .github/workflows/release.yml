@@ -204,7 +204,7 @@ jobs:
           git config user.name "starkite-releaser[bot]"
           git config user.email "starkite-releaser@users.noreply.github.com"
 
-          git add skills/ package.json
+          git add skills/ package.json README.md
           if git diff --staged --quiet; then
             echo "No changes in generated skills; skipping commit."
           else
