@@ -1294,6 +1294,33 @@ Time:  9ms
   </div>
 </section>
 
+<h2 class="section-heading">
+  <svg viewBox="0 0 24 24"><path d="M14.6,16.6L19.2,12L14.6,7.4L16,6L22,12L16,18L14.6,16.6M9.4,16.6L4.8,12L9.4,7.4L8,6L2,12L8,18L9.4,16.6Z"/></svg>
+  Language Service & Editor Intelligence
+</h2>
+<section class="feature-section">
+  <div class="feature-section__split">
+    <div class="feature-section__text">
+      <p>Starkite embeds first-class Language Server Protocol (LSP) intelligence directly into the unified <code>kite</code> binary. With <code>kite lsp</code>, modern editors (VS Code, Neovim, Helix, Zed) receive instant autocompletions, hover documentation, parameter hints, and <code>load()</code> navigation over standard I/O. Dialect linters (<code>kite validate --lint</code>) enforce safety rules (<code>L001</code>&ndash;<code>L005</code>), while <code>kite doc --skills</code> reflects against the live Go runtime catalog to produce standardized skill definitions for autonomous AI coding agents.</p>
+      <a href="guides/editors/" class="feature-section__cta">Configure your editor</a>
+    </div>
+    <div class="feature-section__code">
+      <pre><code class="language-bash"># Start the language server over stdio for editor clients
+$ kite lsp --stdio
+
+# Verify language server catalog introspection and probe diagnostics
+$ kite lsp --probe
+Catalog introspection: 31 modules, 290 functions, 14 types registered
+Grammar engine: Tree-sitter Starlark (pure Go)
+Diagnostics: active (L001, L002, L003, L004, L005)
+
+# Validate syntax and dialect rules with structured JSON diagnostics
+$ kite validate --lint --json ./deploy.star
+{"code":"L002","line":12,"column":5,"message":"unchecked try_ Result: res.ok must be verified"}</code></pre>
+    </div>
+  </div>
+</section>
+
 <div class="section-divider">
   <h2 class="section-divider__title">Ready to Start?</h2>
   <div class="section-divider__ctas">
