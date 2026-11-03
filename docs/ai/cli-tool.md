@@ -38,10 +38,10 @@ out, err := exec.Command("kite", "run", "deploy.star", "--var", "image=myapp:v2"
 
 ## Inline one-offs
 
-A script file earns its keep when the logic is reusable. When the agent needs a single throwaway capability instead, writing a file is overhead, so `kite exec` runs inline source directly:
+A script file earns its keep when the logic is reusable. When the agent needs a single throwaway capability instead, writing a file is overhead, so `kite eval` evaluates inline Starlark source directly:
 
 ```bash
-kite exec 'print(json.encode({"host": os.hostname()}))'
+kite eval 'print(json.encode({"host": os.hostname()}))'
 ```
 
 The host agent reads the printed JSON the same way it would from a script run — the only thing that changed is where the code came from.

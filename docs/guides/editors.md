@@ -1,21 +1,29 @@
+---
+title: "Editor configuration"
+description: "Configure VS Code, Neovim, Helix, Zed, and Sublime Text with the Starkite language server"
+weight: 10
+---
+
 # Editor Configuration Guide for Starkite
 
-Starkite provides full Language Server Protocol (LSP) intelligence directly through the `kite lsp` subcommand. No secondary language server binary is required.
+Starkite provides full Language Server Protocol (LSP) intelligence directly through the built-in `kite lsp` subcommand. No secondary language server binary or external daemon is required.
+
+---
 
 ## 1. Prerequisites: Installing `kite`
 
 Ensure `kite` is installed and available in your system `$PATH`:
 
 ```bash
-# Option A: Install from source
+# Option A: Install via Homebrew
+brew install project-starkite/tap/kite
+
+# Option B: Install from source
 make kite
 sudo cp ./bin/kite /usr/local/bin/
-
-# Option B: Install via Homebrew
-brew install project-starkite/tap/kite
 ```
 
-Verify that the language server is operational:
+Verify that the language server is operational and inspecting the runtime catalog:
 ```bash
 kite lsp --probe
 ```
@@ -24,21 +32,33 @@ kite lsp --probe
 
 ## 2. Visual Studio Code
 
-1. Package and install the `.vsix` extension:
+### Option A: Install Downloaded Extension (.vsix)
+The pre-packaged extension is attached directly to every GitHub Release:
+
+1. Download `starkite-<version>.vsix` from the [Starkite Releases](https://github.com/project-starkite/starkite/releases) page.
+2. Install via command line:
    ```bash
-   cd editors/vscode
-   npm install
-   npx vsce package --no-dependencies
-   code --install-extension starkite-0.11.5.vsix
+   code --install-extension starkite-0.11.8.vsix
    ```
-2. The extension executes `kite lsp` automatically over stdio.
-3. To customize binary path or enable JSON-RPC tracing, edit `.vscode/settings.json`:
-   ```json
-   {
-     "starkite.serverPath": "kite",
-     "starkite.trace.server": "off"
-   }
-   ```
+   Or install inside VS Code via `Extensions` $\rightarrow$ `...` $\rightarrow$ `Install from VSIX...`.
+
+### Option B: Build from Source
+```bash
+cd editors/vscode
+npm install
+npx @vscode/vsce package --skip-license
+code --install-extension starkite-*.vsix
+```
+
+### Configuration Settings
+The extension launches `kite lsp --stdio` automatically. You can customize the server binary path or logging in `.vscode/settings.json`:
+
+```json
+{
+  "starkite.serverPath": "kite",
+  "starkite.trace.server": "off"
+}
+```
 
 ---
 
@@ -61,7 +81,7 @@ vim.filetype.add({
 if not configs.starkite then
   configs.starkite = {
     default_config = {
-      cmd = { 'kite', 'lsp' },
+      cmd = { 'kite', 'lsp', '--stdio' },
       filetypes = { 'starkite', 'starlark' },
       root_dir = lspconfig.util.root_pattern('mod.yaml', 'mod.lock', '.git'),
       settings = {},
@@ -98,7 +118,7 @@ language-servers = ["starkite-lsp"]
 
 [language-server.starkite-lsp]
 command = "kite"
-args = ["lsp"]
+args = ["lsp", "--stdio"]
 ```
 
 Verify server detection:
@@ -124,8 +144,27 @@ Configure Zed editor support in `~/.config/zed/settings.json` (or `.zed/settings
     "starkite-lsp": {
       "binary": {
         "path": "kite",
-        "arguments": ["lsp"]
+        "arguments": ["lsp", "--stdio"]
       }
+    }
+  }
+}
+```
+
+---
+
+## 6. Sublime Text (LSP Package)
+
+Configure Sublime Text LSP package in `Preferences` $\rightarrow$ `Package Settings` $\rightarrow$ `LSP` $\rightarrow$ `Settings`:
+
+```json
+{
+  "clients": {
+    "starkite": {
+      "enabled": true,
+      "command": ["kite", "lsp", "--stdio"],
+      "selector": "source.starlark | source.starkite",
+      "schemes": ["file"]
     }
   }
 }

@@ -111,9 +111,12 @@ nav:
               - Executing host commands: infra/ssh-exec.md
               - Transferring files:      infra/ssh-transfer.md
               - Fleet orchestration:     infra/fleet.md
+      - Guides:
+          - Editor configuration: guides/editors.md
       - AI:
           - Creating MCP servers:  ai/mcp.md
           - CLI tool provider:     ai/cli-tool.md
+          - Agent skills & tooling: ai/skills.md
   - References:
       - Overview: references/index.md
       - CLI:
@@ -125,6 +128,7 @@ nav:
           - repl: references/cli/repl.md
           - watch: references/cli/watch.md
           - validate: references/cli/validate.md
+          - doc: references/cli/doc.md
           - lsp: references/cli/lsp.md
           - init: references/cli/init.md
           - version: references/cli/version.md
