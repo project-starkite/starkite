@@ -1,0 +1,19 @@
+# languages.toml - Helix configuration for Starkite Language Server (kite lsp)
+#
+# Place this file at ~/.config/helix/languages.toml (or merge into your existing configuration).
+#
+# Verify server setup with:
+#   hx --health starlark
+
+[[language]]
+name = "starlark"
+scope = "source.starlark"
+injection-regex = "starlark|star"
+file-types = ["star", "starlark"]
+roots = ["mod.yaml", "mod.lock", ".git"]
+language-servers = ["starkite-lsp"]
+auto-format = false
+
+[language-server.starkite-lsp]
+command = "kite"
+args = ["lsp", "--stdio"]

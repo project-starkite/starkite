@@ -1,0 +1,18 @@
+{
+  "starkite.serverPath": "kite",
+  "starkite.serverArguments": ["lsp", "--stdio"],
+  "starkite.trace.server": "verbose",
+  "[starkite]": {
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true,
+    "editor.quickSuggestions": {
+      "other": true,
+      "comments": false,
+      "strings": true
+    }
+  },
+  "[starlark]": {
+    "editor.tabSize": 4,
+    "editor.insertSpaces": true
+  }
+}

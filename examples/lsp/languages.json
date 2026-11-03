@@ -1,0 +1,17 @@
+{
+  "$schema": "https://zed.dev/schema/settings.json",
+  "languages": {
+    "Starlark": {
+      "language_servers": ["starkite-lsp"],
+      "format_on_save": "off"
+    }
+  },
+  "lsp": {
+    "starkite-lsp": {
+      "binary": {
+        "path": "kite",
+        "arguments": ["lsp", "--stdio"]
+      }
+    }
+  }
+}
