@@ -16,11 +16,20 @@ const (
 
 // DeprecatedSymbols maps qualified deprecated API names to modern alternatives.
 var DeprecatedSymbols = map[string]string{
-	"os.system":      "use os.exec instead (or os.sh().exec)",
-	"fs.read_file":   "use fs.read or fs.path.read_text instead",
-	"fs.write_file":  "use fs.write or fs.path.write_text instead",
-	"http.request":   "use http.get, http.post, or http.url instead",
-	"k8s.apply_file": "use k8s.apply instead",
+	"os.system":          "use os.exec instead (or os.sh().exec)",
+	"fs.read_file":       "use fs.read or fs.path.read_text instead",
+	"fs.write_file":      "use fs.write or fs.path.write_text instead",
+	"http.request":       "use http.get, http.post, or http.url instead",
+	"k8s.apply_file":     "use k8s.apply instead",
+	"strings.split":      "use Starlark native string method s.split(sep) instead",
+	"strings.has_prefix": "use Starlark native string method s.startswith(prefix) instead",
+	"strings.has_suffix": "use Starlark native string method s.endswith(suffix) instead",
+	"strings.trim_space": "use Starlark native string method s.strip() instead",
+	"strings.join":       "use Starlark native string method sep.join(list) instead",
+	"strings.replace":    "use Starlark native string method s.replace(old, new) instead",
+	"strings.contains":   "use 'sub in s' operator or s.find() instead",
+	"strings.to_lower":   "use Starlark native string method s.lower() instead",
+	"strings.to_upper":   "use Starlark native string method s.upper() instead",
 }
 
 // SensitivePaths identifies filesystem locations outside standard user workspaces.

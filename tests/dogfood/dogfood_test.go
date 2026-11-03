@@ -93,6 +93,19 @@ main()
 			expectedRun: "SAFE_EXEC",
 		},
 		{
+			name: "Deprecated strings.split helper remediation (L003)",
+			initialScript: `def main():
+    parts = strings.split("alpha,beta", ",")
+    print(parts[0])
+`,
+			expectedCode: "L003",
+			healedScript: `def main():
+    parts = "alpha,beta".split(",")
+    print(parts[0])
+`,
+			expectedRun: "alpha",
+		},
+		{
 			name: "Privileged port sandbox policy remediation (L004)",
 			initialScript: `def main():
     srv = http.server(port=80)

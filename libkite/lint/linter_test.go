@@ -179,6 +179,25 @@ func TestLinterL003_DeprecatedSymbols(t *testing.T) {
 	if len(deprecatedCodes) != 2 {
 		t.Fatalf("expected 2 deprecation warnings, got %d: %v", len(deprecatedCodes), diags)
 	}
+
+	t.Run("strings helper deprecations suggest native methods", func(t *testing.T) {
+		src := `def main():
+    strings.split("a,b", ",")
+    strings.trim_space("  hi  ")
+`
+		file := parseScript(t, "test.star", src)
+		diags := lint.Lint(file, "test.star", lint.DefaultOptions(""))
+
+		var targets []string
+		for _, d := range diags {
+			if d.Code == lint.CodeDeprecatedSymbol {
+				targets = append(targets, d.Target)
+			}
+		}
+		if len(targets) != 2 {
+			t.Fatalf("expected 2 strings deprecation warnings, got %d: %v", len(targets), diags)
+		}
+	})
 }
 
 func TestLinterL004_SandboxPolicyHints(t *testing.T) {
