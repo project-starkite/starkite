@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -563,6 +564,34 @@ sandbox:
 	}
 	if !strings.Contains(err.Error(), "hometest") {
 		t.Errorf("error should list defined profiles: %v", err)
+	}
+}
+
+func TestLoadProfile_unreadableUserConfigIgnored(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("chmod 0000 permission denial semantics differ on Windows")
+	}
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Chdir(t.TempDir())
+	cfgDir := filepath.Join(home, ".starkite")
+	if err := os.MkdirAll(cfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	unreadablePath := filepath.Join(cfgDir, "config.yaml")
+	writeFile(t, unreadablePath, "sandbox:\n  foo:\n    network: host\n")
+	if err := os.Chmod(unreadablePath, 0000); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(unreadablePath, 0644)
+
+	p, err := LoadProfile(ProfileDenyAll)
+	if err != nil {
+		t.Fatalf("LoadProfile(deny-all) should succeed even with unreadable user config: %v", err)
+	}
+	if p.Name != ProfileDenyAll {
+		t.Errorf("got %q, want %q", p.Name, ProfileDenyAll)
 	}
 }
 

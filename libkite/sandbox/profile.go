@@ -1137,7 +1137,10 @@ func loadNamed(name string) (Profile, error) {
 		cfg, err := readConfigFile(path)
 		if err != nil {
 			var pathErr *os.PathError
-			if errors.As(err, &pathErr) && errors.Is(pathErr.Err, os.ErrNotExist) {
+			if errors.As(err, &pathErr) && (errors.Is(pathErr.Err, os.ErrNotExist) || errors.Is(pathErr.Err, os.ErrPermission)) {
+				continue
+			}
+			if os.IsNotExist(err) || os.IsPermission(err) {
 				continue
 			}
 			return Profile{}, err
