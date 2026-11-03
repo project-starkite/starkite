@@ -153,7 +153,7 @@ func renderSkill(w io.Writer, cat *catalog.Catalog, cfg SkillConfig) error {
 func renderTier1Invariants(w io.Writer) {
 	fmt.Fprintln(w, "## Tier 1: Core Language Invariants & Execution Rules")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Autonomous agents generating Starkite scripts MUST adhere to four load-bearing execution rules:")
+	fmt.Fprintln(w, "Autonomous agents generating Starkite scripts MUST adhere to five load-bearing execution rules:")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "1. **Automatic Entrypoint Execution (`main()`)**:")
 	fmt.Fprintln(w, "   - Starkite scripts define entry logic inside `def main():` or `def main(ctx):`.")
@@ -176,6 +176,10 @@ func renderTier1Invariants(w io.Writer) {
 	fmt.Fprintln(w, "   - Standard modules (`fs`, `http`, `os`, `json`, `yaml`, `concur`, `time`, `log`, `csv`, `zip`, `gzip`, `base64`, `hash`, `table`, `template`, `strings`, `args`, `runtime`, `regexp`, `uuid`) are predeclared globals.")
 	fmt.Fprintln(w, "   - **DO NOT** write `import fs` or `load(\"fs\", ...)` for built-in modules.")
 	fmt.Fprintln(w, "   - Use `load(\"//path/to/script.star\", \"symbol\")` strictly for relative or installed user modules.")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "5. **Starlark Native String Methods**:")
+	fmt.Fprintln(w, "   - Strings in Starlark are native objects with built-in methods: `s.split(sep)`, `s.startswith(pfx)`, `s.endswith(sfx)`, `s.strip()`, `s.replace(old, new)`, and `sep.join(list)`.")
+	fmt.Fprintln(w, "   - **DO NOT** call `strings.split()` or `strings.has_prefix()`. The `strings` module provides only specialized non-builtin helpers (`center`, `cut`, `equal`, `has_any`, `ljust`, `quote`, `unquote`).")
 	fmt.Fprintln(w)
 }
 
