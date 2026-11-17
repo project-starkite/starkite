@@ -616,7 +616,7 @@ var podFieldNames = []string{
 	"containers", "init_containers", "volumes", "restart_policy",
 	"node_selector", "tolerations", "affinity", "service_account",
 	"host_network", "dns_policy", "security_context", "resource_claims",
-	"host_users",
+	"host_users", "priority_class_name",
 }
 
 // normalizeResizePolicy converts user-friendly snake_case keys in container resize_policy
@@ -980,6 +980,18 @@ func newKubeResource(schema *ResourceSchema, args starlark.Tuple, kwargs []starl
 				}
 			}
 		}
+		if key == "role_ref" {
+			if kr, ok := val.(*KubeResource); ok && (kr.schema.Kind == "Role" || kr.schema.Kind == "ClusterRole") {
+				goVal = &KubeResource{
+					schema: roleRefSchema,
+					data: map[string]any{
+						"api_group": "rbac.authorization.k8s.io",
+						"kind":      kr.schema.Kind,
+						"name":      kr.data["name"],
+					},
+				}
+			}
+		}
 		data[key] = goVal
 	}
 
@@ -1063,9 +1075,27 @@ func extractFieldsFromMap(schema *ResourceSchema, m map[string]any, data map[str
 		}
 	}
 
-	// Direct top-level fields (e.g., "data" for ConfigMap)
-	if dataVal, ok := m["data"]; ok {
-		data["data"] = dataVal
+	// Direct top-level fields (e.g., ConfigMap.data, Role.rules, PriorityClass.value, webhooks)
+	for fieldName, fieldSpec := range schema.Fields {
+		if fieldSpec.SpecKey {
+			continue
+		}
+		if _, isMeta := metadataFields[fieldName]; isMeta {
+			continue
+		}
+		switch fieldName {
+		case "storage", "device_class", "count", "allocation_mode", "request_name", "device_tolerations", "claim_metadata":
+			continue
+		case "selectors":
+			if schema.Kind == "ResourceClaim" {
+				continue
+			}
+		}
+		if v, ok := m[fieldSpec.JSONKey]; ok {
+			data[fieldName] = v
+		} else if v, ok := m[fieldName]; ok {
+			data[fieldName] = v
+		}
 	}
 }
 
@@ -1191,7 +1221,8 @@ func starlarkToGo(val starlark.Value, typ FieldType) (any, error) {
 			return kr, nil
 		}
 		if d, ok := val.(*starlark.Dict); ok {
-			return startype.Dict(d).ToMap()
+			resolved := resolveStarlarkValue(d).(*starlark.Dict)
+			return startype.Dict(resolved).ToMap()
 		}
 		return nil, fmt.Errorf("expected k8s object or dict, got %s", val.Type())
 

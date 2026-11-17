@@ -28,19 +28,20 @@ var podSchema = &ResourceSchema{
 	Kind:       "Pod",
 	APIVersion: "v1",
 	Fields: mergeFields(map[string]*FieldSpec{
-		"containers":       {JSONKey: "containers", Typ: FieldList, SpecKey: true, Required: true},
-		"init_containers":  {JSONKey: "initContainers", Typ: FieldList, SpecKey: true},
-		"volumes":          {JSONKey: "volumes", Typ: FieldList, SpecKey: true},
-		"restart_policy":   {JSONKey: "restartPolicy", Typ: FieldString, SpecKey: true, DefaultVal: "Always"},
-		"node_selector":    {JSONKey: "nodeSelector", Typ: FieldDict, SpecKey: true},
-		"tolerations":      {JSONKey: "tolerations", Typ: FieldList, SpecKey: true},
-		"affinity":         {JSONKey: "affinity", Typ: FieldKubeObject, SpecKey: true},
-		"service_account":  {JSONKey: "serviceAccountName", Typ: FieldString, SpecKey: true},
-		"host_network":     {JSONKey: "hostNetwork", Typ: FieldBool, SpecKey: true},
-		"dns_policy":       {JSONKey: "dnsPolicy", Typ: FieldString, SpecKey: true},
-		"security_context": {JSONKey: "securityContext", Typ: FieldKubeObject, SpecKey: true},
-		"resource_claims":  {JSONKey: "resourceClaims", Typ: FieldList, SpecKey: true},
-		"host_users":       {JSONKey: "hostUsers", Typ: FieldBool, SpecKey: true},
+		"containers":          {JSONKey: "containers", Typ: FieldList, SpecKey: true, Required: true},
+		"init_containers":     {JSONKey: "initContainers", Typ: FieldList, SpecKey: true},
+		"volumes":             {JSONKey: "volumes", Typ: FieldList, SpecKey: true},
+		"restart_policy":      {JSONKey: "restartPolicy", Typ: FieldString, SpecKey: true, DefaultVal: "Always"},
+		"node_selector":       {JSONKey: "nodeSelector", Typ: FieldDict, SpecKey: true},
+		"tolerations":         {JSONKey: "tolerations", Typ: FieldList, SpecKey: true},
+		"affinity":            {JSONKey: "affinity", Typ: FieldKubeObject, SpecKey: true},
+		"service_account":     {JSONKey: "serviceAccountName", Typ: FieldString, SpecKey: true},
+		"host_network":        {JSONKey: "hostNetwork", Typ: FieldBool, SpecKey: true},
+		"dns_policy":          {JSONKey: "dnsPolicy", Typ: FieldString, SpecKey: true},
+		"security_context":    {JSONKey: "securityContext", Typ: FieldKubeObject, SpecKey: true},
+		"resource_claims":     {JSONKey: "resourceClaims", Typ: FieldList, SpecKey: true},
+		"host_users":          {JSONKey: "hostUsers", Typ: FieldBool, SpecKey: true},
+		"priority_class_name": {JSONKey: "priorityClassName", Typ: FieldString, SpecKey: true},
 	}),
 }
 
@@ -276,7 +277,7 @@ var roleBindingSchema = &ResourceSchema{
 	Kind:       "RoleBinding",
 	APIVersion: "rbac.authorization.k8s.io/v1",
 	Fields: mergeFields(map[string]*FieldSpec{
-		"role_ref": {JSONKey: "roleRef", Typ: FieldDict, Required: true},
+		"role_ref": {JSONKey: "roleRef", Typ: FieldKubeObject, Required: true},
 		"subjects": {JSONKey: "subjects", Typ: FieldList},
 	}),
 }
@@ -285,7 +286,7 @@ var clusterRoleBindingSchema = &ResourceSchema{
 	Kind:       "ClusterRoleBinding",
 	APIVersion: "rbac.authorization.k8s.io/v1",
 	Fields: mergeFields(map[string]*FieldSpec{
-		"role_ref": {JSONKey: "roleRef", Typ: FieldDict, Required: true},
+		"role_ref": {JSONKey: "roleRef", Typ: FieldKubeObject, Required: true},
 		"subjects": {JSONKey: "subjects", Typ: FieldList},
 	}),
 }
@@ -462,6 +463,33 @@ var podDisruptionBudgetSchema = &ResourceSchema{
 	}),
 }
 
+var priorityClassSchema = &ResourceSchema{
+	Kind:       "PriorityClass",
+	APIVersion: "scheduling.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"value":             {JSONKey: "value", Typ: FieldInt, Required: true},
+		"global_default":    {JSONKey: "globalDefault", Typ: FieldBool},
+		"description":       {JSONKey: "description", Typ: FieldString},
+		"preemption_policy": {JSONKey: "preemptionPolicy", Typ: FieldString},
+	}),
+}
+
+var validatingWebhookConfigSchema = &ResourceSchema{
+	Kind:       "ValidatingWebhookConfiguration",
+	APIVersion: "admissionregistration.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"webhooks": {JSONKey: "webhooks", Typ: FieldList},
+	}),
+}
+
+var mutatingWebhookConfigSchema = &ResourceSchema{
+	Kind:       "MutatingWebhookConfiguration",
+	APIVersion: "admissionregistration.k8s.io/v1",
+	Fields: mergeFields(map[string]*FieldSpec{
+		"webhooks": {JSONKey: "webhooks", Typ: FieldList},
+	}),
+}
+
 // --- Pod fields for workload flattening ---
 // These fields are accepted by workload constructors (Deployment, StatefulSet, etc.)
 // and consumed by autoTemplate() to build the pod template automatically.
@@ -481,6 +509,7 @@ var podTemplateFields = map[string]*FieldSpec{
 	"security_context":     {JSONKey: "securityContext", Typ: FieldKubeObject},
 	"resource_claims":      {JSONKey: "resourceClaims", Typ: FieldList},
 	"host_users":           {JSONKey: "hostUsers", Typ: FieldBool},
+	"priority_class_name":  {JSONKey: "priorityClassName", Typ: FieldString},
 	"template_labels":      {JSONKey: "templateLabels", Typ: FieldDict},
 	"template_annotations": {JSONKey: "templateAnnotations", Typ: FieldDict},
 }
@@ -498,19 +527,20 @@ var podSpecSchema = &ResourceSchema{
 	Kind:        "PodSpec",
 	IsSubObject: true,
 	Fields: map[string]*FieldSpec{
-		"containers":       {JSONKey: "containers", Typ: FieldList, Required: true},
-		"init_containers":  {JSONKey: "initContainers", Typ: FieldList},
-		"volumes":          {JSONKey: "volumes", Typ: FieldList},
-		"restart_policy":   {JSONKey: "restartPolicy", Typ: FieldString, DefaultVal: "Always"},
-		"node_selector":    {JSONKey: "nodeSelector", Typ: FieldDict},
-		"tolerations":      {JSONKey: "tolerations", Typ: FieldList},
-		"affinity":         {JSONKey: "affinity", Typ: FieldKubeObject},
-		"service_account":  {JSONKey: "serviceAccountName", Typ: FieldString},
-		"host_network":     {JSONKey: "hostNetwork", Typ: FieldBool},
-		"dns_policy":       {JSONKey: "dnsPolicy", Typ: FieldString},
-		"security_context": {JSONKey: "securityContext", Typ: FieldKubeObject},
-		"resource_claims":  {JSONKey: "resourceClaims", Typ: FieldList},
-		"host_users":       {JSONKey: "hostUsers", Typ: FieldBool},
+		"containers":          {JSONKey: "containers", Typ: FieldList, Required: true},
+		"init_containers":     {JSONKey: "initContainers", Typ: FieldList},
+		"volumes":             {JSONKey: "volumes", Typ: FieldList},
+		"restart_policy":      {JSONKey: "restartPolicy", Typ: FieldString, DefaultVal: "Always"},
+		"node_selector":       {JSONKey: "nodeSelector", Typ: FieldDict},
+		"tolerations":         {JSONKey: "tolerations", Typ: FieldList},
+		"affinity":            {JSONKey: "affinity", Typ: FieldKubeObject},
+		"service_account":     {JSONKey: "serviceAccountName", Typ: FieldString},
+		"host_network":        {JSONKey: "hostNetwork", Typ: FieldBool},
+		"dns_policy":          {JSONKey: "dnsPolicy", Typ: FieldString},
+		"security_context":    {JSONKey: "securityContext", Typ: FieldKubeObject},
+		"resource_claims":     {JSONKey: "resourceClaims", Typ: FieldList},
+		"host_users":          {JSONKey: "hostUsers", Typ: FieldBool},
+		"priority_class_name": {JSONKey: "priorityClassName", Typ: FieldString},
 	},
 }
 
@@ -519,21 +549,22 @@ var podTemplateSchema = &ResourceSchema{
 	IsSubObject: true,
 	IsTemplate:  true,
 	Fields: map[string]*FieldSpec{
-		"labels":           {JSONKey: "labels", Typ: FieldDict, MetaKey: true},
-		"annotations":      {JSONKey: "annotations", Typ: FieldDict, MetaKey: true},
-		"containers":       {JSONKey: "containers", Typ: FieldList, Required: true},
-		"init_containers":  {JSONKey: "initContainers", Typ: FieldList},
-		"volumes":          {JSONKey: "volumes", Typ: FieldList},
-		"restart_policy":   {JSONKey: "restartPolicy", Typ: FieldString},
-		"node_selector":    {JSONKey: "nodeSelector", Typ: FieldDict},
-		"tolerations":      {JSONKey: "tolerations", Typ: FieldList},
-		"affinity":         {JSONKey: "affinity", Typ: FieldKubeObject},
-		"service_account":  {JSONKey: "serviceAccountName", Typ: FieldString},
-		"host_network":     {JSONKey: "hostNetwork", Typ: FieldBool},
-		"dns_policy":       {JSONKey: "dnsPolicy", Typ: FieldString},
-		"security_context": {JSONKey: "securityContext", Typ: FieldKubeObject},
-		"resource_claims":  {JSONKey: "resourceClaims", Typ: FieldList},
-		"host_users":       {JSONKey: "hostUsers", Typ: FieldBool},
+		"labels":              {JSONKey: "labels", Typ: FieldDict, MetaKey: true},
+		"annotations":         {JSONKey: "annotations", Typ: FieldDict, MetaKey: true},
+		"containers":          {JSONKey: "containers", Typ: FieldList, Required: true},
+		"init_containers":     {JSONKey: "initContainers", Typ: FieldList},
+		"volumes":             {JSONKey: "volumes", Typ: FieldList},
+		"restart_policy":      {JSONKey: "restartPolicy", Typ: FieldString},
+		"node_selector":       {JSONKey: "nodeSelector", Typ: FieldDict},
+		"tolerations":         {JSONKey: "tolerations", Typ: FieldList},
+		"affinity":            {JSONKey: "affinity", Typ: FieldKubeObject},
+		"service_account":     {JSONKey: "serviceAccountName", Typ: FieldString},
+		"host_network":        {JSONKey: "hostNetwork", Typ: FieldBool},
+		"dns_policy":          {JSONKey: "dnsPolicy", Typ: FieldString},
+		"security_context":    {JSONKey: "securityContext", Typ: FieldKubeObject},
+		"resource_claims":     {JSONKey: "resourceClaims", Typ: FieldList},
+		"host_users":          {JSONKey: "hostUsers", Typ: FieldBool},
+		"priority_class_name": {JSONKey: "priorityClassName", Typ: FieldString},
 	},
 }
 
@@ -725,6 +756,16 @@ var subjectSchema = &ResourceSchema{
 	},
 }
 
+var roleRefSchema = &ResourceSchema{
+	Kind:        "RoleRef",
+	IsSubObject: true,
+	Fields: map[string]*FieldSpec{
+		"name":      {JSONKey: "name", Typ: FieldString, Required: true},
+		"kind":      {JSONKey: "kind", Typ: FieldString, DefaultVal: "Role"},
+		"api_group": {JSONKey: "apiGroup", Typ: FieldString, DefaultVal: "rbac.authorization.k8s.io"},
+	},
+}
+
 var securityContextSchema = &ResourceSchema{
 	Kind:        "SecurityContext",
 	IsSubObject: true,
@@ -795,6 +836,7 @@ var allSchemas = map[string]*ResourceSchema{
 	"affinity":                            affinitySchema,
 	"policy_rule":                         policyRuleSchema,
 	"subject":                             subjectSchema,
+	"role_ref":                            roleRefSchema,
 	"security_context":                    securityContextSchema,
 	"device_class":                        deviceClassSchema,
 	"resource_claim":                      resourceClaimSchema,
@@ -819,6 +861,10 @@ var allSchemas = map[string]*ResourceSchema{
 	"map":                                 mutatingAdmissionPolicySchema,
 	"pod_disruption_budget":               podDisruptionBudgetSchema,
 	"pdb":                                 podDisruptionBudgetSchema,
+	"priority_class":                      priorityClassSchema,
+	"pc":                                  priorityClassSchema,
+	"validating_webhook_config":           validatingWebhookConfigSchema,
+	"mutating_webhook_config":             mutatingWebhookConfigSchema,
 }
 
 // makeObjConstructor creates a Starlark builtin for a k8s.obj constructor.

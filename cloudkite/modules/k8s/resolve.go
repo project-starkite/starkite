@@ -51,6 +51,12 @@ var builtinKinds = map[string]resolvedGVR{
 	"sa":                     {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "serviceaccounts"}, namespaced: true},
 	"event":                  {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "events"}, namespaced: true},
 	"events":                 {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "events"}, namespaced: true},
+	"resourcequota":          {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "resourcequotas"}, namespaced: true},
+	"resourcequotas":         {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "resourcequotas"}, namespaced: true},
+	"quota":                  {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "resourcequotas"}, namespaced: true},
+	"limitrange":             {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "limitranges"}, namespaced: true},
+	"limitranges":            {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "limitranges"}, namespaced: true},
+	"limits":                 {gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "limitranges"}, namespaced: true},
 
 	// apps/v1
 	"deployment":   {gvr: schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, namespaced: true},
@@ -130,6 +136,28 @@ var builtinKinds = map[string]resolvedGVR{
 	"grpcroutes":      {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "grpcroutes"}, namespaced: true},
 	"referencegrant":  {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "referencegrants"}, namespaced: true},
 	"referencegrants": {gvr: schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "referencegrants"}, namespaced: true},
+
+	// scheduling.k8s.io/v1
+	"priorityclass":   {gvr: schema.GroupVersionResource{Group: "scheduling.k8s.io", Version: "v1", Resource: "priorityclasses"}, namespaced: false},
+	"priorityclasses": {gvr: schema.GroupVersionResource{Group: "scheduling.k8s.io", Version: "v1", Resource: "priorityclasses"}, namespaced: false},
+	"pc":              {gvr: schema.GroupVersionResource{Group: "scheduling.k8s.io", Version: "v1", Resource: "priorityclasses"}, namespaced: false},
+
+	// admissionregistration.k8s.io/v1
+	"validatingwebhookconfiguration":    {gvr: schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingwebhookconfigurations"}, namespaced: false},
+	"validatingwebhookconfigurations":   {gvr: schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingwebhookconfigurations"}, namespaced: false},
+	"mutatingwebhookconfiguration":      {gvr: schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "mutatingwebhookconfigurations"}, namespaced: false},
+	"mutatingwebhookconfigurations":     {gvr: schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "mutatingwebhookconfigurations"}, namespaced: false},
+	"validatingadmissionpolicy":         {gvr: schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingadmissionpolicies"}, namespaced: false},
+	"validatingadmissionpolicies":       {gvr: schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingadmissionpolicies"}, namespaced: false},
+	"vap":                               {gvr: schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingadmissionpolicies"}, namespaced: false},
+	"validatingadmissionpolicybinding":  {gvr: schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingadmissionpolicybindings"}, namespaced: false},
+	"validatingadmissionpolicybindings": {gvr: schema.GroupVersionResource{Group: "admissionregistration.k8s.io", Version: "v1", Resource: "validatingadmissionpolicybindings"}, namespaced: false},
+
+	// apiextensions.k8s.io/v1
+	"customresourcedefinition":  {gvr: schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}, namespaced: false},
+	"customresourcedefinitions": {gvr: schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}, namespaced: false},
+	"crd":                       {gvr: schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}, namespaced: false},
+	"crds":                      {gvr: schema.GroupVersionResource{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}, namespaced: false},
 }
 
 // builtinQualifiedKinds indexes builtinKinds by "group/resource" for O(1) qualified lookups.

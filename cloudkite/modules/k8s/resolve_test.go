@@ -78,6 +78,14 @@ func TestResolveBuiltinKinds(t *testing.T) {
 		{"pdb", "policy", "poddisruptionbudgets", true},
 		{"gateway", "gateway.networking.k8s.io", "gateways", true},
 		{"httproute", "gateway.networking.k8s.io", "httproutes", true},
+		{"quota", "", "resourcequotas", true},
+		{"limits", "", "limitranges", true},
+		{"priorityclass", "scheduling.k8s.io", "priorityclasses", false},
+		{"pc", "scheduling.k8s.io", "priorityclasses", false},
+		{"validatingwebhookconfiguration", "admissionregistration.k8s.io", "validatingwebhookconfigurations", false},
+		{"mutatingwebhookconfiguration", "admissionregistration.k8s.io", "mutatingwebhookconfigurations", false},
+		{"vap", "admissionregistration.k8s.io", "validatingadmissionpolicies", false},
+		{"crd", "apiextensions.k8s.io", "customresourcedefinitions", false},
 	}
 
 	for _, tt := range tests {

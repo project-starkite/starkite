@@ -2016,9 +2016,352 @@ func TestResourceQuotaAndLimitRange(t *testing.T) {
 	for _, name := range []string{
 		"persistent_volume", "storage_class", "resource_quota", "quota",
 		"limit_range", "limit_range_item", "pod_disruption_budget", "pdb",
+		"role_ref", "priority_class", "pc",
+		"validating_webhook_config", "mutating_webhook_config",
 	} {
 		if _, ok := objConstructors[name]; !ok {
 			t.Errorf("k8s.obj.%s constructor missing from ObjConstructors", name)
 		}
 	}
+}
+
+func TestRoleRefAndRBACBindings(t *testing.T) {
+	m := New()
+	modMap, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	k8sMod := modMap["k8s"].(starlark.HasAttrs)
+	yamlFnVal, _ := k8sMod.Attr("yaml")
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+	thread := &starlark.Thread{Name: "test-thread"}
+
+	// Missing required name should fail.
+	if _, err := newKubeResource(roleRefSchema, nil, nil); err == nil {
+		t.Fatal("expected error for role_ref without name")
+	}
+
+	// Default kind="Role" and api_group="rbac.authorization.k8s.io".
+	rrDefault, err := newKubeResource(roleRefSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("pod-reader")},
+	})
+	if err != nil {
+		t.Fatalf("role_ref default error: %v", err)
+	}
+
+	rb, err := newKubeResource(roleBindingSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("read-pods")},
+		{starlark.String("namespace"), starlark.String("default")},
+		{starlark.String("role_ref"), rrDefault},
+		{starlark.String("subjects"), starlark.NewList([]starlark.Value{
+			mustKubeResource(t, subjectSchema, []starlark.Tuple{
+				{starlark.String("kind"), starlark.String("ServiceAccount")},
+				{starlark.String("name"), starlark.String("reader-sa")},
+				{starlark.String("namespace"), starlark.String("default")},
+			}),
+		})},
+	})
+	if err != nil {
+		t.Fatalf("role_binding with role_ref error: %v", err)
+	}
+
+	rbYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{rb}, nil)
+	if err != nil {
+		t.Fatalf("yaml(rb) error: %v", err)
+	}
+	rbYAML := string(rbYAMLVal.(starlark.String))
+	for _, want := range []string{
+		"kind: RoleBinding",
+		"roleRef:",
+		"apiGroup: rbac.authorization.k8s.io",
+		"kind: Role",
+		"name: pod-reader",
+		"name: reader-sa",
+	} {
+		if !strings.Contains(rbYAML, want) {
+			t.Errorf("RoleBinding YAML missing %q:\n%s", want, rbYAML)
+		}
+	}
+
+	// Explicit ClusterRole kind on role_ref in ClusterRoleBinding.
+	rrCluster, err := newKubeResource(roleRefSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("cluster-admin")},
+		{starlark.String("kind"), starlark.String("ClusterRole")},
+	})
+	if err != nil {
+		t.Fatalf("role_ref ClusterRole error: %v", err)
+	}
+	crb, err := newKubeResource(clusterRoleBindingSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("admin-binding")},
+		{starlark.String("role_ref"), rrCluster},
+	})
+	if err != nil {
+		t.Fatalf("cluster_role_binding with role_ref error: %v", err)
+	}
+	crbYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{crb}, nil)
+	if err != nil {
+		t.Fatalf("yaml(crb) error: %v", err)
+	}
+	crbYAML := string(crbYAMLVal.(starlark.String))
+	if !strings.Contains(crbYAML, "kind: ClusterRole") || !strings.Contains(crbYAML, "name: cluster-admin") {
+		t.Errorf("ClusterRoleBinding YAML unexpected:\n%s", crbYAML)
+	}
+
+	// Backward compatibility: raw dict for role_ref still works.
+	rawRef := starlark.NewDict(3)
+	rawRef.SetKey(starlark.String("apiGroup"), starlark.String("rbac.authorization.k8s.io"))
+	rawRef.SetKey(starlark.String("kind"), starlark.String("Role"))
+	rawRef.SetKey(starlark.String("name"), starlark.String("legacy-role"))
+	rbRaw, err := newKubeResource(roleBindingSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("legacy-binding")},
+		{starlark.String("role_ref"), rawRef},
+	})
+	if err != nil {
+		t.Fatalf("role_binding with raw dict role_ref error: %v", err)
+	}
+	rbRawYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{rbRaw}, nil)
+	if err != nil {
+		t.Fatalf("yaml(rbRaw) error: %v", err)
+	}
+	if !strings.Contains(string(rbRawYAMLVal.(starlark.String)), "name: legacy-role") {
+		t.Errorf("legacy dict role_ref YAML missing role name:\n%s", rbRawYAMLVal)
+	}
+
+	// Direct Role / ClusterRole KubeResource conversion into role_ref.
+	roleObj := mustKubeResource(t, roleSchema, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("direct-role")},
+	})
+	rbDirect, err := newKubeResource(roleBindingSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("direct-binding")},
+		{starlark.String("role_ref"), roleObj},
+	})
+	if err != nil {
+		t.Fatalf("role_binding with direct Role error: %v", err)
+	}
+	rbDirectYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{rbDirect}, nil)
+	if err != nil {
+		t.Fatalf("yaml(rbDirect) error: %v", err)
+	}
+	rbDirectYAML := string(rbDirectYAMLVal.(starlark.String))
+	if !strings.Contains(rbDirectYAML, "kind: Role") ||
+		!strings.Contains(rbDirectYAML, "name: direct-role") ||
+		!strings.Contains(rbDirectYAML, "apiGroup: rbac.authorization.k8s.io") {
+		t.Errorf("direct Role role_ref YAML unexpected:\n%s", rbDirectYAML)
+	}
+
+	clusterRoleObj := mustKubeResource(t, clusterRoleSchema, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("direct-cluster-role")},
+	})
+	crbDirect, err := newKubeResource(clusterRoleBindingSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("direct-cr-binding")},
+		{starlark.String("role_ref"), clusterRoleObj},
+	})
+	if err != nil {
+		t.Fatalf("cluster_role_binding with direct ClusterRole error: %v", err)
+	}
+	crbDirectYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{crbDirect}, nil)
+	if err != nil {
+		t.Fatalf("yaml(crbDirect) error: %v", err)
+	}
+	crbDirectYAML := string(crbDirectYAMLVal.(starlark.String))
+	if !strings.Contains(crbDirectYAML, "kind: ClusterRole") || !strings.Contains(crbDirectYAML, "name: direct-cluster-role") {
+		t.Errorf("direct ClusterRole role_ref YAML unexpected:\n%s", crbDirectYAML)
+	}
+}
+
+func TestPriorityClassAndWorkloadReference(t *testing.T) {
+	m := New()
+	modMap, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	k8sMod := modMap["k8s"].(starlark.HasAttrs)
+	yamlFnVal, _ := k8sMod.Attr("yaml")
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+	thread := &starlark.Thread{Name: "test-thread"}
+
+	// Missing required value should fail.
+	if _, err := newKubeResource(priorityClassSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("invalid-pc")},
+	}); err == nil {
+		t.Fatal("expected error for priority_class missing required 'value'")
+	}
+
+	tests := []struct {
+		name      string
+		kwargs    []starlark.Tuple
+		wantLines []string
+	}{
+		{
+			name: "high_priority",
+			kwargs: []starlark.Tuple{
+				{starlark.String("name"), starlark.String("high-priority")},
+				{starlark.String("value"), starlark.MakeInt(1000000)},
+				{starlark.String("global_default"), starlark.Bool(false)},
+				{starlark.String("preemption_policy"), starlark.String("PreemptLowerPriority")},
+				{starlark.String("description"), starlark.String("Critical workloads")},
+			},
+			wantLines: []string{
+				"apiVersion: scheduling.k8s.io/v1",
+				"kind: PriorityClass",
+				"value: 1000000",
+				"globalDefault: false",
+				"preemptionPolicy: PreemptLowerPriority",
+				"description: Critical workloads",
+			},
+		},
+		{
+			name: "zero_value",
+			kwargs: []starlark.Tuple{
+				{starlark.String("name"), starlark.String("zero-priority")},
+				{starlark.String("value"), starlark.MakeInt(0)},
+			},
+			wantLines: []string{
+				"kind: PriorityClass",
+				"value: 0",
+			},
+		},
+	}
+
+	var highPC *KubeResource
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			pc, err := newKubeResource(priorityClassSchema, nil, tc.kwargs)
+			if err != nil {
+				t.Fatalf("priority_class error: %v", err)
+			}
+			if tc.name == "high_priority" {
+				highPC = pc
+			}
+			pcYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{pc}, nil)
+			if err != nil {
+				t.Fatalf("yaml(pc) error: %v", err)
+			}
+			pcYAML := string(pcYAMLVal.(starlark.String))
+			if strings.Contains(pcYAML, "\nspec:") {
+				t.Errorf("PriorityClass should not render a spec block:\n%s", pcYAML)
+			}
+			for _, want := range tc.wantLines {
+				if !strings.Contains(pcYAML, want) {
+					t.Errorf("PriorityClass YAML missing %q:\n%s", want, pcYAML)
+				}
+			}
+		})
+	}
+
+	// Pass PriorityClass as string to Pod.
+	appContainer := mustKubeResource(t, containerSchema, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("app")},
+		{starlark.String("image"), starlark.String("nginx:1.27")},
+	})
+	pod, err := newKubeResource(podSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("prioritized-pod")},
+		{starlark.String("containers"), starlark.NewList([]starlark.Value{appContainer})},
+		{starlark.String("priority_class_name"), starlark.String("high-priority")},
+	})
+	if err != nil {
+		t.Fatalf("pod with priority_class_name error: %v", err)
+	}
+	podYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{pod}, nil)
+	if !strings.Contains(string(podYAMLVal.(starlark.String)), "priorityClassName: high-priority") {
+		t.Errorf("Pod YAML missing priorityClassName:\n%s", podYAMLVal)
+	}
+
+	// Pass PriorityClass KubeResource directly to Deployment.
+	dep, err := newKubeResource(deploymentSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("prioritized-dep")},
+		{starlark.String("containers"), starlark.NewList([]starlark.Value{appContainer})},
+		{starlark.String("priority_class_name"), highPC},
+	})
+	if err != nil {
+		t.Fatalf("deployment with priority_class_name error: %v", err)
+	}
+	depYAMLVal, _ := yamlFn.CallInternal(thread, starlark.Tuple{dep}, nil)
+	if !strings.Contains(string(depYAMLVal.(starlark.String)), "priorityClassName: high-priority") {
+		t.Errorf("Deployment YAML missing priorityClassName:\n%s", depYAMLVal)
+	}
+}
+
+func TestWebhookConfigConstructors(t *testing.T) {
+	m := New()
+	modMap, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatalf("Load() error: %v", err)
+	}
+	k8sMod := modMap["k8s"].(starlark.HasAttrs)
+	yamlFnVal, _ := k8sMod.Attr("yaml")
+	yamlFn := yamlFnVal.(*starlark.Builtin)
+	thread := &starlark.Thread{Name: "test-thread"}
+
+	webhookEntry := starlark.NewDict(4)
+	webhookEntry.SetKey(starlark.String("name"), starlark.String("validate.example.com"))
+	webhookEntry.SetKey(starlark.String("admissionReviewVersions"), starlark.NewList([]starlark.Value{starlark.String("v1")}))
+	webhookEntry.SetKey(starlark.String("sideEffects"), starlark.String("None"))
+
+	vwc, err := newKubeResource(validatingWebhookConfigSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("example-validating-webhook")},
+		{starlark.String("webhooks"), starlark.NewList([]starlark.Value{webhookEntry})},
+	})
+	if err != nil {
+		t.Fatalf("validating_webhook_config error: %v", err)
+	}
+	vwcYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{vwc}, nil)
+	if err != nil {
+		t.Fatalf("yaml(vwc) error: %v", err)
+	}
+	vwcYAML := string(vwcYAMLVal.(starlark.String))
+	if strings.Contains(vwcYAML, "\nspec:") {
+		t.Errorf("ValidatingWebhookConfiguration should not render a spec block:\n%s", vwcYAML)
+	}
+	for _, want := range []string{
+		"apiVersion: admissionregistration.k8s.io/v1",
+		"kind: ValidatingWebhookConfiguration",
+		"webhooks:",
+		"name: validate.example.com",
+	} {
+		if !strings.Contains(vwcYAML, want) {
+			t.Errorf("ValidatingWebhookConfiguration YAML missing %q:\n%s", want, vwcYAML)
+		}
+	}
+
+	mwc, err := newKubeResource(mutatingWebhookConfigSchema, nil, []starlark.Tuple{
+		{starlark.String("name"), starlark.String("example-mutating-webhook")},
+		{starlark.String("webhooks"), starlark.NewList([]starlark.Value{webhookEntry})},
+	})
+	if err != nil {
+		t.Fatalf("mutating_webhook_config error: %v", err)
+	}
+	mwcYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{mwc}, nil)
+	if err != nil {
+		t.Fatalf("yaml(mwc) error: %v", err)
+	}
+	mwcYAML := string(mwcYAMLVal.(starlark.String))
+	if strings.Contains(mwcYAML, "\nspec:") {
+		t.Errorf("MutatingWebhookConfiguration should not render a spec block:\n%s", mwcYAML)
+	}
+	if !strings.Contains(mwcYAML, "kind: MutatingWebhookConfiguration") || !strings.Contains(mwcYAML, "webhooks:") {
+		t.Errorf("MutatingWebhookConfiguration YAML unexpected:\n%s", mwcYAML)
+	}
+
+	// Positional YAML round-trip verifies extractFieldsFromMap populates top-level fields.
+	roundTrip, err := newKubeResource(validatingWebhookConfigSchema, starlark.Tuple{starlark.String(vwcYAML)}, nil)
+	if err != nil {
+		t.Fatalf("validating_webhook_config from YAML error: %v", err)
+	}
+	rtYAMLVal, err := yamlFn.CallInternal(thread, starlark.Tuple{roundTrip}, nil)
+	if err != nil {
+		t.Fatalf("yaml(roundTrip) error: %v", err)
+	}
+	if !strings.Contains(string(rtYAMLVal.(starlark.String)), "validate.example.com") {
+		t.Errorf("round-tripped ValidatingWebhookConfiguration missing webhook entry:\n%s", rtYAMLVal)
+	}
+}
+
+func mustKubeResource(t *testing.T, schema *ResourceSchema, kwargs []starlark.Tuple) *KubeResource {
+	t.Helper()
+	kr, err := newKubeResource(schema, nil, kwargs)
+	if err != nil {
+		t.Fatalf("newKubeResource(%s) error: %v", schema.Kind, err)
+	}
+	return kr
 }
