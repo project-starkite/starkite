@@ -70,7 +70,7 @@ vet: ## Run go vet across all workspace modules (linux, darwin, windows)
 test-race: ## Run all Go unit tests with race detection
 	@for dir in $(MODULES); do \
 		echo "=== Testing $$dir (race) ==="; \
-		(cd $$dir && go test -race ./...); \
+		(cd $$dir && go test -race ./...) || exit 1; \
 	done
 
 lint: ## Run staticcheck across all workspace packages

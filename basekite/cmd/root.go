@@ -77,9 +77,6 @@ Examples:
   # Launch interactive REPL
   kite repl
 
-  # Format starlark files
-  kite fmt ./scripts/
-
   # Execute inline Starlark code
   kite eval 'print("Hello from Starlark!")'
 

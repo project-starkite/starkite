@@ -475,22 +475,29 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 
 | Constructor | Returns | Description |
 |-------------|---------|-------------|
-| `k8s.obj.deployment(name, replicas=1, containers=[], resource_claims=[], labels={}, annotations={}, selector={}, template=None)` | `KubeResource` | Construct a Deployment manifest |
+| `k8s.obj.deployment(name, replicas=1, containers=[], resource_claims=[], priority_class_name="", labels={}, annotations={}, selector={}, template=None)` | `KubeResource` | Construct a Deployment manifest |
 | `k8s.obj.service(name, ports=[], selector={}, type="ClusterIP", traffic_distribution="", labels={}, annotations={})` | `KubeResource` | Construct a Service manifest (`traffic_distribution` sets `spec.trafficDistribution`, GA 1.35) |
 | `k8s.obj.pod_disruption_budget(name, min_available=None, max_unavailable=None, selector={}, unhealthy_pod_eviction_policy="", labels={}, annotations={})` | `KubeResource` | Construct a `policy/v1` `PodDisruptionBudget` manifest (alias `k8s.obj.pdb`) |
 | `k8s.obj.config_map(name, data={}, binary_data={}, labels={}, annotations={})` | `KubeResource` | Construct a ConfigMap manifest |
 | `k8s.obj.secret(name, data={}, string_data={}, type="Opaque", labels={}, annotations={})` | `KubeResource` | Construct a Secret manifest |
-| `k8s.obj.pod(name, containers=[], resource_claims=[], restart_policy="Always", host_users=True, labels={}, annotations={})` | `KubeResource` | Construct a Pod manifest |
+| `k8s.obj.pod(name, containers=[], resource_claims=[], restart_policy="Always", host_users=True, priority_class_name="", labels={}, annotations={})` | `KubeResource` | Construct a Pod manifest |
 | `k8s.obj.job(name, containers=[], resource_claims=[], completions=1, parallelism=1, labels={}, annotations={})` | `KubeResource` | Construct a Job manifest |
 | `k8s.obj.cron_job(name, schedule, job_template=None, containers=[], resource_claims=[], labels={}, annotations={})` | `KubeResource` | Construct a CronJob manifest |
 | `k8s.obj.stateful_set(name, service_name="", replicas=1, containers=[], resource_claims=[], labels={}, annotations={})` | `KubeResource` | Construct a StatefulSet manifest |
 | `k8s.obj.daemon_set(name, containers=[], resource_claims=[], labels={}, annotations={})` | `KubeResource` | Construct a DaemonSet manifest |
 | `k8s.obj.ingress(name, rules=[], tls=[], ingress_class_name="", labels={}, annotations={})` | `KubeResource` | Construct an Ingress manifest |
+| `k8s.obj.network_policy(name, pod_selector={}, ingress=[], egress=[], policy_types=[], namespace="", labels={}, annotations={})` | `KubeResource` | Construct a `networking.k8s.io/v1` `NetworkPolicy` manifest |
+| `k8s.obj.horizontal_pod_autoscaler(name, scale_target_ref, max_replicas, min_replicas=1, metrics=[], namespace="", labels={}, annotations={})` | `KubeResource` | Construct an `autoscaling/v2` `HorizontalPodAutoscaler` manifest |
 | `k8s.obj.persistent_volume(name, capacity={}, storage="", access_modes=[], storage_class_name="", reclaim_policy="", host_path={}, nfs={}, csi={}, labels={}, annotations={})` | `KubeResource` | Construct a PersistentVolume manifest (cluster-scoped) |
 | `k8s.obj.persistent_volume_claim(name, access_modes=[], storage="", storage_class_name="", volume_name="", selector={}, data_source={}, data_source_ref={}, labels={}, annotations={})` | `KubeResource` | Construct a PersistentVolumeClaim manifest |
 | `k8s.obj.storage_class(name, provisioner="", volume_binding_mode="", reclaim_policy="", allow_volume_expansion=False, parameters={}, mount_options=[], labels={}, annotations={})` | `KubeResource` | Construct a StorageClass manifest (cluster-scoped) |
 | `k8s.obj.namespace(name, labels={}, annotations={})` | `KubeResource` | Construct a Namespace manifest |
 | `k8s.obj.service_account(name, labels={}, annotations={})` | `KubeResource` | Construct a ServiceAccount manifest |
+| `k8s.obj.role(name, rules=[], namespace="", labels={}, annotations={})` | `KubeResource` | Construct an `rbac.authorization.k8s.io/v1` `Role` manifest |
+| `k8s.obj.cluster_role(name, rules=[], aggregation_rule={}, labels={}, annotations={})` | `KubeResource` | Construct an `rbac.authorization.k8s.io/v1` `ClusterRole` manifest (cluster-scoped) |
+| `k8s.obj.role_binding(name, role_ref, subjects=[], namespace="", labels={}, annotations={})` | `KubeResource` | Construct an `rbac.authorization.k8s.io/v1` `RoleBinding` manifest |
+| `k8s.obj.cluster_role_binding(name, role_ref, subjects=[], labels={}, annotations={})` | `KubeResource` | Construct an `rbac.authorization.k8s.io/v1` `ClusterRoleBinding` manifest (cluster-scoped) |
+| `k8s.obj.priority_class(name, value, global_default=False, description="", preemption_policy="", labels={}, annotations={})` | `KubeResource` | Construct a `scheduling.k8s.io/v1` `PriorityClass` manifest (cluster-scoped, alias `k8s.obj.pc`) |
 | `k8s.obj.resource_quota(name, hard={}, scopes=[], scope_selector={}, labels={}, annotations={})` | `KubeResource` | Construct a `v1` `ResourceQuota` manifest (alias `k8s.obj.quota`) |
 | `k8s.obj.limit_range(name, limits=[], labels={}, annotations={})` | `KubeResource` | Construct a `v1` `LimitRange` manifest |
 | `k8s.obj.device_class(name, selectors=[], config=[], suitable_nodes={}, labels={}, annotations={})` | `KubeResource` | Construct a `resource.k8s.io/v1` `DeviceClass` (cluster-scoped) |
@@ -507,18 +514,29 @@ The `k8s.obj` namespace provides declarative constructors for building validated
 | `k8s.obj.validating_admission_policy_binding(name, policy_name, param_ref={}, match_resources={}, validation_actions=["Deny"], labels={}, annotations={})` | `KubeResource` | Construct an `admissionregistration.k8s.io/v1` `ValidatingAdmissionPolicyBinding` manifest (cluster-scoped) |
 | `k8s.obj.mutating_admission_policy(name, failure_policy="Fail", match_constraints={}, match_conditions=[], mutations=[], reinvocation_policy="", variables=[], param_kind={}, labels={}, annotations={})` | `KubeResource` | Construct an `admissionregistration.k8s.io/v1alpha1` `MutatingAdmissionPolicy` manifest (cluster-scoped, alias `k8s.obj.map`) |
 | `k8s.obj.mutating_admission_policy_binding(name, policy_name, param_ref={}, match_resources={}, labels={}, annotations={})` | `KubeResource` | Construct an `admissionregistration.k8s.io/v1alpha1` `MutatingAdmissionPolicyBinding` manifest (cluster-scoped) |
+| `k8s.obj.validating_webhook_config(name, webhooks=[], labels={}, annotations={})` | `KubeResource` | Construct an `admissionregistration.k8s.io/v1` `ValidatingWebhookConfiguration` manifest (cluster-scoped) |
+| `k8s.obj.mutating_webhook_config(name, webhooks=[], labels={}, annotations={})` | `KubeResource` | Construct an `admissionregistration.k8s.io/v1` `MutatingWebhookConfiguration` manifest (cluster-scoped) |
 
 ### Sub-object constructors
 
 | Constructor | Returns | Description |
 |-------------|---------|-------------|
+| `k8s.obj.pod_spec(containers, init_containers=[], volumes=[], restart_policy="Always", node_selector={}, tolerations=[], affinity=None, service_account="", host_network=False, dns_policy="", security_context=None, resource_claims=[], host_users=True, priority_class_name="")` | `KubeResource` | Reusable PodSpec definition |
+| `k8s.obj.pod_template(containers, init_containers=[], volumes=[], restart_policy="", node_selector={}, tolerations=[], affinity=None, service_account="", host_network=False, dns_policy="", security_context=None, resource_claims=[], host_users=True, priority_class_name="", labels={}, annotations={})` | `KubeResource` | Pod template specification with metadata and PodSpec fields |
 | `k8s.obj.container(name, image, ports=[], env=[], command=[], args=[], volume_mounts=[], resources=None, claims=[], resize_policy=[], restart_policy="", liveness_probe=None, readiness_probe=None)` | `KubeResource` | Container specification |
 | `k8s.obj.container_port(container_port, name="", protocol="TCP", host_port=0)` | `KubeResource` | Container port definition |
 | `k8s.obj.service_port(port, target_port=0, name="", protocol="TCP", node_port=0)` | `KubeResource` | Service port definition |
+| `k8s.obj.ingress_rule(host="", paths={})` | `KubeResource` | Ingress rule mapping host to HTTP paths |
+| `k8s.obj.ingress_path(path, backend, path_type="Prefix")` | `KubeResource` | Ingress HTTP path entry |
 | `k8s.obj.env_var(name, value="", value_from={})` | `KubeResource` | Environment variable definition |
 | `k8s.obj.env_from(config_map_ref={}, secret_ref={}, prefix="")` | `KubeResource` | Environment variable source from ConfigMap or Secret |
 | `k8s.obj.resource_requirements(requests={}, limits={}, claims=[])` | `KubeResource` | Resource requests, limits, and claim bindings |
 | `k8s.obj.probe(http_get={}, tcp_socket={}, exec={}, initial_delay_seconds=0, period_seconds=10, timeout_seconds=1, failure_threshold=3)` | `KubeResource` | Health probe configuration |
+| `k8s.obj.toleration(key="", operator="Equal", value="", effect="", toleration_seconds=0)` | `KubeResource` | Pod scheduling toleration entry |
+| `k8s.obj.affinity(node_affinity={}, pod_affinity={}, pod_anti_affinity={})` | `KubeResource` | Pod scheduling affinity rules |
+| `k8s.obj.policy_rule(api_groups, resources, verbs)` | `KubeResource` | RBAC PolicyRule definition for Roles and ClusterRoles |
+| `k8s.obj.subject(kind, name, namespace="", api_group="")` | `KubeResource` | RBAC binding subject (ServiceAccount, User, or Group) |
+| `k8s.obj.role_ref(name, kind="Role", api_group="rbac.authorization.k8s.io")` | `KubeResource` | RBAC RoleRef target for RoleBindings and ClusterRoleBindings |
 | `k8s.obj.security_context(run_as_user=0, run_as_group=0, run_as_non_root=False, read_only_root_filesystem=False, privileged=False, allow_privilege_escalation=False, capabilities={}, se_linux_options={}, seccomp_profile={}, apparmor_profile={}, fs_group=0, fs_group_change_policy="", windows_options={})` | `KubeResource` | Pod or container security context |
 | `k8s.obj.volume(name, pvc=None, claim_name="", config_map=None, secret=None, empty_dir=None, ephemeral=None, host_path={}, nfs={}, csi={}, projected={}, downward_api={})` | `KubeResource` | Pod volume definition with ergonomic shortcuts for PVCs, ConfigMaps, Secrets, EmptyDir, and Ephemeral volumes |
 | `k8s.obj.volume_mount(name, mount_path, sub_path="", sub_path_expr="", read_only=False, mount_propagation="", recursive_read_only="")` | `KubeResource` | Container volume mount specification |

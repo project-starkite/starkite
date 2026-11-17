@@ -1,5 +1,59 @@
 # Changelog
 
+## v0.11.9
+
+### Added & Enhanced
+
+- **Kubernetes Object Constructors (`k8s.obj`)**:
+  - Added `k8s.obj.role_ref(name, kind="Role", api_group="rbac.authorization.k8s.io")` for typed RBAC bindings (`RoleBinding` and `ClusterRoleBinding`), plus direct `k8s.obj.role(...)` and `k8s.obj.cluster_role(...)` object conversion and full backward compatibility with raw dict `role_ref` inputs.
+  - Added `k8s.obj.priority_class(name, value, ...)` (`scheduling.k8s.io/v1`, alias `k8s.obj.pc`) and `priority_class_name` support on `k8s.obj.pod`, `k8s.obj.pod_spec`, `k8s.obj.pod_template`, and workload constructors (`deployment`, `stateful_set`, `daemon_set`, `job`, `cron_job`).
+  - Added `k8s.obj.validating_webhook_config(name, webhooks=[], ...)` and `k8s.obj.mutating_webhook_config(name, webhooks=[], ...)` (`admissionregistration.k8s.io/v1`).
+  - Generalized positional YAML/dict extraction across top-level resource fields and nested `KubeResource` resolution within `FieldKubeObject` dicts.
+- **Built-In Kubernetes GVR Shortcuts**: Added fast O(1) resolution entries for `resourcequota`/`quota`, `limitrange`/`limits`, `priorityclass`/`pc`, `validatingwebhookconfiguration`, `mutatingwebhookconfiguration`, `validatingadmissionpolicy`/`vap`, `validatingadmissionpolicybinding`, and `customresourcedefinition`/`crd`.
+- **API Reference & Agent Skills Sync**: Documented all newly added and existing RBAC, scheduling, admission, network, and pod sub-object `k8s.obj` constructors in `docs/references/api/k8s.md` and synchronized `libkite/catalog/apidocs/table_gen.go` and `.agent/skills/`.
+
+### Removed
+
+- **Unimplemented `kite fmt` Help Reference**: Removed the unimplemented `kite fmt ./scripts/` example from the root CLI help text.
+
+### Fixed
+
+- **Pre-Flight Race Test Exit Propagation**: Enforced fail-fast exit status propagation across multi-module `go test -race` runs in `Makefile`.
+
+## v0.11.8
+
+### Added & Enhanced
+
+- **Editor & Agent Skills Examples**: Added multi-editor LSP configurations (`examples/lsp/`), agent skills documentation (`docs/ai/skills.md`), operational repair scripts (`examples/skills/`), landing page LSP intelligence section, and VS Code extension icon/packaging polish.
+
+## v0.11.7
+
+### Added & Enhanced
+
+- **`kite doc` Reference & Lint Guidance**: Added CLI reference documentation (`docs/references/cli/doc.md`), Starlark native string method lint rules (`libkite/lint`), and corresponding agent skill guidance.
+
+### Fixed
+
+- **Sandbox Config Tolerance**: Tolerate permission denied errors when probing optional default user configuration files under strict filesystem confinement.
+
+## v0.11.4 – v0.11.6
+
+### Added & Enhanced
+
+- **Embedded `kite lsp` & Static Linter**: Consolidated `kite lsp` (`--stdio`) directly into the unified `kite` binary, expanded dialect and sandbox lint checks in `kite validate --lint`, added closed-loop agent dogfooding tests (`tests/dogfood`), and packaged the VS Code extension `.vsix` in release builds.
+
+## v0.11.0 – v0.11.3
+
+### Added & Enhanced
+
+- **Language Server, Reference Catalog & Agent Skills**: Implemented Starlark LSP diagnostics/completions/hover (`libkite/lsp`), extracted `libkite/catalog` with `TypedModule` metadata and automated `gendocs` synchronization, introduced `kite doc` (`--json` and `--skills`), and automated `project-starkite/skills` synchronization on release.
+
+## v0.10.10
+
+### Changed
+
+- **Documentation Modernization**: Updated the root README, landing page security showcase, and sandbox guide around the execution triad, explicit `--sandbox-net-allow`/`--sandbox-net-deny`, and `--sandbox-mount`.
+
 ## v0.10.9
 
 ### Added & Enhanced
@@ -12,6 +66,19 @@
 ### Removed
 
 - **Hard-Coded Language Runtime Profiles**: Removed built-in language environment profiles (`python-env`, `node-env`, `ruby-env`) and automated host filesystem scanning heuristics in favor of explicit, composable mount and path primitives.
+
+## v0.10.6 – v0.10.8
+
+### Added & Enhanced
+
+- **Execution Triad (`kite run` / `kite exec` / `kite eval`)**: Added native process confinement via `kite exec`, migrated inline Starlark evaluation to `kite eval`, enforced non-Starlark guardrails in `kite run`, and enriched interpreter denial diagnostics.
+- **Explicit Network Controls**: Replaced `--sandbox-net` with symmetric `--sandbox-net-allow` / `--sandbox-net-deny` flags, `--sandbox-net-mode`, `--sandbox-max-memory`, and endpoint-scoped enforcement across Linux, macOS, and Windows drivers.
+
+## v0.10.1 – v0.10.5
+
+### Added & Enhanced
+
+- **Native Windows Kernel Sandbox**: Delivered native Windows 11 24H2+ / Windows Server 2025+ isolation (`--sandbox-driver=windows` / `appcontainer`) using Win32 Job Objects, `STARTUPINFOEXW` child-process mitigations, ephemeral AppContainer profiles with WFP network gating, surgical NTFS DACL unveiling with `W^X` scratch locks, lease garbage collection, Win32 denial diagnostics, and default sandbox activation.
 
 ## v0.10.0
 
@@ -55,47 +122,9 @@
 
 - **Windows Named Pipe Hanging**: Implemented active deadline enforcement (`SetReadDeadline`, `SetWriteDeadline`) on Windows named pipes (`//./pipe/docker_engine`) using `time.Timer` and `windows.CancelIoEx`, resolving blocking I/O on broken pipes or daemon aborts.
 
-## Unreleased
-
-### Breaking changes — `--sandbox` and `--trust` removed
-
-- The `--sandbox` flag is replaced by `--permissions=<profile>`. Use `--permissions=strict` for the previous `--sandbox` behavior. No alias is kept (pre-release).
-- The `--trust` flag is removed. Trust mode is the default when `--permissions` is unset; an explicit profile name (`--permissions=trusted`) lands in a follow-up phase.
-
-### Breaking changes — naming refactor
-
-The repository has been restructured so that every directory and binary name conveys its intent at a glance. Pre-release, no migration aliases.
-
-**Directory layout** — every module directory ends in `kite`:
-
-- `libkite/` — embeddable Starlark runtime. Import path `github.com/project-starkite/starkite/libkite`; package `libkite`.
-- `kite/` — composes every edition into one binary; produces `kite`.
-- `basekite/` — lean base CLI; produces `kitecmd`.
-- `cloudkite/` — base + Kubernetes; produces `kitecloud`.
-- `aikite/` — base + LLM/MCP; produces `kiteai`.
-
-**Binaries** use the `kite<edition>` prefix form (with the all-in-one as plain `kite`):
-
-| Binary | Modules | Replaces |
-|---|---|---|
-| `kite` | base + Kubernetes + GenAI/MCP (all-in-one) | (new) |
-| `kitecmd` | base only | `kite` (lean base) |
-| `kitecloud` | base + Kubernetes | `kite-cloud` |
-| `kiteai` | base + LLM/MCP | `kite-ai` |
-
-**Type references** switch from `starbase.Registry`/`starbase.Module`/`starbase.Config` to `libkite.Registry`/`libkite.Module`/`libkite.Config`.
-
-**Local builds land in `./bin/`** rather than at the project root, since each edition's source directory could otherwise collide with the produced binary's name in earlier iterations.
-
-### Added
-
-- **`kite` (all-in-one edition)** — bundles every module from every edition in one binary. ~92 MB vs. ~26 MB for `kitecmd`. Recommended for new users.
-- **Strict-mode registry** in `libkite` — `Registry.SetStrict(true)` causes module-name, top-level export, and global-alias collisions to surface at startup instead of silently overwriting. The all-edition opts in; the lean editions stay lenient.
-- **Edition-namespace disjointness invariant** — enforced by the all-edition's loader test (`kite/loader/loader_test.go`). Any future PR that registers a colliding name across editions fails CI.
-
 ## v0.0.1 — Initial Release
 
-The first public release of **starkite** (formerly starctl/crsh), an automation language that exposes Go's standard library as type-safe, scriptable Starlark modules. Built on [Starlark](https://github.com/google/starlark-go).
+The first public release of **starkite**, an automation language that exposes Go's standard library as type-safe, scriptable Starlark modules. Built on [Starlark](https://github.com/google/starlark-go).
 
 ### Highlights
 
