@@ -86,3 +86,64 @@ func TestResolveExecutablePaths_DirectPaths(t *testing.T) {
 		t.Errorf("wildcard * should not appear in resolved paths, got: %v", resolved)
 	}
 }
+
+func TestIsAllowedExecTarget_MulticallSymlinks(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("multicall symlink layout test not applicable on windows")
+	}
+
+	tempDir := t.TempDir()
+	libDir := filepath.Join(tempDir, "lib")
+	binDir := filepath.Join(tempDir, "bin")
+	if err := os.MkdirAll(libDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	coreutils := filepath.Join(libDir, "coreutils")
+	if err := os.WriteFile(coreutils, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	binEcho := filepath.Join(binDir, "echo")
+	binID := filepath.Join(binDir, "id")
+	if err := os.Symlink("../lib/coreutils", binEcho); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink("../lib/coreutils", binID); err != nil {
+		t.Fatal(err)
+	}
+
+	binAliasDir := filepath.Join(tempDir, "bin_alias")
+	if err := os.Symlink(binDir, binAliasDir); err != nil {
+		t.Fatal(err)
+	}
+	aliasEcho := filepath.Join(binAliasDir, "echo")
+
+	directAllowed := []string{binEcho}
+	if !isAllowedExecTarget(binEcho, tempDir, directAllowed) {
+		t.Errorf("expected %q to be allowed for direct allowlist", binEcho)
+	}
+	if !isAllowedExecTarget(aliasEcho, tempDir, directAllowed) {
+		t.Errorf("expected %q via directory symlink to be allowed", aliasEcho)
+	}
+	if isAllowedExecTarget(binID, tempDir, directAllowed) {
+		t.Errorf("expected multicall sibling symlink %q to be denied", binID)
+	}
+	if isAllowedExecTarget(coreutils, tempDir, directAllowed) {
+		t.Errorf("expected canonical multicall target %q to be denied for direct allowlist", coreutils)
+	}
+
+	resolvedAllowed := ResolveExecutablePaths([]string{binEcho}, tempDir, "")
+	if !isAllowedExecTarget(binEcho, tempDir, resolvedAllowed) {
+		t.Errorf("expected %q to be allowed for resolved allowlist", binEcho)
+	}
+	if !isAllowedExecTarget(aliasEcho, tempDir, resolvedAllowed) {
+		t.Errorf("expected %q via directory symlink to be allowed for resolved allowlist", aliasEcho)
+	}
+	if isAllowedExecTarget(binID, tempDir, resolvedAllowed) {
+		t.Errorf("expected multicall sibling symlink %q to be denied for resolved allowlist", binID)
+	}
+}

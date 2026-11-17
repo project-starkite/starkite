@@ -5,9 +5,11 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"debug/elf"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -113,6 +115,10 @@ func runLandlockSelfReexec(raw string) {
 	}
 
 	d := NewLandlockDriver()
+	if !spec.NoExec && len(spec.AllowedExecPaths) > 0 && !isAllowedExecTarget(payload.TargetBin, spec.Cwd, spec.AllowedExecPaths) {
+		fmt.Fprintf(os.Stderr, "%v\n", FormatPermissionError(syscall.EACCES, payload.TargetBin, spec))
+		os.Exit(126)
+	}
 	if err := d.ApplyInProcess(spec); err != nil {
 		fmt.Fprintf(os.Stderr, "%v\n", err)
 		os.Exit(125)
@@ -218,13 +224,6 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		"/bin",
 		"/sbin",
 	}
-	systemLibPaths := []string{
-		"/lib",
-		"/lib64",
-		"/usr/lib",
-		"/usr/lib64",
-		"/usr/libexec",
-	}
 	// Essential device paths and runtime assets
 	systemDataPaths := []string{
 		"/dev/urandom",
@@ -258,10 +257,8 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 				_ = addLandlockPathRule(int(rulesetFd), p, readDataAccess)
 			}
 		}
-		for _, p := range systemLibPaths {
-			if _, statErr := os.Stat(p); statErr == nil {
-				_ = addLandlockPathRule(int(rulesetFd), p, execAccess)
-			}
+		for _, linkerPath := range landlockDynamicLinkerPaths(spec.AllowedExecPaths) {
+			_ = addLandlockPathRule(int(rulesetFd), linkerPath, execAccess)
 		}
 		for _, allowed := range spec.AllowedExecPaths {
 			cleanAllowed := filepath.Clean(allowed)
@@ -566,6 +563,15 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 			useSelfReexec = false
 		}
 	}
+	if !useSelfReexec && os.Getenv(InsideEnvVar) != "1" {
+		if !spec.NoExec && len(spec.AllowedExecPaths) > 0 && !isAllowedExecTarget(targetBin, spec.Cwd, spec.AllowedExecPaths) {
+			return &ExecResult{
+				Duration: time.Since(start),
+				Stderr:   FormatPermissionError(syscall.EACCES, targetBin, spec).Error() + "\n",
+				ExitCode: 126,
+			}, nil
+		}
+	}
 
 	runAttempt := func(withUserNS bool) (*ExecResult, error) {
 		execCtx := ctx
@@ -716,4 +722,102 @@ func addLandlockPathRule(rulesetFd int, path string, access uint64) error {
 		return sysErr
 	}
 	return nil
+}
+
+// readELFInterpreter extracts the PT_INTERP dynamic linker path from an ELF executable.
+func readELFInterpreter(binPath string) string {
+	f, err := elf.Open(binPath)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+
+	for _, prog := range f.Progs {
+		if prog.Type != elf.PT_INTERP || prog.Filesz == 0 || prog.Filesz > 4096 {
+			continue
+		}
+		raw, readErr := io.ReadAll(io.LimitReader(prog.Open(), 4096))
+		if readErr != nil {
+			continue
+		}
+		return strings.TrimSpace(strings.TrimRight(string(raw), "\x00"))
+	}
+	return ""
+}
+
+// landlockDynamicLinkerPaths returns regular ELF dynamic linker files (PT_INTERP)
+// that need LANDLOCK_ACCESS_FS_EXECUTE without exposing /usr/lib* or /usr/libexec* binaries.
+func landlockDynamicLinkerPaths(allowedExecPaths []string) []string {
+	var linkers []string
+	seen := make(map[string]bool)
+
+	addCandidate := func(p string) {
+		clean := filepath.Clean(p)
+		if clean == "" || isScratchPath(clean) {
+			return
+		}
+		lower := strings.ToLower(clean)
+		if strings.HasSuffix(lower, ".cache") || strings.HasSuffix(lower, ".conf") || strings.HasSuffix(lower, ".preload") {
+			return
+		}
+		fi, err := os.Stat(clean)
+		if err != nil || fi.IsDir() {
+			return
+		}
+		if !seen[clean] {
+			seen[clean] = true
+			linkers = append(linkers, clean)
+		}
+	}
+
+	addWithResolved := func(p string) {
+		addCandidate(p)
+		if resolved, err := filepath.EvalSymlinks(p); err == nil && resolved != "" {
+			addCandidate(resolved)
+		}
+	}
+
+	libDirs := []string{
+		"/lib",
+		"/lib64",
+		"/lib32",
+		"/libx32",
+		"/usr/lib",
+		"/usr/lib64",
+		"/usr/lib32",
+		"/usr/libx32",
+	}
+	patterns := []string{"ld-*.so*", "ld64*.so*", "ld.so.*"}
+	for _, dir := range libDirs {
+		for _, pat := range patterns {
+			matches, _ := filepath.Glob(filepath.Join(dir, pat))
+			for _, m := range matches {
+				addWithResolved(m)
+			}
+		}
+	}
+
+	for _, multiarchGlob := range []string{"/lib/*-linux-*/ld*.so*", "/usr/lib/*-linux-*/ld*.so*"} {
+		matches, _ := filepath.Glob(multiarchGlob)
+		for _, m := range matches {
+			addWithResolved(m)
+		}
+	}
+
+	for _, allowed := range allowedExecPaths {
+		cleanAllowed := filepath.Clean(allowed)
+		if cleanAllowed == "" || isScratchPath(cleanAllowed) {
+			continue
+		}
+		if interp := readELFInterpreter(cleanAllowed); interp != "" {
+			addWithResolved(interp)
+		}
+		if resolved, err := filepath.EvalSymlinks(cleanAllowed); err == nil && resolved != "" && resolved != cleanAllowed && !isScratchPath(resolved) {
+			if interp := readELFInterpreter(resolved); interp != "" {
+				addWithResolved(interp)
+			}
+		}
+	}
+
+	return linkers
 }

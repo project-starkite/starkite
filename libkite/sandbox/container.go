@@ -311,16 +311,7 @@ func checkContainerExecPolicy(spec *ExecutionSpec) error {
 		resolvedBin = filepath.Join(spec.Cwd, resolvedBin)
 	}
 	if len(spec.AllowedExecPaths) > 0 {
-		cleanBin := filepath.Clean(resolvedBin)
-		allowed := false
-		for _, p := range spec.AllowedExecPaths {
-			cleanP := filepath.Clean(p)
-			if cleanBin == cleanP || strings.HasPrefix(cleanBin, cleanP+"/") {
-				allowed = true
-				break
-			}
-		}
-		if !allowed {
+		if !isAllowedExecTarget(cmdBin, spec.Cwd, spec.AllowedExecPaths) {
 			return FormatPermissionError(os.ErrPermission, cmdBin, spec)
 		}
 		return nil

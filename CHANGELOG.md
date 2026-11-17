@@ -18,6 +18,7 @@
 
 ### Fixed
 
+- **Linux Landlock Executable Allowlist Hardening**: Restricted Landlock library execute rules to ELF dynamic linkers (`PT_INTERP`) rather than broad `/usr/lib` and `/usr/libexec` trees, and enforced invoked-path allowlist verification for multicall binaries (such as `uutils` `coreutils` and `busybox`).
 - **Pre-Flight Race Test Exit Propagation**: Enforced fail-fast exit status propagation across multi-module `go test -race` runs in `Makefile`.
 
 ## v0.11.8

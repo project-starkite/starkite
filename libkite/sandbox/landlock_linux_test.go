@@ -262,6 +262,24 @@ func TestLandlockDriver_WXAndNoExec(t *testing.T) {
 	if err == nil && resDenied.ExitCode == 0 {
 		t.Errorf("AllowedExecPaths violation: /usr/bin/id succeeded when not in AllowedExecPaths! stdout=%q", resDenied.Stdout)
 	}
+	if resDenied != nil && !strings.Contains(resDenied.Stderr, "allowed_exec_paths") {
+		t.Errorf("expected allowed_exec_paths diagnostic in stderr, got: %q", resDenied.Stderr)
+	}
+
+	if fiSh, errSh := os.Stat("/bin/sh"); errSh == nil {
+		if fiID, errID := os.Stat("/usr/bin/id"); errID == nil && !os.SameFile(fiSh, fiID) {
+			childDeniedSpec := &ExecutionSpec{
+				Command:          []string{"/bin/sh", "-c", "/usr/bin/id"},
+				AllowedExecPaths: []string{"/bin/sh", "/usr/bin/sh"},
+				Network:          NetworkHost,
+				Timeout:          5 * time.Second,
+			}
+			resChildDenied, errChild := d.Exec(context.Background(), childDeniedSpec)
+			if errChild == nil && resChildDenied.ExitCode == 0 {
+				t.Errorf("AllowedExecPaths child violation: /bin/sh executed /usr/bin/id when only sh was allowlisted! stdout=%q", resChildDenied.Stdout)
+			}
+		}
+	}
 
 	// 4. Shared memory (/dev/shm) isolation: reading/writing /dev/shm must be blocked by Landlock
 	shmSpec := &ExecutionSpec{
@@ -273,5 +291,25 @@ func TestLandlockDriver_WXAndNoExec(t *testing.T) {
 	if resShm != nil && resShm.ExitCode == 0 {
 		_ = os.Remove("/dev/shm/starkite_shm_test")
 		t.Errorf("/dev/shm isolation violation: touch /dev/shm/starkite_shm_test succeeded inside Landlock!")
+	}
+}
+
+func TestLandlockDynamicLinkerPaths(t *testing.T) {
+	linkers := landlockDynamicLinkerPaths([]string{"/bin/echo", "/usr/bin/echo"})
+	if len(linkers) == 0 {
+		t.Log("no ELF dynamic linkers discovered on this host")
+	}
+	for _, p := range linkers {
+		if p == "/usr/lib" || p == "/usr/libexec" || p == "/lib" || p == "/lib64" || p == "/usr/lib64" {
+			t.Errorf("dynamic linker list must not include broad library directory %q", p)
+		}
+		fi, err := os.Stat(p)
+		if err != nil {
+			t.Errorf("discovered dynamic linker %q cannot be stat'd: %v", p, err)
+			continue
+		}
+		if fi.IsDir() {
+			t.Errorf("discovered dynamic linker %q must be a regular file, not a directory", p)
+		}
 	}
 }

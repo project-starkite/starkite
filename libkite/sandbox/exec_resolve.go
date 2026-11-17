@@ -146,3 +146,58 @@ func resolveSymlinkChain(startPath string) []string {
 
 	return chain
 }
+
+// normalizeExecEntryPath resolves symlinks along the parent directory while
+// preserving the base filename so directory symlinks match without collapsing
+// distinct multicall binary symlinks onto a shared target inode.
+func normalizeExecEntryPath(p string) string {
+	clean := filepath.Clean(p)
+	if clean == "" || clean == "." || clean == string(filepath.Separator) {
+		return clean
+	}
+	dir := filepath.Dir(clean)
+	if resolvedDir, err := filepath.EvalSymlinks(dir); err == nil && resolvedDir != "" {
+		return filepath.Join(resolvedDir, filepath.Base(clean))
+	}
+	return clean
+}
+
+func equalOrHasExecPrefix(target, allowed string) bool {
+	if target == "" || allowed == "" {
+		return false
+	}
+	if runtime.GOOS == "windows" {
+		return equalOrHasPathPrefixFold(target, allowed)
+	}
+	if target == allowed {
+		return true
+	}
+	prefix := allowed
+	if !strings.HasSuffix(prefix, string(filepath.Separator)) {
+		prefix += string(filepath.Separator)
+	}
+	return strings.HasPrefix(target, prefix)
+}
+
+// isAllowedExecTarget reports whether targetBin matches any entry in
+// allowedPaths directly or after normalizing parent directory symlinks.
+func isAllowedExecTarget(targetBin, cwd string, allowedPaths []string) bool {
+	resolved := targetBin
+	if !isHostAbs(resolved) && cwd != "" && (strings.ContainsRune(resolved, filepath.Separator) || strings.Contains(resolved, "/") || strings.HasPrefix(resolved, ".")) {
+		resolved = filepath.Join(cwd, resolved)
+	}
+	cleanBin := filepath.Clean(resolved)
+	normBin := normalizeExecEntryPath(cleanBin)
+
+	for _, p := range allowedPaths {
+		cleanP := filepath.Clean(p)
+		if equalOrHasExecPrefix(cleanBin, cleanP) {
+			return true
+		}
+		normP := normalizeExecEntryPath(cleanP)
+		if equalOrHasExecPrefix(normBin, normP) {
+			return true
+		}
+	}
+	return false
+}
