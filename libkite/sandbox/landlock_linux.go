@@ -75,11 +75,15 @@ type landlockExecPayload struct {
 	NoExec           bool          `json:"no_exec"`
 	AllowedExecPaths []string      `json:"allowed_exec_paths"`
 	AuditLog         bool          `json:"audit_log"`
+	NetNSIsolated    bool          `json:"net_ns_isolated,omitempty"`
+	HomeDir          string        `json:"home_dir,omitempty"`
 }
 
 // LandlockDriver implements the sandbox.Driver interface on Linux using
 // the kernel Landlock Linux Security Module (LSM).
 type LandlockDriver struct{}
+
+var landlockParentHomeDir string
 
 func init() {
 	if raw := os.Getenv(landlockExecEnvVar); raw != "" {
@@ -89,6 +93,7 @@ func init() {
 }
 
 func runLandlockSelfReexec(raw string) {
+	runtime.LockOSThread()
 	_ = os.Unsetenv(landlockExecEnvVar)
 	_ = os.Setenv(InsideEnvVar, "1")
 
@@ -97,6 +102,7 @@ func runLandlockSelfReexec(raw string) {
 		fmt.Fprintf(os.Stderr, "sandbox: invalid landlock exec payload: %v\n", err)
 		os.Exit(125)
 	}
+	landlockParentHomeDir = payload.HomeDir
 
 	spec := &ExecutionSpec{
 		Command:          payload.TargetArgv,
@@ -114,6 +120,10 @@ func runLandlockSelfReexec(raw string) {
 		AuditLog:         payload.AuditLog,
 	}
 
+	if payload.NetNSIsolated && spec.Network == NetworkLoopback {
+		_ = bringUpLoopbackInterface()
+	}
+
 	d := NewLandlockDriver()
 	if !spec.NoExec && len(spec.AllowedExecPaths) > 0 && !isAllowedExecTarget(payload.TargetBin, spec.Cwd, spec.AllowedExecPaths) {
 		fmt.Fprintf(os.Stderr, "%v\n", FormatPermissionError(syscall.EACCES, payload.TargetBin, spec))
@@ -127,6 +137,24 @@ func runLandlockSelfReexec(raw string) {
 	err := unix.Exec(payload.TargetBin, payload.TargetArgv, os.Environ())
 	fmt.Fprintf(os.Stderr, "%v\n", FormatPermissionError(err, payload.TargetBin, spec))
 	os.Exit(126)
+}
+
+func bringUpLoopbackInterface() error {
+	fd, err := unix.Socket(unix.AF_INET, unix.SOCK_DGRAM|unix.SOCK_CLOEXEC, 0)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(fd)
+
+	ifr, err := unix.NewIfreq("lo")
+	if err != nil {
+		return err
+	}
+	if err := unix.IoctlIfreq(fd, unix.SIOCGIFFLAGS, ifr); err != nil {
+		return err
+	}
+	ifr.SetUint16(ifr.Uint16() | uint16(unix.IFF_UP))
+	return unix.IoctlIfreq(fd, unix.SIOCSIFFLAGS, ifr)
 }
 
 // NewLandlockDriver creates a new LandlockDriver.
@@ -159,7 +187,19 @@ func (d *LandlockDriver) Available() bool {
 
 // ValidateSpec verifies that the ExecutionSpec is valid for Landlock isolation.
 func (d *LandlockDriver) ValidateSpec(spec *ExecutionSpec) error {
-	return spec.Validate()
+	if err := spec.Validate(); err != nil {
+		return err
+	}
+	for _, m := range spec.Mounts {
+		if m.Type == MountTmpfs && m.Source == "" && !isAllowedNativeTmpfsDestination(m.Destination) {
+			return fmt.Errorf("sandbox: landlock tmpfs mount destination %q must reside under a temporary scratch directory (/tmp or TMPDIR)", m.Destination)
+		}
+	}
+	return nil
+}
+
+func isWritableMountOrScratch(path string, mounts []Mount) bool {
+	return isScratchPath(path) || isPathInsideWritableMount(path, mounts)
 }
 
 // isSharedMemoryPath reports whether p targets host shared memory (/dev/shm or /run/shm).
@@ -172,6 +212,10 @@ func isSharedMemoryPath(p string) bool {
 // ApplyInProcess restricts the current process and all future children
 // using Landlock system calls and Seccomp-BPF. Once applied, restrictions are irreversible.
 func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
+	if err := d.ValidateSpec(spec); err != nil {
+		return err
+	}
+	runtime.LockOSThread()
 	abi := landlockABI()
 	if abi < 1 {
 		return errors.New("sandbox: landlock driver not supported by kernel")
@@ -262,11 +306,11 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		}
 		for _, allowed := range spec.AllowedExecPaths {
 			cleanAllowed := filepath.Clean(allowed)
-			if !isScratchPath(cleanAllowed) {
+			if !isWritableMountOrScratch(cleanAllowed, spec.Mounts) {
 				if _, statErr := os.Stat(cleanAllowed); statErr == nil {
 					_ = addLandlockPathRule(int(rulesetFd), cleanAllowed, execAccess|readDataAccess)
 				}
-				if resolved, evalErr := filepath.EvalSymlinks(cleanAllowed); evalErr == nil && resolved != cleanAllowed && !isScratchPath(resolved) {
+				if resolved, evalErr := filepath.EvalSymlinks(cleanAllowed); evalErr == nil && resolved != cleanAllowed && !isWritableMountOrScratch(resolved, spec.Mounts) {
 					if _, statErr := os.Stat(resolved); statErr == nil {
 						_ = addLandlockPathRule(int(rulesetFd), resolved, execAccess|readDataAccess)
 					}
@@ -281,11 +325,11 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		}
 		if len(spec.Command) > 0 {
 			targetCmd := filepath.Clean(spec.Command[0])
-			if !isScratchPath(targetCmd) {
+			if !isWritableMountOrScratch(targetCmd, spec.Mounts) {
 				if fi, statErr := os.Stat(targetCmd); statErr == nil && !fi.IsDir() {
 					_ = addLandlockPathRule(int(rulesetFd), targetCmd, execAccess|readDataAccess)
 				}
-				if resolved, err := filepath.EvalSymlinks(targetCmd); err == nil && resolved != targetCmd && !isScratchPath(resolved) {
+				if resolved, err := filepath.EvalSymlinks(targetCmd); err == nil && resolved != targetCmd && !isWritableMountOrScratch(resolved, spec.Mounts) {
 					if fiResolved, statErr := os.Stat(resolved); statErr == nil && !fiResolved.IsDir() {
 						_ = addLandlockPathRule(int(rulesetFd), resolved, execAccess|readDataAccess)
 					}
@@ -317,9 +361,11 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 
 	var isHomeOrRoot bool
 	cleanCwd := ""
-	cleanHome := ""
-	if home, err := os.UserHomeDir(); err == nil && home != "" {
-		cleanHome = filepath.Clean(home)
+	cleanHome := landlockParentHomeDir
+	if cleanHome == "" {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			cleanHome = filepath.Clean(home)
+		}
 	}
 	if spec.Cwd != "" {
 		cleanCwd = filepath.Clean(spec.Cwd)
@@ -374,6 +420,10 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 			continue
 		}
 
+		if m.Type == MountTmpfs && m.Source == "" && cleanTarget != "/tmp" && cleanTarget != "/private/tmp" && isAllowedNativeTmpfsDestination(cleanTarget) {
+			_ = os.MkdirAll(cleanTarget, 0o700)
+		}
+
 		if _, statErr := os.Stat(cleanTarget); statErr != nil {
 			continue
 		}
@@ -400,7 +450,7 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 		}
 	}
 
-	if isHomeOrRoot {
+	if isHomeOrRoot && os.Getenv(InsideEnvVar) != "1" {
 		if cleanCwd == "/" {
 			fmt.Fprintln(os.Stderr, "sandbox: working directory is /; isolated to script file only. No other files in / are accessible.")
 		} else {
@@ -425,7 +475,7 @@ func (d *LandlockDriver) ApplyInProcess(spec *ExecutionSpec) error {
 	// Always-On Seccomp-BPF: enforce process/IPC/signal boundary across all network modes,
 	// plus optional network socket filtering and NoExec subprocess lockdown.
 	seccompOpts := SeccompFilterOptions{
-		BlockNetwork: spec.Network == NetworkNone || spec.Network == NetworkLoopback,
+		BlockNetwork: spec.Network == NetworkNone || spec.Network == "",
 		NoExec:       spec.NoExec,
 		AuditLog:     spec.AuditLog,
 	}
@@ -514,9 +564,17 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 		}
 	}
 
-	baseEnv := os.Environ()
+	baseEnv := mapToEnvSlice(SanitizedBaselineEnv(os.Environ()))
 	if len(spec.Env) > 0 {
 		baseEnv = append([]string(nil), spec.Env...)
+	}
+
+	if !spec.NoExec && isWritableMountOrScratch(targetBin, spec.Mounts) {
+		return &ExecResult{
+			Duration: time.Since(start),
+			Stderr:   FormatPermissionError(os.ErrPermission, targetBin, spec).Error() + "\n",
+			ExitCode: 126,
+		}, nil
 	}
 
 	if os.Getenv(InsideEnvVar) == "1" {
@@ -534,31 +592,9 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	// confinement before executing the target binary.
 	useSelfReexec := os.Getenv(InsideEnvVar) == "" && d.Available() && os.Getenv(landlockExecEnvVar) == ""
 	var selfBin string
-	var reexecEnv []string
 	if useSelfReexec {
 		if exe, exeErr := os.Executable(); exeErr == nil {
-			payloadBytes, jsonErr := json.Marshal(landlockExecPayload{
-				TargetBin:        targetBin,
-				TargetArgv:       spec.Command,
-				Cwd:              spec.Cwd,
-				Network:          spec.Network,
-				NetworkAllow:     spec.NetworkAllow,
-				NetworkDeny:      spec.NetworkDeny,
-				Mounts:           spec.Mounts,
-				MaxMemoryMB:      spec.MaxMemoryMB,
-				MaxPIDs:          spec.MaxPIDs,
-				Timeout:          spec.Timeout,
-				ScriptFile:       spec.ScriptFile,
-				NoExec:           spec.NoExec,
-				AllowedExecPaths: spec.AllowedExecPaths,
-				AuditLog:         spec.AuditLog,
-			})
-			if jsonErr == nil {
-				selfBin = exe
-				reexecEnv = append(append([]string(nil), baseEnv...), fmt.Sprintf("%s=%s", landlockExecEnvVar, string(payloadBytes)))
-			} else {
-				useSelfReexec = false
-			}
+			selfBin = exe
 		} else {
 			useSelfReexec = false
 		}
@@ -583,8 +619,31 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 
 		var cmd *exec.Cmd
 		if useSelfReexec {
-			cmd = exec.CommandContext(execCtx, selfBin)
-			cmd.Env = reexecEnv
+			payloadBytes, jsonErr := json.Marshal(landlockExecPayload{
+				TargetBin:        targetBin,
+				TargetArgv:       spec.Command,
+				Cwd:              spec.Cwd,
+				Network:          spec.Network,
+				NetworkAllow:     spec.NetworkAllow,
+				NetworkDeny:      spec.NetworkDeny,
+				Mounts:           spec.Mounts,
+				MaxMemoryMB:      spec.MaxMemoryMB,
+				MaxPIDs:          spec.MaxPIDs,
+				Timeout:          spec.Timeout,
+				ScriptFile:       spec.ScriptFile,
+				NoExec:           spec.NoExec,
+				AllowedExecPaths: spec.AllowedExecPaths,
+				AuditLog:         spec.AuditLog,
+				NetNSIsolated:    withUserNS,
+				HomeDir:          cleanHome,
+			})
+			if jsonErr == nil {
+				cmd = exec.CommandContext(execCtx, selfBin)
+				cmd.Env = append(append([]string(nil), baseEnv...), fmt.Sprintf("%s=%s", landlockExecEnvVar, string(payloadBytes)))
+			} else {
+				cmd = exec.CommandContext(execCtx, spec.Command[0], spec.Command[1:]...)
+				cmd.Env = baseEnv
+			}
 		} else {
 			cmd = exec.CommandContext(execCtx, spec.Command[0], spec.Command[1:]...)
 			cmd.Env = baseEnv
@@ -652,12 +711,12 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 
 	wantUserNS := spec.Network == NetworkNone || spec.Network == NetworkLoopback
 	result, err := runAttempt(wantUserNS)
-	if err != nil && wantUserNS && useSelfReexec {
+	if err != nil && (spec.Network == NetworkNone || spec.Network == "") && useSelfReexec {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) &&
 			(errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOSYS) || errors.Is(err, os.ErrPermission)) {
 			// When host kernel restricts unprivileged userns (e.g. Ubuntu 24.04 AppArmor),
-			// self-reexec still enforces NetworkNone/NetworkLoopback via Seccomp-BPF inside the child.
+			// self-reexec still enforces NetworkNone via Seccomp-BPF inside the child.
 			result, err = runAttempt(false)
 		}
 	}

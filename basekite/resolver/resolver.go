@@ -182,11 +182,21 @@ func (r *Resolver) resolveDeps(deps map[string]string, existing, lock *libkite.L
 // the dependency is fetched from source. The fetched module's identity must
 // match the declared key.
 func (r *Resolver) resolveOne(identity, source string, existing *libkite.Lock) (libkite.LockedModule, string, error) {
+	ns, name, ok := strings.Cut(identity, "/")
+	if !ok || !libkite.IsSafeModuleSegment(ns) || !libkite.IsSafeModuleSegment(name) {
+		return libkite.LockedModule{}, "", fmt.Errorf("invalid module identity %q", identity)
+	}
+
 	if existing != nil {
 		if prev, ok := existing.Modules[identity]; ok && prev.Source == source {
-			dir := r.cacheDir(identity, prev.Rev)
-			if isDir(dir) && verifyCached(dir, prev.Hash) == nil {
-				return prev, dir, nil
+			if !libkite.IsSafeModuleSegment(prev.Rev) {
+				return libkite.LockedModule{}, "", fmt.Errorf("invalid locked revision %q for %q", prev.Rev, identity)
+			}
+			if prev.Hash != "" {
+				dir := r.cacheDir(identity, prev.Rev)
+				if isDir(dir) && verifyCached(dir, prev.Hash) == nil {
+					return prev, dir, nil
+				}
 			}
 		}
 	}

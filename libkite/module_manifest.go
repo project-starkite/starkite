@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -83,6 +84,21 @@ type ManifestSandboxSpec struct {
 	AllowedExecPaths []string          `yaml:"allowed_exec_paths,omitempty"`
 }
 
+func validateManifestMemory(raw string) error {
+	s := strings.ToUpper(strings.TrimSpace(raw))
+	for _, suffix := range []string{"GIB", "GI", "GB", "G", "MIB", "MI", "MB", "M", "KIB", "KI", "KB", "K", "B"} {
+		if before, ok := strings.CutSuffix(s, suffix); ok {
+			s = before
+			break
+		}
+	}
+	val, err := strconv.ParseInt(strings.TrimSpace(s), 10, 64)
+	if err != nil || val <= 0 {
+		return fmt.Errorf("invalid max_memory %q", raw)
+	}
+	return nil
+}
+
 // Validate checks that the manifest sandbox specification has valid limits and network modes.
 func (s *ManifestSandboxSpec) Validate() error {
 	if s == nil {
@@ -94,10 +110,8 @@ func (s *ManifestSandboxSpec) Validate() error {
 		}
 	}
 	if s.MaxMemory != "" {
-		sClean := strings.TrimRight(strings.ToUpper(strings.TrimSpace(s.MaxMemory)), "KMGIB")
-		var val int64
-		if _, err := fmt.Sscanf(sClean, "%d", &val); err != nil {
-			return fmt.Errorf("invalid max_memory %q: %w", s.MaxMemory, err)
+		if err := validateManifestMemory(s.MaxMemory); err != nil {
+			return err
 		}
 	}
 	if s.Network != nil {
@@ -114,6 +128,21 @@ func (s *ManifestSandboxSpec) Validate() error {
 				case "none", "host", "loopback":
 				default:
 					return fmt.Errorf("unknown network mode %q (want none, host, or loopback)", mode)
+				}
+			}
+		default:
+			return fmt.Errorf("invalid network configuration")
+		}
+	}
+	if s.Env.Kind != 0 {
+		if s.Env.Kind != yaml.MappingNode {
+			return fmt.Errorf("sandbox.env must be a mapping")
+		}
+		for i := 0; i+1 < len(s.Env.Content); i += 2 {
+			if strings.TrimSpace(s.Env.Content[i].Value) == "inherit" {
+				var b bool
+				if err := s.Env.Content[i+1].Decode(&b); err != nil {
+					return fmt.Errorf("sandbox.env.inherit must be a boolean: %w", err)
 				}
 			}
 		}

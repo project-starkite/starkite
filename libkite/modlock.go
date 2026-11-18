@@ -53,6 +53,9 @@ func HashModuleTree(dir string) (string, error) {
 		if err != nil {
 			return err
 		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks are not permitted in modules: %s", path)
+		}
 		if d.IsDir() {
 			if excludedFromHash[d.Name()] {
 				return filepath.SkipDir
@@ -93,6 +96,9 @@ func FingerprintTree(dir string) (string, error) {
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks are not permitted in modules: %s", path)
 		}
 		if d.IsDir() {
 			if excludedFromHash[d.Name()] {

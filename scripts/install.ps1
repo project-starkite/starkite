@@ -32,17 +32,31 @@ function Install-Starkite {
     $BinaryName = "kite-windows-$Arch.exe"
 
     # 2. Fetch Latest Version Tag from GitHub API
-    Write-Host "Checking latest release version..."
-    try {
-        $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Owner/$Repo/releases/latest" -Headers @{ "User-Agent" = "starkite-installer" }
-        $LatestTag = $Release.tag_name
-    } catch {
-        $LatestTag = "v0.1.0"
-        Write-Warning "Could not retrieve latest release tag from API. Defaulting to $LatestTag"
+    $LatestTag = if ($env:STARKITE_VERSION) { $env:STARKITE_VERSION } elseif ($env:VERSION) { $env:VERSION } else { "" }
+    if ([string]::IsNullOrWhiteSpace($LatestTag)) {
+        Write-Host "Checking latest release version..."
+        try {
+            $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Owner/$Repo/releases/latest" -Headers @{ "User-Agent" = "starkite-installer" }
+            $LatestTag = $Release.tag_name
+        } catch {
+            if ($DryRun) {
+                $LatestTag = "dry-run"
+            } else {
+                throw "Could not retrieve latest release tag from GitHub API: $_"
+            }
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($LatestTag)) {
+        if ($DryRun) {
+            $LatestTag = "dry-run"
+        } else {
+            throw "Could not retrieve latest release tag from GitHub API."
+        }
     }
 
-    $DownloadUrl = "https://github.com/$Owner/$Repo/releases/download/$LatestTag/$BinaryName"
-    $ChecksumUrl = "https://github.com/$Owner/$Repo/releases/download/$LatestTag/checksums.txt"
+    $BaseUrl = if ($env:STARKITE_DOWNLOAD_BASE_URL) { $env:STARKITE_DOWNLOAD_BASE_URL.TrimEnd('/') } else { "https://github.com/$Owner/$Repo/releases/download/$LatestTag" }
+    $DownloadUrl = "$BaseUrl/$BinaryName"
+    $ChecksumUrl = "$BaseUrl/checksums.txt"
 
     # Dry-Run Inspection
     if ($DryRun) {
@@ -68,20 +82,23 @@ function Install-Starkite {
 
         # 4. Verify Checksum
         Write-Host "Verifying checksum..."
-        try {
-            Invoke-WebRequest -Uri $ChecksumUrl -OutFile $TempChecksums -UseBasicParsing
-            $ExpectedLine = Get-Content $TempChecksums | Where-Object { $_ -match $BinaryName }
-            if ($ExpectedLine) {
-                $ExpectedHash = ($ExpectedLine -split '\s+')[0].Trim()
-                $ActualHash = (Get-FileHash -Path $TempExe -Algorithm SHA256).Hash.ToLower()
-                if ($ActualHash -ne $ExpectedHash.ToLower()) {
-                    throw "Checksum verification failed! Expected: $ExpectedHash, Actual: $ActualHash"
-                }
-                Write-Host "Checksum verified successfully." -ForegroundColor Green
+        Invoke-WebRequest -Uri $ChecksumUrl -OutFile $TempChecksums -UseBasicParsing
+        $ExpectedHash = $null
+        foreach ($line in (Get-Content $TempChecksums)) {
+            $parts = ($line.Trim() -split '\s+')
+            if ($parts.Count -ge 2 -and $parts[1].TrimStart('*') -eq $BinaryName) {
+                $ExpectedHash = $parts[0].Trim()
+                break
             }
-        } catch {
-            Write-Warning "Checksum validation skipped: $_"
         }
+        if ([string]::IsNullOrWhiteSpace($ExpectedHash)) {
+            throw "Checksum for $BinaryName not found in checksums.txt"
+        }
+        $ActualHash = (Get-FileHash -Path $TempExe -Algorithm SHA256).Hash.ToLower()
+        if ($ActualHash -ne $ExpectedHash.ToLower()) {
+            throw "Checksum verification failed! Expected: $ExpectedHash, Actual: $ActualHash"
+        }
+        Write-Host "Checksum verified successfully." -ForegroundColor Green
 
         # 5. Install Binary
         if (-not (Test-Path $InstallDir)) {

@@ -76,12 +76,15 @@ func resolveInstalledModule(callerDir, identity string) (string, bool) {
 		return "", false
 	}
 	namespace, name, ok := strings.Cut(identity, "/")
-	if !ok {
+	if !ok || !libkite.IsSafeModuleSegment(namespace) || !libkite.IsSafeModuleSegment(name) {
 		return "", false
 	}
 	nsDir := filepath.Join(root, namespace)
 
 	if rev, ok := lockedRevision(callerDir, identity); ok {
+		if !libkite.IsSafeModuleSegment(rev) {
+			return "", false
+		}
 		pinned := filepath.Join(nsDir, fmt.Sprintf("%s@%s", name, rev))
 		if entry, ok := resolveModuleDir(pinned); ok {
 			return entry, true
@@ -109,14 +112,19 @@ func resolveInstalledModule(callerDir, identity string) (string, bool) {
 }
 
 // lockedRevision reads the revision mod.lock pins for an identity, searching
-// upward from the caller for the lockfile that governs it.
+// upward from the caller for the lockfile that governs it within workspace boundaries.
 func lockedRevision(startDir, identity string) (string, bool) {
-	dir := startDir
+	dir := filepath.Clean(startDir)
+	home, _ := os.UserHomeDir()
 	for i := 0; i < 32; i++ {
 		if lock, err := libkite.LoadLock(dir); err == nil && lock != nil {
 			if m, ok := lock.Modules[identity]; ok && m.Rev != "" {
 				return m.Rev, true
 			}
+			break
+		}
+		if (home != "" && dir == home) || isWorkspaceRootBoundary(dir) {
+			break
 		}
 		parent := filepath.Dir(dir)
 		if parent == dir {
@@ -125,6 +133,15 @@ func lockedRevision(startDir, identity string) (string, bool) {
 		dir = parent
 	}
 	return "", false
+}
+
+func isWorkspaceRootBoundary(dir string) bool {
+	for _, marker := range []string{libkite.ManifestFile, ".git", ".jj"} {
+		if _, err := os.Stat(filepath.Join(dir, marker)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // moduleCacheRoot is where installed modules live.

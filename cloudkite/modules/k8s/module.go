@@ -71,10 +71,6 @@ func (m *Module) withDefault(name string, method clientMethod) *starlark.Builtin
 // configFactory creates a K8sClient with explicit configuration.
 // Signature: k8s.config(context="", namespace="", kubeconfig="", timeout="", jump=None, server="", tls_server_name="")
 func (m *Module) configFactory(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "config", "config", ""); err != nil {
-		return nil, err
-	}
-
 	var rawJump *starlark.Dict
 	for _, kv := range kwargs {
 		if string(kv[0].(starlark.String)) == "jump" {
@@ -101,6 +97,12 @@ func (m *Module) configFactory(thread *starlark.Thread, fn *starlark.Builtin, ar
 	}
 	if err := startype.Args(args, filteredKwargs).Go(&p); err != nil {
 		return nil, err
+	}
+
+	if p.Server != "" {
+		if err := libkite.Check(thread, "k8s", "config", "config", p.Server); err != nil {
+			return nil, err
+		}
 	}
 
 	if p.Kubeconfig != "" {

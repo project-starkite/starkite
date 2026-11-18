@@ -470,3 +470,44 @@ func TestShellFactory_ModuleRegistration(t *testing.T) {
 		}
 	}
 }
+
+func TestOSShell_EnforcesOSShellPermission(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell test skipped on windows")
+	}
+
+	checker, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{
+		Allow:   []string{"os.exec"},
+		Deny:    []string{"os.shell"},
+		Default: libkite.DefaultDeny,
+	})
+	if err != nil {
+		t.Fatalf("NewPermissionChecker: %v", err)
+	}
+
+	m := New()
+	if _, err := m.Load(&libkite.ModuleConfig{}); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	thread := &starlark.Thread{Name: "test-shell-perm"}
+	libkite.SetPermissions(thread, checker)
+
+	for _, shName := range []string{"shell", "sh", "bash"} {
+		fn := m.aliases[shName].(*starlark.Builtin)
+		shVal, err := fn.CallInternal(thread, nil, nil)
+		if err != nil {
+			t.Fatalf("os.%s() failed: %v", shName, err)
+		}
+		sh := shVal.(*Shell)
+
+		execAttr, _ := sh.Attr("exec")
+		if _, err := execAttr.(*starlark.Builtin).CallInternal(thread, starlark.Tuple{starlark.String("echo blocked")}, nil); err == nil || !libkite.IsPermissionError(err) {
+			t.Errorf("os.%s().exec() should fail with PermissionError when os.shell is denied, got %v", shName, err)
+		}
+
+		tryExecAttr, _ := sh.Attr("try_exec")
+		if _, err := tryExecAttr.(*starlark.Builtin).CallInternal(thread, starlark.Tuple{starlark.String("echo blocked")}, nil); err == nil || !libkite.IsPermissionError(err) {
+			t.Errorf("os.%s().try_exec() should fail with PermissionError when os.shell is denied, got %v", shName, err)
+		}
+	}
+}

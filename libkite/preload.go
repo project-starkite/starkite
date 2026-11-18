@@ -6,11 +6,12 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"sort"
 	"strings"
 
 	"go.starlark.net/syntax"
 )
+
+const maxPreloadFileSize = 16 << 20
 
 // StaticLoadClosure holds the pre-resolved static module dependency graph
 // discovered by walking AST load() statements starting from an entry script.
@@ -37,6 +38,17 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 		return nil, fmt.Errorf("resolving absolute path for %s: %w", scriptPath, err)
 	}
 
+	scriptInfo, err := os.Stat(absScript)
+	if err != nil {
+		return nil, fmt.Errorf("reading script %s: %w", absScript, err)
+	}
+	if !scriptInfo.Mode().IsRegular() {
+		return nil, fmt.Errorf("preload path %s is not a regular file", absScript)
+	}
+	if scriptInfo.Size() > maxPreloadFileSize {
+		return nil, fmt.Errorf("preload file %s exceeds maximum size (%d bytes)", absScript, scriptInfo.Size())
+	}
+
 	scriptBytes, err := os.ReadFile(absScript)
 	if err != nil {
 		return nil, fmt.Errorf("reading script %s: %w", absScript, err)
@@ -56,6 +68,54 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 	}
 	absWorkDir, _ := filepath.Abs(workDir)
 
+	rootSet := make(map[string]bool)
+	var allowedRoots []string
+	addAllowedRoot := func(dir string) {
+		if dir == "" {
+			return
+		}
+		canon := CanonicalizePath(dir)
+		if canon != "" && !rootSet[canon] {
+			rootSet[canon] = true
+			allowedRoots = append(allowedRoots, canon)
+		}
+	}
+	addAllowedRoot(absWorkDir)
+	addAllowedRoot(filepath.Dir(absScript))
+	for _, mp := range modulePaths {
+		addAllowedRoot(mp)
+	}
+	if home, err := os.UserHomeDir(); err == nil && home != "" {
+		addAllowedRoot(filepath.Join(home, ".starkite", "modules"))
+	}
+
+	isWithinAllowedRoots := func(path string) bool {
+		canon := CanonicalizePath(path)
+		for _, root := range allowedRoots {
+			if canon == root || strings.HasPrefix(canon, root+string(filepath.Separator)) {
+				return true
+			}
+		}
+		return false
+	}
+
+	readRegularPreloadFile := func(path string) ([]byte, error) {
+		if !isWithinAllowedRoots(path) {
+			return nil, fmt.Errorf("preload path %s escapes allowed workspace roots", path)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			return nil, err
+		}
+		if !info.Mode().IsRegular() {
+			return nil, fmt.Errorf("preload path %s is not a regular file", path)
+		}
+		if info.Size() > maxPreloadFileSize {
+			return nil, fmt.Errorf("preload file %s exceeds maximum size (%d bytes)", path, info.Size())
+		}
+		return os.ReadFile(path)
+	}
+
 	searchDirs := []string{absWorkDir}
 	if scriptDir := filepath.Dir(absScript); scriptDir != absWorkDir {
 		searchDirs = append(searchDirs, scriptDir)
@@ -65,7 +125,7 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 	for _, dir := range searchDirs {
 		for _, manifest := range []string{LockFile, ManifestFile, "star.mod"} {
 			p := filepath.Join(dir, manifest)
-			if data, err := os.ReadFile(p); err == nil {
+			if data, err := readRegularPreloadFile(p); err == nil {
 				if _, ok := closure.Files[p]; !ok {
 					closure.Files[p] = data
 					closure.ReadPaths = append(closure.ReadPaths, p)
@@ -90,19 +150,25 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 		visitedFiles[clean] = true
 
 		data := closure.Files[clean]
+		var targets []string
 		if data == nil {
 			var err error
-			data, err = os.ReadFile(clean)
+			data, err = readRegularPreloadFile(clean)
+			if err != nil {
+				return nil
+			}
+			targets, err = extractLoadTargets(clean, data)
 			if err != nil {
 				return nil
 			}
 			closure.Files[clean] = data
 			closure.ReadPaths = append(closure.ReadPaths, clean)
-		}
-
-		targets, err := extractLoadTargets(clean, data)
-		if err != nil {
-			return nil
+		} else {
+			var err error
+			targets, err = extractLoadTargets(clean, data)
+			if err != nil {
+				return nil
+			}
 		}
 
 		callerDir := filepath.Dir(clean)
@@ -113,21 +179,33 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 
 			// Path-based reference (./, ../, /, or .star)
 			if isPathRef(target) || strings.HasSuffix(target, ".star") {
-				candidates := []string{
-					filepath.Join(callerDir, target),
-					filepath.Join(absWorkDir, target),
-				}
-				for _, mp := range modulePaths {
-					candidates = append(candidates, filepath.Join(mp, target))
+				var candidates []string
+				if filepath.IsAbs(target) {
+					candidates = []string{filepath.Clean(target)}
+				} else {
+					candidates = []string{
+						filepath.Join(callerDir, target),
+						filepath.Join(absWorkDir, target),
+					}
+					for _, mp := range modulePaths {
+						candidates = append(candidates, filepath.Join(mp, target))
+					}
 				}
 
 				for _, cand := range candidates {
 					cleanCand := filepath.Clean(cand)
+					if !isWithinAllowedRoots(cleanCand) {
+						continue
+					}
 					if fileExists(cleanCand) {
-						_ = walkFile(cleanCand)
+						if err := walkFile(cleanCand); err != nil {
+							return err
+						}
 						break
 					} else if isModuleDir(cleanCand) {
-						_ = walkModuleDir(cleanCand)
+						if err := walkModuleDir(cleanCand); err != nil {
+							return err
+						}
 						break
 					}
 				}
@@ -138,8 +216,10 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 			foundLocal := false
 			for _, baseDir := range append([]string{callerDir, absWorkDir}, modulePaths...) {
 				candDir := filepath.Join(baseDir, target)
-				if isModuleDir(candDir) {
-					_ = walkModuleDir(candDir)
+				if isWithinAllowedRoots(candDir) && isModuleDir(candDir) {
+					if err := walkModuleDir(candDir); err != nil {
+						return err
+					}
 					foundLocal = true
 					break
 				}
@@ -155,9 +235,19 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 						nsDir := filepath.Join(home, ".starkite", "modules", ns)
 						if activeLock != nil {
 							if locked, ok := activeLock.Modules[target]; ok && locked.Rev != "" {
+								if !isSafeModuleSegment(locked.Rev) {
+									return fmt.Errorf("module %q has invalid locked revision %q", target, locked.Rev)
+								}
 								lockedDir := filepath.Join(nsDir, name+"@"+locked.Rev)
 								if isModuleDir(lockedDir) {
-									_ = walkModuleDir(lockedDir)
+									if locked.Hash != "" {
+										if err := VerifyTree(lockedDir, locked.Hash); err != nil {
+											return fmt.Errorf("module %q failed integrity verification: %w", target, err)
+										}
+									}
+									if err := walkModuleDir(lockedDir); err != nil {
+										return err
+									}
 									continue
 								}
 							}
@@ -169,7 +259,9 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 									if n, _ := SplitModuleRev(e.Name()); n == name {
 										dir := filepath.Join(nsDir, e.Name())
 										if isModuleDir(dir) {
-											_ = walkModuleDir(dir)
+											if err := walkModuleDir(dir); err != nil {
+												return err
+											}
 											break
 										}
 									}
@@ -187,12 +279,15 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 	walkModuleDir = func(dirPath string) error {
 		absDir, _ := filepath.Abs(dirPath)
 		cleanDir := filepath.Clean(absDir)
+		if !isWithinAllowedRoots(cleanDir) {
+			return nil
+		}
 		if _, ok := closure.ModuleDirs[cleanDir]; ok {
 			return nil
 		}
 
 		manifestPath := filepath.Join(cleanDir, ManifestFile)
-		if data, err := os.ReadFile(manifestPath); err == nil {
+		if data, err := readRegularPreloadFile(manifestPath); err == nil {
 			closure.Files[manifestPath] = data
 			closure.ReadPaths = append(closure.ReadPaths, manifestPath)
 		} else {
@@ -206,13 +301,21 @@ func ResolveStaticLoadClosure(scriptPath string, workDir string, modulePaths []s
 
 		var starFiles []string
 		for _, e := range entries {
+			if e.Type()&os.ModeSymlink != 0 {
+				continue
+			}
 			if !e.IsDir() && strings.HasSuffix(e.Name(), ".star") {
 				starPath := filepath.Join(cleanDir, e.Name())
+				if !isWithinAllowedRoots(starPath) {
+					continue
+				}
 				starFiles = append(starFiles, starPath)
-				_ = walkFile(starPath)
+				if err := walkFile(starPath); err != nil {
+					return err
+				}
 			}
 		}
-		sort.Strings(starFiles)
+		slices.Sort(starFiles)
 		closure.ModuleDirs[cleanDir] = starFiles
 		closure.ReadPaths = append(closure.ReadPaths, cleanDir)
 		return nil
@@ -326,6 +429,6 @@ func (rt *Runtime) listModuleStarFiles(dirPath string) ([]string, error) {
 			starFiles = append(starFiles, filepath.Join(clean, e.Name()))
 		}
 	}
-	sort.Strings(starFiles)
+	slices.Sort(starFiles)
 	return starFiles, nil
 }

@@ -68,3 +68,52 @@ func TestGVisorDriver_Exec(t *testing.T) {
 		t.Log("Successfully verified gVisor Sentry application kernel inside container!")
 	}
 }
+
+func TestGVisorDriver_StandaloneRunscFailClosed(t *testing.T) {
+	d := &GVisorDriver{runscPath: "/nonexistent/runsc"}
+	if d.Available() {
+		t.Fatalf("expected Available()=false when runsc does not exist on disk")
+	}
+
+	dValid := &GVisorDriver{runscPath: "/usr/bin/runsc"}
+	tests := []struct {
+		name string
+		spec *ExecutionSpec
+	}{
+		{
+			name: "network none",
+			spec: &ExecutionSpec{Command: []string{"/bin/echo", "hi"}, Network: NetworkNone},
+		},
+		{
+			name: "mounts configured",
+			spec: &ExecutionSpec{
+				Command: []string{"/bin/echo", "hi"},
+				Network: NetworkHost,
+				Mounts:  []Mount{{Source: "/tmp", Destination: "/tmp", Type: MountBind, Mode: MountRO}},
+			},
+		},
+		{
+			name: "memory limit set",
+			spec: &ExecutionSpec{Command: []string{"/bin/echo", "hi"}, Network: NetworkHost, MaxMemoryMB: 128},
+		},
+		{
+			name: "no_exec set",
+			spec: &ExecutionSpec{Command: []string{"/bin/echo", "hi"}, Network: NetworkHost, NoExec: true},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if tc.spec.NoExec {
+				res, err := dValid.execStandaloneRunsc(context.Background(), tc.spec)
+				if err == nil && (res == nil || res.ExitCode == 0) {
+					t.Errorf("expected standalone runsc to block NoExec")
+				}
+				return
+			}
+			if _, err := dValid.execStandaloneRunsc(context.Background(), tc.spec); err == nil {
+				t.Errorf("expected standalone runsc to fail closed for %s", tc.name)
+			}
+		})
+	}
+}

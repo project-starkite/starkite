@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"go.starlark.net/starlark"
+
+	"github.com/project-starkite/starkite/libkite"
 )
 
 // Shell represents a configured shell execution object.
@@ -209,6 +211,10 @@ func (s *Shell) exec(thread *starlark.Thread, fn *starlark.Builtin, args starlar
 	if err != nil {
 		return nil, err
 	}
+	execTarget := resolveExecTarget(s.command, p.workDir, p.envMap)
+	if err := libkite.Check(thread, "os", "shell", "shell", execTarget); err != nil {
+		return nil, err
+	}
 	if s.module != nil && s.module.config != nil && s.module.config.DryRun {
 		return starlark.String(fmt.Sprintf("[DRY RUN] Would execute: %s %s %s", s.command, s.flag, script)), nil
 	}
@@ -222,6 +228,10 @@ func (s *Shell) exec(thread *starlark.Thread, fn *starlark.Builtin, args starlar
 func (s *Shell) tryExec(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	script, p, err := s.prepareParams("Shell.try_exec", args, kwargs)
 	if err != nil {
+		return nil, err
+	}
+	execTarget := resolveExecTarget(s.command, p.workDir, p.envMap)
+	if err := libkite.Check(thread, "os", "shell", "shell", execTarget); err != nil {
 		return nil, err
 	}
 	if s.module != nil && s.module.config != nil && s.module.config.DryRun {

@@ -206,6 +206,11 @@ func (c *SSHClient) buildSSHConfig() (*ssh.ClientConfig, error) {
 		if err != nil {
 			return nil, err
 		}
+		if c.thread != nil {
+			if err := libkite.Check(c.thread, "fs", "read", "ssh_key", libkite.CanonicalizePath(keyPath)); err != nil {
+				return nil, err
+			}
+		}
 		key, err := os.ReadFile(keyPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read private key: %w", err)
@@ -342,7 +347,7 @@ func (c *SSHClient) toJumpConfig() JumpConfig {
 
 // buildJumpSSHConfig creates an *ssh.ClientConfig for connecting to the jump host.
 func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
-	return BuildJumpSSHConfig(c.toJumpConfig(), c.timeout)
+	return BuildJumpSSHConfigWithThread(c.thread, c.toJumpConfig(), c.timeout)
 }
 
 // dialViaJump connects to a target host through a jump/bastion host.
@@ -353,7 +358,7 @@ func (c *SSHClient) dialViaJump(targetAddr string, targetConfig *ssh.ClientConfi
 	if _, _, err := net.SplitHostPort(jumpAddr); err != nil {
 		jumpAddr = fmt.Sprintf("%s:%d", jumpAddr, jumpCfg.Port)
 	}
-	jumpClient, err := DialBastion(ctx, &jumpCfg, c.timeout)
+	jumpClient, err := DialBastionWithThread(ctx, c.thread, &jumpCfg, c.timeout)
 	if err != nil {
 		return nil, err
 	}

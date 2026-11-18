@@ -20,8 +20,17 @@ import (
 
 // resolvePublicKey resolves and validates the public key string from an argument,
 // ssh-agent (when useAgent=True), or default local files.
-func resolvePublicKey(keyArg string, useAgent bool) (string, error) {
+func resolvePublicKey(thread *starlark.Thread, keyArg string, useAgent bool) (string, error) {
 	if keyArg != "" {
+		// Accept raw public key strings before treating the input as a filesystem path.
+		if pubKey, comment, _, _, err := ssh.ParseAuthorizedKey([]byte(keyArg)); err == nil {
+			pubStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pubKey)))
+			if comment != "" {
+				pubStr = fmt.Sprintf("%s %s", pubStr, comment)
+			}
+			return pubStr, nil
+		}
+
 		targetPath := keyArg
 		if strings.HasPrefix(targetPath, "~") {
 			home, err := os.UserHomeDir()
@@ -34,23 +43,22 @@ func resolvePublicKey(keyArg string, useAgent bool) (string, error) {
 			}
 		}
 
-		// If it's a file on disk, read it
-		if data, err := os.ReadFile(targetPath); err == nil {
-			pubKey, comment, _, _, err := ssh.ParseAuthorizedKey(data)
-			if err != nil {
-				return "", fmt.Errorf("ssh.copy_id: failed to parse public key file %q: %w", targetPath, err)
+		if thread != nil {
+			if err := libkite.Check(thread, "fs", "read", "ssh_key", libkite.CanonicalizePath(targetPath)); err != nil {
+				return "", err
 			}
-			pubStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pubKey)))
-			if comment != "" {
-				pubStr = fmt.Sprintf("%s %s", pubStr, comment)
-			}
-			return pubStr, nil
 		}
 
-		// Otherwise parse as raw public key string
-		pubKey, comment, _, _, err := ssh.ParseAuthorizedKey([]byte(keyArg))
+		data, err := os.ReadFile(targetPath)
 		if err != nil {
-			return "", fmt.Errorf("ssh.copy_id: invalid public key format: %w", err)
+			if os.IsNotExist(err) {
+				return "", fmt.Errorf("ssh.copy_id: invalid public key format: no key found at %q", keyArg)
+			}
+			return "", fmt.Errorf("ssh.copy_id: failed to read public key file %q: %w", targetPath, err)
+		}
+		pubKey, comment, _, _, err := ssh.ParseAuthorizedKey(data)
+		if err != nil {
+			return "", fmt.Errorf("ssh.copy_id: failed to parse public key file %q: %w", targetPath, err)
 		}
 		pubStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pubKey)))
 		if comment != "" {
@@ -93,7 +101,16 @@ func resolvePublicKey(keyArg string, useAgent bool) (string, error) {
 			filepath.Join(home, ".ssh", "id_rsa.pub"),
 			filepath.Join(home, ".ssh", "id_ecdsa.pub"),
 		}
+		var firstPermErr error
 		for _, c := range candidates {
+			if thread != nil {
+				if err := libkite.Check(thread, "fs", "read", "ssh_key", libkite.CanonicalizePath(c)); err != nil {
+					if firstPermErr == nil {
+						firstPermErr = err
+					}
+					continue
+				}
+			}
 			if data, err := os.ReadFile(c); err == nil {
 				if pubKey, comment, _, _, err := ssh.ParseAuthorizedKey(data); err == nil {
 					pubStr := strings.TrimSpace(string(ssh.MarshalAuthorizedKey(pubKey)))
@@ -103,6 +120,9 @@ func resolvePublicKey(keyArg string, useAgent bool) (string, error) {
 					return pubStr, nil
 				}
 			}
+		}
+		if firstPermErr != nil {
+			return "", firstPermErr
 		}
 	}
 
@@ -151,7 +171,7 @@ func isSafeUsername(u string) bool {
 		return false
 	}
 	for i, r := range u {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || (i > 0 && (r == '-' || r == '$')) {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_' || r == '.' || (i > 0 && r == '-') {
 			continue
 		}
 		return false
@@ -166,7 +186,7 @@ func buildCopyIdCommand(pubKey string, asUser string) string {
 	homeSetup := ""
 	chownSetup := ""
 	if asUser != "" && isSafeUsername(asUser) {
-		homeSetup = fmt.Sprintf(`USER_HOME=$(eval echo ~%s 2>/dev/null)
+		homeSetup = fmt.Sprintf(`USER_HOME=$(getent passwd %s 2>/dev/null | cut -d: -f6)
 if [ -n "${USER_HOME}" ] && [ -d "${USER_HOME}" ]; then
     TARGET_HOME="${USER_HOME}"
 fi`, asUser)
@@ -220,7 +240,7 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	// 1. Resolve Public Key
-	pubKey, err := resolvePublicKey(p.Key, c.useAgent)
+	pubKey, err := resolvePublicKey(thread, p.Key, c.useAgent)
 	if err != nil {
 		return nil, err
 	}
@@ -277,7 +297,7 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 				probeUser = asUser
 			}
 
-			checkResults, _ := runKeyCheck(c.hosts, c.port, probeUser, parsedPub, c.timeout, c.hostKeyCheck, c.knownHostsFile, jc)
+			checkResults, _ := runKeyCheck(thread, c.hosts, c.port, probeUser, parsedPub, c.timeout, c.hostKeyCheck, c.knownHostsFile, jc)
 			for _, cr := range checkResults {
 				if cr.Accepted {
 					alreadyAccepted[cr.Host] = true

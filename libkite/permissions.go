@@ -3,8 +3,11 @@ package libkite
 import (
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -92,36 +95,115 @@ func NewPermissionChecker(config *PermissionConfig) (*PermissionChecker, error) 
 	return checker, nil
 }
 
-// Check validates if module.category.function(resource) is permitted.
-func (c *PermissionChecker) Check(module, category, function, resource string) error {
-	c.mu.RLock()
-	defer c.mu.RUnlock()
+func canonicalizeSQLitePath(raw string) (string, bool) {
+	if raw == "" || raw == ":memory:" || strings.HasPrefix(raw, "file::memory:") || strings.Contains(raw, "mode=memory") {
+		return raw, false
+	}
+	filePart := strings.TrimPrefix(raw, "file:")
+	if q := strings.IndexByte(filePart, '?'); q != -1 {
+		filePart = filePart[:q]
+	}
+	if filePart == "" {
+		return raw, false
+	}
+	return CanonicalizePath(filePart), true
+}
 
+func canonicalizeCheckResource(module, function, resource string) string {
+	if resource == "" {
+		return ""
+	}
+	if filepath.IsAbs(resource) {
+		return CanonicalizePath(resource)
+	}
+	if module == "fs" {
+		expanded := resource
+		if expanded == "~" {
+			if home, err := os.UserHomeDir(); err == nil && home != "" {
+				expanded = home
+			}
+		} else if after, ok := strings.CutPrefix(expanded, "~/"); ok {
+			if home, err := os.UserHomeDir(); err == nil && home != "" {
+				expanded = filepath.Join(home, after)
+			}
+		}
+		return CanonicalizePath(expanded)
+	}
+	if module == "sql" {
+		if rest, ok := strings.CutPrefix(resource, "sqlite:"); ok {
+			if canon, changed := canonicalizeSQLitePath(rest); changed {
+				return "sqlite:" + canon
+			}
+			return resource
+		}
+		if function == "sqlite" && !strings.Contains(resource, "://") {
+			if canon, changed := canonicalizeSQLitePath(resource); changed {
+				return canon
+			}
+		}
+	}
+	return resource
+}
+
+func isWithinCanonCwd(canonRes string) bool {
+	cwd, err := os.Getwd()
+	if err != nil || cwd == "" {
+		return false
+	}
+	canonCwd := CanonicalizePath(cwd)
+	return canonRes == canonCwd || strings.HasPrefix(canonRes, canonCwd+string(filepath.Separator))
+}
+
+func (c *PermissionChecker) matchCheck(module, category, function, resource string) (denied bool, denyRaw string, allowed bool) {
 	res := resource
 	if res != "" && filepath.IsAbs(res) {
 		res = CanonicalizePath(res)
 	}
+	canonRes := canonicalizeCheckResource(module, function, resource)
 
 	for _, rule := range c.deny {
-		if rule.Matches(module, category, function, res) {
-			return &PermissionError{
-				Module:   module,
-				Category: category,
-				Function: function,
-				Resource: resource,
-				Reason:   fmt.Sprintf("blocked by deny rule: %s", rule.Raw),
-				Hint:     SuggestCapabilityHint(module, category, function, resource),
-			}
+		if rule.Matches(module, category, function, canonRes) || (canonRes != res && rule.Matches(module, category, function, res)) {
+			return true, rule.Raw, false
 		}
 	}
 
+	allowRelFallback := resource != "" && canonRes != res && !strings.HasPrefix(filepath.ToSlash(filepath.Clean(resource)), "..") && isWithinCanonCwd(canonRes)
 	for _, rule := range c.allow {
-		if rule.Matches(module, category, function, res) {
-			return nil
+		if rule.Matches(module, category, function, canonRes) {
+			return false, "", true
+		}
+		if allowRelFallback && !rule.isAbsPattern && rule.Resource != "" && rule.Matches(module, category, function, res) {
+			return false, "", true
 		}
 	}
 
 	if c.default_ == DefaultAllow {
+		return false, "", true
+	}
+	return false, "", false
+}
+
+// Check validates if module.category.function(resource) is permitted.
+func (c *PermissionChecker) Check(module, category, function, resource string) error {
+	c.mu.RLock()
+	denied, denyRaw, allowed := c.matchCheck(module, category, function, resource)
+	var allowedPatterns []string
+	if !denied && !allowed {
+		allowedPatterns = c.allowedPatterns()
+	}
+	c.mu.RUnlock()
+
+	if denied {
+		return &PermissionError{
+			Module:   module,
+			Category: category,
+			Function: function,
+			Resource: resource,
+			Reason:   fmt.Sprintf("blocked by deny rule: %s", denyRaw),
+			Hint:     SuggestCapabilityHint(module, category, function, resource),
+		}
+	}
+	if allowed {
 		return nil
 	}
 
@@ -131,7 +213,7 @@ func (c *PermissionChecker) Check(module, category, function, resource string) e
 		Function: function,
 		Resource: resource,
 		Reason:   "no matching allow rule",
-		Allowed:  c.allowedPatterns(),
+		Allowed:  allowedPatterns,
 		Suggest:  suggestProfile(module, category, function, resource),
 		Hint:     SuggestCapabilityHint(module, category, function, resource),
 	}
@@ -144,23 +226,15 @@ func (c *PermissionChecker) Check(module, category, function, resource string) e
 func (c *PermissionChecker) allows(module, category, function, resource string) bool {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
+	denied, _, allowed := c.matchCheck(module, category, function, resource)
+	return !denied && allowed
+}
 
-	res := resource
-	if res != "" && filepath.IsAbs(res) {
-		res = CanonicalizePath(res)
-	}
-
-	for _, rule := range c.deny {
-		if rule.Matches(module, category, function, res) {
-			return false
-		}
-	}
-	for _, rule := range c.allow {
-		if rule.Matches(module, category, function, res) {
-			return true
-		}
-	}
-	return c.default_ == DefaultAllow
+func (c *PermissionChecker) isDenied(module, category, function, resource string) bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	denied, _, _ := c.matchCheck(module, category, function, resource)
+	return denied
 }
 
 // allowedPatterns returns the raw allow patterns for error messages.
@@ -199,7 +273,7 @@ func (r *Rule) setResource(res string) {
 		return
 	}
 	p := filepath.ToSlash(res)
-	isAbs := filepath.IsAbs(p)
+	isAbs := filepath.IsAbs(p) || isWindowsDriveAbs(p)
 	if isAbs {
 		p = canonicalizePattern(p)
 	}
@@ -271,6 +345,9 @@ func ParseRule(pattern string) (*Rule, error) {
 func splitFuncsAndResource(inner string) ([]string, string) {
 	before, after, ok := strings.Cut(inner, ":")
 	if !ok {
+		return nil, inner
+	}
+	if strings.HasPrefix(after, "//") {
 		return nil, inner
 	}
 	if len(before) == 1 && len(after) > 0 && (after[0] == '/' || after[0] == '\\') {
@@ -361,13 +438,16 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 		res := filepath.ToSlash(resource)
 		if (module == "os" || module == "*") && (category == "exec" || category == "*") && !isAbs && !strings.Contains(pattern, "/") && !strings.Contains(pattern, "*") {
 			base := filepath.Base(res)
-			if base == pattern || strings.EqualFold(trimWindowsExecExt(base), trimWindowsExecExt(pattern)) {
+			if base == pattern || (runtime.GOOS == "windows" && strings.EqualFold(trimWindowsExecExt(base), trimWindowsExecExt(pattern))) {
 				return true
 			}
 		}
+		if matched, handled := matchURLPattern(pattern, res); handled {
+			return matched
+		}
 		matched, err := filepath.Match(pattern, res)
 		if err != nil {
-			if before, ok := strings.CutSuffix(pattern, "**"); ok {
+			if before, ok := strings.CutSuffix(pattern, "**"); ok && (strings.HasSuffix(before, "/") || strings.HasSuffix(before, ":")) {
 				return strings.HasPrefix(res, before)
 			}
 			return false
@@ -388,6 +468,135 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 	}
 
 	return true
+}
+
+func matchURLPattern(pattern, res string) (matched bool, handled bool) {
+	var patScheme, patRest string
+	switch {
+	case strings.HasPrefix(pattern, "http://"),
+		strings.HasPrefix(pattern, "https://"),
+		strings.HasPrefix(pattern, "postgres://"),
+		strings.HasPrefix(pattern, "mysql://"):
+		patScheme, patRest, _ = strings.Cut(pattern, "://")
+	default:
+		return false, false
+	}
+
+	u, err := url.Parse(res)
+	if err != nil || !strings.EqualFold(u.Scheme, patScheme) || u.Host == "" {
+		return false, true
+	}
+
+	isHTTP := patScheme == "http" || patScheme == "https"
+	if isHTTP && u.User != nil {
+		return false, true
+	}
+
+	host := strings.ToLower(u.Hostname())
+	switch patRest {
+	case "localhost*":
+		return host == "localhost", true
+	case "127.0.0.1*":
+		return host == "127.0.0.1", true
+	case "[::1]*":
+		return host == "::1", true
+	}
+
+	patAuthority, patPath := splitURLPatternAuthorityAndPath(patRest)
+	if !isHTTP {
+		if atIdx := strings.LastIndex(patAuthority, "@"); atIdx != -1 {
+			patUser := patAuthority[:atIdx]
+			patAuthority = patAuthority[atIdx+1:]
+			if patUser != "*" && patUser != "" {
+				actualUser := ""
+				if u.User != nil {
+					actualUser = u.User.Username()
+				}
+				if ok, err := filepath.Match(patUser, actualUser); err != nil || !ok {
+					return false, true
+				}
+			}
+		}
+	}
+
+	var patHost, patPort string
+	var patHasPort bool
+	if net.ParseIP(strings.Trim(patAuthority, "[]")) != nil {
+		patHost = strings.Trim(patAuthority, "[]")
+	} else {
+		patHost, patPort, patHasPort = SplitEndpointHostPort(patAuthority)
+	}
+
+	resPort := u.Port()
+	if patHasPort {
+		effPort := resPort
+		if effPort == "" {
+			switch strings.ToLower(patScheme) {
+			case "https":
+				effPort = "443"
+			case "http":
+				effPort = "80"
+			case "postgres":
+				effPort = "5432"
+			case "mysql":
+				effPort = "3306"
+			}
+		}
+		if patPort != "*" && patPort != effPort {
+			return false, true
+		}
+	} else if resPort != "" {
+		return false, true
+	}
+
+	cleanPatHost := strings.ToLower(strings.Trim(patHost, "[]"))
+	if _, cidrNet, err := net.ParseCIDR(cleanPatHost); err == nil {
+		ip := net.ParseIP(host)
+		if ip == nil || !cidrNet.Contains(ip) {
+			return false, true
+		}
+	} else if strings.ContainsAny(cleanPatHost, "*?[") {
+		if ok, err := filepath.Match(cleanPatHost, host); err != nil || !ok {
+			return false, true
+		}
+	} else if host != cleanPatHost {
+		return false, true
+	}
+
+	if patPath == "" || patPath == "/*" || patPath == "/**" {
+		return true, true
+	}
+	resPath := u.Path
+	if resPath == "" {
+		resPath = "/"
+	}
+	if ok, err := filepath.Match(patPath, resPath); err == nil && ok {
+		return true, true
+	}
+	if strings.Contains(patPath, "**") && matchDoublestar(patPath, resPath) {
+		return true, true
+	}
+	return false, true
+}
+
+func splitURLPatternAuthorityAndPath(patRest string) (string, string) {
+	slash1 := strings.IndexByte(patRest, '/')
+	if slash1 == -1 {
+		return patRest, ""
+	}
+	if slash2Rel := strings.IndexByte(patRest[slash1+1:], '/'); slash2Rel != -1 {
+		cand := patRest[:slash1+1+slash2Rel]
+		h, _, _ := SplitEndpointHostPort(cand)
+		if _, _, err := net.ParseCIDR(strings.Trim(h, "[]")); err == nil {
+			return cand, patRest[slash1+1+slash2Rel:]
+		}
+	} else {
+		h, _, _ := SplitEndpointHostPort(patRest)
+		if _, _, err := net.ParseCIDR(strings.Trim(h, "[]")); err == nil {
+			return patRest, ""
+		}
+	}
+	return patRest[:slash1], patRest[slash1:]
 }
 
 // CanonicalizePath resolves a path to an absolute, cleaned physical path by
@@ -424,11 +633,18 @@ func evalSymlinksLongestPrefix(absPath string) string {
 	}
 }
 
+func isWindowsDriveAbs(p string) bool {
+	return len(p) >= 3 && ((p[0] >= 'A' && p[0] <= 'Z') || (p[0] >= 'a' && p[0] <= 'z')) && p[1] == ':' && (p[2] == '/' || p[2] == '\\')
+}
+
 func canonicalizePattern(pattern string) string {
+	slashed := filepath.ToSlash(pattern)
 	if !filepath.IsAbs(pattern) {
+		if isWindowsDriveAbs(slashed) {
+			return slashed
+		}
 		return pattern
 	}
-	slashed := filepath.ToSlash(pattern)
 	idx := strings.IndexAny(slashed, "*?[")
 	if idx == -1 {
 		return filepath.ToSlash(CanonicalizePath(pattern))
@@ -437,8 +653,12 @@ func canonicalizePattern(pattern string) string {
 	if slashIdx <= 0 {
 		return slashed
 	}
-	prefix := CanonicalizePath(slashed[:slashIdx])
-	return filepath.ToSlash(prefix) + slashed[slashIdx:]
+	prefixArg := slashed[:slashIdx]
+	if slashIdx == 2 && isWindowsDriveAbs(slashed) {
+		prefixArg = slashed[:3]
+	}
+	prefix := strings.TrimRight(filepath.ToSlash(CanonicalizePath(prefixArg)), "/")
+	return prefix + slashed[slashIdx:]
 }
 
 // expandPathVariables substitutes $CWD and $HOME in a resource pattern. An
@@ -463,8 +683,8 @@ func matchDoublestar(pattern, path string) bool {
 		return true
 	}
 
-	// Fast path for non-slash prefix wildcard (e.g. "sqlite:**", "postgres:**").
-	if before, ok := strings.CutSuffix(pattern, "**"); ok && !strings.HasSuffix(before, "/") && !strings.ContainsAny(before, "*?[") {
+	// Fast path for scheme prefix wildcard (e.g. "sqlite:**", "postgres:**").
+	if before, ok := strings.CutSuffix(pattern, "**"); ok && strings.HasSuffix(before, ":") && !strings.ContainsAny(before, "*?[") {
 		return strings.HasPrefix(path, before)
 	}
 
@@ -474,7 +694,7 @@ func matchDoublestar(pattern, path string) bool {
 }
 
 func matchDoublestarPrecompiled(pattern string, patSegs []string, path string) bool {
-	if before, ok := strings.CutSuffix(pattern, "**"); ok && !strings.HasSuffix(before, "/") && !strings.ContainsAny(before, "*?[") {
+	if before, ok := strings.CutSuffix(pattern, "**"); ok && strings.HasSuffix(before, ":") && !strings.ContainsAny(before, "*?[") {
 		return strings.HasPrefix(path, before)
 	}
 	pathSegs := strings.Split(path, "/")
@@ -647,6 +867,7 @@ var sandboxNetRules = []string{
 	"sql.open(mysql:**)",
 	"k8s.read",
 	"k8s.write",
+	"k8s.exec",
 	"k8s.config",
 	"mcp.client",
 	"mcp.server",
@@ -683,21 +904,37 @@ func AllowNetPermissions() *PermissionConfig {
 	return SandboxNetPermissions()
 }
 
+func normalizeRulePath(p string) string {
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	slashed := filepath.ToSlash(p)
+	switch {
+	case slashed == "~" || slashed == "~/":
+		p = "$HOME"
+	case strings.HasPrefix(slashed, "~/"):
+		p = "$HOME/" + slashed[2:]
+	case slashed == "." || slashed == "./":
+		p = "$CWD"
+	case strings.HasPrefix(slashed, "./"):
+		p = "$CWD/" + slashed[2:]
+	case !strings.HasPrefix(slashed, "/") && !strings.HasPrefix(slashed, "$CWD") && !strings.HasPrefix(slashed, "$HOME") && !filepath.IsAbs(p) && filepath.VolumeName(p) == "" && !isWindowsDriveAbs(slashed):
+		p = "$CWD/" + filepath.ToSlash(filepath.Clean(slashed))
+	}
+	if p != "/" && !(len(p) == 3 && isWindowsDriveAbs(p)) {
+		p = strings.TrimRight(p, "/")
+	}
+	return p
+}
+
 // PathReadRules generates fs.read and sqlite read rules for the provided paths.
 func PathReadRules(paths []string) []string {
 	var rules []string
-	for _, p := range paths {
-		p = strings.TrimSpace(p)
+	for _, raw := range paths {
+		p := normalizeRulePath(raw)
 		if p == "" {
 			continue
-		}
-		if p == "." || p == "./" {
-			p = "$CWD"
-		} else if after, ok := strings.CutPrefix(p, "./"); ok {
-			p = "$CWD/" + after
-		}
-		if p != "/" {
-			p = strings.TrimRight(p, "/")
 		}
 		if p == "/" {
 			rules = append(rules, "fs.read(/**)", "sql.open(sqlite:/**)")
@@ -715,18 +952,10 @@ func PathReadRules(paths []string) []string {
 // PathWriteRules generates fs.read, fs.write, fs.delete, and sqlite rules for the provided paths.
 func PathWriteRules(paths []string) []string {
 	var rules []string
-	for _, p := range paths {
-		p = strings.TrimSpace(p)
+	for _, raw := range paths {
+		p := normalizeRulePath(raw)
 		if p == "" {
 			continue
-		}
-		if p == "." || p == "./" {
-			p = "$CWD"
-		} else if after, ok := strings.CutPrefix(p, "./"); ok {
-			p = "$CWD/" + after
-		}
-		if p != "/" {
-			p = strings.TrimRight(p, "/")
 		}
 		rules = append(rules, PathReadRules([]string{p})...)
 		if p == "/" {
@@ -791,6 +1020,45 @@ func ExecDenyRules(bins []string) []string {
 // SynthesizeNetworkRules compiles network endpoint specifications into Starlark call permission rules.
 func SynthesizeNetworkRules(endpoints []string) []string {
 	var rules []string
+	emitHTTP := func(scheme, host, port string) {
+		if port == "" {
+			rules = append(rules,
+				fmt.Sprintf("http.client(%s://%s/*)", scheme, host),
+				fmt.Sprintf("http.client(%s://%s/**)", scheme, host),
+				fmt.Sprintf("mcp.client(%s://%s/*)", scheme, host),
+				fmt.Sprintf("mcp.client(%s://%s/**)", scheme, host),
+				fmt.Sprintf("k8s.config(%s://%s/**)", scheme, host),
+				fmt.Sprintf("k8s.read(%s://%s/**)", scheme, host),
+				fmt.Sprintf("k8s.write(%s://%s/**)", scheme, host),
+				fmt.Sprintf("k8s.exec(%s://%s/**)", scheme, host),
+			)
+			return
+		}
+		rules = append(rules,
+			fmt.Sprintf("http.client(%s://%s:%s/*)", scheme, host, port),
+			fmt.Sprintf("http.client(%s://%s:%s/**)", scheme, host, port),
+			fmt.Sprintf("mcp.client(%s://%s:%s/*)", scheme, host, port),
+			fmt.Sprintf("mcp.client(%s://%s:%s/**)", scheme, host, port),
+			fmt.Sprintf("k8s.config(%s://%s:%s/**)", scheme, host, port),
+			fmt.Sprintf("k8s.read(%s://%s:%s/**)", scheme, host, port),
+			fmt.Sprintf("k8s.write(%s://%s:%s/**)", scheme, host, port),
+			fmt.Sprintf("k8s.exec(%s://%s:%s/**)", scheme, host, port),
+		)
+	}
+	emitPeer := func(host, port string) {
+		rules = append(rules,
+			fmt.Sprintf("ssh.connect(%s:%s)", host, port),
+			fmt.Sprintf("ssh.transfer(%s:%s)", host, port),
+			fmt.Sprintf("ssh.connect(exec:%s:**)", host),
+			fmt.Sprintf("ssh.connect(config,copy_id,check_authorized_key,scan_host_keys,find_known_hosts,remove_known_host,add_known_host:%s)", host),
+			fmt.Sprintf("ssh.transfer(upload,download:%s:**)", host),
+			fmt.Sprintf("sql.open(postgres://*@%s:%s/*)", host, port),
+			fmt.Sprintf("sql.open(postgres://%s:%s/*)", host, port),
+			fmt.Sprintf("sql.open(mysql://*@%s:%s/*)", host, port),
+			fmt.Sprintf("sql.open(mysql://%s:%s/*)", host, port),
+		)
+	}
+
 	for _, ep := range endpoints {
 		ep = strings.TrimSpace(ep)
 		if ep == "" {
@@ -801,39 +1069,77 @@ func SynthesizeNetworkRules(endpoints []string) []string {
 		}
 
 		host, port, hasPort := splitEndpointHostPort(ep)
+		bracketHost := host
+		if strings.Contains(host, ":") && !strings.HasPrefix(host, "[") {
+			bracketHost = "[" + host + "]"
+		}
+
 		if !hasPort {
-			rules = append(rules,
-				fmt.Sprintf("http.client(https://%s/*)", host),
-				fmt.Sprintf("http.client(http://%s/*)", host),
-				fmt.Sprintf("http.client(https://%s:443/*)", host),
-				fmt.Sprintf("http.client(http://%s:80/*)", host),
-				fmt.Sprintf("ssh.connect(%s:22)", host),
-				fmt.Sprintf("ssh.connect(%s)", host),
-				fmt.Sprintf("sql.open(postgres://*@%s:5432/*)", host),
-				fmt.Sprintf("sql.open(mysql://*@%s:3306/*)", host),
-			)
-		} else {
-			if port == "443" {
-				rules = append(rules,
-					fmt.Sprintf("http.client(https://%s/*)", host),
-					fmt.Sprintf("http.client(https://%s:443/*)", host),
-				)
-			} else if port == "80" {
-				rules = append(rules,
-					fmt.Sprintf("http.client(http://%s/*)", host),
-					fmt.Sprintf("http.client(http://%s:80/*)", host),
-				)
-			} else {
-				rules = append(rules,
-					fmt.Sprintf("http.client(http://%s:%s/*)", host, port),
-					fmt.Sprintf("http.client(https://%s:%s/*)", host, port),
-				)
+			emitHTTP("https", host, "")
+			emitHTTP("http", host, "")
+			emitHTTP("https", host, "443")
+			emitHTTP("http", host, "80")
+			if bracketHost != host {
+				emitHTTP("https", bracketHost, "")
+				emitHTTP("http", bracketHost, "")
+				emitHTTP("https", bracketHost, "443")
+				emitHTTP("http", bracketHost, "80")
 			}
 			rules = append(rules,
-				fmt.Sprintf("ssh.connect(%s:%s)", host, port),
-				fmt.Sprintf("sql.open(postgres://*@%s:%s/*)", host, port),
-				fmt.Sprintf("sql.open(mysql://*@%s:%s/*)", host, port),
+				fmt.Sprintf("ssh.connect(%s:22)", host),
+				fmt.Sprintf("ssh.connect(%s)", host),
+				fmt.Sprintf("ssh.connect(exec:%s:**)", host),
+				fmt.Sprintf("ssh.connect(config,copy_id,check_authorized_key,scan_host_keys,find_known_hosts,remove_known_host,add_known_host:%s)", host),
+				fmt.Sprintf("ssh.transfer(%s:22)", host),
+				fmt.Sprintf("ssh.transfer(%s)", host),
+				fmt.Sprintf("ssh.transfer(upload,download:%s:**)", host),
+				fmt.Sprintf("sql.open(postgres://*@%s:5432/*)", host),
+				fmt.Sprintf("sql.open(postgres://%s:5432/*)", host),
+				fmt.Sprintf("sql.open(mysql://*@%s:3306/*)", host),
+				fmt.Sprintf("sql.open(mysql://%s:3306/*)", host),
 			)
+			if bracketHost != host {
+				emitPeer(bracketHost, "22")
+				rules = append(rules,
+					fmt.Sprintf("ssh.connect(%s)", bracketHost),
+					fmt.Sprintf("ssh.connect(exec:%s:**)", bracketHost),
+					fmt.Sprintf("ssh.connect(config,copy_id,check_authorized_key,scan_host_keys,find_known_hosts,remove_known_host,add_known_host:%s)", bracketHost),
+					fmt.Sprintf("ssh.transfer(%s)", bracketHost),
+					fmt.Sprintf("ssh.transfer(upload,download:%s:**)", bracketHost),
+					fmt.Sprintf("sql.open(postgres://*@%s:5432/*)", bracketHost),
+					fmt.Sprintf("sql.open(postgres://%s:5432/*)", bracketHost),
+					fmt.Sprintf("sql.open(mysql://*@%s:3306/*)", bracketHost),
+					fmt.Sprintf("sql.open(mysql://%s:3306/*)", bracketHost),
+				)
+			}
+		} else {
+			switch port {
+			case "443":
+				emitHTTP("https", host, "")
+				emitHTTP("https", host, "443")
+				if bracketHost != host {
+					emitHTTP("https", bracketHost, "")
+					emitHTTP("https", bracketHost, "443")
+				}
+			case "80":
+				emitHTTP("http", host, "")
+				emitHTTP("http", host, "80")
+				if bracketHost != host {
+					emitHTTP("http", bracketHost, "")
+					emitHTTP("http", bracketHost, "80")
+				}
+			default:
+				emitHTTP("http", host, port)
+				emitHTTP("https", host, port)
+				if bracketHost != host {
+					emitHTTP("http", bracketHost, port)
+					emitHTTP("https", bracketHost, port)
+				}
+			}
+			emitPeer(host, port)
+			if bracketHost != host {
+				emitPeer(bracketHost, port)
+			}
 		}
 	}
 	return rules
@@ -853,6 +1159,9 @@ func SplitEndpointHostPort(ep string) (string, string, bool) {
 		if idx := strings.LastIndex(ep, ":"); idx != -1 && idx > strings.LastIndex(ep, "/") {
 			return ep[:idx], ep[idx+1:], true
 		}
+		return ep, "", false
+	}
+	if strings.Count(ep, ":") > 1 && net.ParseIP(ep) != nil {
 		return ep, "", false
 	}
 	if idx := strings.LastIndex(ep, ":"); idx != -1 {
@@ -999,7 +1308,19 @@ func SuggestCapabilityHint(module, category, function, resource string) string {
 		callTarget := module + "." + category
 		return fmt.Sprintf("pass --sandbox-call-allow=%s on CLI, or add %q to sandbox.<profile>.calls.allow in config.yaml", callTarget, callTarget)
 
-	case "http", "ssh", "k8s", "mcp", "containers", "net":
+	case "k8s":
+		if isEndpointResource(resource) {
+			endpoint := suggestEndpoint(resource)
+			if endpoint != "" && endpoint != "*" {
+				return fmt.Sprintf("pass --sandbox-net-allow=%s on CLI, or add %q to sandbox.<profile>.network.allow in config.yaml", endpoint, endpoint)
+			}
+		}
+		if category == "exec" {
+			return "pass --sandbox-call-allow=k8s.exec (or --sandbox-net-allow=*) on CLI, or set sandbox.<profile>.network.mode: host in config.yaml"
+		}
+		return "pass --sandbox-net-allow on CLI, or set sandbox.<profile>.network.mode: host in config.yaml"
+
+	case "http", "ssh", "mcp", "containers", "net":
 		if isEndpointResource(resource) {
 			endpoint := suggestEndpoint(resource)
 			if endpoint != "" && endpoint != "*" {

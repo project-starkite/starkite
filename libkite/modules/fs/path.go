@@ -708,6 +708,9 @@ func (p *Path) renameMethod(_ *starlark.Thread, _ *starlark.Builtin, args starla
 		return nil, err
 	}
 	target := params.Target
+	if err := libkite.Check(p.thread, "fs", "delete", "rename", checkPath(p.path)); err != nil {
+		return nil, err
+	}
 	if err := libkite.Check(p.thread, "fs", "write", "rename", checkPath(p.path)); err != nil {
 		return nil, err
 	}
@@ -776,9 +779,13 @@ func (p *Path) listdirMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark
 	if err != nil {
 		return nil, libkite.WrapOSPermissionError("fs", "read", p.path, err)
 	}
-	elems := make([]starlark.Value, len(entries))
-	for i, entry := range entries {
-		elems[i] = p.newPath(filepath.Join(p.path, entry.Name()))
+	elems := make([]starlark.Value, 0, len(entries))
+	for _, entry := range entries {
+		childPath := filepath.Join(p.path, entry.Name())
+		if err := libkite.Check(p.thread, "fs", "read", "listdir", checkPath(childPath)); err != nil {
+			continue
+		}
+		elems = append(elems, p.newPath(childPath))
 	}
 	return starlark.NewList(elems), nil
 }
@@ -798,9 +805,12 @@ func (p *Path) globMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark
 	if err != nil {
 		return nil, err
 	}
-	elems := make([]starlark.Value, len(matches))
-	for i, match := range matches {
-		elems[i] = p.newPath(match)
+	elems := make([]starlark.Value, 0, len(matches))
+	for _, match := range matches {
+		if err := libkite.Check(p.thread, "fs", "read", "glob", checkPath(match)); err != nil {
+			continue
+		}
+		elems = append(elems, p.newPath(match))
 	}
 	return starlark.NewList(elems), nil
 }
@@ -850,6 +860,9 @@ func (p *Path) moveToMethod(_ *starlark.Thread, _ *starlark.Builtin, args starla
 		Target string `name:"target" position:"0" required:"true"`
 	}
 	if err := startype.Args(args, kwargs).Go(&params); err != nil {
+		return nil, err
+	}
+	if err := libkite.Check(p.thread, "fs", "delete", "move", checkPath(p.path)); err != nil {
 		return nil, err
 	}
 	if err := libkite.Check(p.thread, "fs", "write", "move", checkPath(p.path)); err != nil {
@@ -956,12 +969,21 @@ func (p *Path) walkMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tu
 		if !d.IsDir() {
 			return nil
 		}
+		if walkPath != p.path {
+			if permErr := libkite.Check(p.thread, "fs", "read", "walk", checkPath(walkPath)); permErr != nil {
+				return filepath.SkipDir
+			}
+		}
 		entries, err := os.ReadDir(walkPath)
 		if err != nil {
 			return err
 		}
 		var dirs, files []starlark.Value
 		for _, entry := range entries {
+			childPath := filepath.Join(walkPath, entry.Name())
+			if permErr := libkite.Check(p.thread, "fs", "read", "walk", checkPath(childPath)); permErr != nil {
+				continue
+			}
 			if entry.IsDir() {
 				dirs = append(dirs, starlark.String(entry.Name()))
 			} else {

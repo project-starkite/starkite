@@ -301,3 +301,90 @@ sandbox:
 		t.Errorf("error missing paths.read violation: %v", err)
 	}
 }
+
+func TestValidateModuleManifest_ScopedNetAllowAndExplicitDenies(t *testing.T) {
+	t.Run("unrestricted host rejected under scoped network allow", func(t *testing.T) {
+		m, err := ParseModuleManifest([]byte("name: acme/netmod\nsandbox:\n  network: host\n"), "mod.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		policy := &SandboxPolicySummary{
+			ProfileName:  "scoped",
+			Enabled:      true,
+			Network:      "host",
+			NetworkAllow: []string{"api.github.com"},
+		}
+		if err := ValidateModuleManifest(m, "/workspace/netmod", policy, nil, "/workspace"); err == nil {
+			t.Fatal("expected unrestricted network: host to fail against scoped NetworkAllow")
+		}
+	})
+
+	t.Run("scoped allow emits endpoint flag hint", func(t *testing.T) {
+		m, err := ParseModuleManifest([]byte("name: acme/scoped\nsandbox:\n  network:\n    allow:\n      - evil.com\n"), "mod.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		policy := &SandboxPolicySummary{
+			ProfileName: "default",
+			Enabled:     true,
+			Network:     "none",
+			DisplayPath: "script.star",
+		}
+		err = ValidateModuleManifest(m, "/workspace/scoped", policy, nil, "/workspace")
+		if err == nil {
+			t.Fatal("expected ModuleCapabilityError")
+		}
+		if !strings.Contains(err.Error(), "--sandbox-net-allow=evil.com") {
+			t.Errorf("expected scoped endpoint hint, got: %v", err)
+		}
+	})
+
+	t.Run("calls wildcard requires full unrestricted checker", func(t *testing.T) {
+		m, err := ParseModuleManifest([]byte("name: acme/wild\nsandbox:\n  calls:\n    allow:\n      - \"*.*\"\n"), "mod.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		checker, err := NewPermissionChecker(&PermissionConfig{
+			Allow:   []string{"os.exec"},
+			Default: DefaultDeny,
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ValidateModuleManifest(m, "/workspace/wild", nil, checker, "/workspace"); err == nil {
+			t.Fatal("expected calls.allow: [\"*.*\"] to fail when only os.exec is granted")
+		}
+	})
+
+	t.Run("explicit denies block matching path exec and calls", func(t *testing.T) {
+		policy := &SandboxPolicySummary{
+			ProfileName: "restricted",
+			Enabled:     true,
+			ExecAllow:   []string{"*"},
+			ExecDeny:    []string{"rm"},
+			CallsAllow:  []string{"os.exec"},
+			CallsDeny:   []string{"os.exec"},
+		}
+		mExec, err := ParseModuleManifest([]byte("name: acme/rm\nsandbox:\n  exec:\n    allow: [rm]\n"), "mod.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ValidateModuleManifest(mExec, "/workspace/rm", policy, nil, "/workspace"); err == nil {
+			t.Error("expected ExecDeny to block rm")
+		}
+
+		mCalls, err := ParseModuleManifest([]byte("name: acme/calls\nsandbox:\n  calls:\n    allow: [os.exec]\n"), "mod.yaml")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := ValidateModuleManifest(mCalls, "/workspace/calls", policy, nil, "/workspace"); err == nil {
+			t.Error("expected CallsDeny to block os.exec")
+		}
+	})
+
+	t.Run("malformed max_memory rejected", func(t *testing.T) {
+		if _, err := ParseModuleManifest([]byte("name: acme/badmem\nsandbox:\n  max_memory: -512MB\n"), "mod.yaml"); err == nil {
+			t.Error("expected negative max_memory to be rejected")
+		}
+	})
+}

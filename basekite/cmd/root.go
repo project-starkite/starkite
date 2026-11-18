@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"testing"
 	"time"
 
 	"github.com/project-starkite/starkite/basekite/varstore"
@@ -343,7 +344,7 @@ func GetVarFiles() []string {
 // PrintDebug prints debug messages if debug mode is enabled
 func PrintDebug(format string, args ...any) {
 	if debugMode {
-		fmt.Printf("[DEBUG] "+format+"\n", args...)
+		fmt.Fprintf(os.Stderr, "[DEBUG] "+format+"\n", args...)
 	}
 }
 
@@ -414,8 +415,8 @@ func currentCLIOverrides() sandbox.CLIOverrides {
 func ResolveActiveProfile() (sandbox.Profile, error) {
 	overrides := currentCLIOverrides()
 
-	// If --sandbox-enabled=false was set without an explicit profile, return unconfined with overrides.
-	if overrides.Enabled != nil && !*overrides.Enabled && strings.TrimSpace(sandboxProfile) == "" && strings.TrimSpace(os.Getenv(sandbox.ProfileEnvVar)) == "" {
+	// If --sandbox-enabled=false was set without an explicit CLI --sandbox-profile, return unconfined with overrides.
+	if overrides.Enabled != nil && !*overrides.Enabled && strings.TrimSpace(sandboxProfile) == "" {
 		p, err := sandbox.LoadProfile(sandbox.ProfileUnconfined)
 		if err != nil {
 			return sandbox.Profile{}, err
@@ -556,8 +557,7 @@ func isRunningInTest() bool {
 	if os.Getenv("STARKITE_TEST_FORCE_SANDBOX") != "" {
 		return false
 	}
-	base := filepath.Base(os.Args[0])
-	return strings.HasSuffix(base, ".test") || strings.HasSuffix(base, ".test.exe")
+	return testing.Testing()
 }
 
 // MaybeHandoffToSandbox checks whether a sandbox is requested (via
@@ -669,12 +669,27 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 	}
 
 	// Case 1: In-process native driver (e.g. Landlock on Linux, Seatbelt on macOS)
-	// Apply rules to current running process and continue native execution!
+	// Apply rules to current running process and continue native execution.
 	if inProc, ok := driver.(sandbox.InProcessDriver); ok {
+		var hostNames []string
+		for _, entry := range os.Environ() {
+			if k, _, ok := strings.Cut(entry, "="); ok && k != "" {
+				hostNames = append(hostNames, k)
+			}
+		}
 		if err := inProc.ApplyInProcess(spec); err != nil {
 			return false, fmt.Errorf("failed to apply in-process sandbox (%s): %w", driver.Name(), err)
 		}
-		os.Setenv(sandbox.InsideEnvVar, "1")
+		os.Clearenv()
+		for _, entry := range spec.Env {
+			if k, v, ok := strings.Cut(entry, "="); ok && k != "" {
+				_ = os.Setenv(k, v)
+			}
+		}
+		_ = os.Setenv(sandbox.InsideEnvVar, "1")
+		if len(hostNames) > 0 {
+			_ = os.Setenv("STARKITE_HOST_ENV_NAMES", strings.Join(hostNames, ","))
+		}
 		return false, nil
 	}
 

@@ -180,10 +180,10 @@ func checkSingleHostKey(targetAddr string, host string, user string, port int, p
 }
 
 // runKeyCheck executes the public key acceptance check across target hosts.
-func runKeyCheck(hosts []string, defaultPort int, user string, pubKey gossh.PublicKey, timeout time.Duration, hostKeyCheck bool, knownHostsPath string, jump *jumpConfig) ([]*KeyCheckResult, error) {
+func runKeyCheck(thread *starlark.Thread, hosts []string, defaultPort int, user string, pubKey gossh.PublicKey, timeout time.Duration, hostKeyCheck bool, knownHostsPath string, jump *jumpConfig) ([]*KeyCheckResult, error) {
 	var jClient *gossh.Client
 	if jump != nil && jump.Host != "" {
-		jc, err := dialJumpClient(*jump, timeout)
+		jc, err := dialJumpClient(thread, *jump, timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -350,7 +350,7 @@ func (m *Module) sshCheckAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 		jc = &j
 	}
 
-	pubKeyStr, err := resolvePublicKey(keyArg, false)
+	pubKeyStr, err := resolvePublicKey(thread, keyArg, false)
 	if err != nil {
 		return nil, fmt.Errorf("ssh.check_authorized_key: %w", err)
 	}
@@ -374,7 +374,7 @@ func (m *Module) sshCheckAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 		timeout = d
 	}
 
-	checkResults, err := runKeyCheck(hosts, p.Port, user, pubKey, timeout, p.HostKeyCheck, "", jc)
+	checkResults, err := runKeyCheck(thread, hosts, p.Port, user, pubKey, timeout, p.HostKeyCheck, "", jc)
 	if err != nil {
 		return nil, fmt.Errorf("ssh.check_authorized_key: %w", err)
 	}
@@ -494,7 +494,7 @@ func (c *SSHClient) checkAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 		}
 	}
 
-	pubKeyStr, err := resolvePublicKey(keyArg, c.useAgent)
+	pubKeyStr, err := resolvePublicKey(thread, keyArg, c.useAgent)
 	if err != nil {
 		return nil, fmt.Errorf("ssh.client.check_authorized_key: %w", err)
 	}
@@ -516,7 +516,7 @@ func (c *SSHClient) checkAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 		}
 	}
 
-	checkResults, err := runKeyCheck(hosts, p.Port, user, pubKey, timeout, p.HostKeyCheck, c.knownHostsFile, jc)
+	checkResults, err := runKeyCheck(thread, hosts, p.Port, user, pubKey, timeout, p.HostKeyCheck, c.knownHostsFile, jc)
 	if err != nil {
 		return nil, fmt.Errorf("ssh.client.check_authorized_key: %w", err)
 	}

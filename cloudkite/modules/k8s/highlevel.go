@@ -17,7 +17,7 @@ import (
 // deployHighLevel creates a Deployment and optional Service in one call.
 // Signature: k8s.deploy(name, image, replicas=1, port=0, namespace="", labels=None, env=None, timeout="")
 func (c *K8sClient) deployHighLevel(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -116,6 +116,9 @@ func (c *K8sClient) deployHighLevel(thread *starlark.Thread, fn *starlark.Builti
 		FieldManager: "starkite",
 		Force:        &force,
 	}
+	if c.isDryRun(false) {
+		applyOpts.DryRun = []string{metav1.DryRunAll}
+	}
 
 	gvr, _, _ := c.resolver.Resolve("deployment")
 	_, err = c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.ApplyPatchType, deployData, applyOpts)
@@ -167,7 +170,7 @@ func (c *K8sClient) deployHighLevel(thread *starlark.Thread, fn *starlark.Builti
 // run creates and runs a Pod, optionally waiting for completion and returning logs.
 // Signature: k8s.run(name, image, command=None, namespace="", restart="Never", rm=False, timeout="3m")
 func (c *K8sClient) run(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -242,13 +245,19 @@ func (c *K8sClient) run(thread *starlark.Thread, fn *starlark.Builtin, args star
 
 	podGVR, _, _ := c.resolver.Resolve("pod")
 
-	created, err := c.dynClient.Resource(podGVR).Namespace(ns).Create(ctx, pod, metav1.CreateOptions{})
+	effectiveDryRun := c.isDryRun(false)
+	createOpts := metav1.CreateOptions{}
+	if effectiveDryRun {
+		createOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
+	created, err := c.dynClient.Resource(podGVR).Namespace(ns).Create(ctx, pod, createOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.run: create pod: %w", err)
 	}
 
 	// Wait for completion if restart=Never
-	if restart == "Never" {
+	if restart == "Never" && !effectiveDryRun {
 		for {
 			select {
 			case <-ctx.Done():
@@ -272,22 +281,24 @@ done:
 		"name": created.GetName(),
 	})
 
-	// Get logs
-	logVal, err := c.logs(thread, fn, starlark.Tuple{starlark.String(p.Name)}, []starlark.Tuple{
-		{starlark.String("namespace"), starlark.String(ns)},
-	})
-	if err == nil {
-		var goLog any
-		if startype.Starlark(logVal).Go(&goLog) == nil {
-			_ = result.Set("logs", goLog)
-		} else {
-			_ = result.Set("logs", logVal.String())
+	if !effectiveDryRun {
+		// Get logs
+		logVal, err := c.logs(thread, fn, starlark.Tuple{starlark.String(p.Name)}, []starlark.Tuple{
+			{starlark.String("namespace"), starlark.String(ns)},
+		})
+		if err == nil {
+			var goLog any
+			if startype.Starlark(logVal).Go(&goLog) == nil {
+				_ = result.Set("logs", goLog)
+			} else {
+				_ = result.Set("logs", logVal.String())
+			}
 		}
-	}
 
-	// Cleanup if rm=True
-	if p.Rm {
-		c.dynClient.Resource(podGVR).Namespace(ns).Delete(ctx, p.Name, metav1.DeleteOptions{})
+		// Cleanup if rm=True
+		if p.Rm {
+			c.dynClient.Resource(podGVR).Namespace(ns).Delete(ctx, p.Name, metav1.DeleteOptions{})
+		}
 	}
 
 	return result, nil
@@ -296,7 +307,7 @@ done:
 // expose creates a Service to expose a resource.
 // Signature: k8s.expose(kind, name, port, target_port=0, type="ClusterIP", namespace="", timeout="")
 func (c *K8sClient) expose(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -354,7 +365,12 @@ func (c *K8sClient) expose(thread *starlark.Thread, fn *starlark.Builtin, args s
 
 	svcGVR, _, _ := c.resolver.Resolve("service")
 
-	created, err := c.dynClient.Resource(svcGVR).Namespace(ns).Create(ctx, svc, metav1.CreateOptions{})
+	createOpts := metav1.CreateOptions{}
+	if c.isDryRun(false) {
+		createOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
+	created, err := c.dynClient.Resource(svcGVR).Namespace(ns).Create(ctx, svc, createOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.expose: %w", err)
 	}
@@ -365,7 +381,7 @@ func (c *K8sClient) expose(thread *starlark.Thread, fn *starlark.Builtin, args s
 // scale changes the replica count for a scalable resource.
 // Signature: k8s.scale(kind, name, replicas, namespace="", timeout="")
 func (c *K8sClient) scale(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -406,11 +422,16 @@ func (c *K8sClient) scale(thread *starlark.Thread, fn *starlark.Builtin, args st
 	}
 	defer cancel()
 
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(false) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
 	var patched *unstructuredObj
 	if namespaced {
-		patched, err = c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+		patched, err = c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.MergePatchType, patchBytes, patchOpts)
 	} else {
-		patched, err = c.dynClient.Resource(gvr).Patch(ctx, p.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+		patched, err = c.dynClient.Resource(gvr).Patch(ctx, p.Name, types.MergePatchType, patchBytes, patchOpts)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("k8s.scale: %w", err)
@@ -422,7 +443,7 @@ func (c *K8sClient) scale(thread *starlark.Thread, fn *starlark.Builtin, args st
 // autoscale creates a HorizontalPodAutoscaler.
 // Signature: k8s.autoscale(kind, name, min=1, max=10, cpu_percent=80, namespace="", timeout="")
 func (c *K8sClient) autoscale(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -502,7 +523,12 @@ func (c *K8sClient) autoscale(thread *starlark.Thread, fn *starlark.Builtin, arg
 
 	hpaGVR, _, _ := c.resolver.Resolve("hpa")
 
-	created, err := c.dynClient.Resource(hpaGVR).Namespace(ns).Create(ctx, hpa, metav1.CreateOptions{})
+	createOpts := metav1.CreateOptions{}
+	if c.isDryRun(false) {
+		createOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
+	created, err := c.dynClient.Resource(hpaGVR).Namespace(ns).Create(ctx, hpa, createOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.autoscale: %w", err)
 	}
@@ -513,7 +539,7 @@ func (c *K8sClient) autoscale(thread *starlark.Thread, fn *starlark.Builtin, arg
 // rollout manages deployment rollouts.
 // Signature: k8s.rollout(kind, name, action="status", namespace="", revision=0, timeout="")
 func (c *K8sClient) rollout(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -548,6 +574,11 @@ func (c *K8sClient) rollout(thread *starlark.Thread, fn *starlark.Builtin, args 
 	}
 	defer cancel()
 
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(false) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
 	switch p.Action {
 	case "status":
 		obj, err := c.dynClient.Resource(gvr).Namespace(ns).Get(ctx, p.Name, metav1.GetOptions{})
@@ -569,7 +600,7 @@ func (c *K8sClient) rollout(thread *starlark.Thread, fn *starlark.Builtin, args 
 			},
 		}
 		patchBytes, _ := json.Marshal(patchObj)
-		patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+		patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.MergePatchType, patchBytes, patchOpts)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.rollout restart: %w", err)
 		}
@@ -580,7 +611,7 @@ func (c *K8sClient) rollout(thread *starlark.Thread, fn *starlark.Builtin, args 
 			"spec": map[string]any{"paused": true},
 		}
 		patchBytes, _ := json.Marshal(patchObj)
-		patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+		patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.MergePatchType, patchBytes, patchOpts)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.rollout pause: %w", err)
 		}
@@ -591,7 +622,7 @@ func (c *K8sClient) rollout(thread *starlark.Thread, fn *starlark.Builtin, args 
 			"spec": map[string]any{"paused": false},
 		}
 		patchBytes, _ := json.Marshal(patchObj)
-		patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+		patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.MergePatchType, patchBytes, patchOpts)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.rollout resume: %w", err)
 		}
@@ -637,7 +668,7 @@ func rolloutStatusFromObj(obj *unstructuredObj) (starlark.Value, error) {
 // setImage updates the container image on a workload.
 // Signature: k8s.set_image(kind, name, container, image, namespace="", timeout="")
 func (c *K8sClient) setImage(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -686,7 +717,12 @@ func (c *K8sClient) setImage(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 	defer cancel()
 
-	patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(false) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
+	patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, patchOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.set_image: %w", err)
 	}
@@ -697,7 +733,7 @@ func (c *K8sClient) setImage(thread *starlark.Thread, fn *starlark.Builtin, args
 // setEnv updates environment variables on a workload.
 // Signature: k8s.set_env(kind, name, env, namespace="", container="", timeout="")
 func (c *K8sClient) setEnv(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -765,7 +801,12 @@ func (c *K8sClient) setEnv(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 	defer cancel()
 
-	patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(false) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
+	patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, patchOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.set_env: %w", err)
 	}
@@ -776,7 +817,7 @@ func (c *K8sClient) setEnv(thread *starlark.Thread, fn *starlark.Builtin, args s
 // setResources updates resource requests/limits on a workload.
 // Signature: k8s.set_resources(kind, name, requests=None, limits=None, namespace="", container="", timeout="")
 func (c *K8sClient) setResources(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -848,7 +889,12 @@ func (c *K8sClient) setResources(thread *starlark.Thread, fn *starlark.Builtin, 
 	}
 	defer cancel()
 
-	patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(false) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
+	patched, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, patchOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.set_resources: %w", err)
 	}
@@ -859,7 +905,7 @@ func (c *K8sClient) setResources(thread *starlark.Thread, fn *starlark.Builtin, 
 // resize performs In-Place Pod Vertical Scaling on a running container (Kubernetes 1.27+, GA 1.35).
 // Signature: k8s.resize(name, container, cpu=None, memory=None, requests=None, limits=None, namespace="", timeout="30s")
 func (c *K8sClient) resize(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -962,12 +1008,17 @@ func (c *K8sClient) resize(thread *starlark.Thread, fn *starlark.Builtin, args s
 		return nil, fmt.Errorf("k8s.resize: %w", err)
 	}
 
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(false) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
 	// Try with the "resize" subresource first (Kubernetes 1.27+ GA 1.35 InPlacePodVerticalScaling)
-	patched, patchErr := c.dynClient.Resource(podGVR).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{}, "resize")
+	patched, patchErr := c.dynClient.Resource(podGVR).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, patchOpts, "resize")
 	if patchErr != nil {
 		// Fallback to direct pod patch if subresource fails
 		var fallbackErr error
-		patched, fallbackErr = c.dynClient.Resource(podGVR).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, metav1.PatchOptions{})
+		patched, fallbackErr = c.dynClient.Resource(podGVR).Namespace(ns).Patch(ctx, p.Name, types.StrategicMergePatchType, patchBytes, patchOpts)
 		if fallbackErr != nil {
 			return nil, fmt.Errorf("k8s.resize: %w", patchErr)
 		}
@@ -979,7 +1030,7 @@ func (c *K8sClient) resize(thread *starlark.Thread, fn *starlark.Builtin, args s
 // route creates or updates an HTTPRoute resource binding a Gateway to a Service backend.
 // Signature: k8s.route(name, gateway, service, port, prefix="/", host="", namespace="", timeout="")
 func (c *K8sClient) route(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -1098,6 +1149,9 @@ func (c *K8sClient) route(thread *starlark.Thread, b *starlark.Builtin, args sta
 	applyOpts := metav1.PatchOptions{
 		FieldManager: "starkite",
 		Force:        &force,
+	}
+	if c.isDryRun(false) {
+		applyOpts.DryRun = []string{metav1.DryRunAll}
 	}
 
 	if _, err := c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, p.Name, types.ApplyPatchType, routeData, applyOpts); err != nil {

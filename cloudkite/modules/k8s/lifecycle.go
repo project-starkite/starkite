@@ -109,7 +109,7 @@ func (m *Module) finalizerHas(thread *starlark.Thread, fn *starlark.Builtin, arg
 // finalizerAdd adds a finalizer to the object in Kubernetes.
 // Signature: k8s.finalizer.add(obj, name, namespace="")
 func (c *K8sClient) finalizerAdd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -170,11 +170,16 @@ func (c *K8sClient) finalizerAdd(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("k8s.finalizer.add: %w", err)
 	}
 
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(false) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
 	var updated *unstructured.Unstructured
 	if namespaced {
-		updated, err = c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, name, types.MergePatchType, patchData, metav1.PatchOptions{})
+		updated, err = c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, name, types.MergePatchType, patchData, patchOpts)
 	} else {
-		updated, err = c.dynClient.Resource(gvr).Patch(ctx, name, types.MergePatchType, patchData, metav1.PatchOptions{})
+		updated, err = c.dynClient.Resource(gvr).Patch(ctx, name, types.MergePatchType, patchData, patchOpts)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("k8s.finalizer.add: %w", err)
@@ -190,7 +195,7 @@ func (c *K8sClient) finalizerAdd(thread *starlark.Thread, fn *starlark.Builtin, 
 // finalizerRemove removes a finalizer from the object in Kubernetes.
 // Signature: k8s.finalizer.remove(obj, name, namespace="")
 func (c *K8sClient) finalizerRemove(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -259,11 +264,16 @@ func (c *K8sClient) finalizerRemove(thread *starlark.Thread, fn *starlark.Builti
 		return nil, fmt.Errorf("k8s.finalizer.remove: %w", err)
 	}
 
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(false) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
 	var updated *unstructured.Unstructured
 	if namespaced {
-		updated, err = c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, name, types.MergePatchType, patchData, metav1.PatchOptions{})
+		updated, err = c.dynClient.Resource(gvr).Namespace(ns).Patch(ctx, name, types.MergePatchType, patchData, patchOpts)
 	} else {
-		updated, err = c.dynClient.Resource(gvr).Patch(ctx, name, types.MergePatchType, patchData, metav1.PatchOptions{})
+		updated, err = c.dynClient.Resource(gvr).Patch(ctx, name, types.MergePatchType, patchData, patchOpts)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("k8s.finalizer.remove: %w", err)
@@ -351,7 +361,7 @@ func (m *Module) conditionGet(thread *starlark.Thread, fn *starlark.Builtin, arg
 // conditionSet updates or appends a condition in status.conditions.
 // Signature: k8s.condition.set(obj, type, status="True", reason="", message="", observed_generation=True, namespace="")
 func (c *K8sClient) conditionSet(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -461,11 +471,16 @@ func (c *K8sClient) conditionSet(thread *starlark.Thread, fn *starlark.Builtin, 
 
 	_ = unstructured.SetNestedSlice(current.Object, rawConds, "status", "conditions")
 
+	updateOpts := metav1.UpdateOptions{}
+	if c.isDryRun(false) {
+		updateOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
 	var updated *unstructured.Unstructured
 	if namespaced {
-		updated, err = c.dynClient.Resource(gvr).Namespace(ns).UpdateStatus(ctx, current, metav1.UpdateOptions{})
+		updated, err = c.dynClient.Resource(gvr).Namespace(ns).UpdateStatus(ctx, current, updateOpts)
 	} else {
-		updated, err = c.dynClient.Resource(gvr).UpdateStatus(ctx, current, metav1.UpdateOptions{})
+		updated, err = c.dynClient.Resource(gvr).UpdateStatus(ctx, current, updateOpts)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("k8s.condition.set: update %s %q: %w", kind, name, err)
@@ -500,7 +515,7 @@ func newEventName(objName string, t metav1.Time) string {
 // event emits a Kubernetes Event for the given object.
 // Signature: k8s.event(obj, reason, message, type="Normal", namespace="")
 func (c *K8sClient) event(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -576,7 +591,11 @@ func (c *K8sClient) event(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, fmt.Errorf("k8s.event: %w", err)
 	}
 	defer cancel()
-	created, err := cs.CoreV1().Events(ns).Create(ctx, ev, metav1.CreateOptions{})
+	createOpts := metav1.CreateOptions{}
+	if c.isDryRun(false) {
+		createOpts.DryRun = []string{metav1.DryRunAll}
+	}
+	created, err := cs.CoreV1().Events(ns).Create(ctx, ev, createOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.event: create event: %w", err)
 	}

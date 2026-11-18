@@ -1358,3 +1358,71 @@ func TestPathPermissions_RenameCopySymlinkGlobTargets(t *testing.T) {
 		t.Error("expected glob escaping allowedDir to fail permission check")
 	}
 }
+
+func TestFSWalkAndGlob_FilterDeniedPathsAndRenameChecksDelete(t *testing.T) {
+	baseDir := t.TempDir()
+	allowedDir := filepath.Join(baseDir, "allowed")
+	secretDir := filepath.Join(allowedDir, "secret")
+	outsideFile := filepath.Join(baseDir, "outside.txt")
+
+	if err := os.MkdirAll(secretDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(allowedDir, "public.txt"), []byte("ok"), 0644)
+	_ = os.WriteFile(filepath.Join(secretDir, "hidden.txt"), []byte("nope"), 0644)
+	_ = os.WriteFile(outsideFile, []byte("outside"), 0644)
+	_ = os.Symlink(outsideFile, filepath.Join(allowedDir, "leak.txt"))
+
+	checker, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{
+		Allow: []string{
+			"fs.read(" + filepath.ToSlash(allowedDir) + "/**)",
+			"fs.write(" + filepath.ToSlash(allowedDir) + "/**)",
+		},
+		Deny: []string{
+			"fs.read(" + filepath.ToSlash(secretDir) + "/**)",
+			"fs.read(" + filepath.ToSlash(secretDir) + ")",
+		},
+		Default: libkite.DefaultDeny,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	thread := &starlark.Thread{Name: "test-fs-sec"}
+	libkite.SetPermissions(thread, checker)
+
+	mod := New()
+	_, _ = mod.Load(&libkite.ModuleConfig{})
+	globVal, err := mod.glob(thread, nil, starlark.Tuple{starlark.String(filepath.Join(allowedDir, "*.txt"))}, nil)
+	if err != nil {
+		t.Fatalf("fs.glob failed: %v", err)
+	}
+	globList := globVal.(*starlark.List)
+	if globList.Len() != 1 || filepath.Base(string(globList.Index(0).(starlark.String))) != "public.txt" {
+		t.Errorf("expected fs.glob to exclude symlink to outside file, got %v", globList)
+	}
+
+	pDir := &Path{path: allowedDir, thread: thread, config: &libkite.ModuleConfig{}}
+	walkVal, err := callMethod(pDir, "walk")
+	if err != nil {
+		t.Fatalf("walk failed: %v", err)
+	}
+	walkList := walkVal.(*starlark.List)
+	if walkList.Len() != 1 {
+		t.Fatalf("expected walk to skip denied secret dir and yield 1 root tuple, got %d (%v)", walkList.Len(), walkList)
+	}
+	rootTuple := walkList.Index(0).(starlark.Tuple)
+	dirsList := rootTuple[1].(*starlark.List)
+	if dirsList.Len() != 0 {
+		t.Errorf("expected denied secret subdir to be excluded from dirs, got %v", dirsList)
+	}
+
+	// rename and move_to must require fs.delete on source even when fs.write is granted
+	pPublic := &Path{path: filepath.Join(allowedDir, "public.txt"), thread: thread, config: &libkite.ModuleConfig{}}
+	if _, err := callMethod(pPublic, "rename", starlark.String(filepath.Join(allowedDir, "renamed.txt"))); err == nil || !strings.Contains(err.Error(), "permission denied") || !strings.Contains(err.Error(), "fs.delete") {
+		t.Errorf("expected rename without fs.delete to fail with PermissionError, got %v", err)
+	}
+	if _, err := callMethod(pPublic, "move_to", starlark.String(filepath.Join(allowedDir, "moved.txt"))); err == nil || !strings.Contains(err.Error(), "permission denied") || !strings.Contains(err.Error(), "fs.delete") {
+		t.Errorf("expected move_to without fs.delete to fail with PermissionError, got %v", err)
+	}
+}

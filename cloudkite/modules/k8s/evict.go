@@ -13,7 +13,7 @@ import (
 // evict evicts a Pod by calling the /eviction subresource, honoring PodDisruptionBudgets.
 // Signature: k8s.evict(name, namespace="", dry_run=False, timeout="")
 func (c *K8sClient) evict(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -61,8 +61,9 @@ func (c *K8sClient) evict(thread *starlark.Thread, fn *starlark.Builtin, args st
 		},
 	}
 
+	effectiveDryRun := c.isDryRun(p.DryRun)
 	opts := metav1.CreateOptions{}
-	if p.DryRun || (c.config != nil && c.config.DryRun) {
+	if effectiveDryRun {
 		opts.DryRun = []string{metav1.DryRunAll}
 	}
 
@@ -75,6 +76,6 @@ func (c *K8sClient) evict(thread *starlark.Thread, fn *starlark.Builtin, args st
 		"evicted":   true,
 		"name":      p.Name,
 		"namespace": ns,
-		"dry_run":   p.DryRun,
+		"dry_run":   effectiveDryRun,
 	}), nil
 }

@@ -1614,3 +1614,107 @@ main()
 		t.Fatalf("Starlark execution failed: %v", err)
 	}
 }
+
+func TestContainers_VolumeRelativeBindAndDockerfilePermissionCheck(t *testing.T) {
+	ctxDir := t.TempDir()
+	outsideDir := t.TempDir()
+	outsideDF := filepath.Join(outsideDir, "Dockerfile")
+	if err := os.WriteFile(outsideDF, []byte("FROM scratch\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	relTarget := filepath.Join(ctxDir, "rel_bind_file")
+	if err := os.WriteFile(relTarget, []byte("x"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(ctxDir)
+
+	perms := &libkite.PermissionConfig{
+		Allow: []string{
+			"containers.connect",
+			"containers.write",
+			"containers.read",
+			"fs.read(" + filepath.ToSlash(libkite.CanonicalizePath(ctxDir)) + "/**)",
+			"fs.read(" + filepath.ToSlash(libkite.CanonicalizePath(ctxDir)) + ")",
+		},
+		Default: libkite.DefaultDeny,
+	}
+
+	// 1. Bare relative host path that exists on disk without fs.write must be rejected on rw bind.
+	rt, err := libkite.New(&libkite.Config{
+		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: perms,
+	})
+	if err != nil {
+		t.Fatalf("libkite.New: %v", err)
+	}
+	defer rt.Close()
+
+	volScript := fmt.Sprintf(`
+load("containers", "containers")
+c = containers.config(host="tcp://127.0.0.1:2375")
+c.create("alpine:latest", volumes={"%s": "/data"})
+`, filepath.Base(relTarget))
+	if err := rt.Execute(context.Background(), volScript); err == nil || !strings.Contains(err.Error(), "fs.write") {
+		t.Errorf("expected bare relative rw volume bind to require fs.write, got: %v", err)
+	}
+
+	// 2. Windows drive bind path must be treated as host bind path and require fs.read.
+	rtNoFS, err := libkite.New(&libkite.Config{
+		Registry: loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: &libkite.PermissionConfig{
+			Allow:   []string{"containers.connect", "containers.write"},
+			Default: libkite.DefaultDeny,
+		},
+	})
+	if err != nil {
+		t.Fatalf("libkite.New (rtNoFS): %v", err)
+	}
+	defer rtNoFS.Close()
+
+	winVolScript := `
+load("containers", "containers")
+c = containers.config(host="tcp://127.0.0.1:2375")
+c.create("alpine:latest", volumes={"C:\\secret": "/data:ro"})
+`
+	if err := rtNoFS.Execute(context.Background(), winVolScript); err == nil || !strings.Contains(err.Error(), "permission denied") || !strings.Contains(err.Error(), "fs.read") {
+		t.Errorf("expected Windows drive bind to enforce fs.read PermissionError, got: %v", err)
+	}
+
+	// 3. Home-relative ~/... volume bind must expand and enforce fs.read.
+	homeVolScript := `
+load("containers", "containers")
+c = containers.config(host="tcp://127.0.0.1:2375")
+c.create("alpine:latest", volumes={"~/secret_dir": "/data:ro"})
+`
+	if err := rt.Execute(context.Background(), homeVolScript); err == nil || !strings.Contains(err.Error(), "permission denied") || !strings.Contains(err.Error(), "fs.read") {
+		t.Errorf("expected ~/... volume bind to enforce fs.read PermissionError, got: %v", err)
+	}
+
+	// 4. image_build dockerfile escaping build context or unauthorized must be rejected.
+	buildScript := fmt.Sprintf(`
+load("containers", "containers")
+c = containers.config(host="tcp://127.0.0.1:2375")
+c.image_build(%q, dockerfile=%q)
+`, ctxDir, outsideDF)
+	if err := rt.Execute(context.Background(), buildScript); err == nil || !strings.Contains(err.Error(), "permission denied") || !strings.Contains(err.Error(), "fs.read") {
+		t.Errorf("expected unauthorized outside dockerfile to fail PermissionError, got: %v", err)
+	}
+
+	relEscapeScript := fmt.Sprintf(`
+load("containers", "containers")
+c = containers.config(host="tcp://127.0.0.1:2375")
+c.image_build(%q, dockerfile="../outside.Dockerfile")
+`, ctxDir)
+	rtAllowAll, err := libkite.New(&libkite.Config{
+		Registry:    loader.NewDefaultRegistry(&libkite.ModuleConfig{}),
+		Permissions: libkite.AllowAllPermissions(),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rtAllowAll.Close()
+	if err := rtAllowAll.Execute(context.Background(), relEscapeScript); err == nil || !strings.Contains(err.Error(), "escapes build context") {
+		t.Errorf("expected relative dockerfile escaping context error, got: %v", err)
+	}
+}

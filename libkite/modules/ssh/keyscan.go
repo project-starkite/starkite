@@ -241,15 +241,15 @@ func saveHostKeys(filePath string, keys []*HostKey, hash bool) error {
 }
 
 // dialJumpClient connects to a bastion jump host and returns an authenticated client.
-func dialJumpClient(jump jumpConfig, timeout time.Duration) (*gossh.Client, error) {
-	return DialBastion(context.Background(), &jump, timeout)
+func dialJumpClient(thread *starlark.Thread, jump jumpConfig, timeout time.Duration) (*gossh.Client, error) {
+	return DialBastionWithThread(context.Background(), thread, &jump, timeout)
 }
 
 // runKeyscan executes the host key discovery workflow for given targets.
-func runKeyscan(hosts []string, defaultPort int, timeout time.Duration, algoGroups [][]string, save bool, path string, hash bool, jump *jumpConfig) ([]*HostKey, error) {
+func runKeyscan(thread *starlark.Thread, hosts []string, defaultPort int, timeout time.Duration, algoGroups [][]string, save bool, path string, hash bool, jump *jumpConfig) ([]*HostKey, error) {
 	var jClient *gossh.Client
 	if jump != nil && jump.Host != "" {
-		jc, err := dialJumpClient(*jump, timeout)
+		jc, err := dialJumpClient(thread, *jump, timeout)
 		if err != nil {
 			return nil, err
 		}
@@ -444,7 +444,7 @@ func (m *Module) sshScanHostKeys(thread *starlark.Thread, fn *starlark.Builtin, 
 		jc = &j
 	}
 
-	keys, err := runKeyscan(hosts, p.Port, timeout, algoGroups, p.Save, p.Path, p.Hash, jc)
+	keys, err := runKeyscan(thread, hosts, p.Port, timeout, algoGroups, p.Save, p.Path, p.Hash, jc)
 	if err != nil {
 		return nil, fmt.Errorf("ssh.scan_host_keys: %w", err)
 	}
@@ -600,7 +600,7 @@ func (c *SSHClient) scanHostKeys(thread *starlark.Thread, fn *starlark.Builtin, 
 		}
 	}
 
-	keys, err := runKeyscan(hosts, p.Port, timeout, algoGroups, p.Save, p.Path, p.Hash, jc)
+	keys, err := runKeyscan(thread, hosts, p.Port, timeout, algoGroups, p.Save, p.Path, p.Hash, jc)
 	if err != nil {
 		return nil, fmt.Errorf("ssh.client.scan_host_keys: %w", err)
 	}

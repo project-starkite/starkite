@@ -110,10 +110,15 @@ func (r *Response) getBodyBytes() ([]byte, error) {
 		return nil, fmt.Errorf("http.response: response body is not available")
 	}
 
+	const maxHTTPResponseBodyBytes int64 = 256 << 20
+
 	defer r.rawResp.Body.Close()
-	data, err := io.ReadAll(r.rawResp.Body)
+	data, err := io.ReadAll(io.LimitReader(r.rawResp.Body, maxHTTPResponseBodyBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("http.response: failed to read body: %w", err)
+	}
+	if int64(len(data)) > maxHTTPResponseBodyBytes {
+		return nil, fmt.Errorf("http.response: response body exceeds maximum size (%d bytes)", maxHTTPResponseBodyBytes)
 	}
 	r.bodyBytes = data
 	r.bodyCached = true

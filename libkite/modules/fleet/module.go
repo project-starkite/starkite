@@ -107,7 +107,7 @@ func (m *Module) newFleet(thread *starlark.Thread, fn *starlark.Builtin, args st
 
 	// 1. Dispatch file
 	if filePath != "" {
-		if err := libkite.Check(thread, "fs", "read", "read_file", filePath); err != nil {
+		if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(filePath)); err != nil {
 			return nil, err
 		}
 		return fleetpkg.FromFile(filePath)
@@ -115,7 +115,7 @@ func (m *Module) newFleet(thread *starlark.Thread, fn *starlark.Builtin, args st
 
 	// 2. Dispatch hosts_file
 	if hostsFilePath != "" {
-		if err := libkite.Check(thread, "fs", "read", "read_file", hostsFilePath); err != nil {
+		if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(hostsFilePath)); err != nil {
 			return nil, err
 		}
 		return fleetpkg.FromHostsFile(hostsFilePath, includeLoopback)
@@ -157,7 +157,7 @@ func (m *Module) file(thread *starlark.Thread, fn *starlark.Builtin, args starla
 		return nil, err
 	}
 
-	if err := libkite.Check(thread, "fs", "read", "read_file", p.Path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(p.Path)); err != nil {
 		return nil, err
 	}
 
@@ -180,7 +180,7 @@ func (m *Module) hostsFile(thread *starlark.Thread, fn *starlark.Builtin, args s
 		path = "/etc/hosts"
 	}
 
-	if err := libkite.Check(thread, "fs", "read", "read_file", path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(path)); err != nil {
 		return nil, err
 	}
 

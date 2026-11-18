@@ -160,3 +160,90 @@ def main():
 		t.Errorf("expected execution without preloaded closure to fail since helper.star was deleted")
 	}
 }
+
+func TestResolveStaticLoadClosure_BlocksTraversalSymlinksAndBadLockRev(t *testing.T) {
+	parentDir := t.TempDir()
+	workDir := filepath.Join(parentDir, "workspace")
+	outsideDir := filepath.Join(parentDir, "outside")
+	if err := os.MkdirAll(workDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	outsideStar := filepath.Join(outsideDir, "secret.star")
+	if err := os.WriteFile(outsideStar, []byte("secret = 99\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	escapeLink := filepath.Join(workDir, "escape")
+	if err := os.Symlink(outsideDir, escapeLink); err == nil {
+		mainSymlink := filepath.Join(workDir, "main_symlink.star")
+		if err := os.WriteFile(mainSymlink, []byte("load(\"./escape/secret.star\", \"secret\")\nload(\"../outside/secret.star\", \"secret\")\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		closure, err := ResolveStaticLoadClosure(mainSymlink, workDir, nil)
+		if err != nil {
+			t.Fatalf("ResolveStaticLoadClosure: %v", err)
+		}
+		if _, ok := closure.Files[outsideStar]; ok {
+			t.Errorf("outside file should not be preloaded via traversal or symlink")
+		}
+		for _, p := range closure.ReadPaths {
+			if strings.Contains(p, "outside") || strings.Contains(p, "escape") {
+				t.Errorf("ReadPaths must not include escaped path %q", p)
+			}
+		}
+	}
+
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("USERPROFILE", fakeHome)
+
+	badRevLockDir := t.TempDir()
+	badMain := filepath.Join(badRevLockDir, "main.star")
+	if err := os.WriteFile(badMain, []byte("load(\"acme/tool\", \"tool\")\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	badLock := &Lock{
+		Version: 1,
+		Modules: map[string]LockedModule{
+			"acme/tool": {Rev: "../../etc"},
+		},
+	}
+	if err := badLock.Save(badRevLockDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveStaticLoadClosure(badMain, badRevLockDir, nil); err == nil {
+		t.Error("expected traversal rev in mod.lock to fail ResolveStaticLoadClosure")
+	}
+
+	hashDir := t.TempDir()
+	modCacheDir := filepath.Join(fakeHome, ".starkite", "modules", "acme", "tool@v1")
+	if err := os.MkdirAll(modCacheDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modCacheDir, ManifestFile), []byte("namespace: acme\nname: tool\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(modCacheDir, EntryFile), []byte("x = 1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tamperMain := filepath.Join(hashDir, "main.star")
+	if err := os.WriteFile(tamperMain, []byte("load(\"acme/tool\", \"tool\")\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	tamperLock := &Lock{
+		Version: 1,
+		Modules: map[string]LockedModule{
+			"acme/tool": {Rev: "v1", Hash: "sha256:0000000000000000000000000000000000000000000000000000000000000000"},
+		},
+	}
+	if err := tamperLock.Save(hashDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ResolveStaticLoadClosure(tamperMain, hashDir, nil); err == nil {
+		t.Error("expected hash mismatch in mod.lock to fail ResolveStaticLoadClosure")
+	}
+}

@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 	"unsafe"
@@ -66,6 +67,11 @@ func (d *SeatbeltDriver) ValidateSpec(spec *ExecutionSpec) error {
 	if err := spec.Validate(); err != nil {
 		return err
 	}
+	for _, m := range spec.Mounts {
+		if m.Type == MountTmpfs && m.Source == "" && !isAllowedNativeTmpfsDestination(m.Destination) {
+			return fmt.Errorf("sandbox: seatbelt tmpfs mount destination %q must reside under a temporary scratch directory (/tmp or TMPDIR)", m.Destination)
+		}
+	}
 	return nil
 }
 
@@ -74,6 +80,20 @@ func (d *SeatbeltDriver) ValidateSpec(spec *ExecutionSpec) error {
 func (d *SeatbeltDriver) ApplyInProcess(spec *ExecutionSpec) error {
 	if !d.Available() {
 		return errors.New("sandbox: seatbelt driver not available")
+	}
+	if err := d.ValidateSpec(spec); err != nil {
+		return err
+	}
+
+	for _, m := range spec.Mounts {
+		if m.Type == MountTmpfs && m.Source == "" {
+			cleanDst := cleanSBPLPath(m.Destination)
+			if cleanDst != "/tmp" && cleanDst != "/private/tmp" {
+				if err := os.MkdirAll(m.Destination, 0o700); err != nil {
+					return fmt.Errorf("sandbox: preparing tmpfs scratch dir %q: %w", m.Destination, err)
+				}
+			}
+		}
 	}
 
 	var isHomeOrRoot bool
@@ -126,6 +146,16 @@ func (d *SeatbeltDriver) ApplyInProcess(spec *ExecutionSpec) error {
 func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecResult, error) {
 	if err := d.ValidateSpec(spec); err != nil {
 		return nil, err
+	}
+	for _, m := range spec.Mounts {
+		if m.Type == MountTmpfs && m.Source == "" {
+			cleanDst := cleanSBPLPath(m.Destination)
+			if cleanDst != "/tmp" && cleanDst != "/private/tmp" {
+				if err := os.MkdirAll(m.Destination, 0o700); err != nil {
+					return nil, fmt.Errorf("sandbox: preparing tmpfs scratch dir %q: %w", m.Destination, err)
+				}
+			}
+		}
 	}
 
 	start := time.Now()
@@ -180,7 +210,7 @@ func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	if len(spec.Env) > 0 {
 		cmd.Env = spec.Env
 	} else {
-		cmd.Env = os.Environ()
+		cmd.Env = mapToEnvSlice(SanitizedBaselineEnv(os.Environ()))
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer
@@ -237,6 +267,9 @@ func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 }
 
 func stringToNullTerminatedBytes(s string) ([]byte, error) {
+	if strings.IndexByte(s, 0) != -1 {
+		return nil, errors.New("seatbelt profile contains embedded NUL byte")
+	}
 	b := make([]byte, len(s)+1)
 	copy(b, s)
 	b[len(s)] = 0

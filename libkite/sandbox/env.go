@@ -127,16 +127,21 @@ func (p *Profile) SynthesizeEnvMap(hostEnv []string, cliEnvFlags []string, cliEn
 	return envMap, nil
 }
 
+// mapToEnvSlice formats a key/value environment map into a sorted KEY=VALUE slice.
+func mapToEnvSlice(envMap map[string]string) []string {
+	res := make([]string, 0, len(envMap))
+	for k, v := range envMap {
+		res = append(res, fmt.Sprintf("%s=%s", k, v))
+	}
+	slices.Sort(res)
+	return res
+}
+
 // SynthesizeEnv returns a deterministically sorted slice of "KEY=VALUE" pairs.
 func (p *Profile) SynthesizeEnv(hostEnv []string, cliEnvFlags []string, cliEnvInherit bool) ([]string, error) {
 	envMap, err := p.SynthesizeEnvMap(hostEnv, cliEnvFlags, cliEnvInherit)
 	if err != nil {
 		return nil, err
 	}
-	res := make([]string, 0, len(envMap))
-	for k, v := range envMap {
-		res = append(res, fmt.Sprintf("%s=%s", k, v))
-	}
-	slices.Sort(res)
-	return res, nil
+	return mapToEnvSlice(envMap), nil
 }

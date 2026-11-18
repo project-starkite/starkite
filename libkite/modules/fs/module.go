@@ -214,9 +214,12 @@ func (m *Module) glob(thread *starlark.Thread, fn *starlark.Builtin, args starla
 	if err != nil {
 		return nil, err
 	}
-	elems := make([]starlark.Value, len(matches))
-	for i, match := range matches {
-		elems[i] = starlark.String(match)
+	elems := make([]starlark.Value, 0, len(matches))
+	for _, match := range matches {
+		if err := libkite.Check(thread, "fs", "read", "glob", checkPath(match)); err != nil {
+			continue
+		}
+		elems = append(elems, starlark.String(match))
 	}
 	return starlark.NewList(elems), nil
 }

@@ -86,7 +86,11 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		}
 		// Capture the commit as the immutable revision (commit-not-tag), even
 		// when a tag or branch was requested.
-		commit, _ = GitGetCurrentCommit(staging)
+		var err error
+		commit, err = GitGetCurrentCommit(staging)
+		if err != nil {
+			return nil, fmt.Errorf("failed to resolve commit for %s: %w", repo, err)
+		}
 		if version == "" {
 			version = commit
 		}
@@ -128,9 +132,17 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 	destPath := filepath.Join(m.rootDir, namespace, name+"@"+rev)
 	if _, err := os.Stat(destPath); err == nil {
 		// This exact revision is already cached. Reinstalling identical content is
-		// a no-op unless forced.
+		// a no-op unless forced, provided the cached tree passes verification.
 		if !opts.Force {
-			return m.starlarkInfo(namespace, name+"@"+rev, destPath), nil
+			validCache := m.validateModule(destPath, name) == nil
+			if validCache {
+				if prov, pErr := ReadProvenance(destPath); pErr == nil && prov != nil && prov.Hash != "" {
+					validCache = libkite.VerifyTree(destPath, prov.Hash) == nil
+				}
+			}
+			if validCache {
+				return m.starlarkInfo(namespace, name+"@"+rev, destPath), nil
+			}
 		}
 		if err := os.RemoveAll(destPath); err != nil {
 			return nil, fmt.Errorf("failed to remove existing module: %w", err)
@@ -141,9 +153,18 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		return nil, fmt.Errorf("failed to create namespace directory: %w", err)
 	}
 	if err := os.Rename(staging, destPath); err != nil {
-		// Rename can fail across filesystems; fall back to copy.
-		if err := copyDir(staging, destPath); err != nil {
+		// Rename can fail across filesystems; stage into a sibling temp dir first for atomic swap.
+		tmpDest, tmpErr := os.MkdirTemp(filepath.Dir(destPath), ".tmp-install-*")
+		if tmpErr != nil {
+			return nil, fmt.Errorf("failed to create temp install dir: %w", tmpErr)
+		}
+		if err := copyDir(staging, tmpDest); err != nil {
+			_ = os.RemoveAll(tmpDest)
 			return nil, fmt.Errorf("failed to install module: %w", err)
+		}
+		if err := os.Rename(tmpDest, destPath); err != nil {
+			_ = os.RemoveAll(tmpDest)
+			return nil, fmt.Errorf("failed to finalize module install: %w", err)
 		}
 	}
 
@@ -375,13 +396,21 @@ func (m *Manager) installedRevDirs(ns, name string) ([]string, error) {
 	return dirs, nil
 }
 
+func splitSafeRef(ref string) (string, string, error) {
+	ns, name, ok := strings.Cut(ref, "/")
+	if !ok || !isSafeModuleIdentifier(ns) || !isSafeModuleIdentifier(name) {
+		return "", "", fmt.Errorf("invalid module reference %q", ref)
+	}
+	return ns, name, nil
+}
+
 // Get returns information about a specific module. ref is "namespace/name". When
 // more than one revision is installed the reference is ambiguous and the caller
 // must pin a revision in mod.lock.
 func (m *Manager) Get(ref string) (*ModuleInfo, error) {
-	ns, name, ok := strings.Cut(ref, "/")
-	if !ok {
-		return nil, fmt.Errorf("module %q not installed", ref)
+	ns, name, err := splitSafeRef(ref)
+	if err != nil {
+		return nil, fmt.Errorf("module %q not installed: %w", ref, err)
 	}
 	dirs, err := m.installedRevDirs(ns, name)
 	if err != nil {
@@ -402,9 +431,9 @@ func (m *Manager) Get(ref string) (*ModuleInfo, error) {
 // Revisions of one identity coexist because the cache is version-addressed and
 // write-once.
 func (m *Manager) Revisions(ref string) ([]*ModuleInfo, error) {
-	ns, name, ok := strings.Cut(ref, "/")
-	if !ok {
-		return nil, nil
+	ns, name, err := splitSafeRef(ref)
+	if err != nil {
+		return nil, err
 	}
 	dirs, err := m.installedRevDirs(ns, name)
 	if err != nil {
@@ -422,6 +451,9 @@ func (m *Manager) Revisions(ref string) ([]*ModuleInfo, error) {
 // revision whose id equals rev or is uniquely prefixed by it. It errors when
 // nothing matches or a prefix is ambiguous.
 func (m *Manager) Resolve(ref, rev string) (*ModuleInfo, error) {
+	if rev != "" && !isSafeModuleIdentifier(rev) {
+		return nil, fmt.Errorf("invalid module revision %q", rev)
+	}
 	revs, err := m.Revisions(ref)
 	if err != nil {
 		return nil, err
@@ -475,9 +507,9 @@ func dirModTime(path string) time.Time {
 // installs a new revision alongside any existing ones rather than mutating in
 // place.
 func (m *Manager) Update(ref string) (*ModuleInfo, error) {
-	ns, name, ok := strings.Cut(ref, "/")
-	if !ok {
-		return nil, fmt.Errorf("module %q not installed", ref)
+	ns, name, err := splitSafeRef(ref)
+	if err != nil {
+		return nil, fmt.Errorf("module %q not installed: %w", ref, err)
 	}
 	dirs, err := m.installedRevDirs(ns, name)
 	if err != nil {
@@ -506,9 +538,12 @@ func (m *Manager) Update(ref string) (*ModuleInfo, error) {
 // rev every cached revision is removed; otherwise only the revision matching
 // rev (full id or unique prefix).
 func (m *Manager) Remove(ref, rev string) error {
-	ns, name, ok := strings.Cut(ref, "/")
-	if !ok {
-		return fmt.Errorf("module %q not installed", ref)
+	ns, name, err := splitSafeRef(ref)
+	if err != nil {
+		return fmt.Errorf("module %q not installed: %w", ref, err)
+	}
+	if rev != "" && !isSafeModuleIdentifier(rev) {
+		return fmt.Errorf("invalid module revision %q", rev)
 	}
 
 	if rev != "" {
@@ -615,6 +650,20 @@ func pruneEmptyDir(dir string) {
 // validateModule checks that the module has a valid structure: a mod.yaml
 // manifest and the fixed main.star entry file at its root.
 func (m *Manager) validateModule(modulePath, name string) error {
+	if err := filepath.WalkDir(modulePath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() && d.Name() == ".git" {
+			return filepath.SkipDir
+		}
+		if d.Type()&os.ModeSymlink != 0 {
+			return fmt.Errorf("symlinks are not permitted in modules: %s", d.Name())
+		}
+		return nil
+	}); err != nil {
+		return err
+	}
 	if !fileExists(filepath.Join(modulePath, metadataFile)) {
 		return fmt.Errorf("module is missing %s at its root", metadataFile)
 	}

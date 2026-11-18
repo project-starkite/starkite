@@ -102,7 +102,7 @@ func (s *Source) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	}
 
 	if p.Dest != "" {
-		if err := libkite.Check(s.thread, "fs", "write", "write", p.Dest); err != nil {
+		if err := libkite.Check(s.thread, "fs", "write", "write", libkite.CanonicalizePath(p.Dest)); err != nil {
 			return nil, err
 		}
 		if s.isDryRun() {
@@ -151,6 +151,8 @@ func (s *Source) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	return starlark.Bytes(buf.String()), nil
 }
 
+const maxGzipDecompressBytes int64 = 256 << 20
+
 // decompressMethod decompresses the source data.
 // Usage: source.decompress(dest="")
 // If dest is given, writes to file and returns None; otherwise returns bytes.
@@ -169,7 +171,7 @@ func (s *Source) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 	defer r.Close()
 
 	if p.Dest != "" {
-		if err := libkite.Check(s.thread, "fs", "write", "write", p.Dest); err != nil {
+		if err := libkite.Check(s.thread, "fs", "write", "write", libkite.CanonicalizePath(p.Dest)); err != nil {
 			return nil, err
 		}
 		if s.isDryRun() {
@@ -179,10 +181,16 @@ func (s *Source) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 		if err != nil {
 			return nil, fmt.Errorf("gzip.decompress: %w", err)
 		}
-		if _, err := io.Copy(dstFile, r); err != nil {
+		written, err := io.Copy(dstFile, io.LimitReader(r, maxGzipDecompressBytes+1))
+		if err != nil {
 			dstFile.Close()
 			os.Remove(p.Dest)
 			return nil, fmt.Errorf("gzip.decompress: %w", err)
+		}
+		if written > maxGzipDecompressBytes {
+			dstFile.Close()
+			os.Remove(p.Dest)
+			return nil, fmt.Errorf("gzip.decompress: decompressed data exceeds maximum size (%d bytes)", maxGzipDecompressBytes)
 		}
 		if err := r.Close(); err != nil {
 			dstFile.Close()
@@ -195,9 +203,12 @@ func (s *Source) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 		return starlark.None, nil
 	}
 
-	content, err := io.ReadAll(r)
+	content, err := io.ReadAll(io.LimitReader(r, maxGzipDecompressBytes+1))
 	if err != nil {
 		return nil, fmt.Errorf("gzip.decompress: %w", err)
+	}
+	if int64(len(content)) > maxGzipDecompressBytes {
+		return nil, fmt.Errorf("gzip.decompress: decompressed data exceeds maximum size (%d bytes)", maxGzipDecompressBytes)
 	}
 
 	return starlark.Bytes(content), nil

@@ -2,6 +2,7 @@ package mcp
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -117,6 +118,14 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 
 	if err := libkite.Check(thread, "mcp", "server", "serve", p.Name); err != nil {
 		return nil, err
+	}
+	if p.TLSCert != "" && p.TLSKey != "" {
+		if err := libkite.Check(thread, "fs", "read", "tls_cert", libkite.CanonicalizePath(p.TLSCert)); err != nil {
+			return nil, err
+		}
+		if err := libkite.Check(thread, "fs", "read", "tls_key", libkite.CanonicalizePath(p.TLSKey)); err != nil {
+			return nil, err
+		}
 	}
 
 	rt := libkite.GetRuntime(thread)
@@ -256,6 +265,9 @@ func runHTTPServerCtx(ctx context.Context, server *mcpsdk.Server, opts httpOpts)
 	httpSrv := &http.Server{Addr: addr, Handler: mux}
 
 	tlsEnabled := opts.tlsCert != "" && opts.tlsKey != ""
+	if tlsEnabled {
+		httpSrv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
 
 	// Shutdown loop — kicks in when the caller cancels ctx.
 	go func() {

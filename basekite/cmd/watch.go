@@ -56,6 +56,31 @@ func watchScript(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to resolve path: %w", err)
 	}
 
+	varStore, err := loadVarStore()
+	if err != nil {
+		return err
+	}
+
+	activeProfile, err := ResolveActiveProfile()
+	if err != nil {
+		return err
+	}
+	policy := activeProfile.PolicySummary(envFlags, envInherit, args[0])
+	perms := activeProfile.CompilePermissions()
+	checker, _ := libkite.NewPermissionChecker(perms)
+
+	preloaded := GetActivePreloadedClosure()
+	if preloaded == nil && absPath != "" {
+		if closure, err := libkite.ResolveStaticLoadClosure(absPath, filepath.Dir(absPath), nil); err == nil {
+			preloaded = closure
+			SetActivePreloadedClosure(preloaded)
+		}
+	}
+
+	if err := libkite.ValidateClosureManifests(preloaded, policy, checker, filepath.Dir(absPath)); err != nil {
+		return err
+	}
+
 	if handled, err := MaybeHandoffToSandboxWithScript(cmd.Context(), absPath); handled || err != nil {
 		return err
 	}
@@ -72,17 +97,6 @@ func watchScript(cmd *cobra.Command, args []string) error {
 	if err := watcher.Add(dir); err != nil {
 		return fmt.Errorf("failed to watch directory: %w", err)
 	}
-
-	varStore, err := loadVarStore()
-	if err != nil {
-		return err
-	}
-
-	activeProfile, err := ResolveActiveProfile()
-	if err != nil {
-		return err
-	}
-	perms := activeProfile.CompilePermissions()
 
 	fmt.Printf("Watching %s for changes...\n", absPath)
 	fmt.Println("Press Ctrl+C to stop")
@@ -140,11 +154,23 @@ func watchScript(cmd *cobra.Command, args []string) error {
 }
 
 func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.PermissionConfig, isModule bool, varStore *varstore.Vars) {
-	// Read script content
+	preloaded := GetActivePreloadedClosure()
+	if closure, cerr := libkite.ResolveStaticLoadClosure(scriptPath, filepath.Dir(scriptPath), nil); cerr == nil && closure != nil {
+		preloaded = closure
+	}
+
 	content, err := os.ReadFile(scriptPath)
 	if err != nil {
-		fmt.Printf("Error reading script: %v\n", err)
-		return
+		if preloaded != nil {
+			if cached, ok := preloaded.Files[filepath.Clean(scriptPath)]; ok {
+				content = cached
+				err = nil
+			}
+		}
+		if err != nil {
+			fmt.Printf("Error reading script: %v\n", err)
+			return
+		}
 	}
 
 	if varStore == nil {
@@ -181,10 +207,12 @@ func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.Per
 		DryRun:            dryRun,
 		VarStore:          varStore,
 		Permissions:       perms,
+		SandboxPolicy:     activeProf.PolicySummary(envFlags, envInherit, scriptPath),
 		Registry:          registry,
 		Env:               envMap,
 		EntryPoint:        "main",
 		RequireEntryPoint: isModule,
+		Preloaded:         preloaded,
 	}
 
 	// Create and run the runtime

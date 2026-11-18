@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
@@ -223,6 +225,29 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, opts cl
 		rules.ExplicitPath = opts.kubeconfig
 	}
 
+	if opts.kubeconfig == "" && thread != nil {
+		checkedAny := false
+		for _, path := range rules.GetLoadingPrecedence() {
+			if path == "" {
+				continue
+			}
+			if _, statErr := os.Stat(path); statErr == nil {
+				checkedAny = true
+				if err := libkite.Check(thread, "fs", "read", "kubeconfig", libkite.CanonicalizePath(path)); err != nil {
+					return nil, err
+				}
+			}
+		}
+		if !checkedAny {
+			const inClusterToken = "/var/run/secrets/kubernetes.io/serviceaccount/token"
+			if _, statErr := os.Stat(inClusterToken); statErr == nil {
+				if err := libkite.Check(thread, "fs", "read", "serviceaccount", inClusterToken); err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
 	overrides := &clientcmd.ConfigOverrides{}
 	if opts.contextName != "" {
 		overrides.CurrentContext = opts.contextName
@@ -238,18 +263,56 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, opts cl
 		// Fallback to in-cluster config (running inside a pod)
 		restCfg, err = rest.InClusterConfig()
 		if err != nil {
+			if thread != nil && opts.server == "" {
+				if permErr := libkite.Check(thread, "k8s", "config", "config", ""); permErr != nil {
+					return nil, permErr
+				}
+			}
 			return nil, fmt.Errorf("k8s.config: failed to build config (tried kubeconfig and in-cluster): %w", err)
 		}
 	}
 
-	// Apply server endpoint override if specified
+	kubeconfigHost := restCfg.Host
+
+	// Apply server endpoint override if specified; strip ambient credentials when switching clusters.
 	if opts.server != "" {
+		if !sameClusterHost(kubeconfigHost, opts.server) {
+			restCfg.BearerToken = ""
+			restCfg.BearerTokenFile = ""
+			restCfg.Username = ""
+			restCfg.Password = ""
+			restCfg.TLSClientConfig.CertData = nil
+			restCfg.TLSClientConfig.KeyData = nil
+			restCfg.TLSClientConfig.CertFile = ""
+			restCfg.TLSClientConfig.KeyFile = ""
+			restCfg.ExecProvider = nil
+			restCfg.AuthProvider = nil
+		}
 		restCfg.Host = opts.server
+	}
+
+	if err := libkite.Check(thread, "k8s", "config", "config", restCfg.Host); err != nil {
+		return nil, err
 	}
 
 	// Apply TLS SNI server name override if specified
 	if opts.tlsServerName != "" {
+		if !sameClusterHostname(restCfg.Host, opts.tlsServerName) {
+			if err := libkite.Check(thread, "k8s", "config", "tls_server_name", tlsEndpointURL(restCfg.Host, opts.tlsServerName)); err != nil {
+				return nil, err
+			}
+		}
 		restCfg.TLSClientConfig.ServerName = opts.tlsServerName
+	}
+
+	if thread != nil && restCfg.ExecProvider != nil && restCfg.ExecProvider.Command != "" {
+		execTarget := restCfg.ExecProvider.Command
+		if filepath.IsAbs(execTarget) || strings.ContainsAny(execTarget, `/\`) {
+			execTarget = libkite.CanonicalizePath(execTarget)
+		}
+		if err := libkite.Check(thread, "os", "exec", "kubeconfig_exec", execTarget); err != nil {
+			return nil, err
+		}
 	}
 
 	// Establish SSH bastion tunnel if jump is configured
@@ -281,7 +344,7 @@ func newK8sClient(thread *starlark.Thread, config *libkite.ModuleConfig, opts cl
 			}
 		}
 
-		tunnelDialer, err = ssh.NewTunnelDialer(jumpCfg, targetAddr, dialTimeout)
+		tunnelDialer, err = ssh.NewTunnelDialerWithThread(thread, jumpCfg, targetAddr, dialTimeout)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.config: failed to initialize SSH tunnel dialer: %w", err)
 		}
@@ -477,4 +540,63 @@ func (c *K8sClient) Close() error {
 // Dialer returns the configured TunnelDialer, or nil if not running over an SSH tunnel.
 func (c *K8sClient) Dialer() *ssh.TunnelDialer {
 	return c.dialer
+}
+
+func (c *K8sClient) isDryRun(callDryRun bool) bool {
+	return callDryRun || (c.config != nil && c.config.DryRun)
+}
+
+func (c *K8sClient) permResource() string {
+	if c.restCfg != nil {
+		return c.restCfg.Host
+	}
+	return ""
+}
+
+func parseClusterURL(raw string) (*url.URL, string) {
+	if raw == "" {
+		return nil, ""
+	}
+	s := raw
+	if !strings.Contains(s, "://") {
+		s = "https://" + s
+	}
+	u, err := url.Parse(s)
+	if err != nil {
+		return nil, ""
+	}
+	port := u.Port()
+	if port == "" {
+		if strings.EqualFold(u.Scheme, "http") {
+			port = "80"
+		} else {
+			port = "443"
+		}
+	}
+	return u, port
+}
+
+func sameClusterHost(a, b string) bool {
+	ua, pa := parseClusterURL(a)
+	ub, pb := parseClusterURL(b)
+	if ua == nil || ub == nil {
+		return strings.EqualFold(strings.TrimRight(a, "/"), strings.TrimRight(b, "/"))
+	}
+	return strings.EqualFold(ua.Scheme, ub.Scheme) && strings.EqualFold(ua.Hostname(), ub.Hostname()) && pa == pb
+}
+
+func sameClusterHostname(serverURL, hostname string) bool {
+	u, _ := parseClusterURL(serverURL)
+	if u == nil {
+		return strings.EqualFold(serverURL, hostname)
+	}
+	return strings.EqualFold(u.Hostname(), hostname)
+}
+
+func tlsEndpointURL(serverURL, sni string) string {
+	u, port := parseClusterURL(serverURL)
+	if u == nil {
+		return "https://" + sni
+	}
+	return fmt.Sprintf("%s://%s", strings.ToLower(u.Scheme), net.JoinHostPort(sni, port))
 }

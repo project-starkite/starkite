@@ -188,9 +188,9 @@ func runScript(cmd *cobra.Command, args []string) error {
 	}
 
 	if debugMode {
-		PrintDebug("Loaded variables: %v", varStore.All())
+		PrintDebug("Loaded variables: %v", redactSensitiveVars(varStore.All()))
 		if len(varStore.ProviderDefaults) > 0 {
-			PrintDebug("Provider defaults: %v", varStore.ProviderDefaults)
+			PrintDebug("Provider defaults: %v", redactProviderDefaults(varStore.ProviderDefaults))
 		}
 	}
 
@@ -336,4 +336,65 @@ func parseScriptCommandLine(flagSet *pflag.FlagSet, rawArgs []string) (target st
 		return "", nil, nil
 	}
 	return rem[0], rem[1:], nil
+}
+
+func isSensitiveVarKey(key string) bool {
+	lower := strings.ToLower(key)
+	for _, pat := range []string{"secret", "token", "password", "passwd", "pwd", "key", "credential", "auth", "private"} {
+		if strings.Contains(lower, pat) {
+			return true
+		}
+	}
+	return false
+}
+
+func redactSensitiveValue(v any) any {
+	switch typed := v.(type) {
+	case map[string]any:
+		return redactSensitiveVars(typed)
+	case map[string]string:
+		out := make(map[string]string, len(typed))
+		for k, val := range typed {
+			if isSensitiveVarKey(k) {
+				out[k] = "[REDACTED]"
+			} else {
+				out[k] = val
+			}
+		}
+		return out
+	case []any:
+		out := make([]any, len(typed))
+		for i, item := range typed {
+			out[i] = redactSensitiveValue(item)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func redactSensitiveVars(vars map[string]any) map[string]any {
+	if len(vars) == 0 {
+		return vars
+	}
+	out := make(map[string]any, len(vars))
+	for k, v := range vars {
+		if isSensitiveVarKey(k) {
+			out[k] = "[REDACTED]"
+		} else {
+			out[k] = redactSensitiveValue(v)
+		}
+	}
+	return out
+}
+
+func redactProviderDefaults(defaults map[string]map[string]any) map[string]map[string]any {
+	if len(defaults) == 0 {
+		return defaults
+	}
+	out := make(map[string]map[string]any, len(defaults))
+	for provider, m := range defaults {
+		out[provider] = redactSensitiveVars(m)
+	}
+	return out
 }

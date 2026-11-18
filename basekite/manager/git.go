@@ -24,7 +24,7 @@ func GitClone(repo, version, destPath string) error {
 	}
 
 	// Clone the repository
-	args := []string{"clone", "--depth", "1"}
+	args := []string{"-c", "core.symlinks=false", "clone", "--depth", "1"}
 	if version != "" {
 		args = append(args, "--branch", version)
 	}
@@ -56,7 +56,7 @@ func gitCloneAndCheckout(repoURL, version, destPath string) error {
 	}
 
 	// Full clone
-	cloneCmd := exec.Command("git", "clone", "--", repoURL, destPath)
+	cloneCmd := exec.Command("git", "-c", "core.symlinks=false", "clone", "--", repoURL, destPath)
 	var stderr bytes.Buffer
 	cloneCmd.Stderr = &stderr
 
@@ -65,7 +65,7 @@ func gitCloneAndCheckout(repoURL, version, destPath string) error {
 	}
 
 	// Checkout the version
-	checkoutCmd := exec.Command("git", "-C", destPath, "checkout", version, "--")
+	checkoutCmd := exec.Command("git", "-C", destPath, "-c", "core.symlinks=false", "checkout", version, "--")
 	checkoutCmd.Stderr = &stderr
 
 	if err := checkoutCmd.Run(); err != nil {

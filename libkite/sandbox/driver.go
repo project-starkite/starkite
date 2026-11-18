@@ -36,8 +36,25 @@ type ExecutionSpec struct {
 
 // Validate checks the ExecutionSpec for basic invariants before execution.
 func (s *ExecutionSpec) Validate() error {
-	if len(s.Command) == 0 {
+	if len(s.Command) == 0 || s.Command[0] == "" {
 		return errors.New("sandbox: execution command cannot be empty")
+	}
+	for i, arg := range s.Command {
+		if strings.IndexByte(arg, 0) != -1 {
+			return fmt.Errorf("sandbox: command[%d] contains embedded NUL byte", i)
+		}
+	}
+	if containsUnsafeSpecChars(s.Cwd) {
+		return errors.New("sandbox: cwd contains unsupported control characters or quotes")
+	}
+	if containsUnsafeSpecChars(s.ScriptFile) {
+		return errors.New("sandbox: script_file contains unsupported control characters or quotes")
+	}
+	if err := validateContainerToken("image", s.Image); err != nil {
+		return err
+	}
+	if err := validateContainerToken("runtime", s.Runtime); err != nil {
+		return err
 	}
 	if s.MaxMemoryMB < 0 {
 		return fmt.Errorf("sandbox: max_memory cannot be negative: %d", s.MaxMemoryMB)
@@ -50,6 +67,21 @@ func (s *ExecutionSpec) Validate() error {
 	}
 	if s.Timeout < 0 {
 		return fmt.Errorf("sandbox: timeout cannot be negative: %v", s.Timeout)
+	}
+	for i, env := range s.Env {
+		if strings.IndexByte(env, 0) != -1 {
+			return fmt.Errorf("sandbox: env[%d] contains embedded NUL byte", i)
+		}
+	}
+	for i, ep := range s.NetworkAllow {
+		if containsUnsafeSpecChars(ep) {
+			return fmt.Errorf("sandbox: network_allow[%d] contains unsupported control characters or quotes", i)
+		}
+	}
+	for i, ep := range s.NetworkDeny {
+		if containsUnsafeSpecChars(ep) {
+			return fmt.Errorf("sandbox: network_deny[%d] contains unsupported control characters or quotes", i)
+		}
 	}
 	for i, m := range s.Mounts {
 		if m.Destination == "" {
@@ -66,6 +98,26 @@ func (s *ExecutionSpec) Validate() error {
 		if p == "" || !isHostAbs(p) {
 			return fmt.Errorf("sandbox: allowed_exec_paths[%d] %q must be an absolute path", i, p)
 		}
+		if containsUnsafeSpecChars(p) {
+			return fmt.Errorf("sandbox: allowed_exec_paths[%d] contains unsupported control characters or quotes", i)
+		}
+	}
+	return nil
+}
+
+func containsUnsafeSpecChars(s string) bool {
+	return strings.ContainsAny(s, "\x00\r\n\"")
+}
+
+func validateContainerToken(field, val string) error {
+	if val == "" {
+		return nil
+	}
+	if containsUnsafeSpecChars(val) || strings.ContainsAny(val, " \t") {
+		return fmt.Errorf("sandbox: %s contains unsupported whitespace, control characters, or quotes", field)
+	}
+	if strings.HasPrefix(strings.TrimSpace(val), "-") {
+		return fmt.Errorf("sandbox: %s %q cannot begin with '-'", field, val)
 	}
 	return nil
 }

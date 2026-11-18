@@ -201,7 +201,7 @@ func parseEventInfo(u *unstructured.Unstructured) eventInfo {
 // events queries and filters Kubernetes events.
 // Signature: k8s.events(target=None, kind="", name="", namespace="", type="", reason="", since="", limit=0, labels="", fields="", timeout="")
 func (c *K8sClient) events(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", c.permResource()); err != nil {
 		return nil, err
 	}
 

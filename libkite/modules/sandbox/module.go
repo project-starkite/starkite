@@ -3,8 +3,10 @@ package sandbox
 import (
 	"context"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -113,25 +115,32 @@ func (m *Module) sandboxConfig(thread *starlark.Thread, fn *starlark.Builtin, ar
 		parsedTimeout = t
 	}
 
+	if p.Network == "" {
+		p.Network = string(sandbox.NetworkNone)
+	}
+	switch sandbox.NetworkMode(p.Network) {
+	case sandbox.NetworkNone, sandbox.NetworkLoopback, sandbox.NetworkHost:
+	default:
+		return nil, fmt.Errorf("sandbox.config: invalid network mode %q (want none, loopback, or host)", p.Network)
+	}
+
+	netMode := sandbox.NetworkMode(p.Network)
+	if os.Getenv(sandbox.InsideEnvVar) == "1" {
+		if netMode == sandbox.NetworkHost {
+			if err := libkite.Check(thread, "http", "client", "config", "*"); err != nil {
+				netMode = sandbox.NetworkNone
+			}
+		}
+	}
+
 	// Parse environment
 	var envStrings []string
 	if p.Env != nil && p.Env != starlark.None {
-		switch v := p.Env.(type) {
-		case *starlark.List:
-			for i := 0; i < v.Len(); i++ {
-				s, ok := starlark.AsString(v.Index(i))
-				if !ok {
-					return nil, fmt.Errorf("sandbox.config: env list element %d is not a string", i)
-				}
-				envStrings = append(envStrings, s)
-			}
-		case *starlark.Dict:
-			for _, item := range v.Items() {
-				k, _ := starlark.AsString(item[0])
-				val, _ := starlark.AsString(item[1])
-				envStrings = append(envStrings, fmt.Sprintf("%s=%s", k, val))
-			}
+		parsedEnv, err := parseEnvValue(p.Env, "sandbox.config")
+		if err != nil {
+			return nil, err
 		}
+		envStrings = parsedEnv
 	}
 
 	// Parse allowed_exec_paths
@@ -159,7 +168,14 @@ func (m *Module) sandboxConfig(thread *starlark.Thread, fn *starlark.Builtin, ar
 		}
 	}
 
-	if err := checkSandboxPermissions(thread, "config", "", sandbox.NetworkMode(p.Network), parsedMounts); err != nil {
+	if p.Cwd != "" {
+		canonCwd := libkite.CanonicalizePath(p.Cwd)
+		if err := libkite.Check(thread, "fs", "read", "config", canonCwd); err != nil {
+			return nil, err
+		}
+	}
+
+	if err := checkSandboxPermissions(thread, "config", "", netMode, parsedMounts); err != nil {
 		return nil, err
 	}
 
@@ -167,7 +183,7 @@ func (m *Module) sandboxConfig(thread *starlark.Thread, fn *starlark.Builtin, ar
 		driverName:       driver.Name(),
 		driver:           driver,
 		image:            p.Image,
-		network:          sandbox.NetworkMode(p.Network),
+		network:          netMode,
 		mounts:           parsedMounts,
 		maxMemoryMB:      maxMemMB,
 		maxCPUs:          p.CPUs,
@@ -178,6 +194,7 @@ func (m *Module) sandboxConfig(thread *starlark.Thread, fn *starlark.Builtin, ar
 		runtime:          p.Runtime,
 		noExec:           p.NoExec,
 		allowedExecPaths: allowedExecPaths,
+		moduleCfg:        m.config,
 	}, nil
 }
 
@@ -185,20 +202,36 @@ func checkSandboxPermissions(thread *starlark.Thread, fnName, target string, net
 	if err := libkite.Check(thread, "os", "exec", fnName, target); err != nil {
 		return err
 	}
-	if network == sandbox.NetworkHost {
+	if network == sandbox.NetworkHost || network == sandbox.NetworkLoopback {
 		if err := libkite.Check(thread, "http", "client", fnName, ""); err != nil {
 			return err
 		}
 	}
 	for _, mnt := range mounts {
-		if mnt.Type == sandbox.MountBind && mnt.Source != "" {
-			canonSrc := libkite.CanonicalizePath(mnt.Source)
-			if err := libkite.Check(thread, "fs", "read", fnName, canonSrc); err != nil {
-				return err
-			}
-			if mnt.Mode == sandbox.MountRW {
-				if err := libkite.Check(thread, "fs", "write", fnName, canonSrc); err != nil {
+		switch mnt.Type {
+		case sandbox.MountBind:
+			if mnt.Source != "" {
+				canonSrc := libkite.CanonicalizePath(mnt.Source)
+				if err := libkite.Check(thread, "fs", "read", fnName, canonSrc); err != nil {
 					return err
+				}
+				if mnt.Mode == sandbox.MountRW {
+					if err := libkite.Check(thread, "fs", "write", fnName, canonSrc); err != nil {
+						return err
+					}
+				}
+			}
+		case sandbox.MountTmpfs:
+			cleanDst := filepath.ToSlash(filepath.Clean(mnt.Destination))
+			if cleanDst != "/tmp" && cleanDst != "/private/tmp" {
+				canonDst := libkite.CanonicalizePath(mnt.Destination)
+				if err := libkite.Check(thread, "fs", "read", fnName, canonDst); err != nil {
+					return err
+				}
+				if mnt.Mode == sandbox.MountRW {
+					if err := libkite.Check(thread, "fs", "write", fnName, canonDst); err != nil {
+						return err
+					}
 				}
 			}
 		}
@@ -263,21 +296,38 @@ func (m *Module) runScript(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	cmdArgs := []string{kiteBin, "run", scriptPath}
+	switch netMode {
+	case sandbox.NetworkNone, "":
+		cmdArgs = append(cmdArgs, "--sandbox-net-mode=none")
+	case sandbox.NetworkLoopback:
+		cmdArgs = append(cmdArgs, "--sandbox-net-mode=loopback")
+	}
 
 	// Append script vars
 	if p.Vars != nil && p.Vars != starlark.None {
-		if dict, ok := p.Vars.(*starlark.Dict); ok {
-			for _, item := range dict.Items() {
-				k, _ := starlark.AsString(item[0])
-				v, _ := starlark.AsString(item[1])
-				cmdArgs = append(cmdArgs, fmt.Sprintf("--var=%s=%s", k, v))
+		dict, ok := p.Vars.(*starlark.Dict)
+		if !ok {
+			return nil, fmt.Errorf("run_script: vars must be dict, got %s", p.Vars.Type())
+		}
+		for _, item := range dict.Items() {
+			k, kOk := starlark.AsString(item[0])
+			if !kOk || k == "" {
+				return nil, fmt.Errorf("run_script: vars keys must be non-empty strings")
 			}
+			v, vOk := starlark.AsString(item[1])
+			if !vOk {
+				return nil, fmt.Errorf("run_script: vars[%q] value must be string, got %s", k, item[1].Type())
+			}
+			cmdArgs = append(cmdArgs, fmt.Sprintf("--var=%s=%s", k, v))
 		}
 	}
 
 	// Clone mounts slice to avoid mutating the Sandbox object in place
 	mounts := append([]sandbox.Mount(nil), box.mounts...)
-	scriptDir := filepath.Dir(scriptPath)
+	scriptDir := libkite.CanonicalizePath(filepath.Dir(scriptPath))
+	if err := libkite.Check(thread, "fs", "read", "run_script", scriptDir); err != nil {
+		return nil, err
+	}
 	hasMount := false
 	for _, mnt := range mounts {
 		if mnt.Destination == scriptDir || mnt.Source == scriptDir {
@@ -297,7 +347,7 @@ func (m *Module) runScript(thread *starlark.Thread, fn *starlark.Builtin, args s
 	spec := &sandbox.ExecutionSpec{
 		Command:          cmdArgs,
 		Cwd:              scriptDir,
-		Env:              append(append([]string(nil), box.env...), fmt.Sprintf("%s=1", sandbox.InsideEnvVar)),
+		Env:              append(mergeBaselineEnv(m.config, box.env), fmt.Sprintf("%s=1", sandbox.InsideEnvVar)),
 		Network:          netMode,
 		Mounts:           mounts,
 		MaxMemoryMB:      box.maxMemoryMB,
@@ -345,73 +395,230 @@ func (m *Module) defaultDriver(thread *starlark.Thread, fn *starlark.Builtin, ar
 	return starlark.String(drv.Name()), nil
 }
 
-func parseMounts(v starlark.Value) ([]sandbox.Mount, error) {
-	var result []sandbox.Mount
-
-	switch list := v.(type) {
+func parseEnvValue(v starlark.Value, fnName string) ([]string, error) {
+	if v == nil || v == starlark.None {
+		return nil, nil
+	}
+	var envStrings []string
+	switch val := v.(type) {
 	case *starlark.List:
-		for i := 0; i < list.Len(); i++ {
-			elem := list.Index(i)
-			switch m := elem.(type) {
-			case *starlark.Dict:
-				var src, dst, modeStr, typeStr string
-				if sVal, found, _ := m.Get(starlark.String("source")); found {
-					src, _ = starlark.AsString(sVal)
-				}
-				if dVal, found, _ := m.Get(starlark.String("dest")); found {
-					dst, _ = starlark.AsString(dVal)
-				} else if dVal, found, _ := m.Get(starlark.String("destination")); found {
-					dst, _ = starlark.AsString(dVal)
-				}
-				if mVal, found, _ := m.Get(starlark.String("mode")); found {
-					modeStr, _ = starlark.AsString(mVal)
-				}
-				if tVal, found, _ := m.Get(starlark.String("type")); found {
-					typeStr, _ = starlark.AsString(tVal)
-				}
-
-				if dst == "" {
-					dst = src
-				}
-				mode := sandbox.MountRO
-				if modeStr == "rw" || modeStr == "read-write" {
-					mode = sandbox.MountRW
-				}
-				mountType := sandbox.MountBind
-				if typeStr == "tmpfs" {
-					mountType = sandbox.MountTmpfs
-				}
-
-				result = append(result, sandbox.Mount{
-					Source:      src,
-					Destination: dst,
-					Type:        mountType,
-					Mode:        mode,
-				})
-
-			case starlark.String:
-				parts := strings.Split(string(m), ":")
-				if len(parts) >= 2 {
-					mode := sandbox.MountRO
-					if len(parts) >= 3 && (parts[2] == "rw" || parts[2] == "read-write") {
-						mode = sandbox.MountRW
-					}
-					result = append(result, sandbox.Mount{
-						Source:      parts[0],
-						Destination: parts[1],
-						Type:        sandbox.MountBind,
-						Mode:        mode,
-					})
-				}
+		for i := 0; i < val.Len(); i++ {
+			s, ok := starlark.AsString(val.Index(i))
+			if !ok {
+				return nil, fmt.Errorf("%s: env list element %d is not a string", fnName, i)
 			}
+			envStrings = append(envStrings, s)
+		}
+	case starlark.Tuple:
+		for i, elem := range val {
+			s, ok := starlark.AsString(elem)
+			if !ok {
+				return nil, fmt.Errorf("%s: env tuple element %d is not a string", fnName, i)
+			}
+			envStrings = append(envStrings, s)
+		}
+	case *starlark.Dict:
+		for _, item := range val.Items() {
+			k, kOk := starlark.AsString(item[0])
+			if !kOk || k == "" {
+				return nil, fmt.Errorf("%s: env dict keys must be non-empty strings", fnName)
+			}
+			vStr, vOk := starlark.AsString(item[1])
+			if !vOk {
+				return nil, fmt.Errorf("%s: env dict value for %q must be string, got %s", fnName, k, item[1].Type())
+			}
+			envStrings = append(envStrings, fmt.Sprintf("%s=%s", k, vStr))
+		}
+	default:
+		return nil, fmt.Errorf("%s: env must be list, tuple, or dict, got %s", fnName, v.Type())
+	}
+	return envStrings, nil
+}
+
+func mergeBaselineEnv(cfg *libkite.ModuleConfig, custom []string) []string {
+	envMap := sandbox.SanitizedBaselineEnv(os.Environ())
+	if cfg != nil && len(cfg.Env) > 0 {
+		maps.Copy(envMap, cfg.Env)
+	}
+	for _, entry := range custom {
+		if k, v, ok := strings.Cut(entry, "="); ok && k != "" {
+			envMap[k] = v
 		}
 	}
+	res := make([]string, 0, len(envMap))
+	for k, v := range envMap {
+		res = append(res, fmt.Sprintf("%s=%s", k, v))
+	}
+	slices.Sort(res)
+	return res
+}
 
+func parseMountElems(elems []starlark.Value) ([]sandbox.Mount, error) {
+	var result []sandbox.Mount
+	for idx, elem := range elems {
+		switch m := elem.(type) {
+		case *starlark.Dict:
+			var src, dst, modeStr, typeStr string
+			if sVal, found, _ := m.Get(starlark.String("source")); found && sVal != starlark.None {
+				var ok bool
+				src, ok = starlark.AsString(sVal)
+				if !ok {
+					return nil, fmt.Errorf("mounts[%d].source must be string, got %s", idx, sVal.Type())
+				}
+			}
+			if dVal, found, _ := m.Get(starlark.String("dest")); found && dVal != starlark.None {
+				var ok bool
+				dst, ok = starlark.AsString(dVal)
+				if !ok {
+					return nil, fmt.Errorf("mounts[%d].dest must be string, got %s", idx, dVal.Type())
+				}
+			} else if dVal, found, _ := m.Get(starlark.String("destination")); found && dVal != starlark.None {
+				var ok bool
+				dst, ok = starlark.AsString(dVal)
+				if !ok {
+					return nil, fmt.Errorf("mounts[%d].destination must be string, got %s", idx, dVal.Type())
+				}
+			}
+			if mVal, found, _ := m.Get(starlark.String("mode")); found && mVal != starlark.None {
+				var ok bool
+				modeStr, ok = starlark.AsString(mVal)
+				if !ok {
+					return nil, fmt.Errorf("mounts[%d].mode must be string, got %s", idx, mVal.Type())
+				}
+			}
+			if tVal, found, _ := m.Get(starlark.String("type")); found && tVal != starlark.None {
+				var ok bool
+				typeStr, ok = starlark.AsString(tVal)
+				if !ok {
+					return nil, fmt.Errorf("mounts[%d].type must be string, got %s", idx, tVal.Type())
+				}
+			}
+
+			mountType := sandbox.MountBind
+			switch strings.ToLower(strings.TrimSpace(typeStr)) {
+			case "", "bind":
+				mountType = sandbox.MountBind
+			case "tmpfs":
+				mountType = sandbox.MountTmpfs
+			default:
+				return nil, fmt.Errorf("mounts[%d]: unsupported mount type %q", idx, typeStr)
+			}
+
+			if dst == "" && src != "" {
+				dst = src
+			}
+			if dst == "" {
+				return nil, fmt.Errorf("mounts[%d]: missing destination", idx)
+			}
+			if mountType == sandbox.MountBind && src == "" {
+				return nil, fmt.Errorf("mounts[%d]: bind mount requires source", idx)
+			}
+
+			mode := sandbox.MountRO
+			if mountType == sandbox.MountTmpfs && modeStr == "" {
+				mode = sandbox.MountRW
+			} else {
+				switch strings.ToLower(strings.TrimSpace(modeStr)) {
+				case "", "ro", "read-only":
+					mode = sandbox.MountRO
+				case "rw", "read-write":
+					mode = sandbox.MountRW
+				default:
+					return nil, fmt.Errorf("mounts[%d]: unsupported mount mode %q", idx, modeStr)
+				}
+			}
+
+			result = append(result, sandbox.Mount{
+				Source:      src,
+				Destination: dst,
+				Type:        mountType,
+				Mode:        mode,
+			})
+
+		case starlark.String:
+			raw := strings.TrimSpace(string(m))
+			if raw == "" {
+				return nil, fmt.Errorf("mounts[%d]: empty mount spec", idx)
+			}
+			if rest, isTmpfs := strings.CutPrefix(raw, "tmpfs:"); isTmpfs {
+				mode := sandbox.MountRW
+				dst := rest
+				if colon := strings.LastIndex(rest, ":"); colon > 1 {
+					candMode := strings.ToLower(strings.TrimSpace(rest[colon+1:]))
+					switch candMode {
+					case "ro", "read-only":
+						mode = sandbox.MountRO
+						dst = rest[:colon]
+					case "rw", "read-write":
+						mode = sandbox.MountRW
+						dst = rest[:colon]
+					}
+				}
+				if dst == "" {
+					return nil, fmt.Errorf("mounts[%d]: missing tmpfs destination", idx)
+				}
+				result = append(result, sandbox.Mount{
+					Destination: dst,
+					Type:        sandbox.MountTmpfs,
+					Mode:        mode,
+				})
+				continue
+			}
+
+			parts := strings.Split(raw, ":")
+			if len(parts) < 2 {
+				return nil, fmt.Errorf("mounts[%d]: invalid mount spec %q (expected source:dest[:mode])", idx, raw)
+			}
+			mode := sandbox.MountRO
+			if len(parts) == 3 {
+				switch strings.ToLower(strings.TrimSpace(parts[2])) {
+				case "ro", "read-only":
+					mode = sandbox.MountRO
+				case "rw", "read-write":
+					mode = sandbox.MountRW
+				default:
+					return nil, fmt.Errorf("mounts[%d]: invalid mount mode %q", idx, parts[2])
+				}
+			} else if len(parts) > 3 {
+				return nil, fmt.Errorf("mounts[%d]: invalid mount spec %q", idx, raw)
+			}
+			if parts[0] == "" || parts[1] == "" {
+				return nil, fmt.Errorf("mounts[%d]: invalid mount spec %q", idx, raw)
+			}
+			result = append(result, sandbox.Mount{
+				Source:      parts[0],
+				Destination: parts[1],
+				Type:        sandbox.MountBind,
+				Mode:        mode,
+			})
+
+		default:
+			return nil, fmt.Errorf("mounts[%d]: expected string or dict, got %s", idx, elem.Type())
+		}
+	}
 	return result, nil
+}
+
+func parseMounts(v starlark.Value) ([]sandbox.Mount, error) {
+	switch list := v.(type) {
+	case *starlark.List:
+		elems := make([]starlark.Value, list.Len())
+		for i := 0; i < list.Len(); i++ {
+			elems[i] = list.Index(i)
+		}
+		return parseMountElems(elems)
+	case starlark.Tuple:
+		return parseMountElems([]starlark.Value(list))
+	default:
+		return nil, fmt.Errorf("expected list or tuple, got %s", v.Type())
+	}
 }
 
 func parseMemory(v starlark.Value) (int64, error) {
 	if i, err := starlark.AsInt32(v); err == nil {
+		if i < 0 {
+			return 0, fmt.Errorf("memory limit cannot be negative: %d", i)
+		}
 		return int64(i), nil
 	}
 	s, ok := starlark.AsString(v)
@@ -420,28 +627,44 @@ func parseMemory(v starlark.Value) (int64, error) {
 	}
 
 	s = strings.TrimSpace(strings.ToUpper(s))
+	var val int64
+	var err error
 	if strings.HasSuffix(s, "MB") || strings.HasSuffix(s, "M") {
 		num := strings.TrimSuffix(strings.TrimSuffix(s, "MB"), "M")
-		val, err := strconv.ParseInt(strings.TrimSpace(num), 10, 64)
-		return val, err
-	}
-	if strings.HasSuffix(s, "GB") || strings.HasSuffix(s, "G") {
+		val, err = strconv.ParseInt(strings.TrimSpace(num), 10, 64)
+	} else if strings.HasSuffix(s, "GB") || strings.HasSuffix(s, "G") {
 		num := strings.TrimSuffix(strings.TrimSuffix(s, "GB"), "G")
-		val, err := strconv.ParseInt(strings.TrimSpace(num), 10, 64)
-		return val * 1024, err
+		val, err = strconv.ParseInt(strings.TrimSpace(num), 10, 64)
+		val *= 1024
+	} else {
+		val, err = strconv.ParseInt(s, 10, 64)
 	}
-
-	val, err := strconv.ParseInt(s, 10, 64)
-	return val, err
+	if err != nil {
+		return 0, err
+	}
+	if val < 0 {
+		return 0, fmt.Errorf("memory limit cannot be negative: %q", s)
+	}
+	return val, nil
 }
 
 func parseTimeout(v starlark.Value) (time.Duration, error) {
 	if i, err := starlark.AsInt32(v); err == nil {
+		if i < 0 {
+			return 0, fmt.Errorf("timeout cannot be negative: %d", i)
+		}
 		return time.Duration(i) * time.Second, nil
 	}
 	s, ok := starlark.AsString(v)
 	if !ok {
 		return 0, fmt.Errorf("expected string or integer timeout")
 	}
-	return time.ParseDuration(s)
+	dur, err := time.ParseDuration(s)
+	if err != nil {
+		return 0, err
+	}
+	if dur < 0 {
+		return 0, fmt.Errorf("timeout cannot be negative: %v", dur)
+	}
+	return dur, nil
 }

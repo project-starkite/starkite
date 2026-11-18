@@ -87,3 +87,66 @@ func TestResolveInstalledModuleWithAndWithoutLock(t *testing.T) {
 		t.Error("expected non-existent namespace to fail resolution")
 	}
 }
+
+func TestResolveInstalledModule_RejectsTraversalAndRespectsWorkspaceBoundary(t *testing.T) {
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+	t.Setenv("USERPROFILE", fakeHome)
+
+	v1Dir := filepath.Join(fakeHome, ".starkite", "modules", "acme", "tool@v1.0.0")
+	if err := os.MkdirAll(v1Dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(v1Dir, libkite.EntryFile), []byte("def run(): pass\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	h := host(t).(starlsp.LoadResolver)
+
+	parentDir := t.TempDir()
+	parentLock := &libkite.Lock{
+		Version: 1,
+		Modules: map[string]libkite.LockedModule{
+			"acme/tool": {Rev: "../../etc"},
+		},
+	}
+	if err := parentLock.Save(parentDir); err != nil {
+		t.Fatal(err)
+	}
+
+	workspaceDir := filepath.Join(parentDir, "repo")
+	subDir := filepath.Join(workspaceDir, "sub")
+	if err := os.MkdirAll(filepath.Join(workspaceDir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(subDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, ok := h.ResolveLoad(starlsp.LoadRequest{
+		Target: "../etc/passwd",
+		From:   filepath.Join(subDir, "main.star"),
+	}); ok {
+		t.Error("expected traversal identity to be rejected")
+	}
+
+	// Workspace .git boundary prevents ancestor traversal from inheriting parentDir/mod.lock.
+	got, ok := h.ResolveLoad(starlsp.LoadRequest{
+		Target: "acme/tool",
+		From:   filepath.Join(subDir, "main.star"),
+	})
+	if !ok || got != filepath.Join(v1Dir, libkite.EntryFile) {
+		t.Errorf("expected workspace boundary to isolate mod.lock traversal; got (%q, %v)", got, ok)
+	}
+
+	// A governing lockfile pinning a traversal revision rejects the load directly.
+	if err := parentLock.Save(subDir); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := h.ResolveLoad(starlsp.LoadRequest{
+		Target: "acme/tool",
+		From:   filepath.Join(subDir, "main.star"),
+	}); ok {
+		t.Error("expected mod.lock with traversal rev to fail resolution")
+	}
+}

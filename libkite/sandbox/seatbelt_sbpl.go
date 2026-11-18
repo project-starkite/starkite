@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/project-starkite/starkite/libkite"
@@ -14,7 +15,46 @@ func cleanSBPLPath(p string) string {
 	if p == "" {
 		return ""
 	}
-	return filepath.ToSlash(filepath.Clean(p))
+	sanitized := strings.NewReplacer("\x00", "", "\r", "", "\n", "", "\"", "").Replace(p)
+	if sanitized == "" {
+		return ""
+	}
+	return filepath.ToSlash(filepath.Clean(sanitized))
+}
+
+func hasSBPLPathPrefix(path, prefix string) bool {
+	if path == "" || prefix == "" {
+		return false
+	}
+	if prefix == "/" {
+		return strings.HasPrefix(path, "/")
+	}
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
+}
+
+func isAllowedNativeTmpfsDestination(dst string) bool {
+	if dst == "" {
+		return false
+	}
+	allowedRoots := []string{
+		"/tmp",
+		"/private/tmp",
+		"/var/tmp",
+		"/private/var/tmp",
+		"/var/folders",
+		"/private/var/folders",
+	}
+	if sysTmp := cleanSBPLPath(os.TempDir()); sysTmp != "" && sysTmp != "/" {
+		allowedRoots = append(allowedRoots, sysTmp)
+	}
+	for _, variant := range sbplPathVariants(dst) {
+		for _, root := range allowedRoots {
+			if hasSBPLPathPrefix(variant, root) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func sbplPathVariants(p string) []string {
@@ -99,10 +139,22 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	if home, err := os.UserHomeDir(); err == nil && home != "" {
 		cleanHome = cleanSBPLPath(home)
 	}
+	homeVariants := sbplPathVariants(cleanHome)
+	var cwdVariants []string
 	if spec.Cwd != "" {
 		cleanCwd = cleanSBPLPath(spec.Cwd)
-		if cleanCwd == "/" || (cleanHome != "" && cleanCwd == cleanHome) {
-			isHomeOrRoot = true
+		cwdVariants = sbplPathVariants(cleanCwd)
+		for _, cv := range cwdVariants {
+			if cv == "/" {
+				isHomeOrRoot = true
+				break
+			}
+			if slices.Contains(homeVariants, cv) {
+				isHomeOrRoot = true
+			}
+			if isHomeOrRoot {
+				break
+			}
 		}
 	}
 
@@ -110,7 +162,7 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	// Deny broad access to $HOME so sensitive files (~/.ssh, ~/.aws, etc.) are never exposed.
 	if cleanHome != "" {
 		b.WriteString(";; Container-parity isolation for home directory\n")
-		for _, hVar := range sbplPathVariants(cleanHome) {
+		for _, hVar := range homeVariants {
 			b.WriteString(fmt.Sprintf("(deny file-read* (subpath %q))\n", hVar))
 			b.WriteString(fmt.Sprintf("(deny file-write* (subpath %q))\n", hVar))
 		}
@@ -139,9 +191,21 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 	// Working directory isolation: if CWD is not mounted, deny reading and writing
 	// unless already isolated by $HOME.
 	if !cwdMounted && cleanCwd != "" && !isHomeOrRoot && cleanCwd != "/tmp" && cleanCwd != "/private/tmp" {
-		if cleanHome == "" || !strings.HasPrefix(cleanCwd, cleanHome) {
+		cwdInsideHome := false
+		for _, cv := range cwdVariants {
+			for _, hv := range homeVariants {
+				if hasSBPLPathPrefix(cv, hv) {
+					cwdInsideHome = true
+					break
+				}
+			}
+			if cwdInsideHome {
+				break
+			}
+		}
+		if !cwdInsideHome {
 			b.WriteString(";; Working directory isolation (unmounted)\n")
-			for _, cwdVar := range sbplPathVariants(cleanCwd) {
+			for _, cwdVar := range cwdVariants {
 				b.WriteString(fmt.Sprintf("(deny file-read* (subpath %q))\n", cwdVar))
 				b.WriteString(fmt.Sprintf("(deny file-write* (subpath %q))\n", cwdVar))
 			}
@@ -163,7 +227,7 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 
 			cleanTarget := cleanSBPLPath(target)
 			cleanDst := cleanSBPLPath(m.Destination)
-			if isHomeOrRoot && (cleanTarget == cleanHome || cleanTarget == "/") {
+			if isHomeOrRoot && (slices.Contains(homeVariants, cleanTarget) || cleanTarget == "/") {
 				// Under container parity, omit host $HOME or / bind mount
 				continue
 			}
@@ -220,11 +284,17 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 			for _, v := range sbplPathVariants(cleanP) {
 				b.WriteString(fmt.Sprintf("(allow process-exec (literal %q))\n", v))
 				b.WriteString(fmt.Sprintf("(allow process-exec (subpath %q))\n", v))
-				if cleanHome != "" && strings.HasPrefix(v, cleanHome) {
-					b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+				for _, hv := range homeVariants {
+					if hasSBPLPathPrefix(v, hv) {
+						b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+						break
+					}
 				}
-				if cleanCwd != "" && strings.HasPrefix(v, cleanCwd) {
-					b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+				for _, cv := range cwdVariants {
+					if hasSBPLPathPrefix(v, cv) {
+						b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+						break
+					}
 				}
 			}
 			if resolved, evalErr := filepath.EvalSymlinks(cleanP); evalErr == nil {
@@ -233,11 +303,17 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 					for _, v := range sbplPathVariants(cleanResolved) {
 						b.WriteString(fmt.Sprintf("(allow process-exec (literal %q))\n", v))
 						b.WriteString(fmt.Sprintf("(allow process-exec (subpath %q))\n", v))
-						if cleanHome != "" && strings.HasPrefix(v, cleanHome) {
-							b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+						for _, hv := range homeVariants {
+							if hasSBPLPathPrefix(v, hv) {
+								b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+								break
+							}
 						}
-						if cleanCwd != "" && strings.HasPrefix(v, cleanCwd) {
-							b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+						for _, cv := range cwdVariants {
+							if hasSBPLPathPrefix(v, cv) {
+								b.WriteString(fmt.Sprintf("(allow file-read* (literal %q))\n", v))
+								break
+							}
 						}
 					}
 				}
@@ -261,7 +337,11 @@ func GenerateSeatbeltSBPL(spec *ExecutionSpec) string {
 			for _, ep := range spec.NetworkAllow {
 				_, port, hasPort := libkite.SplitEndpointHostPort(ep)
 				if hasPort && port != "" && port != "*" {
-					b.WriteString(fmt.Sprintf("(allow network-outbound (remote tcp \"*:%s\"))\n", port))
+					portNum, err := strconv.Atoi(port)
+					if err != nil || portNum < 1 || portNum > 65535 {
+						continue
+					}
+					b.WriteString(fmt.Sprintf("(allow network-outbound (remote tcp \"*:%d\"))\n", portNum))
 				} else {
 					b.WriteString("(allow network-outbound (remote tcp \"*:443\"))\n")
 					b.WriteString("(allow network-outbound (remote tcp \"*:80\"))\n")

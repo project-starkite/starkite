@@ -339,3 +339,29 @@ func TestContainerDriver_LiveExec(t *testing.T) {
 		t.Log("No container engines (podman/docker/nerdctl) available on this host for live execution")
 	}
 }
+
+func TestContainerDriver_BinaryAndImageMatchingAndEtcBoundary(t *testing.T) {
+	if !isKiteImage("") || !isKiteImage(DefaultContainerImage) || !isKiteImage("ghcr.io/project-starkite/kite:v0.12.0") {
+		t.Errorf("expected official Starkite images to match isKiteImage")
+	}
+	if isKiteImage("buildkite/agent:latest") || isKiteImage("evil.io/attacker/starkite-evil:latest") {
+		t.Errorf("unrelated or spoofed image must not match isKiteImage")
+	}
+
+	d := NewContainerDriver("docker", "/usr/bin/docker")
+	spec := &ExecutionSpec{
+		Image:   "buildkite/agent:latest",
+		Command: []string{"/usr/local/bin/kitedev", "run"},
+		Mounts: []Mount{
+			{Source: "/tmp/etcetera", Destination: "/etcetera", Type: MountBind, Mode: MountRW},
+		},
+	}
+	args := d.BuildArgs(spec)
+	joined := strings.Join(args, " ")
+	if runtime.GOOS != "linux" && !strings.Contains(joined, "/tmp/etcetera:/etcetera:rw") {
+		t.Errorf("expected /etcetera non-/etc prefix mount to be preserved, got: %s", joined)
+	}
+	if !strings.Contains(joined, "/usr/local/bin/kitedev run") {
+		t.Errorf("expected non-kite binary prefix kitedev to remain preserved, got: %s", joined)
+	}
+}

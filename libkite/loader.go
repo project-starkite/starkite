@@ -155,6 +155,19 @@ func isPathRef(ref string) bool {
 		filepath.VolumeName(ref) != ""
 }
 
+// IsSafeModuleSegment reports whether s is a single safe module path segment
+// containing no path separators, traversal sequences, '@', or NUL bytes.
+func IsSafeModuleSegment(s string) bool {
+	return isSafeModuleSegment(s)
+}
+
+func isSafeModuleSegment(s string) bool {
+	if s == "" || s == "." || s == ".." {
+		return false
+	}
+	return !strings.ContainsAny(s, "/\\@\x00") && !strings.Contains(s, "..")
+}
+
 // resolveInstalledModule resolves "namespace/name" to its directory in the
 // version-addressed global cache (~/.starkite/modules/<ns>/<name>@<rev>).
 //
@@ -163,13 +176,6 @@ func isPathRef(ref string) bool {
 // this is what makes a locked build reproducible. Without a lock entry it falls
 // back to the single installed revision; multiple revisions are ambiguous and
 // require a mod.lock to disambiguate, and none is "not installed".
-func isSafeModuleSegment(s string) bool {
-	if s == "" || s == "." || s == ".." {
-		return false
-	}
-	return !strings.ContainsAny(s, "/\\@\x00") && !strings.Contains(s, "..")
-}
-
 func (rt *Runtime) resolveInstalledModule(module string) (string, error) {
 	ns, name, ok := strings.Cut(module, "/")
 	if !ok || !isSafeModuleSegment(ns) || !isSafeModuleSegment(name) {
@@ -234,7 +240,7 @@ func (rt *Runtime) resolvePath(path string) (string, error) {
 // resolvePathFrom resolves a path relative to a given caller path.
 func (rt *Runtime) resolvePathFrom(path, callerPath string) (string, error) {
 	if filepath.IsAbs(path) {
-		if fileExists(path) || isModuleDir(path) {
+		if rt.sourceFileExists(path) || rt.isSourceModuleDir(path) {
 			return path, nil
 		}
 		return "", fmt.Errorf("file not found: %s", path)

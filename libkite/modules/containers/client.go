@@ -5,6 +5,8 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -909,11 +911,26 @@ func (c *Client) imageBuildFn(thread *starlark.Thread, fn *starlark.Builtin, arg
 		return nil, fmt.Errorf("containers: build path cannot be empty")
 	}
 
-	if err := libkite.Check(thread, "containers", "write", "image_build", dirPath); err != nil {
+	canonContext := libkite.CanonicalizePath(dirPath)
+	if err := libkite.Check(thread, "containers", "write", "image_build", canonContext); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(thread, "fs", "read", "image_build", libkite.CanonicalizePath(dirPath)); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "image_build", canonContext); err != nil {
 		return nil, err
+	}
+	if dockerfile != "" {
+		dfPath := dockerfile
+		if !filepath.IsAbs(dfPath) {
+			dfPath = filepath.Join(dirPath, dfPath)
+		}
+		canonDf := libkite.CanonicalizePath(dfPath)
+		if err := libkite.Check(thread, "fs", "read", "image_build", canonDf); err != nil {
+			return nil, err
+		}
+		rel, relErr := filepath.Rel(canonContext, canonDf)
+		if relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+			return nil, fmt.Errorf("containers: dockerfile %q escapes build context %q", dockerfile, dirPath)
+		}
 	}
 
 	ctx := c.getContext(thread)
@@ -1100,8 +1117,9 @@ func (c *Client) buildContainerConfig(
 			if !strings.Contains(containerPath, ":") {
 				containerPath += ":rw"
 			}
-			if strings.HasPrefix(hostPath, "/") || strings.HasPrefix(hostPath, "./") || strings.HasPrefix(hostPath, "../") || strings.HasPrefix(hostPath, "~") {
-				canonHost := libkite.CanonicalizePath(hostPath)
+			if isHostBindPath(hostPath) {
+				expandedHost := expandContainerHostPath(hostPath)
+				canonHost := libkite.CanonicalizePath(expandedHost)
 				if err := libkite.Check(thread, "fs", "read", "volume", canonHost); err != nil {
 					return nil, err
 				}
@@ -1110,6 +1128,7 @@ func (c *Client) buildContainerConfig(
 						return nil, err
 					}
 				}
+				hostPath = expandedHost
 			}
 			cfg.HostConfig.Binds = append(cfg.HostConfig.Binds, fmt.Sprintf("%s:%s", hostPath, containerPath))
 		}
@@ -1142,4 +1161,39 @@ func (c *Client) buildContainerConfig(
 	}
 
 	return cfg, nil
+}
+
+func expandContainerHostPath(p string) string {
+	if p == "~" {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			return home
+		}
+	}
+	if strings.HasPrefix(p, "~/") || strings.HasPrefix(p, `~\`) {
+		if home, err := os.UserHomeDir(); err == nil && home != "" {
+			return filepath.Join(home, p[2:])
+		}
+	}
+	return p
+}
+
+func isWindowsDrivePrefix(p string) bool {
+	if len(p) < 2 || p[1] != ':' {
+		return false
+	}
+	c := p[0]
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+}
+
+func isHostBindPath(hostPath string) bool {
+	if hostPath == "" {
+		return false
+	}
+	if filepath.IsAbs(hostPath) || strings.ContainsAny(hostPath, `/\`) || strings.HasPrefix(hostPath, ".") ||
+		hostPath == "~" || strings.HasPrefix(hostPath, "~/") || strings.HasPrefix(hostPath, `~\`) ||
+		isWindowsDrivePrefix(hostPath) {
+		return true
+	}
+	_, err := os.Lstat(hostPath)
+	return err == nil
 }

@@ -352,3 +352,40 @@ func TestGenerateSeatbeltSBPL_AllowedExecUnderHome(t *testing.T) {
 		t.Errorf("expected file-read* allow for binary under home, got:\n%s", sbpl)
 	}
 }
+
+func TestGenerateSeatbeltSBPL_PathBoundaryAndPortValidation(t *testing.T) {
+	rawHome, err := os.UserHomeDir()
+	if err != nil || rawHome == "" {
+		t.Skip("skipping test: os.UserHomeDir() unavailable")
+	}
+	home := cleanSBPLPath(rawHome)
+	siblingDir := home + "_sibling"
+
+	t.Run("unmounted CWD sibling sharing home prefix is still isolated", func(t *testing.T) {
+		spec := &ExecutionSpec{
+			Command: []string{"/bin/echo", "hi"},
+			Cwd:     siblingDir,
+		}
+		sbpl := GenerateSeatbeltSBPL(spec)
+		if !strings.Contains(sbpl, fmt.Sprintf("(deny file-read* (subpath %q))", siblingDir)) {
+			t.Errorf("expected sibling unmounted cwd %q to be isolated, got:\n%s", siblingDir, sbpl)
+		}
+	})
+
+	t.Run("non-numeric port in NetworkAllow is ignored", func(t *testing.T) {
+		spec := &ExecutionSpec{
+			Network: NetworkHost,
+			NetworkAllow: []string{
+				"api.github.com:443",
+				`bad.host:443") (allow file-write*) ;;`,
+			},
+		}
+		sbpl := GenerateSeatbeltSBPL(spec)
+		if !strings.Contains(sbpl, `(allow network-outbound (remote tcp "*:443"))`) {
+			t.Errorf("expected valid port 443 rule in SBPL:\n%s", sbpl)
+		}
+		if strings.Contains(sbpl, "(allow file-write*)") {
+			t.Errorf("injected SBPL snippet appeared in output:\n%s", sbpl)
+		}
+	})
+}

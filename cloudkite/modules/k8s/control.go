@@ -102,10 +102,8 @@ func (m *Module) controlBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 	if err := libkite.Check(thread, "k8s", "read", "control", p.Kind); err != nil {
 		return nil, err
 	}
-	if finalizeFn != nil || p.Finalizer != "" || p.LeaderElection {
-		if err := libkite.Check(thread, "k8s", "write", "control", p.Kind); err != nil {
-			return nil, err
-		}
+	if err := libkite.Check(thread, "k8s", "write", "control", p.Kind); err != nil {
+		return nil, err
 	}
 	if p.HealthPort > 0 {
 		if err := libkite.Check(thread, "http", "server", "control_health", fmt.Sprintf(":%d", p.HealthPort)); err != nil {

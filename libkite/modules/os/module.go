@@ -648,32 +648,34 @@ func (m *Module) executeParams(thread *starlark.Thread, callerPrefix string, p e
 		}
 	}()
 
-	cmd := exec.Command(p.cmdStr, p.execArgs...)
+	m.mu.RLock()
+	isolated := m.isolatedEnv
+	m.mu.RUnlock()
+
+	cmdPath := p.cmdStr
+	if isolated && !strings.ContainsAny(p.cmdStr, `/\`) && !filepath.IsAbs(p.cmdStr) {
+		pathEnv, _ := getPathEnv(p.envMap)
+		if pathEnv == "" {
+			return &cmdResult{err: fmt.Errorf("%s: executable %q not found in isolated PATH", callerPrefix, p.cmdStr)}, nil
+		}
+		resolved, lookErr := lookPathIn(p.cmdStr, pathEnv)
+		if lookErr != nil {
+			return &cmdResult{err: fmt.Errorf("%s: executable %q not found in isolated PATH: %w", callerPrefix, p.cmdStr, lookErr)}, nil
+		}
+		cmdPath = resolved
+	}
+
+	cmd := exec.Command(cmdPath, p.execArgs...)
 
 	configureCredential(cmd, targetUID, targetGID, hasUID, hasGID)
 	if p.workDir != "" {
 		cmd.Dir = p.workDir
 	}
-	m.mu.RLock()
-	isolated := m.isolatedEnv
-	m.mu.RUnlock()
 
 	if isolated {
-		cmd.Env = make([]string, 0, len(p.envMap))
-		for k, v := range p.envMap {
-			cmd.Env = append(cmd.Env, k+"="+v)
-		}
-		slices.Sort(cmd.Env)
-		if pathEnv, ok := getPathEnv(p.envMap); ok && pathEnv != "" {
-			if resolved, err := lookPathIn(p.cmdStr, pathEnv); err == nil {
-				cmd.Path = resolved
-			}
-		}
+		cmd.Env = buildEnvSlice(nil, p.envMap)
 	} else {
-		cmd.Env = os.Environ()
-		for k, v := range p.envMap {
-			cmd.Env = append(cmd.Env, k+"="+v)
-		}
+		cmd.Env = buildEnvSlice(os.Environ(), p.envMap)
 	}
 
 	if inputReader != nil {
@@ -783,7 +785,7 @@ func resolveExecTarget(cmdStr, workDir string, env map[string]string) string {
 
 	// Path-qualified (absolute or contains a separator): canonicalize it, resolving
 	// relative paths and symlinks against the base directory.
-	if strings.ContainsRune(bin, filepath.Separator) || filepath.IsAbs(bin) {
+	if strings.ContainsAny(bin, `/\`) || filepath.IsAbs(bin) {
 		if !filepath.IsAbs(bin) && baseDir != "" {
 			bin = filepath.Join(baseDir, bin)
 		}
@@ -969,6 +971,32 @@ func (m *Module) which(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		return starlark.None, nil
 	}
 	return starlark.String(path), nil
+}
+
+func buildEnvSlice(base []string, overrides map[string]string) []string {
+	dedup := make(map[string]string, len(base)+len(overrides))
+	normalizeKey := func(k string) string {
+		if runtime.GOOS == "windows" {
+			return strings.ToUpper(k)
+		}
+		return k
+	}
+	for _, entry := range base {
+		k, _, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		dedup[normalizeKey(k)] = entry
+	}
+	for k, v := range overrides {
+		dedup[normalizeKey(k)] = k + "=" + v
+	}
+	out := make([]string, 0, len(dedup))
+	for _, entry := range dedup {
+		out = append(out, entry)
+	}
+	slices.Sort(out)
+	return out
 }
 
 func getPathEnv(m map[string]string) (string, bool) {

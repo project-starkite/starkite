@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"maps"
+	"math"
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -172,7 +174,13 @@ func DecodeConfigNode(node *yaml.Node) (*SandboxConfig, error) {
 			}
 			continue
 		}
-		if key == "profiles" && vNode.Kind == yaml.MappingNode {
+		if key == "profiles" {
+			if vNode.Kind == yaml.ScalarNode && vNode.Tag == "!!null" {
+				continue
+			}
+			if vNode.Kind != yaml.MappingNode {
+				return nil, fmt.Errorf("sandbox.profiles must be a mapping")
+			}
 			for j := 0; j < len(vNode.Content); j += 2 {
 				pkNode := vNode.Content[j]
 				pvNode := vNode.Content[j+1]
@@ -367,6 +375,15 @@ func profileFromBody(name string, body ProfileBody, origin string) (Profile, err
 	// Exec & W^X
 	p.Exec.Allow = append(p.Exec.Allow, body.Exec.Allow...)
 	p.Exec.Deny = append(p.Exec.Deny, body.Exec.Deny...)
+	if len(body.Exec.Allow) > 0 && !slices.Contains(body.Exec.Deny, "*") {
+		filtered := p.Exec.Deny[:0]
+		for _, d := range p.Exec.Deny {
+			if d != "*" {
+				filtered = append(filtered, d)
+			}
+		}
+		p.Exec.Deny = filtered
+	}
 
 	if body.NoExec != nil {
 		p.NoExec = *body.NoExec
@@ -583,25 +600,60 @@ func parseMemoryMB(s string) (int64, error) {
 	if s == "" {
 		return 0, nil
 	}
-	s = strings.TrimSpace(s)
-	multiplier := int64(1)
-	upper := strings.ToUpper(s)
-	if strings.HasSuffix(upper, "GIB") || strings.HasSuffix(upper, "GI") || strings.HasSuffix(upper, "GB") || strings.HasSuffix(upper, "G") {
-		multiplier = 1024
-		s = strings.TrimRight(s, "gGbBiI")
-	} else if strings.HasSuffix(upper, "MIB") || strings.HasSuffix(upper, "MI") || strings.HasSuffix(upper, "MB") || strings.HasSuffix(upper, "M") {
-		multiplier = 1
-		s = strings.TrimRight(s, "mMbBiI")
-	} else if strings.HasSuffix(upper, "KIB") || strings.HasSuffix(upper, "KI") || strings.HasSuffix(upper, "KB") || strings.HasSuffix(upper, "K") {
-		multiplier = 0
-		s = strings.TrimRight(s, "kKbBiI")
+	trimmed := strings.TrimSpace(s)
+	upper := strings.ToUpper(trimmed)
+	var numStr string
+	var unit string
+	switch {
+	case strings.HasSuffix(upper, "GIB"):
+		unit = "G"
+		numStr = trimmed[:len(trimmed)-3]
+	case strings.HasSuffix(upper, "GI"), strings.HasSuffix(upper, "GB"):
+		unit = "G"
+		numStr = trimmed[:len(trimmed)-2]
+	case strings.HasSuffix(upper, "G"):
+		unit = "G"
+		numStr = trimmed[:len(trimmed)-1]
+	case strings.HasSuffix(upper, "MIB"):
+		unit = "M"
+		numStr = trimmed[:len(trimmed)-3]
+	case strings.HasSuffix(upper, "MI"), strings.HasSuffix(upper, "MB"):
+		unit = "M"
+		numStr = trimmed[:len(trimmed)-2]
+	case strings.HasSuffix(upper, "M"):
+		unit = "M"
+		numStr = trimmed[:len(trimmed)-1]
+	case strings.HasSuffix(upper, "KIB"):
+		unit = "K"
+		numStr = trimmed[:len(trimmed)-3]
+	case strings.HasSuffix(upper, "KI"), strings.HasSuffix(upper, "KB"):
+		unit = "K"
+		numStr = trimmed[:len(trimmed)-2]
+	case strings.HasSuffix(upper, "K"):
+		unit = "K"
+		numStr = trimmed[:len(trimmed)-1]
+	default:
+		unit = "M"
+		numStr = trimmed
 	}
-	var val int64
-	_, err := fmt.Sscanf(s, "%d", &val)
-	if err != nil {
+	val, err := strconv.ParseInt(strings.TrimSpace(numStr), 10, 64)
+	if err != nil || val < 0 {
 		return 0, fmt.Errorf("invalid memory format: %q", s)
 	}
-	return val * multiplier, nil
+	switch unit {
+	case "G":
+		if val > (math.MaxInt64 / 1024) {
+			return 0, fmt.Errorf("invalid memory format: %q overflows", s)
+		}
+		return val * 1024, nil
+	case "K":
+		if val == 0 {
+			return 0, nil
+		}
+		return (val + 1023) / 1024, nil
+	default:
+		return val, nil
+	}
 }
 
 func parseDuration(s string) (time.Duration, error) {
@@ -634,7 +686,13 @@ func expandPath(p, cwd, home string) string {
 	if after, ok := strings.CutPrefix(p, "./"); ok {
 		return filepath.Join(cwd, after)
 	}
+	if after, ok := strings.CutPrefix(p, `.\`); ok {
+		return filepath.Join(cwd, after)
+	}
 	if rest, ok := strings.CutPrefix(p, "$CWD/"); ok {
+		return filepath.Join(cwd, rest)
+	}
+	if rest, ok := strings.CutPrefix(p, `$CWD\`); ok {
 		return filepath.Join(cwd, rest)
 	}
 	if home != "" {
@@ -644,7 +702,13 @@ func expandPath(p, cwd, home string) string {
 		if rest, ok := strings.CutPrefix(p, "$HOME/"); ok {
 			return filepath.Join(home, rest)
 		}
+		if rest, ok := strings.CutPrefix(p, `$HOME\`); ok {
+			return filepath.Join(home, rest)
+		}
 		if rest, ok := strings.CutPrefix(p, "~/"); ok {
+			return filepath.Join(home, rest)
+		}
+		if rest, ok := strings.CutPrefix(p, `~\`); ok {
 			return filepath.Join(home, rest)
 		}
 	}
@@ -1005,6 +1069,9 @@ func ResolvePermissions(profileName string, cfg *SandboxConfig) (*libkite.Permis
 				p, err := profileFromBody(DefaultProfileName, body, "config")
 				if err != nil {
 					return nil, err
+				}
+				if !cfg.Enabled && body.Enabled == nil {
+					p.Enabled = false
 				}
 				return p.CompilePermissions(), nil
 			}

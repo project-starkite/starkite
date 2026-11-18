@@ -15,18 +15,20 @@ import (
 // CLI capability grants so the runtime and module loader can validate
 // third-party module manifests (mod.yaml) without importing libkite/sandbox.
 type SandboxPolicySummary struct {
-	ProfileName string          // Active profile name (e.g., "default", "deny-all", "ci-builder")
-	Enabled     bool            // True when sandbox confinement is enabled; false when unconfined
-	Network     string          // Active network mode ("none", "loopback", "host")
-	PathsRead   []string        // Active paths.read grants
-	PathsWrite  []string        // Active paths.write grants
-	ExecAllow   []string        // Active exec.allow grants
-	ExecDeny    []string        // Active exec.deny rules
-	CallsAllow  []string        // Active calls.allow rules
-	CallsDeny   []string        // Active calls.deny rules
-	EnvInherit  bool            // True when wholesale host env inheritance is active
-	EnvAllowed  map[string]bool // Explicit/forwarded env keys permitted by operator
-	DisplayPath string          // Script/module target path as invoked on CLI for rerun hints
+	ProfileName  string          // Active profile name (e.g., "default", "deny-all", "ci-builder")
+	Enabled      bool            // True when sandbox confinement is enabled; false when unconfined
+	Network      string          // Active network mode ("none", "loopback", "host")
+	NetworkAllow []string        // Active network.allow endpoint grants
+	NetworkDeny  []string        // Active network.deny endpoint rules
+	PathsRead    []string        // Active paths.read grants
+	PathsWrite   []string        // Active paths.write grants
+	ExecAllow    []string        // Active exec.allow grants
+	ExecDeny     []string        // Active exec.deny rules
+	CallsAllow   []string        // Active calls.allow rules
+	CallsDeny    []string        // Active calls.deny rules
+	EnvInherit   bool            // True when wholesale host env inheritance is active
+	EnvAllowed   map[string]bool // Explicit/forwarded env keys permitted by operator
+	DisplayPath  string          // Script/module target path as invoked on CLI for rerun hints
 }
 
 // ModuleCapabilityError is returned when a loaded or executed module's mod.yaml
@@ -219,13 +221,49 @@ func ValidateModuleManifest(
 
 	// 2. Check Network requirement
 	reqNet, reqAllow := sb.NetworkModeAndAllow()
-	if reqNet != "" && networkRank(reqNet) > networkRank(activeNet) {
-		violations = append(violations, fmt.Sprintf("network: %s (active: %s)", reqNet, activeNet))
-		if reqNet == "host" || slices.Contains(reqAllow, "*") || len(reqAllow) == 0 {
-			addFlag("--sandbox-net-allow")
-		} else {
-			for _, ep := range reqAllow {
-				addFlag(fmt.Sprintf("--sandbox-net-allow=%s", ep))
+	if reqNet != "" {
+		if networkRank(reqNet) > networkRank(activeNet) {
+			violations = append(violations, fmt.Sprintf("network: %s (active: %s)", reqNet, activeNet))
+			if slices.Contains(reqAllow, "*") || len(reqAllow) == 0 {
+				addFlag("--sandbox-net-allow")
+			} else {
+				for _, ep := range reqAllow {
+					addFlag(fmt.Sprintf("--sandbox-net-allow=%s", ep))
+				}
+			}
+		} else if reqNet == "host" {
+			activeHasScopedAllow := policy != nil && len(policy.NetworkAllow) > 0 && !slices.Contains(policy.NetworkAllow, "*")
+			activeHasDeny := policy != nil && len(policy.NetworkDeny) > 0
+			unrestrictedReq := len(reqAllow) == 0 || slices.Contains(reqAllow, "*")
+			if unrestrictedReq {
+				if activeHasScopedAllow || activeHasDeny || (policy == nil && checker != nil && !checker.allows("http", "client", "get", "https://example.com")) {
+					activeDesc := activeNet
+					if activeHasScopedAllow {
+						activeDesc = "allow=" + formatStringSliceYAML(policy.NetworkAllow)
+					} else if activeHasDeny {
+						activeDesc = "deny=" + formatStringSliceYAML(policy.NetworkDeny)
+					}
+					violations = append(violations, fmt.Sprintf("network: host (active: %s)", activeDesc))
+					addFlag("--sandbox-net-allow")
+				}
+			} else {
+				var missingEndpoints []string
+				for _, ep := range reqAllow {
+					if !isNetworkEndpointGranted(ep, policy, checker) {
+						missingEndpoints = append(missingEndpoints, ep)
+					}
+				}
+				if len(missingEndpoints) > 0 {
+					var activeAllow []string
+					if policy != nil {
+						activeAllow = policy.NetworkAllow
+					}
+					violations = append(violations, fmt.Sprintf("network.allow: %s (active: %s)",
+						formatStringSliceYAML(missingEndpoints), formatStringSliceYAML(activeAllow)))
+					for _, ep := range missingEndpoints {
+						addFlag(fmt.Sprintf("--sandbox-net-allow=%s", ep))
+					}
+				}
 			}
 		}
 	}
@@ -371,7 +409,7 @@ func ValidateClosureManifests(
 			var err error
 			data, err = os.ReadFile(manifestPath)
 			if err != nil {
-				continue
+				return fmt.Errorf("reading module manifest %s: %w", manifestPath, err)
 			}
 		}
 		m, err := ParseModuleManifest(data, manifestPath)
@@ -413,12 +451,72 @@ func resolveManifestPath(rawPath, cwd, home, moduleDir string) string {
 	return p
 }
 
+func isNetworkEndpointGranted(ep string, policy *SandboxPolicySummary, checker *PermissionChecker) bool {
+	ep = strings.TrimSpace(ep)
+	if ep == "" {
+		return false
+	}
+	epHost, epPort, epHasPort := SplitEndpointHostPort(ep)
+	if policy != nil {
+		if slices.Contains(policy.NetworkDeny, "*") || slices.Contains(policy.NetworkDeny, ep) {
+			return false
+		}
+		if epHost != "" && slices.Contains(policy.NetworkDeny, epHost) {
+			return false
+		}
+	}
+	if checker != nil {
+		urlHost := epHost
+		if strings.Contains(urlHost, ":") && !strings.HasPrefix(urlHost, "[") {
+			urlHost = "[" + urlHost + "]"
+		}
+		var probeURL string
+		switch {
+		case epHasPort && epPort == "80":
+			probeURL = "http://" + urlHost + ":80/"
+		case epHasPort:
+			probeURL = "https://" + urlHost + ":" + epPort + "/"
+		default:
+			probeURL = "https://" + urlHost + "/"
+		}
+		if checker.isDenied("http", "client", "get", probeURL) {
+			return false
+		}
+		if checker.allows("http", "client", "get", probeURL) {
+			return true
+		}
+	}
+	if policy != nil {
+		if len(policy.NetworkAllow) == 0 {
+			return policy.Network == "host"
+		}
+		if slices.Contains(policy.NetworkAllow, "*") || slices.Contains(policy.NetworkAllow, ep) {
+			return true
+		}
+		if epHasPort && slices.Contains(policy.NetworkAllow, epHost) {
+			return true
+		}
+	}
+	return false
+}
+
 func isPathGranted(rawPath string, write bool, cwd, home, moduleDir string, policy *SandboxPolicySummary, checker *PermissionChecker) bool {
 	target := resolveManifestPath(rawPath, cwd, home, moduleDir)
 	canonTarget := CanonicalizePath(target)
 	probeFile := filepath.Join(canonTarget, ".probe")
 
 	if checker != nil {
+		if write {
+			if checker.isDenied("fs", "write", "write_file", probeFile) ||
+				checker.isDenied("fs", "write", "write_file", canonTarget) {
+				return false
+			}
+		} else {
+			if checker.isDenied("fs", "read", "read_file", probeFile) ||
+				checker.isDenied("fs", "read", "read_file", canonTarget) {
+				return false
+			}
+		}
 		// Do not let a generic scratch /tmp mount rule satisfy a requirement on
 		// the current working directory or a relative path when the working directory
 		// happens to reside under /tmp (e.g. in test tempdirs).
@@ -466,54 +564,115 @@ func isPathGranted(rawPath string, write bool, cwd, home, moduleDir string, poli
 
 func isExecGranted(bin string, policy *SandboxPolicySummary, checker *PermissionChecker) bool {
 	bin = strings.TrimSpace(bin)
+	if bin == "" {
+		return false
+	}
+	base := filepath.Base(bin)
+	if policy != nil {
+		if slices.Contains(policy.ExecDeny, "*") || slices.Contains(policy.ExecDeny, bin) || slices.Contains(policy.ExecDeny, base) {
+			return false
+		}
+	}
 	if checker != nil {
 		if bin == "*" {
+			if checker.isDenied("os", "exec", "exec", "*") || checker.isDenied("os", "shell", "shell", "*") {
+				return false
+			}
 			if checker.allows("os", "exec", "exec", "*") && checker.allows("os", "shell", "shell", "*") {
 				return true
 			}
-		} else if checker.allows("os", "exec", "exec", bin) {
-			return true
+		} else {
+			if checker.isDenied("os", "exec", "exec", bin) || checker.isDenied("os", "exec", "exec", base) {
+				return false
+			}
+			if checker.allows("os", "exec", "exec", bin) {
+				return true
+			}
 		}
 	}
 	if policy != nil {
-		if slices.Contains(policy.ExecDeny, bin) || slices.Contains(policy.ExecDeny, "*") {
-			return false
-		}
 		if slices.Contains(policy.ExecAllow, "*") || slices.Contains(policy.ExecAllow, bin) {
 			return true
 		}
-		base := filepath.Base(bin)
 		return slices.Contains(policy.ExecAllow, base)
 	}
 	return false
 }
 
 func isCallPatternGranted(pattern, cwd, home string, policy *SandboxPolicySummary, checker *PermissionChecker) bool {
-	if policy != nil && slices.Contains(policy.CallsAllow, pattern) {
-		return true
-	}
-	if checker == nil {
-		return false
-	}
 	rule, err := ParseRule(pattern)
 	if err != nil {
 		return false
 	}
-	mod := rule.Module
-	if mod == "*" {
-		mod = "os"
+	if policy != nil {
+		if slices.Contains(policy.CallsDeny, pattern) ||
+			slices.Contains(policy.CallsDeny, "*.*") ||
+			slices.Contains(policy.CallsDeny, rule.Module+".*") ||
+			slices.Contains(policy.CallsDeny, rule.Module+"."+rule.Category) {
+			return false
+		}
 	}
-	cat := rule.Category
-	if cat == "*" {
-		cat = "exec"
+
+	if rule.Module == "*" {
+		if policy != nil && slices.Contains(policy.CallsAllow, "*.*") && len(policy.CallsDeny) == 0 {
+			return true
+		}
+		if checker != nil && len(checker.deny) == 0 &&
+			checker.allows("os", "exec", "exec", "*") &&
+			checker.allows("fs", "write", "write_file", "/*") &&
+			checker.allows("http", "client", "get", "https://example.com") {
+			return true
+		}
+		return false
 	}
-	fn := "call"
-	if len(rule.Functions) > 0 {
-		fn = rule.Functions[0]
+
+	if rule.Category == "*" {
+		if policy != nil && (slices.Contains(policy.CallsAllow, pattern) || slices.Contains(policy.CallsAllow, "*.*")) {
+			return true
+		}
+		if checker != nil {
+			for _, d := range checker.deny {
+				if d.Module == "*" || d.Module == rule.Module {
+					return false
+				}
+			}
+			return checker.allows(rule.Module, "*", "call", "*")
+		}
+		return false
 	}
+
 	res := expandPathVariables(rule.Resource, cwd, home)
-	if res == "" {
-		res = "*"
+	probeRes := res
+	if probeRes == "" {
+		probeRes = "*"
 	}
-	return checker.allows(mod, cat, fn, res)
+	if checker != nil {
+		fns := rule.Functions
+		if len(fns) == 0 {
+			fns = []string{"call"}
+		}
+		allAllowed := true
+		for _, fn := range fns {
+			if checker.isDenied(rule.Module, rule.Category, fn, probeRes) {
+				return false
+			}
+			if !checker.allows(rule.Module, rule.Category, fn, probeRes) {
+				allAllowed = false
+			}
+		}
+		if allAllowed {
+			return true
+		}
+	}
+	if policy != nil {
+		if slices.Contains(policy.CallsAllow, pattern) ||
+			slices.Contains(policy.CallsAllow, "*.*") ||
+			slices.Contains(policy.CallsAllow, rule.Module+".*") {
+			return true
+		}
+		if rule.Resource == "" && len(rule.Functions) == 0 && slices.Contains(policy.CallsAllow, rule.Module+"."+rule.Category) {
+			return true
+		}
+	}
+	return false
 }

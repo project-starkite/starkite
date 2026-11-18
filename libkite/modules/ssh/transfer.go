@@ -31,7 +31,12 @@ func (c *SSHClient) upload(thread *starlark.Thread, fn *starlark.Builtin, args s
 		p.Mode = "0644"
 	}
 
-	// Permission check for SSH upload - check each host and local source path
+	// Permission check for SSH upload - check jump host, each target host, and local source path
+	if c.jumpHost != "" {
+		if err := libkite.Check(thread, "ssh", "connect", "upload", c.jumpHost); err != nil {
+			return nil, err
+		}
+	}
 	for _, host := range c.hosts {
 		if err := libkite.Check(thread, "ssh", "transfer", "upload", host+":"+p.Src+"->"+p.Dst); err != nil {
 			return nil, err
@@ -65,7 +70,12 @@ func (c *SSHClient) download(thread *starlark.Thread, fn *starlark.Builtin, args
 		return nil, err
 	}
 
-	// Permission check for SSH download - check each host and local destination path
+	// Permission check for SSH download - check jump host, each target host, and local destination path
+	if c.jumpHost != "" {
+		if err := libkite.Check(thread, "ssh", "connect", "download", c.jumpHost); err != nil {
+			return nil, err
+		}
+	}
 	for _, host := range c.hosts {
 		if err := libkite.Check(thread, "ssh", "transfer", "download", host+":"+p.Src+"->"+p.Dst); err != nil {
 			return nil, err
@@ -328,6 +338,9 @@ func (c *SSHClient) scpDownloadFromHost(host, remotePath, localPath string) (int
 		if _, err := fmt.Sscanf(line, "%s %d %s", &mode, &size, &filename); err != nil {
 			return 0, fmt.Errorf("scp parse header %q: %w", line, err)
 		}
+		if size < 0 {
+			return 0, fmt.Errorf("scp invalid negative file size: %d", size)
+		}
 	case 0x01:
 		line, _ := readLine(r)
 		return 0, fmt.Errorf("scp error: %s", line)
@@ -403,6 +416,8 @@ func scpReadACK(r io.Reader) error {
 	}
 }
 
+const maxSCPLineBytes = 4096
+
 // readLine reads bytes until a newline, returning the line without the newline.
 func readLine(r io.Reader) (string, error) {
 	var line []byte
@@ -414,6 +429,9 @@ func readLine(r io.Reader) (string, error) {
 		}
 		if buf[0] == '\n' {
 			return string(line), nil
+		}
+		if len(line) >= maxSCPLineBytes {
+			return "", fmt.Errorf("scp protocol line exceeds maximum length (%d bytes)", maxSCPLineBytes)
 		}
 		line = append(line, buf[0])
 	}

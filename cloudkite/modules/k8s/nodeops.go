@@ -25,7 +25,7 @@ import (
 // drain cordons a node and evicts its pods.
 // Signature: k8s.drain(node, force=False, ignore_daemonsets=True, timeout="3m")
 func (c *K8sClient) drain(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -33,6 +33,7 @@ func (c *K8sClient) drain(thread *starlark.Thread, fn *starlark.Builtin, args st
 		Node             string `name:"node" position:"0" required:"true"`
 		Force            bool   `name:"force"`
 		IgnoreDaemonsets bool   `name:"ignore_daemonsets"`
+		DryRun           bool   `name:"dry_run"`
 		Timeout          string `name:"timeout"`
 	}
 	p.Timeout = "3m" // default
@@ -52,8 +53,15 @@ func (c *K8sClient) drain(thread *starlark.Thread, fn *starlark.Builtin, args st
 	}
 	patchBytes, _ := json.Marshal(patchObj)
 
+	patchOpts := metav1.PatchOptions{}
+	delOpts := metav1.DeleteOptions{}
+	if c.isDryRun(p.DryRun) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+		delOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
 	nodeGVR, _, _ := c.resolver.Resolve("node")
-	_, err = c.dynClient.Resource(nodeGVR).Patch(ctx, p.Node, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+	_, err = c.dynClient.Resource(nodeGVR).Patch(ctx, p.Node, types.MergePatchType, patchBytes, patchOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.drain: cordon %q: %w", p.Node, err)
 	}
@@ -92,7 +100,7 @@ func (c *K8sClient) drain(thread *starlark.Thread, fn *starlark.Builtin, args st
 		}
 
 		// Evict the pod
-		err := c.dynClient.Resource(podGVR).Namespace(podNs).Delete(ctx, podName, metav1.DeleteOptions{})
+		err := c.dynClient.Resource(podGVR).Namespace(podNs).Delete(ctx, podName, delOpts)
 		if err != nil {
 			errors = append(errors, starlark.String(fmt.Sprintf("%s/%s: %v", podNs, podName, err)))
 		} else {
@@ -110,12 +118,13 @@ func (c *K8sClient) drain(thread *starlark.Thread, fn *starlark.Builtin, args st
 // cordon marks a node as unschedulable.
 // Signature: k8s.cordon(node, timeout="")
 func (c *K8sClient) cordon(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
 	var p struct {
 		Node    string `name:"node" position:"0" required:"true"`
+		DryRun  bool   `name:"dry_run"`
 		Timeout string `name:"timeout"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
@@ -133,8 +142,13 @@ func (c *K8sClient) cordon(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 	defer cancel()
 
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(p.DryRun) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
 	nodeGVR, _, _ := c.resolver.Resolve("node")
-	patched, err := c.dynClient.Resource(nodeGVR).Patch(ctx, p.Node, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+	patched, err := c.dynClient.Resource(nodeGVR).Patch(ctx, p.Node, types.MergePatchType, patchBytes, patchOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.cordon: %w", err)
 	}
@@ -145,12 +159,13 @@ func (c *K8sClient) cordon(thread *starlark.Thread, fn *starlark.Builtin, args s
 // uncordon marks a node as schedulable.
 // Signature: k8s.uncordon(node, timeout="")
 func (c *K8sClient) uncordon(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
 	var p struct {
 		Node    string `name:"node" position:"0" required:"true"`
+		DryRun  bool   `name:"dry_run"`
 		Timeout string `name:"timeout"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
@@ -168,8 +183,13 @@ func (c *K8sClient) uncordon(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 	defer cancel()
 
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(p.DryRun) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
 	nodeGVR, _, _ := c.resolver.Resolve("node")
-	patched, err := c.dynClient.Resource(nodeGVR).Patch(ctx, p.Node, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+	patched, err := c.dynClient.Resource(nodeGVR).Patch(ctx, p.Node, types.MergePatchType, patchBytes, patchOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.uncordon: %w", err)
 	}
@@ -180,7 +200,7 @@ func (c *K8sClient) uncordon(thread *starlark.Thread, fn *starlark.Builtin, args
 // taint adds a taint to a node.
 // Signature: k8s.taint(node, key, value="", effect="NoSchedule", timeout="")
 func (c *K8sClient) taint(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -189,6 +209,7 @@ func (c *K8sClient) taint(thread *starlark.Thread, fn *starlark.Builtin, args st
 		Key     string `name:"key" position:"1" required:"true"`
 		Value   string `name:"value"`
 		Effect  string `name:"effect"`
+		DryRun  bool   `name:"dry_run"`
 		Timeout string `name:"timeout"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
@@ -226,7 +247,12 @@ func (c *K8sClient) taint(thread *starlark.Thread, fn *starlark.Builtin, args st
 	}
 	patchBytes, _ := json.Marshal(patchObj)
 
-	patched, err := c.dynClient.Resource(nodeGVR).Patch(ctx, p.Node, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(p.DryRun) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
+	patched, err := c.dynClient.Resource(nodeGVR).Patch(ctx, p.Node, types.MergePatchType, patchBytes, patchOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.taint: %w", err)
 	}
@@ -237,13 +263,14 @@ func (c *K8sClient) taint(thread *starlark.Thread, fn *starlark.Builtin, args st
 // untaint removes a taint from a node.
 // Signature: k8s.untaint(node, key, timeout="")
 func (c *K8sClient) untaint(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "write", "write", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "write", "write", c.permResource()); err != nil {
 		return nil, err
 	}
 
 	var p struct {
 		Node    string `name:"node" position:"0" required:"true"`
 		Key     string `name:"key" position:"1" required:"true"`
+		DryRun  bool   `name:"dry_run"`
 		Timeout string `name:"timeout"`
 	}
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
@@ -278,7 +305,12 @@ func (c *K8sClient) untaint(thread *starlark.Thread, fn *starlark.Builtin, args 
 	}
 	patchBytes, _ := json.Marshal(patchObj)
 
-	patched, err := c.dynClient.Resource(nodeGVR).Patch(ctx, p.Node, types.MergePatchType, patchBytes, metav1.PatchOptions{})
+	patchOpts := metav1.PatchOptions{}
+	if c.isDryRun(p.DryRun) {
+		patchOpts.DryRun = []string{metav1.DryRunAll}
+	}
+
+	patched, err := c.dynClient.Resource(nodeGVR).Patch(ctx, p.Node, types.MergePatchType, patchBytes, patchOpts)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.untaint: %w", err)
 	}
@@ -289,7 +321,7 @@ func (c *K8sClient) untaint(thread *starlark.Thread, fn *starlark.Builtin, args 
 // topNodes returns resource usage for nodes using the metrics API.
 // Signature: k8s.top_nodes(timeout="")
 func (c *K8sClient) topNodes(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -339,7 +371,7 @@ func (c *K8sClient) topNodes(thread *starlark.Thread, fn *starlark.Builtin, args
 // topPods returns resource usage for pods using the metrics API.
 // Signature: k8s.top_pods(namespace="", sort_by="", timeout="")
 func (c *K8sClient) topPods(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -408,7 +440,7 @@ func (c *K8sClient) topPods(thread *starlark.Thread, fn *starlark.Builtin, args 
 // cp copies files between a pod and the local filesystem.
 // Signature: k8s.cp(pod, src, dst, namespace="", container="", timeout="")
 func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "exec", "exec", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "exec", "exec", c.permResource()); err != nil {
 		return nil, err
 	}
 
@@ -607,13 +639,24 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 	return nil, fmt.Errorf("k8s.cp: source or destination must reference a pod (use pod:path format)")
 }
 
+func validateExtractTarget(dstClean, targetPath string) error {
+	canonTarget := libkite.CanonicalizePath(targetPath)
+	if canonTarget != dstClean && !strings.HasPrefix(canonTarget, dstClean+string(filepath.Separator)) {
+		return fmt.Errorf("insecure symlink path escaping destination: %q", targetPath)
+	}
+	if lstat, err := os.Lstat(targetPath); err == nil && lstat.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("refusing to extract over symlink %q", targetPath)
+	}
+	return nil
+}
+
 // extractTarToLocal safely extracts a tar stream into localDst, preventing tar-slip attacks.
 func extractTarToLocal(r io.Reader, localDst string) (int, int64, error) {
 	tr := tar.NewReader(r)
 	count := 0
 	var totalBytes int64
 
-	dstClean := filepath.Clean(localDst)
+	dstClean := libkite.CanonicalizePath(localDst)
 
 	for {
 		hdr, err := tr.Next()
@@ -634,18 +677,31 @@ func extractTarToLocal(r io.Reader, localDst string) (int, int64, error) {
 
 		targetPath := filepath.Join(dstClean, cleanName)
 		rel, err := filepath.Rel(dstClean, targetPath)
-		if err != nil || strings.HasPrefix(rel, "..") {
+		if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 			return count, totalBytes, fmt.Errorf("insecure path escaping destination: %q", hdr.Name)
 		}
 
 		switch hdr.Typeflag {
 		case tar.TypeDir:
+			if err := validateExtractTarget(dstClean, targetPath); err != nil {
+				return count, totalBytes, err
+			}
 			if err := os.MkdirAll(targetPath, 0755); err != nil {
 				return count, totalBytes, fmt.Errorf("creating directory %q: %w", targetPath, err)
 			}
+			if err := validateExtractTarget(dstClean, targetPath); err != nil {
+				return count, totalBytes, err
+			}
 		case tar.TypeReg, tar.TypeRegA:
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0755); err != nil {
+			parentDir := filepath.Dir(targetPath)
+			if err := validateExtractTarget(dstClean, parentDir); err != nil {
+				return count, totalBytes, err
+			}
+			if err := os.MkdirAll(parentDir, 0755); err != nil {
 				return count, totalBytes, fmt.Errorf("creating parent directory for %q: %w", targetPath, err)
+			}
+			if err := validateExtractTarget(dstClean, targetPath); err != nil {
+				return count, totalBytes, err
 			}
 			perm := hdr.FileInfo().Mode().Perm()
 			if perm == 0 {
@@ -663,7 +719,8 @@ func extractTarToLocal(r io.Reader, localDst string) (int, int64, error) {
 			count++
 			totalBytes += written
 		case tar.TypeSymlink, tar.TypeLink:
-			if filepath.IsAbs(hdr.Linkname) || strings.HasPrefix(filepath.Clean(hdr.Linkname), "..") {
+			cleanLink := filepath.ToSlash(filepath.Clean(hdr.Linkname))
+			if filepath.IsAbs(hdr.Linkname) || cleanLink == ".." || strings.HasPrefix(cleanLink, "../") || strings.Contains(cleanLink, "/../") {
 				return count, totalBytes, fmt.Errorf("insecure link in tar archive: %q -> %q", hdr.Name, hdr.Linkname)
 			}
 		}
@@ -759,7 +816,7 @@ func packLocalToTar(localSrc string, pw *io.PipeWriter) (int, int64, error) {
 // describe returns a detailed description of a resource.
 // Signature: k8s.describe(kind, name, namespace="", timeout="")
 func (c *K8sClient) describe(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", c.permResource()); err != nil {
 		return nil, err
 	}
 

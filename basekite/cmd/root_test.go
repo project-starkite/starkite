@@ -1,6 +1,12 @@
 package cmd
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -522,5 +528,122 @@ func TestFlag_SandboxMaxMemory(t *testing.T) {
 		if overrides.MaxMemory != mem {
 			t.Errorf("MaxMemory = %q, want %q", overrides.MaxMemory, mem)
 		}
+	}
+}
+
+func TestSandboxEnabledFalseOverridesEnvProfile(t *testing.T) {
+	defer resetSandboxFlags()
+	resetSandboxFlags()
+	t.Setenv("STARKITE_SANDBOX_PROFILE", "sandbox-path")
+
+	sandboxEnabled = false
+	sandboxProfile = ""
+	rootCmd.PersistentFlags().Lookup("sandbox-enabled").Changed = true
+
+	prof, err := ResolveActiveProfile()
+	if err != nil {
+		t.Fatalf("ResolveActiveProfile: %v", err)
+	}
+	if prof.Enabled {
+		t.Errorf("expected --sandbox-enabled=false to override STARKITE_SANDBOX_PROFILE")
+	}
+}
+
+func TestRedactSensitiveVars(t *testing.T) {
+	in := map[string]any{
+		"API_TOKEN": "ghp_secretvalue",
+		"region":    "us-east-1",
+		"db": map[string]any{
+			"password": "hunter2",
+			"port":     5432,
+		},
+	}
+	got := redactSensitiveVars(in)
+	if got["API_TOKEN"] != "[REDACTED]" {
+		t.Errorf("expected API_TOKEN redacted, got %v", got["API_TOKEN"])
+	}
+	if got["region"] != "us-east-1" {
+		t.Errorf("expected region preserved, got %v", got["region"])
+	}
+	nested, ok := got["db"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected nested map, got %T", got["db"])
+	}
+	if nested["password"] != "[REDACTED]" {
+		t.Errorf("expected db.password redacted, got %v", nested["password"])
+	}
+	if nested["port"] != 5432 {
+		t.Errorf("expected db.port preserved, got %v", nested["port"])
+	}
+}
+
+func TestInstallScript_FailClosedChecksum(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX shell test skipped on Windows")
+	}
+	scriptPath := filepath.Join("..", "..", "scripts", "install.sh")
+
+	syntaxCmd := exec.Command("sh", "-n", scriptPath)
+	if out, err := syntaxCmd.CombinedOutput(); err != nil {
+		t.Fatalf("sh -n failed: %v\n%s", err, out)
+	}
+
+	dryCmd := exec.Command("sh", scriptPath)
+	dryCmd.Env = append(os.Environ(), "INSTALL_DRY_RUN=1", "STARKITE_VERSION=v0.12.0")
+	if out, err := dryCmd.CombinedOutput(); err != nil {
+		t.Fatalf("install.sh dry-run failed: %v\n%s", err, out)
+	}
+
+	downloadDir := t.TempDir()
+	versionDir := filepath.Join(downloadDir, "v0.12.0")
+	if err := os.MkdirAll(versionDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll failed: %v", err)
+	}
+	binName := "kite-" + runtime.GOOS + "-" + runtime.GOARCH
+	payload := []byte("#!/bin/sh\necho ok\n")
+	if err := os.WriteFile(filepath.Join(versionDir, binName), payload, 0o644); err != nil {
+		t.Fatalf("WriteFile binary failed: %v", err)
+	}
+	checksumPath := filepath.Join(versionDir, "checksums.txt")
+	if err := os.WriteFile(checksumPath, []byte("0000000000000000000000000000000000000000000000000000000000000000  "+binName+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile checksums failed: %v", err)
+	}
+
+	baseURL := "file://" + filepath.ToSlash(versionDir)
+	prefixDir := t.TempDir()
+	cmd := exec.Command("sh", scriptPath)
+	cmd.Env = append(os.Environ(),
+		"STARKITE_VERSION=v0.12.0",
+		"STARKITE_DOWNLOAD_BASE_URL="+baseURL,
+		"PREFIX="+prefixDir,
+	)
+	out, err := cmd.CombinedOutput()
+	if err == nil {
+		t.Fatalf("expected install.sh to fail on mismatched checksum; output:\n%s", out)
+	}
+	if !strings.Contains(string(out), "Checksum validation failed") {
+		t.Errorf("expected checksum validation failure message, got:\n%s", out)
+	}
+	if _, err := os.Stat(filepath.Join(prefixDir, "kite")); !os.IsNotExist(err) {
+		t.Errorf("expected no binary installed on checksum failure")
+	}
+
+	sum := sha256.Sum256(payload)
+	validDigest := hex.EncodeToString(sum[:])
+	if err := os.WriteFile(checksumPath, []byte(validDigest+"  "+binName+"\n"), 0o644); err != nil {
+		t.Fatalf("WriteFile valid checksums failed: %v", err)
+	}
+	prefixDir2 := t.TempDir()
+	okCmd := exec.Command("sh", scriptPath)
+	okCmd.Env = append(os.Environ(),
+		"STARKITE_VERSION=v0.12.0",
+		"STARKITE_DOWNLOAD_BASE_URL="+baseURL,
+		"PREFIX="+prefixDir2,
+	)
+	if okOut, err := okCmd.CombinedOutput(); err != nil {
+		t.Fatalf("expected install.sh with valid checksum to succeed: %v\n%s", err, okOut)
+	}
+	if _, err := os.Stat(filepath.Join(prefixDir2, "kite")); err != nil {
+		t.Errorf("expected installed kite binary at %s: %v", filepath.Join(prefixDir2, "kite"), err)
 	}
 }

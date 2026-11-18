@@ -55,10 +55,15 @@ func writeResponse(w http.ResponseWriter, result starlark.Value) error {
 func writeExplicitResponse(w http.ResponseWriter, d *starlark.Dict, bodyVal starlark.Value) error {
 	// Extract status (default 200)
 	status := http.StatusOK
-	if statusVal, found, _ := d.Get(starlark.String("status")); found && statusVal != nil {
-		if code, err := starlark.AsInt32(statusVal); err == nil {
-			status = int(code)
+	if statusVal, found, _ := d.Get(starlark.String("status")); found && statusVal != nil && statusVal != starlark.None {
+		code, err := starlark.AsInt32(statusVal)
+		if err != nil {
+			return fmt.Errorf("http.server: status must be an integer, got %s", statusVal.Type())
 		}
+		if code < 100 || code > 999 {
+			return fmt.Errorf("http.server: invalid HTTP status code %d (must be 100-999)", code)
+		}
+		status = int(code)
 	}
 
 	// Extract and set headers

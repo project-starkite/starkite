@@ -256,4 +256,48 @@ func TestSandbox_PermissionsEnforcement(t *testing.T) {
 	}); err == nil {
 		t.Fatal("expected sandbox.config(network='host') to fail without http.client permission")
 	}
+
+	// 3. network="loopback" also requires http.client
+	if _, err := starlark.Call(execThread, cfgFn, nil, []starlark.Tuple{
+		{starlark.String("network"), starlark.String("loopback")},
+	}); err == nil {
+		t.Fatal("expected sandbox.config(network='loopback') to fail without http.client permission")
+	}
+
+	// 4. tmpfs mount outside /tmp requires fs read/write
+	if _, err := starlark.Call(execThread, cfgFn, nil, []starlark.Tuple{
+		{starlark.String("mounts"), starlark.NewList([]starlark.Value{
+			starlark.String("tmpfs:/var/secret:rw"),
+		})},
+	}); err == nil {
+		t.Fatal("expected sandbox.config(mounts=['tmpfs:/var/secret:rw']) to fail without fs permission")
+	}
+
+	// 5. malformed mounts/env/timeout/memory are rejected strictly
+	badThread := newTestThread()
+	if _, err := starlark.Call(badThread, cfgFn, nil, []starlark.Tuple{
+		{starlark.String("mounts"), starlark.String("not-a-list")},
+	}); err == nil {
+		t.Fatal("expected error for non-list mounts")
+	}
+	if _, err := starlark.Call(badThread, cfgFn, nil, []starlark.Tuple{
+		{starlark.String("mounts"), starlark.NewList([]starlark.Value{starlark.String("malformed-entry")})},
+	}); err == nil {
+		t.Fatal("expected error for malformed mount entry")
+	}
+	if _, err := starlark.Call(badThread, cfgFn, nil, []starlark.Tuple{
+		{starlark.String("env"), starlark.MakeInt(123)},
+	}); err == nil {
+		t.Fatal("expected error for non-collection env")
+	}
+	if _, err := starlark.Call(badThread, cfgFn, nil, []starlark.Tuple{
+		{starlark.String("timeout"), starlark.String("not-a-duration")},
+	}); err == nil {
+		t.Fatal("expected error for invalid timeout")
+	}
+	if _, err := starlark.Call(badThread, cfgFn, nil, []starlark.Tuple{
+		{starlark.String("memory"), starlark.String("-10MB")},
+	}); err == nil {
+		t.Fatal("expected error for negative memory")
+	}
 }

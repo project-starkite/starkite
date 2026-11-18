@@ -286,6 +286,7 @@ func TestCategoryRule_CapabilityLadder(t *testing.T) {
 			{"http", "client", "get", "https://example.com"},
 			{"ssh", "connect", "config", ""},
 			{"k8s", "read", "read", ""},
+			{"k8s", "exec", "exec", ""},
 			{"mcp", "client", "connect", ""},
 		} {
 			if err := libkite.Check(thread, c.mod, c.cat, c.fn, c.res); err != nil {
@@ -295,7 +296,6 @@ func TestCategoryRule_CapabilityLadder(t *testing.T) {
 
 		for _, c := range []struct{ mod, cat, fn string }{
 			{"os", "process", "chdir"},
-			{"k8s", "exec", "exec"},
 			{"ai", "generate", "generate"},
 		} {
 			if err := libkite.Check(thread, c.mod, c.cat, c.fn, "anything"); err == nil {

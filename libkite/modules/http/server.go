@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	gohttp "net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -117,7 +118,10 @@ func (s *Server) AttrNames() []string {
 func (s *Server) handleMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "handle", ""); err != nil {
+	s.mu.Lock()
+	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
+	s.mu.Unlock()
+	if err := libkite.Check(thread, "http", "server", "handle", addr); err != nil {
 		return nil, err
 	}
 
@@ -150,7 +154,10 @@ func (s *Server) handleMethod(thread *starlark.Thread, fn *starlark.Builtin,
 func (s *Server) useMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "use", ""); err != nil {
+	s.mu.Lock()
+	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
+	s.mu.Unlock()
+	if err := libkite.Check(thread, "http", "server", "use", addr); err != nil {
 		return nil, err
 	}
 
@@ -180,11 +187,7 @@ func (s *Server) useMethod(thread *starlark.Thread, fn *starlark.Builtin,
 func (s *Server) serveMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "serve", ""); err != nil {
-		return nil, err
-	}
-
-	if err := s.startInternal(thread, kwargs); err != nil {
+	if err := s.startInternal(thread, "serve", kwargs); err != nil {
 		return nil, err
 	}
 
@@ -235,11 +238,7 @@ func (s *Server) serveMethod(thread *starlark.Thread, fn *starlark.Builtin,
 func (s *Server) startMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "start", ""); err != nil {
-		return nil, err
-	}
-
-	if err := s.startInternal(thread, kwargs); err != nil {
+	if err := s.startInternal(thread, "start", kwargs); err != nil {
 		return nil, err
 	}
 
@@ -250,7 +249,10 @@ func (s *Server) startMethod(thread *starlark.Thread, fn *starlark.Builtin,
 func (s *Server) shutdownMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "shutdown", ""); err != nil {
+	s.mu.Lock()
+	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
+	s.mu.Unlock()
+	if err := libkite.Check(thread, "http", "server", "shutdown", addr); err != nil {
 		return nil, err
 	}
 
@@ -282,7 +284,10 @@ func (s *Server) shutdownInternal() {
 func (s *Server) portMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "port", ""); err != nil {
+	s.mu.Lock()
+	addr := net.JoinHostPort(s.host, strconv.Itoa(s.port))
+	s.mu.Unlock()
+	if err := libkite.Check(thread, "http", "server", "port", addr); err != nil {
 		return nil, err
 	}
 
@@ -298,17 +303,9 @@ func (s *Server) portMethod(thread *starlark.Thread, fn *starlark.Builtin,
 }
 
 // startInternal is shared by serve() and start().
-func (s *Server) startInternal(thread *starlark.Thread, kwargs []starlark.Tuple) error {
+func (s *Server) startInternal(thread *starlark.Thread, action string, kwargs []starlark.Tuple) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-
-	if s.running {
-		return fmt.Errorf("http.server: server already running, call shutdown() first")
-	}
-
-	if len(s.handlers) == 0 {
-		return fmt.Errorf("http.server: no handlers registered, call handle() first")
-	}
 
 	// Start with constructor defaults, allow kwargs to override
 	port := s.port
@@ -337,6 +334,15 @@ func (s *Server) startInternal(thread *starlark.Thread, kwargs []starlark.Tuple)
 		}
 	}
 
+	if (tlsCert != "") != (tlsKey != "") {
+		return fmt.Errorf("http.server: both tls_cert and tls_key must be provided when configuring TLS")
+	}
+
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+	if err := libkite.Check(thread, "http", "server", action, addr); err != nil {
+		return err
+	}
+
 	if tlsCert != "" && tlsKey != "" {
 		if err := libkite.Check(thread, "fs", "read", "tls_cert", libkite.CanonicalizePath(tlsCert)); err != nil {
 			return err
@@ -344,6 +350,14 @@ func (s *Server) startInternal(thread *starlark.Thread, kwargs []starlark.Tuple)
 		if err := libkite.Check(thread, "fs", "read", "tls_key", libkite.CanonicalizePath(tlsKey)); err != nil {
 			return err
 		}
+	}
+
+	if s.running {
+		return fmt.Errorf("http.server: server already running, call shutdown() first")
+	}
+
+	if len(s.handlers) == 0 {
+		return fmt.Errorf("http.server: no handlers registered, call handle() first")
 	}
 
 	// Build mux and register handlers
@@ -357,7 +371,6 @@ func (s *Server) startInternal(thread *starlark.Thread, kwargs []starlark.Tuple)
 	}
 
 	// Create listener
-	addr := fmt.Sprintf("%s:%d", host, port)
 	var ln net.Listener
 	var err error
 
@@ -366,7 +379,10 @@ func (s *Server) startInternal(thread *starlark.Thread, kwargs []starlark.Tuple)
 		if err != nil {
 			return fmt.Errorf("http.server: failed to load TLS cert: %w", err)
 		}
-		tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}}
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
+		}
 		ln, err = tls.Listen("tcp", addr, tlsConfig)
 		if err != nil {
 			return fmt.Errorf("http.server: listen: %w", err)

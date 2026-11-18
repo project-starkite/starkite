@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/project-starkite/starkite/libkite"
+	"go.starlark.net/starlark"
 	gossh "golang.org/x/crypto/ssh"
 )
 
@@ -17,6 +19,7 @@ import (
 // custom network dialers, and client connection pools.
 type TunnelDialer struct {
 	mu            sync.Mutex
+	thread        *starlark.Thread
 	bastionClient *gossh.Client
 	jumpConfig    JumpConfig
 	targetAddr    string
@@ -28,6 +31,11 @@ type TunnelDialer struct {
 // If targetAddr is non-empty, it must contain an explicit host and port; otherwise SplitHostPort errors out.
 // If targetAddr is empty, DialContext uses the address passed to it dynamically.
 func NewTunnelDialer(jumpCfg JumpConfig, targetAddr string, timeout time.Duration) (*TunnelDialer, error) {
+	return NewTunnelDialerWithThread(nil, jumpCfg, targetAddr, timeout)
+}
+
+// NewTunnelDialerWithThread creates a TunnelDialer bound to a Starlark thread for permission checks.
+func NewTunnelDialerWithThread(thread *starlark.Thread, jumpCfg JumpConfig, targetAddr string, timeout time.Duration) (*TunnelDialer, error) {
 	if jumpCfg.Host == "" {
 		return nil, fmt.Errorf("tunnel dialer: jump host is required")
 	}
@@ -48,6 +56,7 @@ func NewTunnelDialer(jumpCfg JumpConfig, targetAddr string, timeout time.Duratio
 	}
 
 	return &TunnelDialer{
+		thread:     thread,
 		jumpConfig: jumpCfg,
 		targetAddr: targetAddr,
 		timeout:    timeout,
@@ -78,7 +87,7 @@ func (d *TunnelDialer) DialContext(ctx context.Context, network, address string)
 	target = net.JoinHostPort(host, port)
 
 	if d.bastionClient == nil {
-		client, err := DialBastion(ctx, &d.jumpConfig, d.timeout)
+		client, err := DialBastionWithThread(ctx, d.thread, &d.jumpConfig, d.timeout)
 		if err != nil {
 			return nil, fmt.Errorf("failed to dial SSH bastion %s: %w", d.jumpConfig.Host, err)
 		}
@@ -91,7 +100,7 @@ func (d *TunnelDialer) DialContext(ctx context.Context, network, address string)
 		_ = d.bastionClient.Close()
 		d.bastionClient = nil
 
-		client, dialErr := DialBastion(ctx, &d.jumpConfig, d.timeout)
+		client, dialErr := DialBastionWithThread(ctx, d.thread, &d.jumpConfig, d.timeout)
 		if dialErr != nil {
 			return nil, fmt.Errorf("bastion tunnel dial failed after reconnect attempt: %w", err)
 		}
@@ -128,6 +137,11 @@ func (d *TunnelDialer) TargetAddr() string {
 
 // BuildJumpSSHConfig builds an *ssh.ClientConfig for connecting to a bastion host.
 func BuildJumpSSHConfig(jump JumpConfig, timeout time.Duration) (*gossh.ClientConfig, error) {
+	return BuildJumpSSHConfigWithThread(nil, jump, timeout)
+}
+
+// BuildJumpSSHConfigWithThread builds an *ssh.ClientConfig while checking fs.read permissions for key files.
+func BuildJumpSSHConfigWithThread(thread *starlark.Thread, jump JumpConfig, timeout time.Duration) (*gossh.ClientConfig, error) {
 	user := jump.User
 	if user == "" {
 		user = defaultUser()
@@ -158,6 +172,11 @@ func BuildJumpSSHConfig(jump JumpConfig, timeout time.Duration) (*gossh.ClientCo
 		if err != nil {
 			return nil, err
 		}
+		if thread != nil {
+			if err := libkite.Check(thread, "fs", "read", "ssh_key", libkite.CanonicalizePath(keyPath)); err != nil {
+				return nil, err
+			}
+		}
 		key, err := os.ReadFile(keyPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read bastion private key: %w", err)
@@ -177,14 +196,26 @@ func BuildJumpSSHConfig(jump JumpConfig, timeout time.Duration) (*gossh.ClientCo
 	if jump.Key == "" && jump.Password == "" && len(authMethods) == 0 {
 		home, err := os.UserHomeDir()
 		if err == nil {
+			var firstPermErr error
 			for _, name := range []string{"id_ed25519", "id_rsa", "id_ecdsa"} {
 				candidate := filepath.Join(home, ".ssh", name)
+				if thread != nil {
+					if err := libkite.Check(thread, "fs", "read", "ssh_key", libkite.CanonicalizePath(candidate)); err != nil {
+						if firstPermErr == nil {
+							firstPermErr = err
+						}
+						continue
+					}
+				}
 				if keyBytes, err := os.ReadFile(candidate); err == nil {
 					if signer, _, err := parsePrivateKeyWithPrompt(candidate, keyBytes, jump.Passphrase, jump.Prompt, jump.UseAgent); err == nil && signer != nil {
 						authMethods = append(authMethods, gossh.PublicKeys(signer))
 						break
 					}
 				}
+			}
+			if len(authMethods) == 0 && firstPermErr != nil {
+				return nil, firstPermErr
 			}
 		}
 	}
@@ -199,6 +230,11 @@ func BuildJumpSSHConfig(jump JumpConfig, timeout time.Duration) (*gossh.ClientCo
 
 // DialBastion establishes an authenticated SSH client connection to a bastion host.
 func DialBastion(ctx context.Context, jump *JumpConfig, timeout time.Duration) (*gossh.Client, error) {
+	return DialBastionWithThread(ctx, nil, jump, timeout)
+}
+
+// DialBastionWithThread establishes an authenticated SSH client connection while enforcing Starlark thread permissions.
+func DialBastionWithThread(ctx context.Context, thread *starlark.Thread, jump *JumpConfig, timeout time.Duration) (*gossh.Client, error) {
 	if jump == nil || jump.Host == "" {
 		return nil, fmt.Errorf("bastion host is required")
 	}
@@ -216,7 +252,7 @@ func DialBastion(ctx context.Context, jump *JumpConfig, timeout time.Duration) (
 		timeout = 30 * time.Second
 	}
 
-	config, err := BuildJumpSSHConfig(*jump, timeout)
+	config, err := BuildJumpSSHConfigWithThread(thread, *jump, timeout)
 	if err != nil {
 		return nil, err
 	}

@@ -88,10 +88,10 @@ func (f *GzipFile) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 		return nil, fmt.Errorf("gzip.file.compress: invalid compression level %d (must be -2 to 9)", p.Level)
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read", "read_file", p.Source); err != nil {
+	if err := libkite.Check(f.thread, "fs", "read", "read_file", libkite.CanonicalizePath(p.Source)); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(f.thread, "fs", "write", "write", f.path); err != nil {
+	if err := libkite.Check(f.thread, "fs", "write", "write", libkite.CanonicalizePath(f.path)); err != nil {
 		return nil, err
 	}
 
@@ -154,10 +154,10 @@ func (f *GzipFile) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, arg
 		dest = strings.TrimSuffix(f.path, ".gz")
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
+	if err := libkite.Check(f.thread, "fs", "read", "read_file", libkite.CanonicalizePath(f.path)); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(f.thread, "fs", "write", "write", dest); err != nil {
+	if err := libkite.Check(f.thread, "fs", "write", "write", libkite.CanonicalizePath(dest)); err != nil {
 		return nil, err
 	}
 
@@ -182,10 +182,16 @@ func (f *GzipFile) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, arg
 		return nil, fmt.Errorf("gzip.file.decompress: %w", err)
 	}
 
-	if _, err := io.Copy(dstFile, r); err != nil {
+	written, err := io.Copy(dstFile, io.LimitReader(r, maxGzipDecompressBytes+1))
+	if err != nil {
 		dstFile.Close()
 		os.Remove(dest)
 		return nil, fmt.Errorf("gzip.file.decompress: %w", err)
+	}
+	if written > maxGzipDecompressBytes {
+		dstFile.Close()
+		os.Remove(dest)
+		return nil, fmt.Errorf("gzip.file.decompress: decompressed data exceeds maximum size (%d bytes)", maxGzipDecompressBytes)
 	}
 	if err := r.Close(); err != nil {
 		dstFile.Close()

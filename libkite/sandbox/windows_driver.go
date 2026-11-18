@@ -60,6 +60,33 @@ func (d *WindowsDriver) ValidateSpec(spec *ExecutionSpec) error {
 	return nil
 }
 
+func resolveCanonicalWindowsPath(p string) string {
+	if p == "" {
+		return ""
+	}
+	clean := filepath.Clean(p)
+	if abs, err := filepath.Abs(clean); err == nil {
+		clean = filepath.Clean(abs)
+	}
+	if resolved, err := filepath.EvalSymlinks(clean); err == nil && resolved != "" {
+		return filepath.Clean(resolved)
+	}
+	return clean
+}
+
+func isCurrentExecutablePath(exePath string) bool {
+	self, err := os.Executable()
+	if err != nil || self == "" || exePath == "" {
+		return false
+	}
+	fiSelf, err1 := os.Stat(self)
+	fiTarget, err2 := os.Stat(exePath)
+	if err1 == nil && err2 == nil {
+		return os.SameFile(fiSelf, fiTarget)
+	}
+	return strings.EqualFold(resolveCanonicalWindowsPath(self), resolveCanonicalWindowsPath(exePath))
+}
+
 // Exec executes the command described by spec inside a Windows Job Object and
 // STARTUPINFOEXW mitigation boundary.
 func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecResult, error) {
@@ -70,6 +97,19 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	exePath, err := resolveWindowsCommandPath(spec.Command[0], spec.Cwd)
 	if err != nil {
 		return nil, fmt.Errorf("sandbox: failed to resolve executable %q: %w", spec.Command[0], err)
+	}
+	exePath = resolveCanonicalWindowsPath(exePath)
+
+	isSelfHandoff := isCurrentExecutablePath(exePath) && os.Getenv(InsideEnvVar) == "1"
+	if !isSelfHandoff {
+		policySpec := *spec
+		policySpec.Command = append([]string{exePath}, spec.Command[1:]...)
+		if policyErr := checkContainerExecPolicy(&policySpec); policyErr != nil {
+			return &ExecResult{
+				ExitCode: 126,
+				Stderr:   policyErr.Error() + "\n",
+			}, nil
+		}
 	}
 
 	job, err := newWindowsJob(spec)
@@ -144,52 +184,92 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	appliedMasks := make(map[string]windows.ACCESS_MASK)
 	traversedSet := make(map[string]bool)
 
-	addGrant := func(p string, mask windows.ACCESS_MASK) {
-		if p == "" {
-			return
+	recordGranted := func(clean string) {
+		key := strings.ToLower(clean)
+		if !grantedSet[key] {
+			grantedSet[key] = true
+			grantedPaths = append(grantedPaths, clean)
 		}
-		clean := filepath.Clean(p)
+	}
+
+	// Deferred DACL revocation and lease removal must stay active before any grants occur.
+	defer func() {
+		for _, p := range grantedPaths {
+			_ = revokePathAccess(p, profile.appContainer)
+		}
+		_ = removeWindowsLease(profile.name)
+	}()
+
+	addGrant := func(p string, mask windows.ACCESS_MASK) error {
+		if p == "" {
+			return nil
+		}
+		clean := resolveCanonicalWindowsPath(p)
 		key := strings.ToLower(clean)
 		if (appliedMasks[key] & mask) == mask {
-			return
+			return nil
 		}
 		merged := appliedMasks[key] | mask
-		if err := grantPathAccess(clean, profile.appContainer, merged); err == nil {
-			appliedMasks[key] = merged
-			if !grantedSet[key] {
-				grantedSet[key] = true
-				grantedPaths = append(grantedPaths, clean)
-			}
+		if err := grantPathAccess(clean, profile.appContainer, merged); err != nil {
+			return fmt.Errorf("sandbox: failed to grant ACL on %q: %w", clean, err)
 		}
+		appliedMasks[key] = merged
+		recordGranted(clean)
+		return nil
 	}
 
-	addDirTraverse := func(p string) {
+	addMountRWDacl := func(p string) error {
 		if p == "" {
-			return
+			return nil
 		}
-		clean := filepath.Clean(p)
+		clean := resolveCanonicalWindowsPath(p)
+		key := strings.ToLower(clean)
+		if fi, statErr := os.Stat(clean); statErr != nil {
+			if os.IsNotExist(statErr) {
+				return nil
+			}
+			return statErr
+		} else if fi.IsDir() {
+			if err := setScratchDirDacl(clean, profile.appContainer); err != nil {
+				return fmt.Errorf("sandbox: failed to enforce W^X DACL on %q: %w", clean, err)
+			}
+			appliedMasks[key] |= readWriteAccessMask
+			recordGranted(clean)
+			return nil
+		}
+		if err := addGrant(clean, readWriteAccessMask); err != nil {
+			return err
+		}
+		if err := denyPathAccess(clean, profile.appContainer, denyExecAccessMask); err != nil {
+			return fmt.Errorf("sandbox: failed to deny execute ACL on %q: %w", clean, err)
+		}
+		return nil
+	}
+
+	addDirTraverse := func(p string) error {
+		if p == "" {
+			return nil
+		}
+		clean := resolveCanonicalWindowsPath(p)
 		key := strings.ToLower(clean)
 		if appliedMasks[key] != 0 || traversedSet[key] {
-			return
+			return nil
 		}
-		if err := grantDirTraverse(clean, profile.appContainer); err == nil {
-			traversedSet[key] = true
-			if !grantedSet[key] {
-				grantedSet[key] = true
-				grantedPaths = append(grantedPaths, clean)
-			}
+		if err := grantDirTraverse(clean, profile.appContainer); err != nil {
+			return fmt.Errorf("sandbox: failed to grant traverse ACL on %q: %w", clean, err)
 		}
+		traversedSet[key] = true
+		recordGranted(clean)
+		return nil
 	}
 
-	addGrant(exePath, execAccessMask)
+	if err := addGrant(exePath, execAccessMask); err != nil {
+		return nil, err
+	}
 
 	cleanCwd := ""
 	if spec.Cwd != "" {
-		if abs, err := filepath.Abs(spec.Cwd); err == nil {
-			cleanCwd = filepath.Clean(abs)
-		} else {
-			cleanCwd = filepath.Clean(spec.Cwd)
-		}
+		cleanCwd = resolveCanonicalWindowsPath(spec.Cwd)
 	}
 	userHome := os.Getenv("USERPROFILE")
 	if userHome == "" {
@@ -197,11 +277,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	}
 	cleanHome := ""
 	if userHome != "" {
-		if abs, err := filepath.Abs(userHome); err == nil {
-			cleanHome = filepath.Clean(abs)
-		} else {
-			cleanHome = filepath.Clean(userHome)
-		}
+		cleanHome = resolveCanonicalWindowsPath(userHome)
 	}
 	isHomeOrRoot := false
 	if cleanCwd != "" {
@@ -215,31 +291,44 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		} else {
 			fmt.Fprintln(os.Stderr, "sandbox: working directory is $HOME; isolated to script file only. No other files in $HOME are accessible.")
 		}
-		addDirTraverse(cleanCwd)
+		if err := addDirTraverse(cleanCwd); err != nil {
+			return nil, err
+		}
 	}
 
 	// Ephemeral scratch directory with strict W^X enforcement in a single ACL transaction.
 	candScratch := filepath.Join(os.TempDir(), "starkite-sbx-"+profile.name)
-	if err := os.MkdirAll(candScratch, 0700); err == nil {
-		_ = setScratchDirDacl(candScratch, profile.appContainer)
-		scratchDir = candScratch
-		defer os.RemoveAll(candScratch)
+	if err := os.MkdirAll(candScratch, 0700); err != nil {
+		return nil, fmt.Errorf("sandbox: failed to create scratch directory %q: %w", candScratch, err)
 	}
+	defer os.RemoveAll(candScratch)
+	if err := setScratchDirDacl(candScratch, profile.appContainer); err != nil {
+		return nil, fmt.Errorf("sandbox: failed to configure scratch DACL on %q: %w", candScratch, err)
+	}
+	scratchDir = candScratch
 
 	// Unveil explicit mounts first so directory mounts take precedence over non-inheriting traverse rules.
 	for _, m := range spec.Mounts {
-		if m.Source == "" {
+		target := m.Source
+		if target == "" && m.Type == MountTmpfs {
+			target = m.Destination
+		}
+		if target == "" {
 			continue
 		}
-		cleanMount := filepath.Clean(m.Source)
+		cleanMount := resolveCanonicalWindowsPath(target)
 		if isHomeOrRoot && ((cleanHome != "" && strings.EqualFold(cleanMount, cleanHome)) || isDriveRoot(cleanMount)) {
 			continue
 		}
-		var mask windows.ACCESS_MASK = readOnlyAccessMask
-		if m.Mode == MountRW {
-			mask = readWriteAccessMask
+		if m.Mode == MountRW || m.Type == MountTmpfs {
+			if err := addMountRWDacl(cleanMount); err != nil {
+				return nil, err
+			}
+		} else {
+			if err := addGrant(cleanMount, readOnlyAccessMask); err != nil {
+				return nil, err
+			}
 		}
-		addGrant(cleanMount, mask)
 	}
 
 	// Unveil script file and runtime manifests (read-only), with non-inheriting directory traverse on parent dir.
@@ -248,23 +337,33 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		scriptFile = filepath.Join(spec.Cwd, scriptFile)
 	}
 	if scriptFile != "" {
-		addGrant(scriptFile, readOnlyAccessMask)
+		if err := addGrant(scriptFile, readOnlyAccessMask); err != nil {
+			return nil, err
+		}
 		if !isHomeOrRoot {
 			scriptDir := filepath.Dir(scriptFile)
-			addDirTraverse(scriptDir)
+			if err := addDirTraverse(scriptDir); err != nil {
+				return nil, err
+			}
 			for _, asset := range []string{"mod.yaml", "mod.lock", "star.mod", "config.yaml"} {
 				assetPath := filepath.Join(scriptDir, asset)
 				if _, statErr := os.Stat(assetPath); statErr == nil {
-					addGrant(assetPath, readOnlyAccessMask)
+					if err := addGrant(assetPath, readOnlyAccessMask); err != nil {
+						return nil, err
+					}
 				}
 			}
 		}
 	}
 	if !isHomeOrRoot && cleanCwd != "" {
-		addDirTraverse(cleanCwd)
+		if err := addDirTraverse(cleanCwd); err != nil {
+			return nil, err
+		}
 		cfgPath := filepath.Join(cleanCwd, "config.yaml")
 		if _, statErr := os.Stat(cfgPath); statErr == nil {
-			addGrant(cfgPath, readOnlyAccessMask)
+			if err := addGrant(cfgPath, readOnlyAccessMask); err != nil {
+				return nil, err
+			}
 		}
 	}
 
@@ -273,11 +372,11 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		starkiteDir := filepath.Join(cleanHome, ".starkite")
 		modulesDir := filepath.Join(starkiteDir, "modules")
 		_ = os.MkdirAll(modulesDir, 0755)
-		addDirTraverse(starkiteDir)
-		addGrant(modulesDir, readOnlyAccessMask)
+		_ = addDirTraverse(starkiteDir)
+		_ = addGrant(modulesDir, readOnlyAccessMask)
 		userCfg := filepath.Join(starkiteDir, "config.yaml")
 		if _, statErr := os.Stat(userCfg); statErr == nil {
-			addGrant(userCfg, readOnlyAccessMask)
+			_ = addGrant(userCfg, readOnlyAccessMask)
 		}
 	}
 
@@ -285,20 +384,23 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	if len(spec.AllowedExecPaths) > 0 {
 		resolvedExecs := ResolveExecutablePaths(spec.AllowedExecPaths, spec.Cwd, userHome)
 		for _, exe := range resolvedExecs {
-			addGrant(exe, execAccessMask)
+			if err := addGrant(exe, execAccessMask); err != nil {
+				return nil, err
+			}
 		}
 	}
 
-	// Unveil target executable if located outside system directories.
+	// Unveil target executable if located outside system directories, without granting execute on its parent directory.
 	sysRoot := os.Getenv("SystemRoot")
 	if sysRoot == "" {
 		sysRoot = `C:\Windows`
 	}
-	if exePath != "" && !strings.HasPrefix(strings.ToLower(exePath), strings.ToLower(sysRoot)) {
-		addGrant(exePath, execAccessMask)
-		exeDir := filepath.Dir(exePath)
-		if !isHomeOrRoot && (cleanHome == "" || !strings.EqualFold(exeDir, cleanHome)) {
-			addGrant(exeDir, execAccessMask)
+	if exePath != "" && !equalOrHasPathPrefixFold(exePath, resolveCanonicalWindowsPath(sysRoot)) {
+		if err := addGrant(exePath, execAccessMask); err != nil {
+			return nil, err
+		}
+		if err := addDirTraverse(filepath.Dir(exePath)); err != nil {
+			return nil, err
 		}
 	}
 
@@ -311,14 +413,6 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		CreatedAt:       time.Now(),
 	}
 	_ = recordWindowsLease(lease)
-
-	// Deferred DACL revocation and lease removal.
-	defer func() {
-		for _, p := range grantedPaths {
-			_ = revokePathAccess(p, profile.appContainer)
-		}
-		_ = removeWindowsLease(profile.name)
-	}()
 
 	attrs, err := buildWindowsStartupAttrs(spec, stdinHandle, stdoutHandle, stderrHandle, secCaps)
 	if err != nil {
@@ -360,16 +454,12 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		return nil, err
 	}
 
-	envVars := spec.Env
+	envVars := append([]string(nil), spec.Env...)
 	if len(envVars) == 0 {
-		baseMap := SanitizedBaselineEnv(os.Environ())
-		envVars = make([]string, 0, len(baseMap))
-		for k, v := range baseMap {
-			envVars = append(envVars, k+"="+v)
-		}
+		envVars = mapToEnvSlice(SanitizedBaselineEnv(os.Environ()))
 	}
 	if scratchDir != "" {
-		envVars = append([]string{"TEMP=" + scratchDir, "TMP=" + scratchDir}, envVars...)
+		envVars = append(envVars, "TEMP="+scratchDir, "TMP="+scratchDir)
 	}
 	envBlock, err := createWindowsEnvBlock(envVars)
 	if err != nil {
@@ -563,7 +653,7 @@ func createWindowsEnvBlock(env []string) ([]uint16, error) {
 		// Provide a minimal valid empty double-NUL terminated block.
 		return []uint16{0, 0}, nil
 	}
-	seen := make(map[string]bool)
+	seenIdx := make(map[string]int)
 	var deduped []string
 	for _, kv := range env {
 		if strings.ContainsRune(kv, 0) {
@@ -574,8 +664,10 @@ func createWindowsEnvBlock(env []string) ([]uint16, error) {
 			continue
 		}
 		upper := strings.ToUpper(k)
-		if !seen[upper] {
-			seen[upper] = true
+		if idx, exists := seenIdx[upper]; exists {
+			deduped[idx] = kv
+		} else {
+			seenIdx[upper] = len(deduped)
 			deduped = append(deduped, kv)
 		}
 	}

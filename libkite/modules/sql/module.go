@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/url"
+	"regexp"
 	"slices"
 	"strings"
 	"sync"
@@ -155,13 +156,26 @@ func sqliteFileDSN(dsn string) string {
 	return dsn + sep + "_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)"
 }
 
+var pgPasswordRE = regexp.MustCompile(`(?i)\bpassword\s*=\s*(?:'[^']*'|"[^"]*"|\S+)`)
+
 // sanitizeDSN removes any password from a DSN for permission patterns and logs.
 func sanitizeDSN(dsn string) string {
-	if u, err := url.Parse(dsn); err == nil && u.User != nil {
-		u.User = url.User(u.User.Username())
-		return u.String()
+	if strings.Contains(dsn, "://") {
+		if u, err := url.Parse(dsn); err == nil && u.User != nil {
+			u.User = url.User(u.User.Username())
+			return u.String()
+		}
+		return dsn
 	}
-	return dsn
+	if atIdx := strings.IndexByte(dsn, '@'); atIdx != -1 {
+		creds := dsn[:atIdx]
+		if !strings.ContainsAny(creds, "/? ") {
+			if before, _, ok := strings.Cut(creds, ":"); ok {
+				return before + dsn[atIdx:]
+			}
+		}
+	}
+	return pgPasswordRE.ReplaceAllString(dsn, "password=REDACTED")
 }
 
 // poolOpts holds the parsed pool kwargs.

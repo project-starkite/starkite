@@ -121,6 +121,19 @@ func (r *starlarkReader) readCmd(thread *starlark.Thread, fn *starlark.Builtin, 
 	return starlark.Bytes(""), nil
 }
 
+const maxStreamReadBytes int64 = 256 << 20
+
+func readStreamBounded(r io.Reader, limit int64, label string) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(r, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", label, err)
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%s: stream exceeds maximum read size (%d bytes)", label, limit)
+	}
+	return data, nil
+}
+
 func (r *starlarkReader) bytesCmd(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if err := starlark.UnpackArgs("bytes", args, kwargs); err != nil {
 		return nil, err
@@ -132,14 +145,14 @@ func (r *starlarkReader) bytesCmd(thread *starlark.Thread, fn *starlark.Builtin,
 		return nil, fmt.Errorf("io.reader.bytes: reader is closed")
 	}
 
-	data, err := io.ReadAll(r.reader)
+	data, err := readStreamBounded(r.reader, maxStreamReadBytes, "io.reader.bytes")
 	if r.closer != nil {
 		r.closer.Close()
 	}
 	r.closed = true
 
 	if err != nil {
-		return nil, fmt.Errorf("io.reader.bytes: %w", err)
+		return nil, err
 	}
 
 	return starlark.Bytes(data), nil
@@ -156,14 +169,14 @@ func (r *starlarkReader) textCmd(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("io.reader.text: reader is closed")
 	}
 
-	data, err := io.ReadAll(r.reader)
+	data, err := readStreamBounded(r.reader, maxStreamReadBytes, "io.reader.text")
 	if r.closer != nil {
 		r.closer.Close()
 	}
 	r.closed = true
 
 	if err != nil {
-		return nil, fmt.Errorf("io.reader.text: %w", err)
+		return nil, err
 	}
 
 	return starlark.String(string(data)), nil

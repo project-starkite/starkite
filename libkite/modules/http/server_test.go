@@ -774,3 +774,65 @@ func mustGetDict(t *testing.T, d *starlark.Dict, key string) starlark.Value {
 	}
 	return val
 }
+
+func TestHTTPServer_PartialTLSRejectedAndInvalidStatusHandled(t *testing.T) {
+	rt := testRuntime(t)
+	mod := New()
+	if _, err := mod.Load(&libkite.ModuleConfig{}); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+
+	thread := rt.NewThread("test-http-sec")
+
+	// 1. Constructor rejects partial TLS config.
+	if _, err := mod.serverConstructor(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("tls_cert"), starlark.String("/tmp/cert.pem")},
+	}); err == nil || !strings.Contains(err.Error(), "both tls_cert and tls_key") {
+		t.Errorf("expected partial TLS error in constructor, got %v", err)
+	}
+
+	// 2. startInternal rejects partial TLS config override.
+	srv := newServer(rt, &libkite.ModuleConfig{})
+	srv.handlers = append(srv.handlers, registeredHandler{
+		pattern: "/ok",
+		handler: starlark.NewBuiltin("h", func(*starlark.Thread, *starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
+			return starlark.String("ok"), nil
+		}),
+	})
+	if err := srv.startInternal(thread, "start", []starlark.Tuple{
+		{starlark.String("tls_key"), starlark.String("/tmp/key.pem")},
+	}); err == nil || !strings.Contains(err.Error(), "both tls_cert and tls_key") {
+		t.Errorf("expected partial TLS error in startInternal, got %v", err)
+	}
+
+	// 3. Address-scoped http.server permission checks enforce host:port.
+	checker, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{
+		Allow:   []string{"http.server(127.0.0.1:9090)"},
+		Default: libkite.DefaultDeny,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	libkite.SetPermissions(thread, checker)
+	if _, err := mod.serverConstructor(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("host"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(8080)},
+	}); err == nil || !libkite.IsPermissionError(err) {
+		t.Errorf("expected scoped http.server(127.0.0.1:8080) denial, got %v", err)
+	}
+	if _, err := mod.serverConstructor(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("host"), starlark.String("127.0.0.1")},
+		{starlark.String("port"), starlark.MakeInt(9090)},
+	}); err != nil {
+		t.Errorf("expected http.server(127.0.0.1:9090) to be allowed, got %v", err)
+	}
+
+	// 4. Out-of-range status codes return an error cleanly instead of panicking in WriteHeader.
+	badResp := starlark.NewDict(2)
+	_ = badResp.SetKey(starlark.String("status"), starlark.MakeInt(99))
+	_ = badResp.SetKey(starlark.String("body"), starlark.String("nope"))
+	rec := httptest.NewRecorder()
+	if err := writeExplicitResponse(rec, badResp, starlark.String("nope")); err == nil || !strings.Contains(err.Error(), "invalid HTTP status code") {
+		t.Errorf("expected invalid status code error, got %v", err)
+	}
+}

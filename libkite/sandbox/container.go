@@ -195,7 +195,8 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 		// On non-Linux hosts (macOS/Windows), skip host OS system directories (/etc, /usr, /bin, /lib, /lib64, /sbin)
 		// so the Linux container retains its native ELF runtime, libraries, TLS CA certs, and network resolver.
 		if runtime.GOOS != "linux" {
-			if strings.HasPrefix(cleanDst, "/etc") || cleanDst == "/usr" || strings.HasPrefix(cleanDst, "/usr/") ||
+			if cleanDst == "/etc" || strings.HasPrefix(cleanDst, "/etc/") ||
+				cleanDst == "/usr" || strings.HasPrefix(cleanDst, "/usr/") ||
 				cleanDst == "/bin" || strings.HasPrefix(cleanDst, "/bin/") ||
 				cleanDst == "/lib" || strings.HasPrefix(cleanDst, "/lib/") ||
 				cleanDst == "/lib64" || strings.HasPrefix(cleanDst, "/lib64/") ||
@@ -239,8 +240,8 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 	// Command assembly
 	command := spec.Command
 	if len(command) > 0 {
-		binName := filepath.Base(command[0])
-		isKiteBin := binName == "kite" || binName == "kitecmd" || binName == "kitecloud" || binName == "kiteai" || strings.HasPrefix(binName, "kite")
+		binName := strings.TrimSuffix(strings.ToLower(filepath.Base(command[0])), ".exe")
+		isKiteBin := binName == "kite" || binName == "kitecmd" || binName == "kitecloud" || binName == "kiteai"
 
 		// If the container image is the official Starkite image (built with ko or OCI entrypoint "kite"),
 		// the image already defines the entrypoint as the kite executable (/ko-app/kite).
@@ -296,40 +297,111 @@ func isKiteImage(img string) bool {
 		return true
 	}
 	clean := strings.ToLower(img)
-	return strings.Contains(clean, "starkite") || strings.Contains(clean, "/kite:") || strings.HasSuffix(clean, "/kite")
+	if beforeDigest, _, hasDigest := strings.Cut(clean, "@"); hasDigest {
+		clean = beforeDigest
+	}
+	lastSlash := strings.LastIndex(clean, "/")
+	repoName := clean
+	if lastSlash >= 0 {
+		repoName = clean[lastSlash+1:]
+	}
+	if beforeTag, _, hasTag := strings.Cut(repoName, ":"); hasTag {
+		repoName = beforeTag
+	}
+	return repoName == "starkite" || repoName == "kite"
+}
+
+func resolveContainerExecTarget(cmdBin, cwd string) string {
+	if cmdBin == "" {
+		return ""
+	}
+	resolved := cmdBin
+	if !isHostAbs(resolved) && cwd != "" && (strings.ContainsRune(resolved, filepath.Separator) || strings.Contains(resolved, "/") || strings.HasPrefix(resolved, ".")) {
+		resolved = filepath.Join(cwd, resolved)
+	} else if !strings.ContainsAny(resolved, `/\`) {
+		if lookedUp, err := exec.LookPath(resolved); err == nil {
+			resolved = lookedUp
+		}
+	}
+	if canonical, err := filepath.EvalSymlinks(resolved); err == nil && canonical != "" {
+		resolved = canonical
+	}
+	return filepath.Clean(resolved)
+}
+
+func isPathInsideWritableMount(candidate string, mounts []Mount) bool {
+	if candidate == "" {
+		return false
+	}
+	cleanCand := filepath.ToSlash(filepath.Clean(candidate))
+	candTargets := []string{cleanCand}
+	if canon, err := filepath.EvalSymlinks(candidate); err == nil && canon != "" {
+		candTargets = append(candTargets, filepath.ToSlash(filepath.Clean(canon)))
+	}
+	for _, c := range candTargets {
+		if c == "/tmp" || strings.HasPrefix(c, "/tmp/") ||
+			c == "/private/tmp" || strings.HasPrefix(c, "/private/tmp/") {
+			return true
+		}
+		for _, m := range mounts {
+			if m.Mode == MountRW || m.Type == MountTmpfs {
+				for _, mountPath := range []string{m.Destination, m.Source} {
+					if mountPath == "" {
+						continue
+					}
+					cleanMount := filepath.ToSlash(filepath.Clean(mountPath))
+					if c == cleanMount || strings.HasPrefix(c, cleanMount+"/") {
+						return true
+					}
+					if canonMount, err := filepath.EvalSymlinks(mountPath); err == nil && canonMount != "" {
+						cleanCanonMount := filepath.ToSlash(filepath.Clean(canonMount))
+						if c == cleanCanonMount || strings.HasPrefix(c, cleanCanonMount+"/") {
+							return true
+						}
+					}
+				}
+			}
+		}
+	}
+	return false
 }
 
 // checkContainerExecPolicy enforces NoExec, AllowedExecPaths, and W^X on writable mounts
 // for containerized execution parity with Landlock and Seatbelt.
 func checkContainerExecPolicy(spec *ExecutionSpec) error {
+	if len(spec.Command) == 0 || spec.Command[0] == "" {
+		return nil
+	}
 	if spec.NoExec {
 		return FormatPermissionError(os.ErrPermission, spec.Command[0], spec)
 	}
 	cmdBin := spec.Command[0]
-	resolvedBin := cmdBin
-	if !filepath.IsAbs(resolvedBin) && spec.Cwd != "" && (strings.ContainsRune(resolvedBin, filepath.Separator) || strings.HasPrefix(resolvedBin, ".")) {
-		resolvedBin = filepath.Join(spec.Cwd, resolvedBin)
-	}
+	resolvedBin := resolveContainerExecTarget(cmdBin, spec.Cwd)
+
 	if len(spec.AllowedExecPaths) > 0 {
-		if !isAllowedExecTarget(cmdBin, spec.Cwd, spec.AllowedExecPaths) {
+		if !isAllowedExecTarget(resolvedBin, spec.Cwd, spec.AllowedExecPaths) &&
+			!isAllowedExecTarget(cmdBin, spec.Cwd, spec.AllowedExecPaths) {
 			return FormatPermissionError(os.ErrPermission, cmdBin, spec)
 		}
-		return nil
 	}
 
-	// Check W^X on direct execution of a binary from a writable mount or /tmp
-	cleanBin := filepath.ToSlash(filepath.Clean(resolvedBin))
-	if cleanBin == "/tmp" || strings.HasPrefix(cleanBin, "/tmp/") ||
-		cleanBin == "/private/tmp" || strings.HasPrefix(cleanBin, "/private/tmp/") {
+	// Enforce W^X on direct binary or interpreter script targets inside writable mounts or /tmp.
+	if isPathInsideWritableMount(resolvedBin, spec.Mounts) {
 		return FormatPermissionError(os.ErrPermission, cmdBin, spec)
 	}
-	for _, m := range spec.Mounts {
-		if m.Mode == MountRW || m.Type == MountTmpfs {
-			dst := filepath.ToSlash(filepath.Clean(m.Destination))
-			src := filepath.ToSlash(filepath.Clean(m.Source))
-			if cleanBin == dst || strings.HasPrefix(cleanBin, dst+"/") ||
-				(m.Source != "" && (cleanBin == src || strings.HasPrefix(cleanBin, src+"/"))) {
-				return FormatPermissionError(os.ErrPermission, cmdBin, spec)
+	baseCmd := strings.TrimSuffix(strings.ToLower(filepath.Base(resolvedBin)), ".exe")
+	switch baseCmd {
+	case "sh", "bash", "dash", "zsh", "python", "python3", "perl", "ruby", "node":
+		for _, arg := range spec.Command[1:] {
+			if arg == "" || strings.HasPrefix(arg, "-") {
+				continue
+			}
+			if !strings.ContainsAny(arg, `/\`) && !strings.HasPrefix(arg, ".") {
+				continue
+			}
+			resolvedArg := resolveContainerExecTarget(arg, spec.Cwd)
+			if isPathInsideWritableMount(resolvedArg, spec.Mounts) {
+				return FormatPermissionError(os.ErrPermission, arg, spec)
 			}
 		}
 	}

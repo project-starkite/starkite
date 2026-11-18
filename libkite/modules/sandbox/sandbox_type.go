@@ -12,6 +12,7 @@ import (
 	"go.starlark.net/starlark"
 
 	"github.com/project-starkite/starkite/libkite"
+	kiteexec "github.com/project-starkite/starkite/libkite/exec"
 	"github.com/project-starkite/starkite/libkite/sandbox"
 )
 
@@ -31,6 +32,7 @@ type Sandbox struct {
 	runtime          string
 	noExec           bool
 	allowedExecPaths []string
+	moduleCfg        *libkite.ModuleConfig
 	frozen           bool
 }
 
@@ -132,49 +134,47 @@ func (s *Sandbox) boxExec(thread *starlark.Thread, fn *starlark.Builtin, args st
 			return nil, fmt.Errorf("exec: args must be list or tuple, got %s", p.Args.Type())
 		}
 	} else {
-		commandList = strings.Fields(cmdStr)
-		if len(commandList) == 0 {
-			commandList = []string{cmdStr}
+		parsedCmd, err := kiteexec.Split(cmdStr)
+		if err != nil {
+			return nil, fmt.Errorf("exec: invalid command string: %w", err)
 		}
+		if len(parsedCmd) == 0 {
+			return nil, fmt.Errorf("exec: command cannot be empty")
+		}
+		commandList = parsedCmd
 	}
 
 	// Environment merging
 	envList := append([]string(nil), s.env...)
 	if p.Env != nil && p.Env != starlark.None {
-		switch v := p.Env.(type) {
-		case *starlark.Dict:
-			for _, item := range v.Items() {
-				k, _ := starlark.AsString(item[0])
-				val, _ := starlark.AsString(item[1])
-				envList = append(envList, fmt.Sprintf("%s=%s", k, val))
-			}
-		case *starlark.List:
-			for i := 0; i < v.Len(); i++ {
-				e, _ := starlark.AsString(v.Index(i))
-				envList = append(envList, e)
-			}
+		extraEnv, err := parseEnvValue(p.Env, "exec")
+		if err != nil {
+			return nil, err
 		}
+		envList = append(envList, extraEnv...)
 	}
 
 	// Timeout resolution
 	execTimeout := s.timeout
 	if p.Timeout != nil && p.Timeout != starlark.None {
-		if durStr, ok := starlark.AsString(p.Timeout); ok {
-			if parsed, err := time.ParseDuration(durStr); err == nil {
-				execTimeout = parsed
-			}
-		} else if durSec, err := starlark.AsInt32(p.Timeout); err == nil {
-			execTimeout = time.Duration(durSec) * time.Second
+		parsed, err := parseTimeout(p.Timeout)
+		if err != nil {
+			return nil, fmt.Errorf("exec: invalid timeout: %w", err)
 		}
+		execTimeout = parsed
 	}
 
 	execCwd := s.cwd
 	if p.Cwd != "" {
+		canonCwd := libkite.CanonicalizePath(p.Cwd)
+		if err := libkite.Check(thread, "fs", "read", "exec", canonCwd); err != nil {
+			return nil, err
+		}
 		execCwd = p.Cwd
 	}
 
 	execTarget := commandList[0]
-	if strings.ContainsRune(execTarget, filepath.Separator) || filepath.IsAbs(execTarget) {
+	if strings.ContainsAny(execTarget, `/\`) || filepath.IsAbs(execTarget) {
 		if !filepath.IsAbs(execTarget) && execCwd != "" {
 			execTarget = filepath.Join(execCwd, execTarget)
 		}
@@ -187,7 +187,7 @@ func (s *Sandbox) boxExec(thread *starlark.Thread, fn *starlark.Builtin, args st
 	spec := &sandbox.ExecutionSpec{
 		Command:          commandList,
 		Cwd:              execCwd,
-		Env:              envList,
+		Env:              mergeBaselineEnv(s.moduleCfg, envList),
 		Network:          s.network,
 		Mounts:           s.mounts,
 		MaxMemoryMB:      s.maxMemoryMB,

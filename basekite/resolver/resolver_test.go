@@ -219,3 +219,32 @@ func keys(m map[string]libkite.LockedModule) []string {
 	}
 	return out
 }
+
+func TestResolver_RejectsTraversalIdentityAndRev(t *testing.T) {
+	root := t.TempDir()
+	srcLeaf := filepath.Join(root, "src-leaf")
+	srcApp := filepath.Join(root, "src-app")
+	writeModuleSource(t, srcLeaf, "acme", "leaf", nil)
+	writeModuleSource(t, srcApp, "acme", "app", map[string]string{"acme/leaf": srcLeaf})
+
+	badLock := &libkite.Lock{
+		Version: 1,
+		Modules: map[string]libkite.LockedModule{
+			"acme/leaf": {Source: srcLeaf, Rev: "../../etc", Hash: "sha256:abc"},
+		},
+	}
+	if err := badLock.Save(srcApp); err != nil {
+		t.Fatal(err)
+	}
+
+	r, _ := newResolver(t)
+	if _, err := r.EnsureClosure(srcApp); err == nil {
+		t.Fatal("expected EnsureClosure to reject traversal locked revision")
+	}
+
+	badIDApp := filepath.Join(root, "src-bad-id")
+	writeModuleSource(t, badIDApp, "acme", "bad", map[string]string{"../etc/passwd": srcLeaf})
+	if _, err := r.EnsureClosure(badIDApp); err == nil {
+		t.Fatal("expected EnsureClosure to reject invalid dependency identity")
+	}
+}

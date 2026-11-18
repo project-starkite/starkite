@@ -474,11 +474,6 @@ var parseJumpDict = ParseJumpDict
 // sshConfig creates a configured SSH client.
 // Usage: ssh.config(hosts=["host1", "host2"], auth={"user": "root", "key": "/path/to/key"}, jump={"host": "bastion"})
 func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	// Permission check for creating SSH client
-	if err := libkite.Check(thread, "ssh", "connect", "config", ""); err != nil {
-		return nil, err
-	}
-
 	client := &SSHClient{
 		thread:            thread,
 		dryRun:            m.config != nil && m.config.DryRun,
@@ -488,6 +483,7 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		maxRetries:        3,
 		execPolicy:        "concurrent",
 		hostKeyCheck:      true,
+		jumpHostKeyCheck:  true,
 		keepAliveInterval: 30 * time.Second,
 		keepAliveMax:      3,
 	}
@@ -549,6 +545,7 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		Cwd               string `name:"cwd"`
 		DryRun            bool   `name:"dry_run"`
 	}
+	p.HostKeyCheck = true
 	if err := startype.Args(args, filteredKwargs).Go(&p); err != nil {
 		return nil, err
 	}
@@ -642,6 +639,23 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		client.jumpKnownHostsFile = jumpCfg.KnownHostsFile
 	}
 
+	if len(client.hosts) == 0 && client.jumpHost == "" {
+		if err := libkite.Check(thread, "ssh", "connect", "config", ""); err != nil {
+			return nil, err
+		}
+	} else {
+		for _, h := range client.hosts {
+			if err := libkite.Check(thread, "ssh", "connect", "config", h); err != nil {
+				return nil, err
+			}
+		}
+		if client.jumpHost != "" {
+			if err := libkite.Check(thread, "ssh", "connect", "config", client.jumpHost); err != nil {
+				return nil, err
+			}
+		}
+	}
+
 	if p.Port > 0 {
 		client.port = p.Port
 	}
@@ -685,6 +699,9 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 	if p.KeepAliveMax > 0 {
 		client.keepAliveMax = p.KeepAliveMax
 	}
+	if p.AsUser != "" && !isSafeUsername(p.AsUser) {
+		return nil, fmt.Errorf("ssh.config: invalid as_user username %q", p.AsUser)
+	}
 	client.defaultSudo = p.Sudo
 	client.defaultAsUser = p.AsUser
 	client.defaultCwd = p.Cwd
@@ -693,6 +710,9 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		for _, item := range defaultEnv.Items() {
 			if k, ok := starlark.AsString(item[0]); ok {
 				if v, ok := starlark.AsString(item[1]); ok {
+					if !isValidSSHVarName(k) {
+						return nil, fmt.Errorf("ssh.config: invalid env variable name %q", k)
+					}
 					client.defaultEnv[k] = v
 				}
 			}

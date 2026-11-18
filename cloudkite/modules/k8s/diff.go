@@ -19,7 +19,7 @@ import (
 // diff computes a server-side apply dry-run diff against live cluster state.
 // Signature: k8s.diff(manifest, namespace="", field_manager="starkite", timeout="")
 func (c *K8sClient) diff(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", c.permResource()); err != nil {
 		return nil, err
 	}
 

@@ -692,7 +692,7 @@ func (c *EngineClient) BuildImage(ctx context.Context, contextDir, tag, dockerfi
 			} `json:"errorDetail"`
 		}
 		if err := decoder.Decode(&msg); err != nil {
-			raw, _ := io.ReadAll(resp.Body)
+			raw, _ := io.ReadAll(io.LimitReader(resp.Body, 10<<20))
 			out.Write(raw)
 			break
 		}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 	"sync"
 
@@ -38,23 +39,45 @@ func newSSHBatchResult(host string, ok, stoppedEarly, dryRun bool, steps []starl
 	})
 }
 
+func isValidSSHVarName(k string) bool {
+	if k == "" {
+		return false
+	}
+	for i, r := range k {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '_' || (i > 0 && r >= '0' && r <= '9') {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
 func buildSSHCommand(cmd string, cwd string, env map[string]string, sudo bool, asUser string) string {
 	finalCmd := cmd
-	if cwd != "" {
-		finalCmd = fmt.Sprintf("cd %s && %s", cwd, cmd)
-	}
 	if len(env) > 0 {
-		var envParts []string
-		for k, v := range env {
-			envParts = append(envParts, fmt.Sprintf("%s=%q", k, v))
+		keys := make([]string, 0, len(env))
+		for k := range env {
+			keys = append(keys, k)
+		}
+		slices.Sort(keys)
+		envParts := make([]string, 0, len(keys))
+		for _, k := range keys {
+			envParts = append(envParts, fmt.Sprintf("%s=%s", k, scpShellQuote(env[k])))
 		}
 		finalCmd = strings.Join(envParts, " ") + " " + finalCmd
 	}
+	if cwd != "" {
+		finalCmd = fmt.Sprintf("cd %s && %s", scpShellQuote(cwd), finalCmd)
+	}
 	if sudo {
+		prefix := "sudo"
 		if asUser != "" {
-			finalCmd = fmt.Sprintf("sudo -u %s %s", asUser, finalCmd)
+			prefix = fmt.Sprintf("sudo -u %s", scpShellQuote(asUser))
+		}
+		if cwd != "" || len(env) > 0 {
+			finalCmd = fmt.Sprintf("%s sh -c %s", prefix, scpShellQuote(finalCmd))
 		} else {
-			finalCmd = "sudo " + finalCmd
+			finalCmd = prefix + " " + finalCmd
 		}
 	}
 	return finalCmd
@@ -150,6 +173,11 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		}
 
 		// Permission checks for all commands on each host
+		if c.jumpHost != "" {
+			if err := libkite.Check(thread, "ssh", "connect", "exec", c.jumpHost); err != nil {
+				return nil, err
+			}
+		}
 		for _, host := range c.hosts {
 			for _, cmd := range commands {
 				if err := libkite.Check(thread, "ssh", "connect", "exec", host+":"+cmd); err != nil {
@@ -162,6 +190,9 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		asUser := p.AsUser
 		if asUser == "" {
 			asUser = c.defaultAsUser
+		}
+		if asUser != "" && !isSafeUsername(asUser) {
+			return nil, fmt.Errorf("ssh.exec: invalid username %q", asUser)
 		}
 		cwd := p.Cwd
 		if cwd == "" {
@@ -177,6 +208,11 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 						env[k] = v
 					}
 				}
+			}
+		}
+		for k := range env {
+			if !isValidSSHVarName(k) {
+				return nil, fmt.Errorf("ssh.exec: invalid env variable name %q", k)
 			}
 		}
 
@@ -244,9 +280,14 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		cmdToRun = kiteexec.Join(p.Cmd, positionalArgs)
 	}
 
-	// Permission check for SSH exec - check each host
+	// Permission check for SSH exec - check jump host and each target host
+	if c.jumpHost != "" {
+		if err := libkite.Check(thread, "ssh", "connect", "exec", c.jumpHost); err != nil {
+			return nil, err
+		}
+	}
 	for _, host := range c.hosts {
-		if err := libkite.Check(thread, "ssh", "connect", "exec", host+":"+p.Cmd); err != nil {
+		if err := libkite.Check(thread, "ssh", "connect", "exec", host+":"+cmdToRun); err != nil {
 			return nil, err
 		}
 	}
@@ -256,6 +297,9 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 	asUser := p.AsUser
 	if asUser == "" {
 		asUser = c.defaultAsUser
+	}
+	if asUser != "" && !isSafeUsername(asUser) {
+		return nil, fmt.Errorf("ssh.exec: invalid username %q", asUser)
 	}
 	cwd := p.Cwd
 	if cwd == "" {
@@ -272,6 +316,11 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 					env[k] = v
 				}
 			}
+		}
+	}
+	for k := range env {
+		if !isValidSSHVarName(k) {
+			return nil, fmt.Errorf("ssh.exec: invalid env variable name %q", k)
 		}
 	}
 

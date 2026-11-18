@@ -40,24 +40,16 @@ func (d *GVisorDriver) Name() string {
 	return DriverGVisor
 }
 
-// Available reports whether gVisor is accessible on this host (via container engines or standalone runsc).
+// Available reports whether standalone runsc is installed on this host.
 func (d *GVisorDriver) Available() bool {
-	// 1. Check if standalone runsc binary exists in PATH
 	if d.runscPath != "" {
-		return true
+		_, err := os.Stat(d.runscPath)
+		return err == nil
 	}
 	if bin, err := exec.LookPath(BinRunsc); err == nil {
 		d.runscPath = bin
 		return true
 	}
-
-	// 2. Check if a container engine (podman, docker, nerdctl) is available to host runsc
-	for _, engineName := range []string{DriverPodman, DriverDocker, DriverNerdctl} {
-		if drv, err := Get(engineName); err == nil && drv.Available() {
-			return true
-		}
-	}
-
 	return false
 }
 
@@ -102,6 +94,12 @@ func (d *GVisorDriver) execStandaloneRunsc(ctx context.Context, spec *ExecutionS
 			Stderr:   policyErr.Error() + "\n",
 		}, nil
 	}
+	if spec.Network != NetworkHost && spec.Network != "" {
+		return nil, fmt.Errorf("sandbox: standalone runsc cannot enforce network=%q without a container engine (podman/docker/nerdctl)", spec.Network)
+	}
+	if len(spec.Mounts) > 0 || spec.MaxMemoryMB > 0 || spec.MaxCPUs > 0 || spec.MaxPIDs > 0 || spec.NoExec || len(spec.AllowedExecPaths) > 0 {
+		return nil, errors.New("sandbox: standalone runsc cannot enforce mounts, resource limits, or exec restrictions without a container engine (podman/docker/nerdctl)")
+	}
 
 	start := time.Now()
 
@@ -123,7 +121,7 @@ func (d *GVisorDriver) execStandaloneRunsc(ctx context.Context, spec *ExecutionS
 	if len(spec.Env) > 0 {
 		cmd.Env = spec.Env
 	} else {
-		cmd.Env = os.Environ()
+		cmd.Env = mapToEnvSlice(SanitizedBaselineEnv(os.Environ()))
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer

@@ -57,6 +57,11 @@ func BuildSeccompFilter(opts SeccompFilterOptions) ([]unix.SockFilter, error) {
 		uint32(unix.SYS_PTRACE),
 		uint32(unix.SYS_PROCESS_VM_READV),
 		uint32(unix.SYS_PROCESS_VM_WRITEV),
+		// Signal and pidfd spoofing outside own process group
+		uint32(unix.SYS_PIDFD_OPEN),
+		uint32(unix.SYS_PIDFD_SEND_SIGNAL),
+		uint32(unix.SYS_RT_SIGQUEUEINFO),
+		uint32(unix.SYS_RT_TGSIGQUEUEINFO),
 		// System V IPC shared memory, semaphores, and message queues
 		uint32(unix.SYS_SHMGET),
 		uint32(unix.SYS_SHMAT),
@@ -182,8 +187,8 @@ func ApplySeccompFilter(filter []unix.SockFilter) error {
 		return nil
 	}
 
-	// If seccomp(2) syscall is not available (kernels < 3.17), fallback to prctl
-	if err == unix.ENOSYS {
+	// If seccomp(2) syscall or TSYNC flag is unavailable, fallback to prctl
+	if err == unix.ENOSYS || err == unix.EINVAL {
 		if prctlErr := unix.Prctl(unix.PR_SET_SECCOMP, unix.SECCOMP_MODE_FILTER, uintptr(unsafe.Pointer(&prog)), 0, 0); prctlErr != nil {
 			return fmt.Errorf("sandbox: prctl(PR_SET_SECCOMP) fallback failed: %w", prctlErr)
 		}

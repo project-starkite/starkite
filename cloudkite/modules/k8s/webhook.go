@@ -66,7 +66,10 @@ func (m *Module) webhookBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 	mux := gohttp.NewServeMux()
 	mux.Handle(p.Path, handler)
 
-	tlsConfig := &tls.Config{Certificates: []tls.Certificate{cert}}
+	tlsConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		MinVersion:   tls.VersionTLS12,
+	}
 	addr := fmt.Sprintf(":%d", p.Port)
 	ln, err := tls.Listen("tcp", addr, tlsConfig)
 	if err != nil {

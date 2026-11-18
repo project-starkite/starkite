@@ -381,7 +381,8 @@ func EnrichExecDiagnostics(res *ExecResult, spec *ExecutionSpec) {
 
 	lower := strings.ToLower(res.Stderr)
 
-	if strings.Contains(lower, "modulenotfounderror: no module named") {
+	if strings.Contains(lower, "modulenotfounderror: no module named") ||
+		(strings.Contains(lower, "importlib._bootstrap") && strings.Contains(lower, "permissionerror")) {
 		hint := "Hint: grant access to dependencies via --sandbox-path-read=<path> or --sandbox-mount <host-path>:<target-path>:ro"
 		if !strings.Contains(res.Stderr, hint) {
 			if res.Stderr != "" && !strings.HasSuffix(res.Stderr, "\n") {
@@ -463,17 +464,19 @@ func (p Profile) PolicySummary(cliEnvFlags []string, cliEnvInherit bool, display
 		}
 	}
 	return &libkite.SandboxPolicySummary{
-		ProfileName: profName,
-		Enabled:     p.Enabled,
-		Network:     netMode,
-		PathsRead:   slices.Clone(p.Paths.Read),
-		PathsWrite:  slices.Clone(p.Paths.Write),
-		ExecAllow:   slices.Clone(p.Exec.Allow),
-		ExecDeny:    slices.Clone(p.Exec.Deny),
-		CallsAllow:  slices.Clone(p.Calls.Allow),
-		CallsDeny:   slices.Clone(p.Calls.Deny),
-		EnvInherit:  p.Env.Inherit || cliEnvInherit,
-		EnvAllowed:  envAllowed,
-		DisplayPath: displayPath,
+		ProfileName:  profName,
+		Enabled:      p.Enabled,
+		Network:      netMode,
+		NetworkAllow: slices.Clone(p.NetworkAllow),
+		NetworkDeny:  slices.Clone(p.NetworkDeny),
+		PathsRead:    slices.Clone(p.Paths.Read),
+		PathsWrite:   slices.Clone(p.Paths.Write),
+		ExecAllow:    slices.Clone(p.Exec.Allow),
+		ExecDeny:     slices.Clone(p.Exec.Deny),
+		CallsAllow:   slices.Clone(p.Calls.Allow),
+		CallsDeny:    slices.Clone(p.Calls.Deny),
+		EnvInherit:   p.Env.Inherit || cliEnvInherit,
+		EnvAllowed:   envAllowed,
+		DisplayPath:  displayPath,
 	}
 }

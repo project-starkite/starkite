@@ -96,13 +96,13 @@ def test_exec_dry_run_with_as_user():
     client = ssh.config(hosts=["host1"], auth={"user": "root"}, dry_run=True)
     results = client.exec("whoami", sudo=True, as_user="www-data")
     r = results[0]
-    assert("sudo -u www-data" in r.stdout, "should contain sudo -u www-data")
+    assert("sudo -u 'www-data'" in r.stdout, "should contain sudo -u 'www-data'")
 
 def test_exec_dry_run_with_cwd():
     client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
     results = client.exec("ls", cwd="/opt/app")
     r = results[0]
-    assert("cd /opt/app" in r.stdout, "should contain cd /opt/app")
+    assert("cd '/opt/app'" in r.stdout, "should contain cd '/opt/app'")
 
 def test_exec_dry_run_with_env():
     client = ssh.config(hosts=["host1"], auth={"user": "deploy"}, dry_run=True)
@@ -329,9 +329,9 @@ def test_client_exec_commands_with_options():
     assert(len(results) == 1, "should return 1 host result")
     assert(results[0].ok == True, "should be ok")
     assert(results[0].stopped_early == False, "should not be stopped early")
-    assert("cd /opt/myapp" in results[0].steps[0].stdout, "stdout should contain cd")
-    assert("sudo -u app" in results[0].steps[0].stdout, "stdout should contain sudo -u app")
-    assert('GOOS="linux"' in results[0].steps[0].stdout, "stdout should contain env var")
+    assert("cd " in results[0].steps[0].stdout and "/opt/myapp" in results[0].steps[0].stdout, "stdout should contain cd")
+    assert("sudo -u 'app'" in results[0].steps[0].stdout, "stdout should contain sudo -u 'app'")
+    assert("GOOS=" in results[0].steps[0].stdout and "linux" in results[0].steps[0].stdout, "stdout should contain env var")
 
 def test_client_try_exec_commands():
     """Test client.try_exec with multi-command pipeline."""

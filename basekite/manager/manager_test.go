@@ -692,3 +692,38 @@ func TestIsLocalPath(t *testing.T) {
 		})
 	}
 }
+
+func TestManagerSecurityGuards(t *testing.T) {
+	mgr, err := New(filepath.Join(t.TempDir(), "cache"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("rejects symlinks in installed source", func(t *testing.T) {
+		src := writeLocalSource(t, "acme", "sym", "def main():\n    pass\n")
+		outsideFile := filepath.Join(t.TempDir(), "outside.star")
+		if err := os.WriteFile(outsideFile, []byte("x = 1\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outsideFile, filepath.Join(src, "leak.star")); err == nil {
+			if _, err := mgr.Install(src, InstallOptions{}); err == nil {
+				t.Error("expected Install to reject source containing symlink")
+			}
+		}
+	})
+
+	t.Run("rejects traversal module refs and revisions", func(t *testing.T) {
+		if _, err := mgr.Get("../target"); err == nil {
+			t.Error("expected Get with traversal ref to fail")
+		}
+		if err := mgr.Remove("../target", ""); err == nil {
+			t.Error("expected Remove with traversal ref to fail")
+		}
+		if _, err := mgr.Resolve("acme/tool", "../etc"); err == nil {
+			t.Error("expected Resolve with traversal rev to fail")
+		}
+		if err := mgr.Remove("acme/tool", "../etc"); err == nil {
+			t.Error("expected Remove with traversal rev to fail")
+		}
+	})
+}

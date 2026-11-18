@@ -16,6 +16,7 @@ import (
 	"go.starlark.net/starlarkstruct"
 	gossh "golang.org/x/crypto/ssh"
 
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/fleet"
 )
 
@@ -942,8 +943,8 @@ func TestSSHCopyIdWithSudoDefaultsToConnectedUserHome(t *testing.T) {
 	if !strings.HasPrefix(executedCmd, "sudo sh -c") {
 		t.Errorf("expected sudo command, got: %q", executedCmd)
 	}
-	if !strings.Contains(executedCmd, "eval echo ~pi") {
-		t.Errorf("expected command to resolve ~pi for target home, got: %q", executedCmd)
+	if !strings.Contains(executedCmd, "getent passwd pi") {
+		t.Errorf("expected command to resolve ~pi via getent passwd, got: %q", executedCmd)
 	}
 	if !strings.Contains(executedCmd, "chown -R pi:pi") {
 		t.Errorf("expected command to chown to pi:pi, got: %q", executedCmd)
@@ -1794,5 +1795,151 @@ func TestSSHScanHostKeysAndCheckAuthorizedKeyNewNames(t *testing.T) {
 	clientAccVal, _ := clientCheckStruct.Attr("accepted")
 	if b, ok := clientAccVal.(starlark.Bool); !ok || !bool(b) {
 		t.Errorf("expected accepted=true from client.check_authorized_key, got %v", clientAccVal)
+	}
+}
+
+func TestSSHConfig_DefaultsHostKeyCheckTrue(t *testing.T) {
+	ts := newTestServerForTest(t)
+	ts.AddPassword("testuser", "testpass")
+	ts.HandleExec(func(cmd string) (string, string, int) {
+		return "ok", "", 0
+	})
+
+	t.Setenv("HOME", t.TempDir())
+	mod := New()
+	thread := &starlark.Thread{Name: "test-host-key-default"}
+
+	host, portStr, _ := net.SplitHostPort(ts.Addr())
+	port, _ := strconv.Atoi(portStr)
+	authDict := starlark.NewDict(2)
+	_ = authDict.SetKey(starlark.String("user"), starlark.String("testuser"))
+	_ = authDict.SetKey(starlark.String("password"), starlark.String("testpass"))
+
+	val, err := mod.sshConfig(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.NewList([]starlark.Value{starlark.String(host)})},
+		{starlark.String("port"), starlark.MakeInt(port)},
+		{starlark.String("auth"), authDict},
+		{starlark.String("max_retries"), starlark.MakeInt(0)},
+	})
+	if err != nil {
+		t.Fatalf("ssh.config failed: %v", err)
+	}
+	client := val.(*SSHClient)
+	if !client.hostKeyCheck {
+		t.Fatal("expected ssh.config hostKeyCheck to default to true")
+	}
+	if !client.jumpHostKeyCheck {
+		t.Fatal("expected ssh.config jumpHostKeyCheck to default to true")
+	}
+
+	_, execErr := client.exec(thread, nil, starlark.Tuple{starlark.String("echo hi")}, nil)
+	if execErr == nil {
+		t.Fatal("expected connection without known_hosts to fail when host_key_check defaults to true")
+	}
+}
+
+func TestBuildSSHCommand_QuotesCwdEnvAndRejectsInvalidUser(t *testing.T) {
+	cmd := buildSSHCommand("echo hi", "/tmp/dir'$(id)", map[string]string{
+		"Z_KEY": "val'$(uname)",
+		"A_KEY": "1;touch /tmp/pwn",
+	}, true, "deploy")
+
+	if !strings.HasPrefix(cmd, "sudo -u 'deploy' sh -c ") {
+		t.Fatalf("expected sudo sh -c wrapper with quoted user, got %q", cmd)
+	}
+	if strings.Contains(cmd, `"val`) {
+		t.Fatalf("env values must not use double quotes: %q", cmd)
+	}
+
+	c := &SSHClient{hosts: []string{"127.0.0.1"}}
+	thread := &starlark.Thread{Name: "test-ssh-invalid-args"}
+
+	if _, err := c.exec(thread, nil, starlark.Tuple{starlark.String("echo hi")}, []starlark.Tuple{
+		{starlark.String("as_user"), starlark.String("alice;id")},
+	}); err == nil || !strings.Contains(err.Error(), "invalid username") {
+		t.Errorf("expected invalid username error, got %v", err)
+	}
+
+	badEnv := starlark.NewDict(1)
+	_ = badEnv.SetKey(starlark.String("BAD=KEY"), starlark.String("val"))
+	if _, err := c.exec(thread, nil, starlark.Tuple{starlark.String("echo hi")}, []starlark.Tuple{
+		{starlark.String("env"), badEnv},
+	}); err == nil || !strings.Contains(err.Error(), "invalid env variable name") {
+		t.Errorf("expected invalid env variable error, got %v", err)
+	}
+}
+
+func TestIsSafeUsername_RejectsDollarSign(t *testing.T) {
+	if isSafeUsername("alice$id") {
+		t.Error("expected isSafeUsername to reject '$'")
+	}
+	if isSafeUsername("$(whoami)") {
+		t.Error("expected isSafeUsername to reject subshell syntax")
+	}
+	if !isSafeUsername("deploy_user-1.0") {
+		t.Error("expected valid POSIX username to be accepted")
+	}
+}
+
+func TestSCPReadLine_BoundsLength(t *testing.T) {
+	oversized := bytes.Repeat([]byte("a"), maxSCPLineBytes+10)
+	if _, err := readLine(bytes.NewReader(oversized)); err == nil || !strings.Contains(err.Error(), "exceeds maximum length") {
+		t.Errorf("expected readLine length error, got %v", err)
+	}
+
+	valid := "0644 5 hello.txt\n"
+	got, err := readLine(strings.NewReader(valid))
+	if err != nil || got != "0644 5 hello.txt" {
+		t.Errorf("readLine(valid) = (%q, %v), want (%q, nil)", got, err, "0644 5 hello.txt")
+	}
+}
+
+func TestSSHPermissions_ScopedNetworkAndKeyReads(t *testing.T) {
+	checker, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{
+		Allow:   libkite.SynthesizeNetworkRules([]string{"bastion"}),
+		Default: libkite.DefaultDeny,
+	})
+	if err != nil {
+		t.Fatalf("NewPermissionChecker: %v", err)
+	}
+
+	for _, tc := range []struct {
+		mod, cat, fn, res string
+	}{
+		{"ssh", "connect", "config", "bastion"},
+		{"ssh", "connect", "exec", "bastion:uname -a"},
+		{"ssh", "connect", "exec", "bastion:cat /etc/os-release"},
+		{"ssh", "transfer", "upload", "bastion:/tmp/a->/opt/b"},
+	} {
+		if err := checker.Check(tc.mod, tc.cat, tc.fn, tc.res); err != nil {
+			t.Errorf("SynthesizeNetworkRules(bastion) should allow %s.%s(%s:%s): %v", tc.mod, tc.cat, tc.fn, tc.res, err)
+		}
+	}
+
+	thread := &starlark.Thread{Name: "test-key-perm"}
+	denyFS, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{
+		Allow:   []string{"ssh.*"},
+		Deny:    []string{"fs.read"},
+		Default: libkite.DefaultDeny,
+	})
+	if err != nil {
+		t.Fatalf("NewPermissionChecker: %v", err)
+	}
+	libkite.SetPermissions(thread, denyFS)
+
+	keyFile := filepath.Join(t.TempDir(), "id_test")
+	_ = os.WriteFile(keyFile, []byte("dummy"), 0600)
+	if _, err := resolvePublicKey(thread, keyFile, false); err == nil || !libkite.IsPermissionError(err) {
+		t.Errorf("expected fs.read permission error from resolvePublicKey, got %v", err)
+	}
+
+	c := &SSHClient{
+		thread:       thread,
+		user:         "u",
+		keyFile:      keyFile,
+		hostKeyCheck: false,
+	}
+	if _, err := c.buildSSHConfig(); err == nil || !libkite.IsPermissionError(err) {
+		t.Errorf("expected fs.read permission error from buildSSHConfig, got %v", err)
 	}
 }

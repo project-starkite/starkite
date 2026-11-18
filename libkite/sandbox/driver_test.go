@@ -178,3 +178,55 @@ func TestMockDriver_Exec(t *testing.T) {
 		t.Errorf("Stdout = %q, want 'mock output'", res.Stdout)
 	}
 }
+
+func TestExecutionSpec_Validate_RejectsInjectionAndFlags(t *testing.T) {
+	tests := []struct {
+		name string
+		spec ExecutionSpec
+	}{
+		{
+			name: "empty first command arg",
+			spec: ExecutionSpec{Command: []string{""}},
+		},
+		{
+			name: "NUL byte in command",
+			spec: ExecutionSpec{Command: []string{"echo\x00evil"}},
+		},
+		{
+			name: "newline in cwd",
+			spec: ExecutionSpec{Command: []string{"echo"}, Cwd: "/tmp\n(allow network*)"},
+		},
+		{
+			name: "quote in script_file",
+			spec: ExecutionSpec{Command: []string{"echo"}, ScriptFile: `/tmp/foo"bar.star`},
+		},
+		{
+			name: "leading dash in image",
+			spec: ExecutionSpec{Command: []string{"echo"}, Image: "--privileged"},
+		},
+		{
+			name: "whitespace in runtime",
+			spec: ExecutionSpec{Command: []string{"echo"}, Runtime: "runsc --rootless"},
+		},
+		{
+			name: "NUL in env",
+			spec: ExecutionSpec{Command: []string{"echo"}, Env: []string{"FOO=bar\x00baz"}},
+		},
+		{
+			name: "newline in network_allow",
+			spec: ExecutionSpec{Command: []string{"echo"}, NetworkAllow: []string{"api.github.com:443\n(allow network*)"}},
+		},
+		{
+			name: "quote in allowed_exec_paths",
+			spec: ExecutionSpec{Command: []string{"echo"}, AllowedExecPaths: []string{`/bin/echo"evil`}},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.spec.Validate(); err == nil {
+				t.Errorf("expected Validate() error for %s, got nil", tc.name)
+			}
+		})
+	}
+}

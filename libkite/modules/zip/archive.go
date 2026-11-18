@@ -119,6 +119,19 @@ func (a *Archive) namelistMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 	return starlark.NewList(names), nil
 }
 
+const maxZipDecompressBytes int64 = 256 << 20
+
+func readBoundedZipEntry(rc io.Reader, limit int64, label string) ([]byte, error) {
+	data, err := io.ReadAll(io.LimitReader(rc, limit+1))
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", label, err)
+	}
+	if int64(len(data)) > limit {
+		return nil, fmt.Errorf("%s: decompressed size exceeds maximum allowed (%d bytes)", label, maxZipDecompressBytes)
+	}
+	return data, nil
+}
+
 // readMethod reads a single entry from the archive.
 // Usage: zip.file("archive.zip").read("entry.txt")
 func (a *Archive) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -145,10 +158,10 @@ func (a *Archive) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starl
 			if err != nil {
 				return nil, fmt.Errorf("zip.read: %w", err)
 			}
-			defer rc.Close()
-			content, err := io.ReadAll(rc)
+			content, err := readBoundedZipEntry(rc, maxZipDecompressBytes, "zip.read")
+			rc.Close()
 			if err != nil {
-				return nil, fmt.Errorf("zip.read: %w", err)
+				return nil, err
 			}
 			return starlark.Bytes(content), nil
 		}
@@ -191,6 +204,7 @@ func (a *Archive) readAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	}
 
 	dict := starlark.NewDict(len(reader.File))
+	remaining := maxZipDecompressBytes
 	for _, f := range reader.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -217,11 +231,12 @@ func (a *Archive) readAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		if err != nil {
 			return nil, fmt.Errorf("zip.read_all: %w", err)
 		}
-		content, err := io.ReadAll(rc)
+		content, err := readBoundedZipEntry(rc, remaining, "zip.read_all")
 		rc.Close()
 		if err != nil {
-			return nil, fmt.Errorf("zip.read_all: %w", err)
+			return nil, err
 		}
+		remaining -= int64(len(content))
 		dict.SetKey(starlark.String(f.Name), starlark.Bytes(content))
 	}
 	return dict, nil

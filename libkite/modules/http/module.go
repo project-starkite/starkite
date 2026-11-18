@@ -4,7 +4,9 @@ package http
 
 import (
 	"fmt"
+	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -133,15 +135,7 @@ func (m *Module) configFn(thread *starlark.Thread, fn *starlark.Builtin, args st
 func (m *Module) serverConstructor(thread *starlark.Thread, fn *starlark.Builtin,
 	args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 
-	if err := libkite.Check(thread, "http", "server", "server", ""); err != nil {
-		return nil, err
-	}
-
 	rt := libkite.GetRuntime(thread)
-	if rt == nil {
-		return nil, fmt.Errorf("http.server: runtime not available")
-	}
-
 	srv := newServer(rt, m.config)
 
 	// Parse optional kwargs — all config consolidated on constructor
@@ -192,6 +186,18 @@ func (m *Module) serverConstructor(thread *starlark.Thread, fn *starlark.Builtin
 				srv.maxBodyBytes = int64(v)
 			}
 		}
+	}
+
+	if (srv.tlsCert != "") != (srv.tlsKey != "") {
+		return nil, fmt.Errorf("http.server: both tls_cert and tls_key must be provided when configuring TLS")
+	}
+
+	addr := net.JoinHostPort(srv.host, strconv.Itoa(srv.port))
+	if err := libkite.Check(thread, "http", "server", "server", addr); err != nil {
+		return nil, err
+	}
+	if rt == nil {
+		return nil, fmt.Errorf("http.server: runtime not available")
 	}
 
 	return srv, nil

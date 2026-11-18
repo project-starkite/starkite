@@ -16,7 +16,7 @@ import (
 // fleet creates a Fleet of Kubernetes compute resources (Nodes, Pods, Services, etc.).
 // Signature: k8s.fleet(kind="Pod", namespace="", labels={}, label_selector="", fields="", timeout="")
 func (c *K8sClient) fleet(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(thread, "k8s", "read", "read", ""); err != nil {
+	if err := libkite.Check(thread, "k8s", "read", "read", c.permResource()); err != nil {
 		return nil, err
 	}
 

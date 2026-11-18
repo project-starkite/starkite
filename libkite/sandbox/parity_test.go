@@ -143,6 +143,7 @@ func TestCrossDriverParitySuite(t *testing.T) {
 	driverNames := []string{
 		DriverLandlock,
 		DriverSeatbelt,
+		DriverWindows,
 		DriverPodman,
 		DriverDocker,
 		DriverNerdctl,
@@ -157,15 +158,27 @@ func TestCrossDriverParitySuite(t *testing.T) {
 			}
 
 			isContainer := drvName == DriverPodman || drvName == DriverDocker || drvName == DriverNerdctl || drvName == DriverGVisor
+			isWinNative := drvName == DriverWindows
 			img := ""
 			if isContainer {
 				img = "alpine:latest"
 			}
 
+			allowCmd := []string{"/bin/echo", "noexec-should-block"}
+			allowOKCmd := []string{"/bin/echo", "parity-allowed-ok"}
+			allowPaths := []string{"/bin/echo", "/usr/bin/echo"}
+			denyCmd := []string{"/usr/bin/id"}
+			if isWinNative {
+				allowCmd = []string{"cmd.exe", "/c", "echo", "noexec-should-block"}
+				allowOKCmd = []string{"cmd.exe", "/c", "echo", "parity-allowed-ok"}
+				allowPaths = ResolveExecutablePaths([]string{"cmd.exe"}, "", "")
+				denyCmd = []string{"whoami.exe"}
+			}
+
 			// 1. Parity Check: NoExec blocks subprocess execution
 			t.Run("NoExec_BlocksExecution", func(t *testing.T) {
 				spec := &ExecutionSpec{
-					Command: []string{"/bin/echo", "noexec-should-block"},
+					Command: allowCmd,
 					Image:   img,
 					Network: NetworkHost,
 					NoExec:  true,
@@ -173,7 +186,7 @@ func TestCrossDriverParitySuite(t *testing.T) {
 				}
 				res, err := d.Exec(context.Background(), spec)
 				if err == nil && res != nil && res.ExitCode == 0 {
-					t.Fatalf("[%s] NoExec parity violation: /bin/echo succeeded when NoExec=true (stdout=%q)", drvName, res.Stdout)
+					t.Fatalf("[%s] NoExec parity violation: %v succeeded when NoExec=true (stdout=%q)", drvName, allowCmd, res.Stdout)
 				}
 				if res != nil && !strings.Contains(res.Stderr, "no_exec") && !strings.Contains(strings.ToLower(res.Stderr), "not permitted") {
 					t.Errorf("[%s] expected no_exec diagnostic in stderr, got: %q", drvName, res.Stderr)
@@ -183,10 +196,10 @@ func TestCrossDriverParitySuite(t *testing.T) {
 			// 2. Parity Check: AllowedExecPaths permits allowlisted binaries and blocks non-allowlisted binaries
 			t.Run("AllowedExecPaths_Enforced", func(t *testing.T) {
 				allowedSpec := &ExecutionSpec{
-					Command:          []string{"/bin/echo", "parity-allowed-ok"},
+					Command:          allowOKCmd,
 					Image:            img,
 					Network:          NetworkHost,
-					AllowedExecPaths: []string{"/bin/echo", "/usr/bin/echo"},
+					AllowedExecPaths: allowPaths,
 					Timeout:          15 * time.Second,
 				}
 				resAllow, errAllow := d.Exec(context.Background(), allowedSpec)
@@ -194,26 +207,26 @@ func TestCrossDriverParitySuite(t *testing.T) {
 					if isContainer && isContainerDaemonUnavailable(errAllow.Error(), 125) {
 						t.Logf("[%s] container daemon unavailable for positive exec check: %v", drvName, errAllow)
 					} else {
-						t.Errorf("[%s] expected allowlisted /bin/echo to succeed, got error: %v", drvName, errAllow)
+						t.Errorf("[%s] expected allowlisted command to succeed, got error: %v", drvName, errAllow)
 					}
 				} else if resAllow != nil && resAllow.ExitCode != 0 {
 					if isContainer && isContainerDaemonUnavailable(resAllow.Stderr, resAllow.ExitCode) {
 						t.Logf("[%s] container daemon unavailable for positive exec check: %s", drvName, resAllow.Stderr)
 					} else {
-						t.Errorf("[%s] expected allowlisted /bin/echo to exit 0, got exit=%d stderr=%q", drvName, resAllow.ExitCode, resAllow.Stderr)
+						t.Errorf("[%s] expected allowlisted command to exit 0, got exit=%d stderr=%q", drvName, resAllow.ExitCode, resAllow.Stderr)
 					}
 				}
 
 				deniedSpec := &ExecutionSpec{
-					Command:          []string{"/usr/bin/id"},
+					Command:          denyCmd,
 					Image:            img,
 					Network:          NetworkHost,
-					AllowedExecPaths: []string{"/bin/echo", "/usr/bin/echo"},
+					AllowedExecPaths: allowPaths,
 					Timeout:          15 * time.Second,
 				}
 				res, err := d.Exec(context.Background(), deniedSpec)
 				if err == nil && res != nil && res.ExitCode == 0 {
-					t.Fatalf("[%s] AllowedExecPaths parity violation: /usr/bin/id succeeded when not allowlisted (stdout=%q)", drvName, res.Stdout)
+					t.Fatalf("[%s] AllowedExecPaths parity violation: %v succeeded when not allowlisted (stdout=%q)", drvName, denyCmd, res.Stdout)
 				}
 				if res != nil && !strings.Contains(res.Stderr, "allowed_exec_paths") && !strings.Contains(strings.ToLower(res.Stderr), "not permitted") && !strings.Contains(strings.ToLower(res.Stderr), "permission denied") {
 					t.Errorf("[%s] expected allowed_exec_paths diagnostic in stderr, got: %q", drvName, res.Stderr)
@@ -224,7 +237,12 @@ func TestCrossDriverParitySuite(t *testing.T) {
 			t.Run("WX_BlocksWritableMountExecution", func(t *testing.T) {
 				scratchDir := t.TempDir()
 				payload := filepath.Join(scratchDir, "wx_probe.sh")
-				if err := os.WriteFile(payload, []byte("#!/bin/sh\necho wx-escaped\n"), 0o755); err != nil {
+				payloadContent := []byte("#!/bin/sh\necho wx-escaped\n")
+				if isWinNative {
+					payload = filepath.Join(scratchDir, "wx_probe.bat")
+					payloadContent = []byte("@echo off\r\necho wx-escaped\r\n")
+				}
+				if err := os.WriteFile(payload, payloadContent, 0o755); err != nil {
 					t.Fatal(err)
 				}
 
@@ -282,8 +300,12 @@ func TestCrossDriverParitySuite(t *testing.T) {
 					t.Fatal(err)
 				}
 
+				catCmd := []string{"/bin/cat", secretPath}
+				if isWinNative {
+					catCmd = []string{"cmd.exe", "/c", "type", secretPath}
+				}
 				homeSpec := &ExecutionSpec{
-					Command:    []string{"/bin/cat", secretPath},
+					Command:    catCmd,
 					Cwd:        fakeHome,
 					ScriptFile: scriptPath,
 					Image:      img,

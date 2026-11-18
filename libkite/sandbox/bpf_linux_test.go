@@ -22,8 +22,8 @@ func TestBuildNetworkFilter_InstructionCount(t *testing.T) {
 		t.Fatalf("BuildNetworkFilter() returned unexpected error: %v", err)
 	}
 
-	// 4 header + 15 denied (3 process memory + 12 SysV IPC) + 3 SYS_KILL + 6 SYS_SOCKET + 2 terminal = 30
-	const expectedLen = 30
+	// 4 header + 19 denied (3 process memory + 4 pidfd/signal + 12 SysV IPC) + 3 SYS_KILL + 6 SYS_SOCKET + 2 terminal = 34
+	const expectedLen = 34
 	if len(filter) != expectedLen {
 		t.Errorf("len(filter) = %d, want %d", len(filter), expectedLen)
 	}
@@ -31,23 +31,23 @@ func TestBuildNetworkFilter_InstructionCount(t *testing.T) {
 
 func TestBuildSeccompFilter_OptionsAndStructure(t *testing.T) {
 	// 1. Always-On Host Network Filter (BlockNetwork=false, NoExec=false)
-	// 4 header + 15 denied + 3 SYS_KILL + 2 terminal = 24
+	// 4 header + 19 denied + 3 SYS_KILL + 2 terminal = 28
 	hostFilter, err := BuildSeccompFilter(SeccompFilterOptions{BlockNetwork: false})
 	if err != nil {
 		t.Fatalf("BuildSeccompFilter(BlockNetwork=false) error: %v", err)
 	}
-	if len(hostFilter) != 24 {
-		t.Errorf("len(hostFilter) = %d, want 24", len(hostFilter))
+	if len(hostFilter) != 28 {
+		t.Errorf("len(hostFilter) = %d, want 28", len(hostFilter))
 	}
 
 	// 2. NoExec + BlockNetwork Filter (BlockNetwork=true, NoExec=true)
-	// 4 header + 17 denied + 3 SYS_KILL + 6 SYS_SOCKET + 2 terminal = 32
+	// 4 header + 21 denied + 3 SYS_KILL + 6 SYS_SOCKET + 2 terminal = 36
 	noExecFilter, err := BuildSeccompFilter(SeccompFilterOptions{BlockNetwork: true, NoExec: true})
 	if err != nil {
 		t.Fatalf("BuildSeccompFilter(NoExec=true) error: %v", err)
 	}
-	if len(noExecFilter) != 32 {
-		t.Errorf("len(noExecFilter) = %d, want 32", len(noExecFilter))
+	if len(noExecFilter) != 36 {
+		t.Errorf("len(noExecFilter) = %d, want 36", len(noExecFilter))
 	}
 
 	// 3. AuditLog mode verifies terminal deny instruction uses SECCOMP_RET_LOG
@@ -225,12 +225,18 @@ func runSeccompChildTest(t *testing.T) {
 		t.Errorf("expected EPERM for ProcessVMReadv, got %v", err)
 	}
 
-	// 6. Test signal scoping: SYS_KILL targeting external pid > 0 must be blocked with EPERM
+	// 6. Test signal scoping: SYS_KILL targeting external pid > 0 and SYS_PIDFD_OPEN must be blocked with EPERM
 	err = unix.Kill(1, 0) // Signal probe to init (PID 1)
 	if err == nil {
 		t.Errorf("expected Kill(1, 0) to fail with EPERM, but succeeded")
 	} else if !errors.Is(err, syscall.EPERM) && !errors.Is(err, os.ErrPermission) {
 		t.Errorf("expected EPERM for Kill(1, 0), got %v", err)
+	}
+	if fd, pidfdErr := unix.PidfdOpen(1, 0); pidfdErr == nil {
+		_ = unix.Close(fd)
+		t.Errorf("expected PidfdOpen(1, 0) to fail with EPERM, but succeeded")
+	} else if !errors.Is(pidfdErr, syscall.EPERM) && !errors.Is(pidfdErr, os.ErrPermission) {
+		t.Errorf("expected EPERM for PidfdOpen(1, 0), got %v", pidfdErr)
 	}
 
 	// 7. Test signal scoping: SYS_KILL targeting pid == 0 (own process group) must be PERMITTED

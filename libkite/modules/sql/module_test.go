@@ -449,3 +449,37 @@ func TestSqliteFileDSN(t *testing.T) {
 		t.Errorf("sqliteFileDSN not idempotent: %q", again)
 	}
 }
+
+func TestSanitizeDSN_ScrubsMySQLAndPostgresPasswords(t *testing.T) {
+	cases := []struct {
+		dsn      string
+		secret   string
+		expected string
+	}{
+		{
+			dsn:      "postgres://alice:s3cr3t@db.internal:5432/app?sslmode=require",
+			secret:   "s3cr3t",
+			expected: "postgres://alice@db.internal:5432/app?sslmode=require",
+		},
+		{
+			dsn:      "alice:mysqlpass@tcp(127.0.0.1:3306)/app?parseTime=true",
+			secret:   "mysqlpass",
+			expected: "alice@tcp(127.0.0.1:3306)/app?parseTime=true",
+		},
+		{
+			dsn:      "host=db.internal user=alice password='p w d' dbname=app",
+			secret:   "p w d",
+			expected: "host=db.internal user=alice password=REDACTED dbname=app",
+		},
+	}
+
+	for _, tc := range cases {
+		got := sanitizeDSN(tc.dsn)
+		if strings.Contains(got, tc.secret) {
+			t.Errorf("sanitizeDSN(%q) leaked password: %q", tc.dsn, got)
+		}
+		if got != tc.expected {
+			t.Errorf("sanitizeDSN(%q) = %q, want %q", tc.dsn, got, tc.expected)
+		}
+	}
+}

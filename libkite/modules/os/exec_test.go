@@ -2,6 +2,7 @@ package osmod
 
 import (
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
@@ -258,5 +259,69 @@ func TestIsolatedEnvSubprocess(t *testing.T) {
 	}
 	if strings.Contains(output, "HOST_SECRET_CANARY=leaked_secret") {
 		t.Errorf("detected host canary leak in child process environment:\n%s", output)
+	}
+}
+
+func TestOSExec_IsolatedEnvResolvesWithoutCmdErrAndDeduplicatesEnv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("skipped on windows")
+	}
+
+	binDir := t.TempDir()
+	toolName := "custom_isolated_tool"
+	toolPath := filepath.Join(binDir, toolName)
+	scriptBody := "#!/bin/sh\necho isolated:$DUP_KEY\n"
+	if err := os.WriteFile(toolPath, []byte(scriptBody), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	checker, err := libkite.NewPermissionChecker(libkite.AllowAllPermissions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread := &starlark.Thread{Name: "test-isolated-path"}
+	libkite.SetPermissions(thread, checker)
+
+	mod := NewWithConfig(&libkite.ModuleConfig{
+		Env: map[string]string{
+			"PATH":    binDir,
+			"DUP_KEY": "from_isolated",
+		},
+	})
+	if _, err := mod.Load(mod.config); err != nil {
+		t.Fatal(err)
+	}
+
+	execFn := mod.Aliases()["exec"].(starlark.Callable)
+	res, err := starlark.Call(thread, execFn, starlark.Tuple{starlark.String(toolName)}, nil)
+	if err != nil {
+		t.Fatalf("expected binary only in isolated PATH to succeed without stale cmd.Err, got: %v", err)
+	}
+	if strings.TrimSpace(res.(starlark.String).GoString()) != "isolated:from_isolated" {
+		t.Errorf("unexpected output: %q", res)
+	}
+
+	// Host command not in isolated PATH must fail closed rather than falling back to host PATH.
+	if _, err := starlark.Call(thread, execFn, starlark.Tuple{starlark.String("uname")}, nil); err == nil || !strings.Contains(err.Error(), "isolated PATH") {
+		t.Errorf("expected isolated PATH miss error for host binary, got: %v", err)
+	}
+
+	// Non-isolated mode must deduplicate overridden env vars rather than appending duplicates.
+	t.Setenv("DUP_KEY", "from_host")
+	merged := buildEnvSlice(os.Environ(), map[string]string{"DUP_KEY": "overridden"})
+	dupCount := 0
+	var gotVal string
+	for _, entry := range merged {
+		if k, v, ok := strings.Cut(entry, "="); ok && k == "DUP_KEY" {
+			dupCount++
+			gotVal = v
+		}
+	}
+	if dupCount != 1 || gotVal != "overridden" {
+		t.Errorf("expected single overridden DUP_KEY entry, got count=%d val=%q", dupCount, gotVal)
+	}
+
+	if got := resolveExecTarget("scripts/run.sh arg1", binDir, nil); !strings.Contains(got, filepath.Join("scripts", "run.sh")) {
+		t.Errorf("resolveExecTarget should treat forward-slash path as relative path, got %q", got)
 	}
 }

@@ -1352,3 +1352,54 @@ func TestProfile_ApplyCLIOverrides_MaxMemory(t *testing.T) {
 		}
 	})
 }
+
+func TestProfileFromBody_StripsInheritedWildcardExecDeny(t *testing.T) {
+	body := ProfileBody{
+		Base: ProfileSandboxPath,
+		Exec: ExecPolicySpec{
+			Allow: []string{"echo"},
+		},
+	}
+	p, err := profileFromBody("child", body, "test")
+	if err != nil {
+		t.Fatalf("profileFromBody failed: %v", err)
+	}
+	if p.NoExec {
+		t.Errorf("expected NoExec=false when exec.allow is set")
+	}
+	if slices.Contains(p.Exec.Deny, "*") {
+		t.Errorf("expected inherited wildcard '*' stripped from Exec.Deny, got %v", p.Exec.Deny)
+	}
+}
+
+func TestResolvePermissions_RespectsTopLevelDisabled(t *testing.T) {
+	cfg := &SandboxConfig{
+		Enabled: false,
+		Profiles: map[string]ProfileBody{
+			DefaultProfileName: {
+				Paths: PathsSpec{Read: []string{"/tmp"}},
+			},
+		},
+	}
+	perms, err := ResolvePermissions("", cfg)
+	if err != nil {
+		t.Fatalf("ResolvePermissions failed: %v", err)
+	}
+	if perms.Default != libkite.DefaultAllow {
+		t.Errorf("expected DefaultAllow when sandbox.enabled=false, got %v", perms.Default)
+	}
+}
+
+func TestParseMemoryMB_SubMBAndInvalid(t *testing.T) {
+	if got, err := parseMemoryMB("512KB"); err != nil || got != 1 {
+		t.Errorf("parseMemoryMB(512KB) = (%d, %v), want (1, nil)", got, err)
+	}
+	if got, err := parseMemoryMB("2048K"); err != nil || got != 2 {
+		t.Errorf("parseMemoryMB(2048K) = (%d, %v), want (2, nil)", got, err)
+	}
+	for _, bad := range []string{"128abc", "-10MB", "1.5GB"} {
+		if _, err := parseMemoryMB(bad); err == nil {
+			t.Errorf("expected parseMemoryMB(%q) to fail", bad)
+		}
+	}
+}

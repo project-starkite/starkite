@@ -83,37 +83,52 @@ func checkWindowsHostBaseline() error {
 	return nil
 }
 
-func getVolumeFilesystemInfo(path string) (fsName string, flags uint32, err error) {
+func getVolumeMountPoint(path string) (string, error) {
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		return "", 0, err
+		return "", err
+	}
+	if resolved, evalErr := filepath.EvalSymlinks(absPath); evalErr == nil && resolved != "" {
+		absPath = resolved
 	}
 	pathPtr, err := windows.UTF16PtrFromString(absPath)
 	if err != nil {
-		return "", 0, err
+		return "", err
 	}
 
 	volRootBuf := make([]uint16, 512)
-	r1, _, err := procGetVolumePathNameW.Call(
+	r1, _, callErr := procGetVolumePathNameW.Call(
 		uintptr(unsafe.Pointer(pathPtr)),
 		uintptr(unsafe.Pointer(&volRootBuf[0])),
 		uintptr(len(volRootBuf)),
 	)
 	if r1 == 0 {
-		return "", 0, fmt.Errorf("GetVolumePathNameW failed for %q: %w", absPath, err)
+		return "", fmt.Errorf("GetVolumePathNameW failed for %q: %w", absPath, callErr)
+	}
+	return windows.UTF16ToString(volRootBuf), nil
+}
+
+func getVolumeFilesystemInfo(path string) (fsName string, flags uint32, err error) {
+	volRoot, err := getVolumeMountPoint(path)
+	if err != nil {
+		return "", 0, err
+	}
+	volRootPtr, err := windows.UTF16PtrFromString(volRoot)
+	if err != nil {
+		return "", 0, err
 	}
 
 	fsNameBuf := make([]uint16, 256)
 	var fsFlags uint32
 	r2, _, err := procGetVolumeInformationW.Call(
-		uintptr(unsafe.Pointer(&volRootBuf[0])),
+		uintptr(unsafe.Pointer(volRootPtr)),
 		0, 0, 0, 0,
 		uintptr(unsafe.Pointer(&fsFlags)),
 		uintptr(unsafe.Pointer(&fsNameBuf[0])),
 		uintptr(len(fsNameBuf)),
 	)
 	if r2 == 0 {
-		return "", 0, fmt.Errorf("GetVolumeInformationW failed for %q: %w", windows.UTF16ToString(volRootBuf), err)
+		return "", 0, fmt.Errorf("GetVolumeInformationW failed for %q: %w", volRoot, err)
 	}
 
 	return windows.UTF16ToString(fsNameBuf), fsFlags, nil
@@ -159,20 +174,25 @@ func validateSpecVolumes(spec *ExecutionSpec) error {
 		if abs, err := filepath.Abs(clean); err == nil {
 			clean = abs
 		}
-		vol := strings.ToLower(filepath.VolumeName(clean))
-		if vol == "" {
-			vol = strings.ToLower(clean)
-		}
-		if checkedVols[vol] {
-			return nil
-		}
 		if _, err := os.Stat(clean); err != nil {
 			return nil // do not block on uncreated paths
+		}
+		volKey := ""
+		if mountPt, mpErr := getVolumeMountPoint(clean); mpErr == nil && mountPt != "" {
+			volKey = strings.ToLower(mountPt)
+		} else {
+			volKey = strings.ToLower(filepath.VolumeName(clean))
+			if volKey == "" {
+				volKey = strings.ToLower(clean)
+			}
+		}
+		if checkedVols[volKey] {
+			return nil
 		}
 		if err := checkPathSupportsACLs(clean); err != nil {
 			return err
 		}
-		checkedVols[vol] = true
+		checkedVols[volKey] = true
 		return nil
 	}
 

@@ -1015,3 +1015,127 @@ func TestSplitEndpointHostPort(t *testing.T) {
 		}
 	}
 }
+
+func TestNetworkAllowRules_LoopbackAuthorityAndSSRF(t *testing.T) {
+	checker, err := NewPermissionChecker(&PermissionConfig{
+		Allow:   NetworkAllowRules("loopback", nil),
+		Default: DefaultDeny,
+	})
+	if err != nil {
+		t.Fatalf("NewPermissionChecker: %v", err)
+	}
+
+	allowed := []string{
+		"http://localhost:8080/api/v1",
+		"http://127.0.0.1:9000/test",
+		"http://[::1]:8080/health",
+		"http://localhost",
+	}
+	for _, target := range allowed {
+		if err := checker.Check("http", "client", "get", target); err != nil {
+			t.Errorf("loopback rule should allow %q: %v", target, err)
+		}
+	}
+
+	blocked := []string{
+		"http://169.254.169.254/latest/meta-data",
+		"http://10.0.0.1:8080",
+		"http://localhost.attacker.com",
+		"http://127.0.0.1.nip.io",
+		"http://localhost@evil.com",
+		"https://localhost:8443/api",
+	}
+	for _, target := range blocked {
+		if err := checker.Check("http", "client", "get", target); err == nil {
+			t.Errorf("loopback rule must block %q", target)
+		}
+	}
+}
+
+func TestSynthesizeNetworkRules_MultiSegmentIPv6AndUserlessSQL(t *testing.T) {
+	rules := SynthesizeNetworkRules([]string{"api.github.com", "[2001:db8::1]:443", "db.internal:5432"})
+	checker, err := NewPermissionChecker(&PermissionConfig{
+		Allow:   rules,
+		Default: DefaultDeny,
+	})
+	if err != nil {
+		t.Fatalf("NewPermissionChecker: %v", err)
+	}
+
+	for _, tc := range []struct {
+		mod, cat, fn, res string
+	}{
+		{"http", "client", "get", "https://api.github.com"},
+		{"http", "client", "get", "https://api.github.com/repos/org/repo/releases"},
+		{"http", "client", "get", "https://[2001:db8::1]/v1"},
+		{"sql", "open", "postgres", "postgres://db.internal:5432/app"},
+		{"mcp", "client", "connect", "https://api.github.com/mcp"},
+	} {
+		if err := checker.Check(tc.mod, tc.cat, tc.fn, tc.res); err != nil {
+			t.Errorf("synthesized rules should allow %s.%s(%q): %v", tc.mod, tc.cat, tc.res, err)
+		}
+	}
+
+	for _, tc := range []struct {
+		mod, cat, fn, res string
+	}{
+		{"http", "client", "get", "https://api.github.com.evil.com/repos"},
+		{"http", "client", "get", "https://[2001:db8::1]:8443/v1"},
+		{"sql", "open", "postgres", "postgres://other.internal:5432/app"},
+	} {
+		if err := checker.Check(tc.mod, tc.cat, tc.fn, tc.res); err == nil {
+			t.Errorf("synthesized rules must block %s.%s(%q)", tc.mod, tc.cat, tc.res)
+		}
+	}
+}
+
+func TestPermissionChecker_RelativePathAndDoublestarBoundary(t *testing.T) {
+	outsideDir := t.TempDir()
+	workDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(workDir, "in.txt"), []byte("ok"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(workDir, "secret.txt"), []byte("secret"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(outsideDir, "outside.txt"), []byte("nope"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Chdir(workDir)
+
+	checker, err := NewPermissionChecker(SandboxPathPermissions())
+	if err != nil {
+		t.Fatalf("NewPermissionChecker: %v", err)
+	}
+	if err := checker.Check("fs", "read", "read_text", "./in.txt"); err != nil {
+		t.Errorf("expected ./in.txt to be allowed: %v", err)
+	}
+	relOutside, err := filepath.Rel(workDir, filepath.Join(outsideDir, "outside.txt"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checker.Check("fs", "read", "read_text", relOutside); err == nil {
+		t.Errorf("expected relative outside path %q to be blocked", relOutside)
+	}
+
+	checkerDeny, err := NewPermissionChecker(&PermissionConfig{
+		Allow:   []string{"fs.read($CWD/**)"},
+		Deny:    []string{"fs.read($CWD/secret.txt)"},
+		Default: DefaultDeny,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := checkerDeny.Check("fs", "read", "read_text", "./secret.txt"); err == nil {
+		t.Errorf("expected ./secret.txt to be blocked by $CWD/secret.txt deny rule")
+	}
+
+	rule, err := ParseRule("fs.read(/work**)")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rule.Matches("fs", "read", "read_text", "/work-secret/file.txt") {
+		t.Errorf("/work** must not match /work-secret/file.txt")
+	}
+}
