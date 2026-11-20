@@ -263,10 +263,6 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		return nil
 	}
 
-	if err := addGrant(exePath, execAccessMask); err != nil {
-		return nil, err
-	}
-
 	cleanCwd := ""
 	if spec.Cwd != "" {
 		cleanCwd = resolveCanonicalWindowsPath(spec.Cwd)
@@ -380,22 +376,32 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		}
 	}
 
-	// Unveil allowed executables.
+	sysRoot := os.Getenv("SystemRoot")
+	if sysRoot == "" {
+		sysRoot = `C:\Windows`
+	}
+	canonSysRoot := resolveCanonicalWindowsPath(sysRoot)
+
+	// Unveil allowed executables outside SystemRoot; Windows system binaries are
+	// TrustedInstaller-owned and already grant ALL APPLICATION PACKAGES execute.
 	if len(spec.AllowedExecPaths) > 0 {
 		resolvedExecs := ResolveExecutablePaths(spec.AllowedExecPaths, spec.Cwd, userHome)
 		for _, exe := range resolvedExecs {
-			if err := addGrant(exe, execAccessMask); err != nil {
+			cleanExe := resolveCanonicalWindowsPath(exe)
+			if equalOrHasPathPrefixFold(cleanExe, canonSysRoot) {
+				continue
+			}
+			if err := addGrant(cleanExe, execAccessMask); err != nil {
+				return nil, err
+			}
+			if err := addDirTraverse(filepath.Dir(cleanExe)); err != nil {
 				return nil, err
 			}
 		}
 	}
 
 	// Unveil target executable if located outside system directories, without granting execute on its parent directory.
-	sysRoot := os.Getenv("SystemRoot")
-	if sysRoot == "" {
-		sysRoot = `C:\Windows`
-	}
-	if exePath != "" && !equalOrHasPathPrefixFold(exePath, resolveCanonicalWindowsPath(sysRoot)) {
+	if exePath != "" && !equalOrHasPathPrefixFold(exePath, canonSysRoot) {
 		if err := addGrant(exePath, execAccessMask); err != nil {
 			return nil, err
 		}

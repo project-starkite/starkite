@@ -6,6 +6,7 @@ import (
 	"net"
 	"net/url"
 	"os"
+	stdpath "path"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -154,15 +155,36 @@ func isWithinCanonCwd(canonRes string) bool {
 	return canonRes == canonCwd || strings.HasPrefix(canonRes, canonCwd+string(filepath.Separator))
 }
 
+func windowsRootRelativeCanon(canonRes string) string {
+	if runtime.GOOS != "windows" {
+		return ""
+	}
+	vol := filepath.VolumeName(canonRes)
+	if vol == "" {
+		return ""
+	}
+	cwd, err := os.Getwd()
+	if err != nil || cwd == "" {
+		return ""
+	}
+	if !strings.EqualFold(vol, filepath.VolumeName(CanonicalizePath(cwd))) {
+		return ""
+	}
+	return canonRes[len(vol):]
+}
+
 func (c *PermissionChecker) matchCheck(module, category, function, resource string) (denied bool, denyRaw string, allowed bool) {
 	res := resource
 	if res != "" && filepath.IsAbs(res) {
 		res = CanonicalizePath(res)
 	}
 	canonRes := canonicalizeCheckResource(module, function, resource)
+	winRootRel := windowsRootRelativeCanon(canonRes)
 
 	for _, rule := range c.deny {
-		if rule.Matches(module, category, function, canonRes) || (canonRes != res && rule.Matches(module, category, function, res)) {
+		if rule.Matches(module, category, function, canonRes) ||
+			(canonRes != res && rule.Matches(module, category, function, res)) ||
+			(winRootRel != "" && strings.HasPrefix(rule.slashPattern, "/") && rule.Matches(module, category, function, winRootRel)) {
 			return true, rule.Raw, false
 		}
 	}
@@ -170,6 +192,9 @@ func (c *PermissionChecker) matchCheck(module, category, function, resource stri
 	allowRelFallback := resource != "" && canonRes != res && !strings.HasPrefix(filepath.ToSlash(filepath.Clean(resource)), "..") && isWithinCanonCwd(canonRes)
 	for _, rule := range c.allow {
 		if rule.Matches(module, category, function, canonRes) {
+			return false, "", true
+		}
+		if winRootRel != "" && strings.HasPrefix(rule.slashPattern, "/") && rule.Matches(module, category, function, winRootRel) {
 			return false, "", true
 		}
 		if allowRelFallback && !rule.isAbsPattern && rule.Resource != "" && rule.Matches(module, category, function, res) {
@@ -445,7 +470,7 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 		if matched, handled := matchURLPattern(pattern, res); handled {
 			return matched
 		}
-		matched, err := filepath.Match(pattern, res)
+		matched, err := stdpath.Match(pattern, res)
 		if err != nil {
 			if before, ok := strings.CutSuffix(pattern, "**"); ok && (strings.HasSuffix(before, "/") || strings.HasSuffix(before, ":")) {
 				return strings.HasPrefix(res, before)
@@ -512,7 +537,7 @@ func matchURLPattern(pattern, res string) (matched bool, handled bool) {
 				if u.User != nil {
 					actualUser = u.User.Username()
 				}
-				if ok, err := filepath.Match(patUser, actualUser); err != nil || !ok {
+				if ok, err := stdpath.Match(patUser, actualUser); err != nil || !ok {
 					return false, true
 				}
 			}
@@ -556,7 +581,7 @@ func matchURLPattern(pattern, res string) (matched bool, handled bool) {
 			return false, true
 		}
 	} else if strings.ContainsAny(cleanPatHost, "*?[") {
-		if ok, err := filepath.Match(cleanPatHost, host); err != nil || !ok {
+		if ok, err := stdpath.Match(cleanPatHost, host); err != nil || !ok {
 			return false, true
 		}
 	} else if host != cleanPatHost {
@@ -570,7 +595,7 @@ func matchURLPattern(pattern, res string) (matched bool, handled bool) {
 	if resPath == "" {
 		resPath = "/"
 	}
-	if ok, err := filepath.Match(patPath, resPath); err == nil && ok {
+	if ok, err := stdpath.Match(patPath, resPath); err == nil && ok {
 		return true, true
 	}
 	if strings.Contains(patPath, "**") && matchDoublestar(patPath, resPath) {
@@ -721,7 +746,7 @@ func matchSegments(patSegs, pathSegs []string) bool {
 			return false
 		}
 		segPat := strings.ReplaceAll(patSegs[0], "**", "*")
-		matched, err := filepath.Match(segPat, pathSegs[0])
+		matched, err := stdpath.Match(segPat, pathSegs[0])
 		if err != nil || !matched {
 			return false
 		}
