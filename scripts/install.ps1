@@ -31,18 +31,34 @@ function Install-Starkite {
 
     $BinaryName = "kite-windows-$Arch.exe"
 
-    # 2. Fetch Latest Version Tag from GitHub API
+    # 2. Fetch Latest Version Tag via GitHub redirect (avoids unauthenticated API rate limits),
+    # falling back to the GitHub API when needed.
     $LatestTag = if ($env:STARKITE_VERSION) { $env:STARKITE_VERSION } elseif ($env:VERSION) { $env:VERSION } else { "" }
     if ([string]::IsNullOrWhiteSpace($LatestTag)) {
         Write-Host "Checking latest release version..."
         try {
-            $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Owner/$Repo/releases/latest" -Headers @{ "User-Agent" = "starkite-installer" }
-            $LatestTag = $Release.tag_name
+            $HeadResp = Invoke-WebRequest -Uri "https://github.com/$Owner/$Repo/releases/latest" -Method Head -UseBasicParsing -Headers @{ "User-Agent" = "starkite-installer" }
+            $FinalUri = if ($HeadResp.BaseResponse.RequestMessage -and $HeadResp.BaseResponse.RequestMessage.RequestUri) {
+                $HeadResp.BaseResponse.RequestMessage.RequestUri.AbsoluteUri
+            } elseif ($HeadResp.BaseResponse.ResponseUri) {
+                $HeadResp.BaseResponse.ResponseUri.AbsoluteUri
+            } else { "" }
+            if ($FinalUri -match '/releases/tag/([^/?#]+)$') {
+                $LatestTag = $Matches[1]
+            }
         } catch {
-            if ($DryRun) {
-                $LatestTag = "dry-run"
-            } else {
-                throw "Could not retrieve latest release tag from GitHub API: $_"
+            $LatestTag = ""
+        }
+        if ([string]::IsNullOrWhiteSpace($LatestTag)) {
+            try {
+                $Release = Invoke-RestMethod -Uri "https://api.github.com/repos/$Owner/$Repo/releases/latest" -Headers @{ "User-Agent" = "starkite-installer" }
+                $LatestTag = $Release.tag_name
+            } catch {
+                if ($DryRun) {
+                    $LatestTag = "dry-run"
+                } else {
+                    throw "Could not retrieve latest release tag from GitHub: $_"
+                }
             }
         }
     }

@@ -59,12 +59,21 @@ install_starkite() {
 
     BINARY_NAME="kite-$TARGET_OS-$TARGET_ARCH"
 
-    # Fetch latest version tag from GitHub API
+    # Fetch latest version tag via GitHub redirect (avoids unauthenticated API rate limits),
+    # falling back to the GitHub API if redirect resolution is unavailable.
     LATEST_TAG="${STARKITE_VERSION:-${VERSION:-}}"
     BASE_URL="${STARKITE_DOWNLOAD_BASE_URL:-}"
     if [ -z "$LATEST_TAG" ]; then
         echo "Checking latest release version..."
-        LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/$OWNER/$REPO/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || true)
+        EFFECTIVE_URL=$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/$OWNER/$REPO/releases/latest" 2>/dev/null || true)
+        case "$EFFECTIVE_URL" in
+            */releases/tag/*)
+                LATEST_TAG="${EFFECTIVE_URL##*/releases/tag/}"
+                ;;
+        esac
+        if [ -z "$LATEST_TAG" ]; then
+            LATEST_TAG=$(curl -fsSL "https://api.github.com/repos/$OWNER/$REPO/releases/latest" 2>/dev/null | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/' || true)
+        fi
     fi
 
     if [ -z "$LATEST_TAG" ]; then
