@@ -263,6 +263,12 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		return nil
 	}
 
+	sysRoot := os.Getenv("SystemRoot")
+	if sysRoot == "" {
+		sysRoot = `C:\Windows`
+	}
+	canonSysRoot := resolveCanonicalWindowsPath(sysRoot)
+
 	cleanCwd := ""
 	if spec.Cwd != "" {
 		cleanCwd = resolveCanonicalWindowsPath(spec.Cwd)
@@ -320,7 +326,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 			if err := addMountRWDacl(cleanMount); err != nil {
 				return nil, err
 			}
-		} else {
+		} else if !equalOrHasPathPrefixFold(cleanMount, canonSysRoot) {
 			if err := addGrant(cleanMount, readOnlyAccessMask); err != nil {
 				return nil, err
 			}
@@ -332,7 +338,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	if scriptFile != "" && !filepath.IsAbs(scriptFile) && spec.Cwd != "" {
 		scriptFile = filepath.Join(spec.Cwd, scriptFile)
 	}
-	if scriptFile != "" {
+	if scriptFile != "" && !equalOrHasPathPrefixFold(resolveCanonicalWindowsPath(scriptFile), canonSysRoot) {
 		if err := addGrant(scriptFile, readOnlyAccessMask); err != nil {
 			return nil, err
 		}
@@ -375,12 +381,6 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 			_ = addGrant(userCfg, readOnlyAccessMask)
 		}
 	}
-
-	sysRoot := os.Getenv("SystemRoot")
-	if sysRoot == "" {
-		sysRoot = `C:\Windows`
-	}
-	canonSysRoot := resolveCanonicalWindowsPath(sysRoot)
 
 	// Unveil allowed executables outside SystemRoot; Windows system binaries are
 	// TrustedInstaller-owned and already grant ALL APPLICATION PACKAGES execute.
