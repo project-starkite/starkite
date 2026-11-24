@@ -85,6 +85,44 @@ yaml.source(resources).write_file("manifest-prod.yaml")
 
 When a list of dictionaries is passed to `yaml.source()`, the writer automatically serializes them as a multi-document stream separated by `---`.
 
+## Deep-merging YAML and dictionaries
+
+Configuration workflows often combine shared defaults with environment-specific overrides, such as merging base settings with production overrides or updating a named item inside a list. Calling `yaml.merge(base, *patches, list_mode="replace", list_key="")` produces a fresh dictionary by recursively merging one or more patch mappings onto a base without mutating any input (including frozen dictionaries loaded via `load()`).
+
+Inputs can mix Starlark dictionaries, YAML strings, `yaml.file` handles, and `DictConvertible` objects. Following RFC 7396 JSON Merge Patch rules, nested dictionaries merge recursively, scalar values overwrite earlier values, and setting a key to `None` removes it from the result.
+
+When merging lists, `list_mode` controls how patch lists combine with base lists:
+
+* `"replace"` *(default)*: Replaces the base list with the patch list.
+* `"append"`: Appends elements from the patch list onto the base list.
+* `"by_key"`: Matches list items by `list_key` (such as `"name"`) so matching dictionary entries merge recursively while new entries are appended.
+
+```python
+base = {
+    "service": "api",
+    "debug": True,
+    "db": {"host": "localhost", "port": 5432},
+    "env": [{"name": "LOG_LEVEL", "value": "info"}],
+}
+
+override = yaml.decode("""
+debug: null
+db:
+  host: db.example.internal
+env:
+  - name: LOG_LEVEL
+    value: warn
+  - name: ENV
+    value: production
+""")
+
+# Recursively merge nested maps and merge named env entries in place
+prod = yaml.merge(base, override, list_mode = "by_key", list_key = "name")
+# debug is removed, db.port (5432) is preserved, LOG_LEVEL becomes "warn", and ENV is added
+```
+
+To capture errors (such as missing files, malformed YAML, or missing `list_key`) as a `Result` object instead of raising an execution error, use `yaml.try_merge()`.
+
 ## Failure handling
 
 By default, syntax errors or missing files will raise a Starlark-level execution error and halt the script. To inspect and handle errors programmatically, use the `try_` variants which return a `Result` object containing `.ok`, `.value`, and `.error` attributes:

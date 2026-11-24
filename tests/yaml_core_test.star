@@ -178,3 +178,65 @@ def test_encode_all():
     assert("---" in result, "should have document separator")
     assert("kind: ConfigMap" in result, "should have first doc kind")
     assert("kind: Deployment" in result, "should have second doc kind")
+
+# ============================================================================
+# yaml.merge / yaml.try_merge tests
+# ============================================================================
+
+def test_merge_recursive_and_none_delete():
+    """Test recursive dict merge, None key deletion, and base non-mutation."""
+    base = {
+        "service": "api",
+        "debug": True,
+        "db": {"host": "localhost", "port": 5432},
+    }
+    override = {
+        "debug": None,
+        "db": {"host": "db.example.internal"},
+    }
+    merged = yaml.merge(base, override)
+    assert("debug" in base, "base dict should not be mutated")
+    assert("debug" not in merged, "None override should delete debug key")
+    assert(merged["db"]["host"] == "db.example.internal", "override nested db.host")
+    assert(merged["db"]["port"] == 5432, "preserve untouched db.port")
+
+def test_merge_list_modes():
+    """Test replace, append, and by_key list merge modes."""
+    base = {
+        "tags": ["a", "b"],
+        "env": [{"name": "LOG", "value": "info"}],
+    }
+    replaced = yaml.merge(base, {"tags": ["c"]})
+    assert(replaced["tags"] == ["c"], "default replace mode should replace list")
+
+    appended = yaml.merge(base, {"tags": ["c"]}, list_mode = "append")
+    assert(appended["tags"] == ["a", "b", "c"], "append mode should concatenate lists")
+
+    keyed = yaml.merge(
+        base,
+        {"env": [{"name": "LOG", "value": "warn"}, {"name": "ENV", "value": "prod"}]},
+        list_mode = "by_key",
+        list_key = "name",
+    )
+    assert(len(keyed["env"]) == 2, "by_key mode should merge matching item and append new item")
+    assert(keyed["env"][0]["value"] == "warn", "matched item should update value")
+    assert(keyed["env"][1]["name"] == "ENV", "new item should be appended")
+
+def test_merge_yaml_strings():
+    """Test yaml.merge accepts YAML string inputs alongside dicts."""
+    base_yaml = "service: api\nreplicas: 1\nlabels:\n  app: hello\n"
+    merged = yaml.merge(base_yaml, "replicas: 3\nlabels:\n  env: prod\n", {"labels": {"tier": "web"}})
+    assert(merged["replicas"] == 3, "YAML string patch should override replicas")
+    assert(len(merged["labels"]) == 3, "nested labels from YAML and dict should merge")
+
+def test_try_merge_success_and_error():
+    """Test yaml.try_merge Result handling for valid and invalid calls."""
+    ok_res = yaml.try_merge({"a": 1}, {"b": 2})
+    assert(ok_res.ok, "try_merge should succeed on valid dicts")
+    assert(ok_res.value["a"] == 1 and ok_res.value["b"] == 2, "merged dict should have both keys")
+
+    missing_key = yaml.try_merge({"a": 1}, {"b": 2}, list_mode = "by_key")
+    assert(not missing_key.ok, "try_merge should fail when list_mode=by_key omits list_key")
+
+    bad_mode = yaml.try_merge({"a": 1}, {"b": 2}, list_mode = "invalid")
+    assert(not bad_mode.ok, "try_merge should fail on unsupported list_mode")

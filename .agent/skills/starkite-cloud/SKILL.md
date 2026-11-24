@@ -200,6 +200,7 @@ k8s provides 3-tier Kubernetes operations: CRUD (get, list, apply, delete, patch
 | `logs_follow` | `k8s.logs_follow(name, handler, namespace="", container="", tail=0, timeout="")` | `None` | Stream logs, calling `handler(line)` per line. Blocks until the pod ends or `timeout` elapses | `k8s.try_logs_follow` |
 | `namespace_name` | `k8s.namespace_name()` | `string` | Default namespace for the current context | `k8s.try_namespace_name` |
 | `obj` | `k8s.obj()` | `None` | - | - |
+| `overlay` | `k8s.overlay(resources, namespace="", name_prefix="", name_suffix="", labels={}, annotations={}, images={}, patches=[], extra=[])` | `list[dict]` | Apply offline Kubernetes-aware manifest transforms (namespace, name prefix/suffix with cross-reference rewriting, labels/annotations, image rewrites, function/dict patches, and extra resources) | `k8s.try_overlay` |
 | `patch` | `k8s.patch(kind, name, patch, namespace="", type="merge", timeout="")` | `AttrDict` | Patch a resource. `type`: `"merge"`, `"strategic"`, or `"json"` | `k8s.try_patch` |
 | `port_forward` | `k8s.port_forward(name, port, local_port=0, namespace="")` | `PortForwardHandle` | Forward a local port to a pod port. Blocks until interrupted. `local_port=0` picks a free port | `k8s.try_port_forward` |
 | `pvcs` | `k8s.pvcs(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `PersistentVolumeClaim` objects | `k8s.try_pvcs` |

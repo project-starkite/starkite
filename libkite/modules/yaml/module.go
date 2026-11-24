@@ -41,6 +41,7 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 			"encode_all": starlark.NewBuiltin("yaml.encode_all", m.encodeAll),
 			"decode":     starlark.NewBuiltin("yaml.decode", m.decode),
 			"decode_all": starlark.NewBuiltin("yaml.decode_all", m.decodeAll),
+			"merge":      starlark.NewBuiltin("yaml.merge", m.merge),
 		})
 	})
 	return starlark.StringDict{string(ModuleName): m.module}, nil

@@ -455,6 +455,7 @@ k8s provides 3-tier Kubernetes operations: CRUD (get, list, apply, delete, patch
 | `logs_follow` | `k8s.logs_follow(name, handler, namespace="", container="", tail=0, timeout="")` | `None` | Stream logs, calling `handler(line)` per line. Blocks until the pod ends or `timeout` elapses | `k8s.try_logs_follow` |
 | `namespace_name` | `k8s.namespace_name()` | `string` | Default namespace for the current context | `k8s.try_namespace_name` |
 | `obj` | `k8s.obj()` | `None` | - | - |
+| `overlay` | `k8s.overlay(resources, namespace="", name_prefix="", name_suffix="", labels={}, annotations={}, images={}, patches=[], extra=[])` | `list[dict]` | Apply offline Kubernetes-aware manifest transforms (namespace, name prefix/suffix with cross-reference rewriting, labels/annotations, image rewrites, function/dict patches, and extra resources) | `k8s.try_overlay` |
 | `patch` | `k8s.patch(kind, name, patch, namespace="", type="merge", timeout="")` | `AttrDict` | Patch a resource. `type`: `"merge"`, `"strategic"`, or `"json"` | `k8s.try_patch` |
 | `port_forward` | `k8s.port_forward(name, port, local_port=0, namespace="")` | `PortForwardHandle` | Forward a local port to a pod port. Blocks until interrupted. `local_port=0` picks a free port | `k8s.try_port_forward` |
 | `pvcs` | `k8s.pvcs(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `PersistentVolumeClaim` objects | `k8s.try_pvcs` |
@@ -715,6 +716,7 @@ yaml provides YAML file reading/writing: file, from
 | `encode` | `yaml.encode(value)` | `string` | Encode a value to a YAML string | `yaml.try_encode` |
 | `encode_all` | `yaml.encode_all(list)` | `string` | Encode a list of values to a multi-document YAML string | `yaml.try_encode_all` |
 | `file` | `yaml.file(path)` | `yaml.file` | Create a file object for reading YAML | `yaml.try_file` |
+| `merge` | `yaml.merge(base, *patches, list_mode="replace", list_key="")` | `dict` | Recursively deep-merge mappings (dict, YAML string, or `yaml.file`) using RFC 7396 semantics (`None` deletes keys). `list_mode`: `"replace"`, `"append"`, or `"by_key"` (requires `list_key`) | `yaml.try_merge` |
 | `source` | `yaml.source(data)` | `yaml.writer` | Create a writer object from data | `yaml.try_source` |
 
 #### Exported Type `yaml.file` Methods

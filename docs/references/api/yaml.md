@@ -14,6 +14,7 @@ The `yaml` module provides YAML encoding and decoding, with support for multi-do
 | `yaml.encode_all(list)` | `string` | Encode a list of values to a multi-document YAML string |
 | `yaml.decode(string)` | `any` | Decode a YAML string to a value |
 | `yaml.decode_all(string)` | `list` | Decode a multi-document YAML string to a list of values |
+| `yaml.merge(base, *patches, list_mode="replace", list_key="")` | `dict` | Recursively deep-merge mappings (dict, YAML string, or `yaml.file`) using RFC 7396 semantics (`None` deletes keys). `list_mode`: `"replace"`, `"append"`, or `"by_key"` (requires `list_key`) |
 
 ## Factory Functions
 
@@ -94,6 +95,22 @@ print(text)
 docs = yaml.decode_all(text)
 for doc in docs:
     print(doc["kind"])
+```
+
+### Deep-Merging Mappings
+
+```python
+base = {"service": "api", "debug": True, "db": {"host": "localhost", "port": 5432}}
+prod = yaml.merge(base, {"debug": None, "db": {"host": "db.internal"}})
+# {"service": "api", "db": {"host": "db.internal", "port": 5432}}
+
+# Merge lists of dicts by a key field
+merged = yaml.merge(
+    {"env": [{"name": "LOG", "value": "info"}]},
+    {"env": [{"name": "LOG", "value": "warn"}, {"name": "MODE", "value": "prod"}]},
+    list_mode = "by_key",
+    list_key = "name",
+)
 ```
 
 ### Reading YAML Files

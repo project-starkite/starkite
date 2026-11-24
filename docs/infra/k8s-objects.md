@@ -60,6 +60,40 @@ k8s.apply([dep, svc], namespace="production")
 
 Constructors return a `KubeResource` value that can be passed directly to `k8s.apply()`, encoded to YAML via `k8s.yaml()`, or converted to a standard dictionary with `.to_dict()`.
 
+### Cloning and overriding existing objects
+
+Modules imported via `load()` export frozen `KubeResource` values that cannot be mutated in place. Every `k8s.obj.<kind>()` constructor accepts an optional positional base (`KubeResource` of the same kind, `dict`, or YAML string) to produce an independent clone with selective keyword overrides.
+
+Map-valued fields (`labels`, `annotations`, `data`, and `string_data`) merge onto the base resource rather than discarding untouched keys, and setting a key to `None` removes it. Scalar and spec fields (such as `replicas`, `type`, or `namespace`) replace the base value directly.
+
+```python
+base_cm = k8s.obj.config_map(
+    name = "app-config",
+    labels = {"app": "web"},
+    data = {"ALT_GREETING": "Good Morning!", "LOG_LEVEL": "info"},
+)
+
+base_dep = k8s.obj.deployment(
+    name = "web",
+    replicas = 1,
+    labels = {"app": "web"},
+    containers = [{"name": "web", "image": "nginx:1.27"}],
+)
+
+# Clone frozen base resources without mutating originals
+staging_cm = k8s.obj.config_map(
+    base_cm,
+    labels = {"environment": "staging"},
+    data = {"ALT_GREETING": "Have a pineapple!"},  # preserves LOG_LEVEL: "info"
+)
+
+prod_dep = k8s.obj.deployment(
+    base_dep,
+    replicas = 3,
+    labels = {"environment": "production"},
+)
+```
+
 ### Example: Dynamic Resource Allocation (DRA)
 
 Dynamic Resource Allocation (`resource.k8s.io/v1`) allocates accelerators, GPUs, and specialized hardware devices via scheduler-evaluated claims:

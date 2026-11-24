@@ -6,6 +6,7 @@ import (
 	"strings"
 	"unicode"
 
+	yamllib "github.com/project-starkite/starkite/libkite/modules/yaml"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 )
@@ -924,17 +925,57 @@ func autoTemplate(schema *ResourceSchema, data map[string]any) error {
 	return nil
 }
 
+var mergeableObjMapFields = map[string]bool{
+	"labels":      true,
+	"annotations": true,
+	"data":        true,
+	"string_data": true,
+}
+
+func deepCopyKubeValue(v any) any {
+	switch val := v.(type) {
+	case *KubeResource:
+		copied := make(map[string]any, len(val.data))
+		for k, item := range val.data {
+			copied[k] = deepCopyKubeValue(item)
+		}
+		return &KubeResource{schema: val.schema, data: copied}
+	case map[string]any:
+		copied := make(map[string]any, len(val))
+		for k, item := range val {
+			copied[k] = deepCopyKubeValue(item)
+		}
+		return copied
+	case []any:
+		copied := make([]any, len(val))
+		for i, item := range val {
+			copied[i] = deepCopyKubeValue(item)
+		}
+		return copied
+	default:
+		return yamllib.DeepCopy(val)
+	}
+}
+
 // newKubeResource constructs a KubeResource from Starlark args/kwargs.
-// Supports dual-mode: positional string (YAML) or dict, plus kwargs for overrides.
+// Supports dual-mode: positional YAML string, dict, or existing KubeResource, plus kwargs for overrides.
 func newKubeResource(schema *ResourceSchema, args starlark.Tuple, kwargs []starlark.Tuple) (*KubeResource, error) {
 	data := make(map[string]any)
+	hasBase := len(args) > 0
 
-	// Handle positional argument: YAML string or dict
-	if len(args) > 0 {
+	// Handle positional argument: YAML string, dict, or existing KubeResource
+	if hasBase {
 		if len(args) > 1 {
 			return nil, fmt.Errorf("k8s.obj.%s: expected at most 1 positional argument, got %d", strings.ToLower(schema.Kind), len(args))
 		}
 		switch v := args[0].(type) {
+		case *KubeResource:
+			if v.schema.Kind != schema.Kind {
+				return nil, fmt.Errorf("k8s.obj.%s: cannot clone %s into %s", strings.ToLower(schema.Kind), v.schema.Kind, schema.Kind)
+			}
+			for k, item := range v.data {
+				data[k] = deepCopyKubeValue(item)
+			}
 		case starlark.String:
 			parsed, err := parseYAML(string(v))
 			if err != nil {
@@ -952,11 +993,11 @@ func newKubeResource(schema *ResourceSchema, args starlark.Tuple, kwargs []starl
 			}
 			extractFieldsFromMap(schema, m, data)
 		default:
-			return nil, fmt.Errorf("k8s.obj.%s: positional arg must be YAML string or dict, got %s", strings.ToLower(schema.Kind), v.Type())
+			return nil, fmt.Errorf("k8s.obj.%s: positional arg must be YAML string, dict, or k8s object, got %s", strings.ToLower(schema.Kind), v.Type())
 		}
 	}
 
-	// Apply kwargs (override positional data)
+	// Apply kwargs (override positional data; merge map fields when cloning a base)
 	for _, kv := range kwargs {
 		key := string(kv[0].(starlark.String))
 		val := kv[1]
@@ -989,6 +1030,14 @@ func newKubeResource(schema *ResourceSchema, args starlark.Tuple, kwargs []starl
 						"kind":      kr.schema.Kind,
 						"name":      kr.data["name"],
 					},
+				}
+			}
+		}
+		if hasBase && mergeableObjMapFields[key] {
+			if existingMap, ok := data[key].(map[string]any); ok {
+				if overrideMap, ok := goVal.(map[string]any); ok {
+					data[key] = yamllib.MergeMaps(existingMap, overrideMap, "replace", "")
+					continue
 				}
 			}
 		}
