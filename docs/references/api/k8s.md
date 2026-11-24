@@ -27,7 +27,7 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | [Context helpers](#context-helpers) | `context`, `namespace_name`, `version`, `api_resources` |
 | [Controllers](#controllers) | `control` |
 | [Webhooks](#admission-webhooks) | `webhook` |
-| [Object constructors & utils](#object-constructors) | `k8s.obj.*`, `k8s.yaml`, `k8s.overlay`, `k8s.config` |
+| [Object constructors & utils](#object-constructors) | `k8s.obj.*`, `k8s.yaml`, `k8s.config` |
 
 ## CRUD
 
@@ -892,7 +892,6 @@ if not res.valid:
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `k8s.yaml(manifest)` | `string` | Render a manifest dict or KubeResource as YAML |
-| `k8s.overlay(resources, namespace="", name_prefix="", name_suffix="", labels={}, annotations={}, images={}, patches=[], extra=[])` | `list[dict]` | Apply offline Kubernetes-aware manifest transforms (namespace, name prefix/suffix with cross-reference rewriting, labels/annotations, image rewrites, function/dict patches, and extra resources) |
 | `k8s.config(kubeconfig="", context="", namespace="")` | `Client` | Return a configured Kubernetes client bound to the given kubeconfig path, context, and namespace |
 
 ## Examples
@@ -1009,9 +1008,9 @@ k8s.label("pod", "web-abc123", {"version": "v2", "canary": "true"}, namespace="d
 k8s.annotate("deployment", "web", {"deploy-note": "hotfix"}, namespace="default")
 ```
 
-### Offline manifest overlays
+### Cloning base objects
 
-Clone base objects and apply namespace, prefix, label, image, and patch transforms offline:
+Clone base `KubeResource` values with selective overrides and render the resulting manifests offline:
 
 ```python
 base_cm = k8s.obj.config_map(name = "app-cfg", data = {"MODE": "dev", "LOG": "info"})
@@ -1027,16 +1026,8 @@ base_dep = k8s.obj.deployment(
 )
 
 prod_cm = k8s.obj.config_map(base_cm, data = {"MODE": "prod"})
-manifests = k8s.overlay(
-    [prod_cm, base_dep],
-    namespace = "web-prod",
-    name_prefix = "prod-",
-    labels = {"environment": "production"},
-    images = {"nginx": "registry.example.internal/nginx:1.28"},
-    patches = [{"kind": "Deployment", "name": "web", "patch": {"spec": {"replicas": 3}}}],
-    extra = [k8s.obj.namespace(name = "web-prod")],
-)
-print(k8s.yaml(manifests))
+prod_dep = k8s.obj.deployment(base_dep, replicas = 3, labels = {"environment": "production"})
+print(k8s.yaml([prod_cm, prod_dep]))
 ```
 
 ### Server-Side Apply Diffing

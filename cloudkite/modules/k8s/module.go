@@ -208,7 +208,6 @@ func (m *Module) Load(config *libkite.ModuleConfig) (starlark.StringDict, error)
 
 			// Utility
 			"yaml":        starlark.NewBuiltin("k8s.yaml", m.yamlHelper),
-			"overlay":     starlark.NewBuiltin("k8s.overlay", runOverlay),
 			"is_deleting": starlark.NewBuiltin("k8s.is_deleting", m.isDeleting),
 
 			// Sub-namespaces
