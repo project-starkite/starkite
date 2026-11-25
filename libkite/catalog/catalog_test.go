@@ -43,6 +43,19 @@ func TestCatalog_Globals(t *testing.T) {
 		}
 	}
 
+	// Test runtime predeclared builtins
+	for _, want := range []string{"struct", "Result", "defer", "on_signal", "fail", "exit"} {
+		sym, ok := globals[want]
+		if !ok {
+			t.Errorf("runtime builtin %q missing from globals", want)
+		} else if sym.Kind != catalog.KindFunction {
+			t.Errorf("runtime builtin %q has kind %v, want KindFunction", want, sym.Kind)
+		}
+	}
+	if sym := globals["struct"]; sym.Signature == "" || sym.Doc == "" {
+		t.Errorf("struct global missing docs: signature=%q doc=%q", sym.Signature, sym.Doc)
+	}
+
 	// Verify sorting
 	all := cat.Globals()
 	for i := 1; i < len(all); i++ {

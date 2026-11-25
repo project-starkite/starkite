@@ -73,6 +73,22 @@ func (w *Writer) isDryRun() bool {
 	return w.config != nil && w.config.DryRun
 }
 
+func (w *Writer) marshalJSON(indent, prefix string) ([]byte, error) {
+	expanded, err := libkite.ExpandStructs(w.data)
+	if err != nil {
+		return nil, err
+	}
+	var goVal any
+	if err := startype.Starlark(expanded).Go(&goVal); err != nil {
+		return nil, err
+	}
+	goVal = convertForJSON(goVal)
+	if indent != "" {
+		return json.MarshalIndent(goVal, prefix, indent)
+	}
+	return json.Marshal(goVal)
+}
+
 // encodeMethod encodes data to a JSON string in memory.
 // Usage: json.source(data).encode(indent="", prefix="")
 func (w *Writer) encodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -93,20 +109,7 @@ func (w *Writer) encodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args star
 		}
 	}
 
-	var goVal any
-	if err := startype.Starlark(w.data).Go(&goVal); err != nil {
-		return nil, fmt.Errorf("json.writer.encode: %w", err)
-	}
-
-	goVal = convertForJSON(goVal)
-
-	var output []byte
-	var err error
-	if indent != "" {
-		output, err = json.MarshalIndent(goVal, prefix, indent)
-	} else {
-		output, err = json.Marshal(goVal)
-	}
+	output, err := w.marshalJSON(indent, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("json.writer.encode: %w", err)
 	}
@@ -152,21 +155,7 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		return starlark.None, nil
 	}
 
-	var goVal any
-	if err := startype.Starlark(w.data).Go(&goVal); err != nil {
-		return nil, fmt.Errorf("json.writer.write_file: %w", err)
-	}
-
-	// Convert map[interface{}]interface{} to map[string]interface{} for JSON
-	goVal = convertForJSON(goVal)
-
-	var output []byte
-	var err error
-	if indent != "" {
-		output, err = json.MarshalIndent(goVal, prefix, indent)
-	} else {
-		output, err = json.Marshal(goVal)
-	}
+	output, err := w.marshalJSON(indent, prefix)
 	if err != nil {
 		return nil, fmt.Errorf("json.writer.write_file: %w", err)
 	}

@@ -74,8 +74,13 @@ func (m *Module) encode(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, fmt.Errorf("json.encode: expected 1 argument, got %d", len(args))
 	}
 
+	expanded, err := libkite.ExpandStructs(args[0])
+	if err != nil {
+		return nil, fmt.Errorf("json.encode: %w", err)
+	}
+
 	var goVal any
-	if err := startype.Starlark(args[0]).Go(&goVal); err != nil {
+	if err := startype.Starlark(expanded).Go(&goVal); err != nil {
 		return nil, fmt.Errorf("json.encode: %w", err)
 	}
 

@@ -128,8 +128,13 @@ func (m *Module) render(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, err
 	}
 
+	expanded, err := libkite.ExpandStructs(args[1])
+	if err != nil {
+		return nil, err
+	}
+
 	var goData any
-	if err := startype.Starlark(args[1]).Go(&goData); err != nil {
+	if err := startype.Starlark(expanded).Go(&goData); err != nil {
 		return nil, err
 	}
 	var buf bytes.Buffer

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 func evalYAMLStarlark(t *testing.T, script string) starlark.StringDict {
@@ -15,6 +16,7 @@ func evalYAMLStarlark(t *testing.T, script string) starlark.StringDict {
 	if err != nil {
 		t.Fatal(err)
 	}
+	globals["struct"] = starlark.NewBuiltin("struct", starlarkstruct.Make)
 	thread := &starlark.Thread{Name: "test-yaml-merge"}
 	out, err := starlark.ExecFile(thread, "test.star", script, globals)
 	if err != nil {
@@ -175,5 +177,41 @@ r4 = yaml.try_merge({"a": 1}, {"b": 2})
 	}
 	if !bool(okVal.(starlark.Bool)) {
 		t.Fatalf("r4: expected ok=True, got False")
+	}
+}
+
+func TestEncodeAndMergeStructs(t *testing.T) {
+	script := `
+base = struct(
+    service = "api",
+    containers = [struct(name = "web", image = "nginx:1.27", ports = [80])],
+)
+patch = struct(
+    containers = [struct(name = "web", image = "nginx:1.28")],
+)
+merged = yaml.merge(base, patch, list_mode = "by_key", list_key = "name")
+encoded = yaml.encode(struct(app = "edge", replicas = 2))
+multi = yaml.encode_all([struct(kind = "A"), struct(kind = "B")])
+`
+	out := evalYAMLStarlark(t, script)
+
+	merged := out["merged"].(*starlark.Dict)
+	cVal, _, _ := merged.Get(starlark.String("containers"))
+	c0 := cVal.(*starlark.List).Index(0).(*starlark.Dict)
+	img, _, _ := c0.Get(starlark.String("image"))
+	if string(img.(starlark.String)) != "nginx:1.28" {
+		t.Fatalf("merged container image = %v, want nginx:1.28", img)
+	}
+	if _, found, _ := c0.Get(starlark.String("ports")); !found {
+		t.Fatal("merged container lost ports when merging structs by key")
+	}
+
+	encoded := string(out["encoded"].(starlark.String))
+	if encoded != "app: edge\nreplicas: 2\n" {
+		t.Fatalf("yaml.encode(struct) = %q", encoded)
+	}
+	multi := string(out["multi"].(starlark.String))
+	if multi != "kind: A\n---\nkind: B\n" {
+		t.Fatalf("yaml.encode_all(structs) = %q", multi)
 	}
 }

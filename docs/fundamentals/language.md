@@ -111,3 +111,34 @@ def main():
     else:
         print("Error:", result.error)
 ```
+
+## Structs
+
+The built-in `struct(**kwargs)` function creates an immutable, hashable record whose fields you read with dot notation (`record.field`). Unlike a `dict`, reading a missing field fails immediately instead of returning `None`, catching attribute typos early and making structured records safe to share across modules.
+
+```python
+endpoint = struct(host = "db.internal", port = 5432, tls = True)
+print(endpoint.host, endpoint.port)
+
+# Unpack a dictionary into struct fields
+region_cfg = struct(**{"region": "us-central1", "replicas": 3})
+
+# Combine two structs with + (right-hand keys win; originals stay immutable)
+override = region_cfg + struct(replicas = 5, zone = "us-central1-a")
+```
+
+Because structs can store closures alongside data fields, modules use `struct()` to return lightweight configured client objects:
+
+```python
+def gcp_client(project, region = "us-central1"):
+    return struct(
+        project = project,
+        region = region,
+        resource_path = lambda name: "projects/%s/regions/%s/%s" % (project, region, name),
+    )
+
+client = gcp_client("my-project")
+print(client.resource_path("routers/edge-nat"))
+```
+
+Plain data structs also serialize directly with `json.encode()`, `yaml.encode()`, `yaml.merge()`, `template.render()`, `http.post()`, and `k8s.yaml()`. Structs that contain callable functions cannot be encoded to JSON or YAML and fail cleanly (`try_*` returns `ok = False`).

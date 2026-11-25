@@ -40,10 +40,10 @@ func TestGlobalsCarryModulesAliasesAndTheUniverse(t *testing.T) {
 			t.Errorf("global alias %q missing", want)
 		}
 	}
-	// The specification's own names must survive the composition.
-	for _, want := range []string{"len", "range", "fail"} {
+	// The specification's and runtime's names must survive composition.
+	for _, want := range []string{"len", "range", "fail", "struct", "Result"} {
 		if _, ok := got[want]; !ok {
-			t.Errorf("Starlark universe name %q was lost", want)
+			t.Errorf("global name %q was lost", want)
 		}
 	}
 }

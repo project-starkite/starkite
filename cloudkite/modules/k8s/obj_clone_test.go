@@ -6,6 +6,7 @@ import (
 
 	"github.com/project-starkite/starkite/libkite"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 func evalK8sStarlark(t *testing.T, script string) starlark.StringDict {
@@ -15,6 +16,7 @@ func evalK8sStarlark(t *testing.T, script string) starlark.StringDict {
 	if err != nil {
 		t.Fatal(err)
 	}
+	globals["struct"] = starlark.NewBuiltin("struct", starlarkstruct.Make)
 	thread := &starlark.Thread{Name: "test-k8s-obj-clone"}
 	out, err := starlark.ExecFile(thread, "test.star", script, globals)
 	if err != nil {
@@ -110,5 +112,24 @@ bad = k8s.obj.deployment(svc)
 	_, err = starlark.ExecFile(thread, "test.star", script, globals)
 	if err == nil || !strings.Contains(err.Error(), "cannot clone Service into Deployment") {
 		t.Fatalf("expected kind mismatch error, got: %v", err)
+	}
+}
+
+func TestK8sYAMLSerializesStructs(t *testing.T) {
+	script := `
+manifest = struct(
+    apiVersion = "v1",
+    kind = "ConfigMap",
+    metadata = struct(name = "the-map", labels = struct(app = "hello")),
+    data = struct(enableRisky = "true"),
+)
+out = k8s.yaml(manifest)
+`
+	out := evalK8sStarlark(t, script)
+	yamlStr := string(out["out"].(starlark.String))
+	for _, want := range []string{`kind: ConfigMap`, `name: the-map`, `app: hello`, `enableRisky: "true"`} {
+		if !strings.Contains(yamlStr, want) {
+			t.Fatalf("k8s.yaml(struct) missing %q:\n%s", want, yamlStr)
+		}
 	}
 }

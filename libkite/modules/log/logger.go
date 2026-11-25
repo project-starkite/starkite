@@ -194,8 +194,11 @@ func dictToSlogAttrs(d *starlark.Dict) ([]any, error) {
 		if !ok {
 			return nil, fmt.Errorf("attrs keys must be strings")
 		}
+		expanded, expErr := libkite.ExpandStructs(item[1])
 		var goVal any
-		if err := startype.Starlark(item[1]).Go(&goVal); err != nil {
+		if expErr != nil {
+			goVal = item[1].String()
+		} else if err := startype.Starlark(expanded).Go(&goVal); err != nil {
 			goVal = item[1].String()
 		}
 		attrs = append(attrs, key, goVal)

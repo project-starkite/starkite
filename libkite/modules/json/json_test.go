@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -429,4 +430,48 @@ func callWriterMethodKwargs(w *Writer, name string, args starlark.Tuple, kwargs 
 
 func kw(name string, val starlark.Value) starlark.Tuple {
 	return starlark.Tuple{starlark.String(name), val}
+}
+
+func TestEncodeStructs(t *testing.T) {
+	m := newTestModule()
+	loaded, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	loaded["struct"] = starlark.NewBuiltin("struct", starlarkstruct.Make)
+
+	script := `
+cfg = struct(
+    name = "edge",
+    port = 18080,
+    tags = [struct(k = "env", v = "prod")],
+    nested = {"meta": struct(ok = True)},
+)
+encoded = json.encode(cfg)
+src_encoded = json.source(cfg).encode()
+bad_res = json.try_encode(struct(fn = lambda x: x))
+`
+	thread := &starlark.Thread{Name: "test-json-struct"}
+	out, err := starlark.ExecFile(thread, "test.star", script, loaded)
+	if err != nil {
+		t.Fatalf("exec failed: %v", err)
+	}
+	encoded := string(out["encoded"].(starlark.String))
+	srcEncoded := string(out["src_encoded"].(starlark.String))
+	if encoded != srcEncoded {
+		t.Fatalf("encode (%s) != source.encode (%s)", encoded, srcEncoded)
+	}
+	for _, want := range []string{`"name":"edge"`, `"port":18080`, `"k":"env"`, `"ok":true`} {
+		if !strings.Contains(encoded, want) {
+			t.Fatalf("encoded JSON %s missing %s", encoded, want)
+		}
+	}
+	badRes := out["bad_res"].(starlark.HasAttrs)
+	okVal, err := badRes.Attr("ok")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if okVal != starlark.False {
+		t.Fatalf("expected json.try_encode on function struct to fail, got ok=%v", okVal)
+	}
 }

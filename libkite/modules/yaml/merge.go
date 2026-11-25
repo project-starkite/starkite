@@ -6,6 +6,7 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	goyaml "gopkg.in/yaml.v3"
 
 	"github.com/project-starkite/starkite/libkite"
@@ -210,6 +211,12 @@ func (m *Module) valueToMap(thread *starlark.Thread, v starlark.Value, idx int) 
 	switch val := v.(type) {
 	case *starlark.Dict:
 		return starlarkDictToMap(val, idx)
+	case *starlarkstruct.Struct:
+		expanded, err := libkite.ExpandStructs(val)
+		if err != nil {
+			return nil, fmt.Errorf("yaml.merge: argument %d: %w", idx, err)
+		}
+		return starlarkDictToMap(expanded.(*starlark.Dict), idx)
 	case startype.DictConvertible:
 		return starlarkDictToMap(val.ToDict(), idx)
 	case starlark.String:
@@ -270,6 +277,12 @@ func starlarkValToGo(v starlark.Value) (any, error) {
 		return out, nil
 	case startype.DictConvertible:
 		return starlarkValToGo(val.ToDict())
+	case *starlarkstruct.Struct:
+		expanded, err := libkite.ExpandStructs(val)
+		if err != nil {
+			return nil, err
+		}
+		return starlarkValToGo(expanded)
 	case *starlark.List:
 		out := make([]any, val.Len())
 		for i := 0; i < val.Len(); i++ {

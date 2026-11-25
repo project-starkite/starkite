@@ -160,8 +160,12 @@ func (t *Template) renderMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	}
 
 	// Convert data to Go value
+	expanded, err := libkite.ExpandStructs(args[0])
+	if err != nil {
+		return nil, fmt.Errorf("template.render: %w", err)
+	}
 	var goData any
-	if err := startype.Starlark(args[0]).Go(&goData); err != nil {
+	if err := startype.Starlark(expanded).Go(&goData); err != nil {
 		return nil, fmt.Errorf("template.render: %w", err)
 	}
 

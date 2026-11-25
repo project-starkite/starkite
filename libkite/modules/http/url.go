@@ -12,6 +12,7 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -149,10 +150,14 @@ func (u *URL) doRequest(thread *starlark.Thread, method string, hasBody bool, ar
 		switch v := body.(type) {
 		case starlark.String:
 			reqBody = bytes.NewBufferString(string(v))
-		case *starlark.Dict:
+		case *starlark.Dict, *starlarkstruct.Struct:
 			isDict = true
+			expanded, expErr := libkite.ExpandStructs(v)
+			if expErr != nil {
+				return nil, expErr
+			}
 			var goVal map[string]any
-			if err := startype.Starlark(v).Go(&goVal); err != nil {
+			if err := startype.Starlark(expanded).Go(&goVal); err != nil {
 				return nil, err
 			}
 			sanitizeMapKeys(goVal)

@@ -49,6 +49,17 @@ def rollback(env): ...
 def _private(): ...     # Private helper (not exported)
 ```
 
+Custom modules can also return `struct(...)` values so callers work with immutable records or configured client objects:
+
+```python
+# client/main.star
+def config(base_url):
+    return struct(
+        base_url = base_url,
+        endpoint = lambda path: base_url + path,
+    )
+```
+
 *   **Entry Point**: Every custom module requires a `main.star` file as its entry point.
 *   **Symbol Export**: All top-level symbols defined in the module are public and exported, unless they begin with an underscore (e.g., `_private()`).
 

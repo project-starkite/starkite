@@ -158,8 +158,12 @@ func (m *Module) yamlHelper(thread *starlark.Thread, fn *starlark.Builtin, args 
 
 // encodeOne converts a single Starlark value to YAML bytes via startype and encodeKYAML.
 func encodeOne(val starlark.Value) ([]byte, error) {
+	expanded, err := libkite.ExpandStructs(val)
+	if err != nil {
+		return nil, err
+	}
 	var goVal any
-	if err := startype.Starlark(val).Go(&goVal); err != nil {
+	if err := startype.Starlark(expanded).Go(&goVal); err != nil {
 		return nil, err
 	}
 	return encodeKYAML(goVal)

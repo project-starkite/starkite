@@ -102,8 +102,12 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 			if i > 0 {
 				buf.WriteString("---\n")
 			}
+			expanded, err := libkite.ExpandStructs(list.Index(i))
+			if err != nil {
+				return nil, fmt.Errorf("yaml.writer.write_file[%d]: %w", i, err)
+			}
 			var goVal any
-			if err := startype.Starlark(list.Index(i)).Go(&goVal); err != nil {
+			if err := startype.Starlark(expanded).Go(&goVal); err != nil {
 				return nil, fmt.Errorf("yaml.writer.write_file[%d]: %w", i, err)
 			}
 			data, err := goyaml.Marshal(goVal)
@@ -115,11 +119,14 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		output = buf.Bytes()
 	} else {
 		// Single doc
-		var goVal any
-		if err := startype.Starlark(w.data).Go(&goVal); err != nil {
+		expanded, err := libkite.ExpandStructs(w.data)
+		if err != nil {
 			return nil, fmt.Errorf("yaml.writer.write_file: %w", err)
 		}
-		var err error
+		var goVal any
+		if err := startype.Starlark(expanded).Go(&goVal); err != nil {
+			return nil, fmt.Errorf("yaml.writer.write_file: %w", err)
+		}
 		output, err = goyaml.Marshal(goVal)
 		if err != nil {
 			return nil, fmt.Errorf("yaml.writer.write_file: %w", err)

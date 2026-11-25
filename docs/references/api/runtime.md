@@ -6,6 +6,17 @@ weight: 24
 
 The `runtime` module provides information about the current platform, architecture, and runtime environment.
 
+## Built-in Functions
+
+Top-level runtime builtins available in every script without a module prefix:
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `struct(**kwargs)` | `struct` | Create an immutable dot-accessible struct from keyword arguments (`s.field` read, `+` merge) |
+| `Result(ok, value=None, error="")` | `Result` | Construct a `Result` value for explicit success or error handling |
+| `defer(fn)` | `None` | Register a cleanup function to run when the script exits |
+| `on_signal(signal, handler)` | `None` | Register a handler for OS signals (for example, `"SIGINT"`, `"SIGTERM"`) |
+
 ## Functions
 
 | Function | Returns | Description |
@@ -65,4 +76,14 @@ if runtime.platform() == "windows":
     bin_name += ".exe"
 
 exec("go build -o " + bin_name)
+```
+
+### Immutable structs
+
+```python
+endpoint = struct(host = "db.internal", port = 5432, tls = True)
+print(endpoint.host, endpoint.port)
+
+merged = endpoint + struct(port = 6432, pool = 10)
+print(json.encode(merged))
 ```

@@ -16,6 +16,7 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
 )
 
@@ -254,12 +255,13 @@ func NewSandboxed(config *Config, opts ...ConfigOption) (*Runtime, error) {
 func (rt *Runtime) buildPredeclared() starlark.StringDict {
 	predecl := rt.registry.Predeclared()
 
-	// Add runtime control functions
+	// Add runtime control functions and builtins
 	predecl["fail"] = starlark.NewBuiltin("fail", rt.builtinFail)
 	predecl["exit"] = starlark.NewBuiltin("exit", rt.builtinExit)
 	predecl["defer"] = starlark.NewBuiltin("defer", rt.builtinDefer)
 	predecl["on_signal"] = starlark.NewBuiltin("on_signal", rt.builtinOnSignal)
 	predecl["Result"] = starlark.NewBuiltin("Result", rt.builtinResult)
+	predecl["struct"] = starlark.NewBuiltin("struct", starlarkstruct.Make)
 
 	return predecl
 }

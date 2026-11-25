@@ -78,8 +78,12 @@ func (m *Module) encode(thread *starlark.Thread, fn *starlark.Builtin, args star
 	if len(args) != 1 {
 		return nil, fmt.Errorf("yaml.encode: expected 1 argument, got %d", len(args))
 	}
+	expanded, err := libkite.ExpandStructs(args[0])
+	if err != nil {
+		return nil, fmt.Errorf("yaml.encode: %w", err)
+	}
 	var goVal any
-	if err := startype.Starlark(args[0]).Go(&goVal); err != nil {
+	if err := startype.Starlark(expanded).Go(&goVal); err != nil {
 		return nil, err
 	}
 	data, err := goyaml.Marshal(goVal)
@@ -104,8 +108,12 @@ func (m *Module) encodeAll(thread *starlark.Thread, fn *starlark.Builtin, args s
 		if i > 0 {
 			buf.WriteString("---\n")
 		}
+		expanded, err := libkite.ExpandStructs(list.Index(i))
+		if err != nil {
+			return nil, fmt.Errorf("yaml.encode_all[%d]: %w", i, err)
+		}
 		var goVal any
-		if err := startype.Starlark(list.Index(i)).Go(&goVal); err != nil {
+		if err := startype.Starlark(expanded).Go(&goVal); err != nil {
 			return nil, fmt.Errorf("yaml.encode_all[%d]: %w", i, err)
 		}
 		data, err := goyaml.Marshal(goVal)

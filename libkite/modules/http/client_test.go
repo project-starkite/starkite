@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -278,5 +279,30 @@ def test_try_fail():
 	}
 	if bool(res.(starlark.Bool)) != false {
 		t.Errorf("expected ok=False for failing network call")
+	}
+
+	// 5. Test http.post with struct body
+	script = fmt.Sprintf(`
+def test_post_struct():
+    payload = struct(cluster = "hub", meta = struct(zone = "us-central1"))
+    resp = http.post("%s/test-struct", body = payload)
+    return resp.status_code
+`, ts.URL)
+	globals, err = starlark.ExecFile(thread, "test_post_struct.star", script, starlark.StringDict{
+		"http":   dict["http"],
+		"struct": starlark.NewBuiltin("struct", starlarkstruct.Make),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err = starlark.Call(thread, globals["test_post_struct"], nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.(starlark.Int).BigInt().Int64() != 200 {
+		t.Errorf("struct post status = %v, want 200", res)
+	}
+	if !strings.Contains(lastBody, `"cluster":"hub"`) || !strings.Contains(lastBody, `"zone":"us-central1"`) {
+		t.Errorf("unexpected struct post body: %s", lastBody)
 	}
 }
