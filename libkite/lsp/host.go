@@ -29,6 +29,10 @@ type Host struct {
 
 	once sync.Once
 	cat  *catalog.Catalog
+
+	mu        sync.RWMutex
+	structs   map[string]*structSchema
+	fileCache map[string]cachedStarFile
 }
 
 // NewHost builds the Starkite host. The registry factory is the edition's own,
@@ -58,6 +62,9 @@ func (h *Host) Globals() []starlsp.Symbol {
 }
 
 func (h *Host) Members(owner string) []starlsp.Symbol {
+	if strings.HasPrefix(owner, structOwnerPrefix) {
+		return h.structMembers(owner)
+	}
 	h.build()
 	syms := h.cat.Members(owner)
 	out := make([]starlsp.Symbol, len(syms))
@@ -81,20 +88,23 @@ func (h *Host) ResolveType(req starlsp.TypeRequest) (string, bool) {
 	}
 
 	callee, isCall := calleeOf(expr)
-	if !isCall {
-		return "", false
-	}
-	if typ, ok := h.cat.FactoryReturns(callee); ok {
-		return typ, true
-	}
-	// A method call on an object that itself returns an object:
-	// fs.path("x").parent.read_text() and similar chains.
-	if owner, member, ok := splitLast(callee); ok {
-		if base, found := req.Resolve(owner); found {
-			if typ, ok := h.cat.FactoryReturns(base + "." + member); ok {
-				return typ, true
+	if isCall {
+		if typ, ok := h.cat.FactoryReturns(callee); ok {
+			return typ, true
+		}
+		// A method call on an object that itself returns an object:
+		// fs.path("x").parent.read_text() and similar chains.
+		if owner, member, ok := splitLast(callee); ok {
+			if base, found := req.Resolve(owner); found {
+				if typ, ok := h.cat.FactoryReturns(base + "." + member); ok {
+					return typ, true
+				}
 			}
 		}
+	}
+
+	if owner, ok := h.resolveStructType(req); ok {
+		return owner, true
 	}
 	return "", false
 }
@@ -102,6 +112,9 @@ func (h *Host) ResolveType(req starlsp.TypeRequest) (string, bool) {
 // Document supplies prose and a signature for a name whose value carries
 // neither, which is every Starlark builtin.
 func (h *Host) Document(owner, name string) (starlsp.Symbol, bool) {
+	if strings.HasPrefix(owner, structOwnerPrefix) {
+		return h.structDocument(owner, name)
+	}
 	h.build()
 	var sym catalog.Symbol
 	var ok bool
