@@ -10,6 +10,7 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"gopkg.in/yaml.v3"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -144,25 +145,26 @@ func (c *K8sClient) diff(thread *starlark.Thread, fn *starlark.Builtin, args sta
 			}
 		}
 
-		report := NewAttrDict(map[string]any{
-			"name":           obj.GetName(),
-			"kind":           gvk.Kind,
-			"namespace":      objNs,
-			"has_drift":      hasDrift,
-			"drifted_fields": driftedFields,
-			"conflicts":      conflicts,
-			"diff":           diffText,
-		})
+		var liveVal starlark.Value = starlark.None
 		if live != nil {
-			_ = report.Set("live", unstructuredToAttrDict(live))
-		} else {
-			_ = report.Set("live", starlark.None)
+			liveVal = unstructuredToAttrDict(live)
 		}
+		var mergedVal starlark.Value = starlark.None
 		if applied != nil {
-			_ = report.Set("merged", unstructuredToAttrDict(applied))
-		} else {
-			_ = report.Set("merged", starlark.None)
+			mergedVal = unstructuredToAttrDict(applied)
 		}
+
+		report := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"name":           starlark.String(obj.GetName()),
+			"kind":           starlark.String(gvk.Kind),
+			"namespace":      starlark.String(objNs),
+			"has_drift":      starlark.Bool(hasDrift),
+			"drifted_fields": anyStringsToList(driftedFields),
+			"conflicts":      anyStringsToList(conflicts),
+			"diff":           starlark.String(diffText),
+			"live":           liveVal,
+			"merged":         mergedVal,
+		})
 
 		results = append(results, report)
 	}
@@ -171,6 +173,14 @@ func (c *K8sClient) diff(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		return results[0], nil
 	}
 	return starlark.NewList(results), nil
+}
+
+func anyStringsToList(items []any) *starlark.List {
+	elems := make([]starlark.Value, len(items))
+	for i, item := range items {
+		elems[i] = starlark.String(fmt.Sprint(item))
+	}
+	return starlark.NewList(elems)
 }
 
 // cleanObjectForDiff strips noisy metadata fields (like managedFields) from comparison.

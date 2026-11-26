@@ -14,6 +14,7 @@ import (
 	iomods "github.com/project-starkite/starkite/libkite/modules/io"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 // Client is the Starlark wrapper for EngineClient.
@@ -715,7 +716,7 @@ func (c *Client) logsFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 	return iomods.NewReaderWithCloser(rc, rc, fmt.Sprintf("%s.logs", name)), nil
 }
 
-// imageListFn implements client.image_list(all=False) -> list[AttrDict]
+// imageListFn implements client.image_list(all=False) -> list[struct]
 func (c *Client) imageListFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var all bool
 	if err := starlark.UnpackArgs(fn.Name(), args, kwargs, "all?", &all); err != nil {
@@ -734,38 +735,29 @@ func (c *Client) imageListFn(thread *starlark.Thread, fn *starlark.Builtin, args
 
 	items := make([]starlark.Value, 0, len(images))
 	for _, img := range images {
-		d := starlark.NewDict(8)
-		d.SetKey(starlark.String("id"), starlark.String(img.ID))
-		d.SetKey(starlark.String("Id"), starlark.String(img.ID))
-		d.SetKey(starlark.String("size"), starlark.MakeInt64(img.Size))
-		d.SetKey(starlark.String("Size"), starlark.MakeInt64(img.Size))
-		d.SetKey(starlark.String("created"), starlark.MakeInt64(img.Created))
-		d.SetKey(starlark.String("Created"), starlark.MakeInt64(img.Created))
-
 		tags := make([]starlark.Value, len(img.RepoTags))
 		for i, t := range img.RepoTags {
 			tags[i] = starlark.String(t)
 		}
-		tagsList := starlark.NewList(tags)
-		d.SetKey(starlark.String("repo_tags"), tagsList)
-		d.SetKey(starlark.String("RepoTags"), tagsList)
 
 		digests := make([]starlark.Value, len(img.RepoDigests))
 		for i, dg := range img.RepoDigests {
 			digests[i] = starlark.String(dg)
 		}
-		digestsList := starlark.NewList(digests)
-		d.SetKey(starlark.String("repo_digests"), digestsList)
-		d.SetKey(starlark.String("RepoDigests"), digestsList)
 
 		labelsDict := starlark.NewDict(len(img.Labels))
 		for k, v := range img.Labels {
 			labelsDict.SetKey(starlark.String(k), starlark.String(v))
 		}
-		d.SetKey(starlark.String("labels"), labelsDict)
-		d.SetKey(starlark.String("Labels"), labelsDict)
 
-		items = append(items, d)
+		items = append(items, starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"id":           starlark.String(img.ID),
+			"size":         starlark.MakeInt64(img.Size),
+			"created":      starlark.MakeInt64(img.Created),
+			"repo_tags":    starlark.NewList(tags),
+			"repo_digests": starlark.NewList(digests),
+			"labels":       labelsDict,
+		}))
 	}
 
 	return starlark.NewList(items), nil
@@ -941,7 +933,7 @@ func (c *Client) imageBuildFn(thread *starlark.Thread, fn *starlark.Builtin, arg
 	return starlark.String(logs), nil
 }
 
-// pruneFn implements client.prune(containers=True, volumes=False, images=False) -> dict
+// pruneFn implements client.prune(containers=True, volumes=False, images=False) -> struct
 func (c *Client) pruneFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	pruneContainers := true
 	pruneVolumes := false
@@ -965,29 +957,27 @@ func (c *Client) pruneFn(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		return nil, err
 	}
 
-	d := starlark.NewDict(4)
-
 	cDeleted := make([]starlark.Value, len(rep.ContainersDeleted))
 	for i, id := range rep.ContainersDeleted {
 		cDeleted[i] = starlark.String(id)
 	}
-	d.SetKey(starlark.String("containers_deleted"), starlark.NewList(cDeleted))
 
 	vDeleted := make([]starlark.Value, len(rep.VolumesDeleted))
 	for i, v := range rep.VolumesDeleted {
 		vDeleted[i] = starlark.String(v)
 	}
-	d.SetKey(starlark.String("volumes_deleted"), starlark.NewList(vDeleted))
 
 	iDeleted := make([]starlark.Value, len(rep.ImagesDeleted))
 	for i, im := range rep.ImagesDeleted {
 		iDeleted[i] = starlark.String(im)
 	}
-	d.SetKey(starlark.String("images_deleted"), starlark.NewList(iDeleted))
 
-	d.SetKey(starlark.String("space_reclaimed"), starlark.MakeInt64(rep.SpaceReclaimed))
-
-	return d, nil
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"containers_deleted": starlark.NewList(cDeleted),
+		"volumes_deleted":    starlark.NewList(vDeleted),
+		"images_deleted":     starlark.NewList(iDeleted),
+		"space_reclaimed":    starlark.MakeInt64(rep.SpaceReclaimed),
+	}), nil
 }
 
 func (c *Client) buildContainerConfig(

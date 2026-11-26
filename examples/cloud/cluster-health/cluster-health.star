@@ -47,8 +47,8 @@ def check_node_resources(k):
 
     top = k.top_nodes()
     for n in top:
-        cap = n.get("capacity", {})
-        alloc = n.get("allocatable", {})
+        cap = n.capacity
+        alloc = n.allocatable
         printf("  %-25s %10s %10s %10s %10s\n",
             n.name,
             cap.get("cpu", "?"),

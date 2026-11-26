@@ -230,7 +230,7 @@ fs provides file system operations: read, write, copy, move, path manipulation
 | `chown` | `p.chown(uid=-1, gid=-1)` | `None` | Change file ownership |
 | `clean` | `p.clean()` | `Path` | Return cleaned path (resolves `.` and `..`) |
 | `copy_to` | `p.copy_to(target)` | `Path` | Copy file to target path |
-| `disk_usage` | `p.disk_usage()` | `dict` | Disk space info with total, used, free |
+| `disk_usage` | `p.disk_usage()` | `struct` | Disk space info (`total`, `used`, `free`) |
 | `exists` | `p.exists()` | `bool` | Check if path exists on disk |
 | `expanduser` | `p.expanduser()` | `Path` | Expand `~` to home directory |
 | `get_reader` | `p.get_reader()` | `io.reader` | Open file for streaming reads |
@@ -260,7 +260,7 @@ fs provides file system operations: read, write, copy, move, path manipulation
 | `remove` | `p.remove()` | `None` | Remove file or directory |
 | `rename` | `p.rename(target)` | `Path` | Rename/move to target |
 | `resolve` | `p.resolve()` | `Path` | Resolve to absolute path |
-| `stat` | `p.stat()` | `dict` | Get file metadata |
+| `stat` | `p.stat()` | `struct` | Get file metadata (`name`, `size`, `mode`, `is_dir`, `mod_time`) |
 | `stem` | `stem` | `string` | Filename without extension (`"report"`) |
 | `string` | `string` | `string` | Full path as string |
 | `suffix` | `suffix` | `string` | File extension (`".md"`) |
@@ -273,7 +273,7 @@ fs provides file system operations: read, write, copy, move, path manipulation
 | `try_chmod` | `p.try_chmod(mode)` | `Result` | Change permissions Returns a Result instead of raising. |
 | `try_chown` | `p.try_chown(uid=-1, gid=-1)` | `Result` | Change file ownership Returns a Result instead of raising. |
 | `try_copy_to` | `p.try_copy_to(target)` | `Result` | Copy file to target path Returns a Result instead of raising. |
-| `try_disk_usage` | `p.try_disk_usage()` | `Result` | Disk space info with total, used, free Returns a Result instead of raising. |
+| `try_disk_usage` | `p.try_disk_usage()` | `Result` | Disk space info (`total`, `used`, `free`) Returns a Result instead of raising. |
 | `try_exists` | `p.try_exists()` | `Result` | Check if path exists on disk Returns a Result instead of raising. |
 | `try_get_reader` | `p.try_get_reader()` | `Result` | Open file for streaming reads Returns a Result instead of raising. |
 | `try_get_writer` | `p.try_get_writer()` | `Result` | Open file for streaming writes (truncates file) Returns a Result instead of raising. |
@@ -293,7 +293,7 @@ fs provides file system operations: read, write, copy, move, path manipulation
 | `try_readlink` | `p.try_readlink()` | `Result` | Read symlink target Returns a Result instead of raising. |
 | `try_remove` | `p.try_remove()` | `Result` | Remove file or directory Returns a Result instead of raising. |
 | `try_rename` | `p.try_rename(target)` | `Result` | Rename/move to target Returns a Result instead of raising. |
-| `try_stat` | `p.try_stat()` | `Result` | Get file metadata Returns a Result instead of raising. |
+| `try_stat` | `p.try_stat()` | `Result` | Get file metadata (`name`, `size`, `mode`, `is_dir`, `mod_time`) Returns a Result instead of raising. |
 | `try_symlink_to` | `p.try_symlink_to(target)` | `Result` | Create symlink pointing to target Returns a Result instead of raising. |
 | `try_touch` | `p.try_touch()` | `Result` | Create file or update mtime Returns a Result instead of raising. |
 | `try_truncate` | `p.try_truncate(size)` | `Result` | Truncate file to given size Returns a Result instead of raising. |
@@ -439,7 +439,7 @@ k8s provides 3-tier Kubernetes operations: CRUD (get, list, apply, delete, patch
 | `delete` | `k8s.delete(kind, name, namespace="", propagation="Background", timeout="")` | `None` | Delete a resource | `k8s.try_delete` |
 | `deploy` | `k8s.deploy(name, image, replicas=1, port=0, namespace="", labels=None, env=None, timeout="")` | `AttrDict` | Create a Deployment (returns `{"deployment": str, "service": str}`) | `k8s.try_deploy` |
 | `describe` | `k8s.describe(kind, name, namespace="", timeout="")` | `AttrDict` | Return detailed description of a resource, with `.resource`, `.conditions`, and `.events` | `k8s.try_describe` |
-| `diff` | `k8s.diff(manifest, namespace="", field_manager="starkite", timeout="")` | `AttrDict` | Server-side apply dry-run diff against live cluster state (`has_drift`, `drifted_fields`, `conflicts`, `diff`, `live`, `applied`) | `k8s.try_diff` |
+| `diff` | `k8s.diff(manifest, namespace="", field_manager="starkite", timeout="")` | `struct` | Server-side apply dry-run diff against live cluster state (`name`, `kind`, `namespace`, `has_drift`, `drifted_fields`, `conflicts`, `diff`, `live`, `merged`) | `k8s.try_diff` |
 | `drain` | `k8s.drain(node, force=False, ignore_daemonsets=False, timeout="")` | `AttrDict` | Drain a node (evict pods). `force` continues past pods not backed by a controller; `ignore_daemonsets` leaves DaemonSet pods in place | `k8s.try_drain` |
 | `event` | `k8s.event(obj, reason, message, type="Normal", namespace="", timeout="")` | `AttrDict` | Emit a Kubernetes event attached to `obj`. `type` can be `"Normal"` or `"Warning"` | `k8s.try_event` |
 | `events` | `k8s.events(target=None, kind="", name="", namespace="", type="", reason="", since="", limit=0, timeout="")` | `list[AttrDict]` | Query diagnostic event streams with dual-API normalization (`events.k8s.io/v1` and `core/v1`). Filter by target object, kind, name, type (`"Warning"`/`"Normal"`), reason substring, or relative duration (`since="30m"`). Returns items sorted newest first with relative `age` | `k8s.try_events` |
@@ -470,11 +470,11 @@ k8s provides 3-tier Kubernetes operations: CRUD (get, list, apply, delete, patch
 | `status` | `k8s.status(obj, status, namespace="", timeout="")` | `AttrDict` | Update the status subresource of a resource. Pass the resource as `obj` and the new status dict as `status` | `k8s.try_status` |
 | `storage_classes` | `k8s.storage_classes(labels="", timeout="")` | `list[AttrDict]` | List cluster-scoped `StorageClass` objects | `k8s.try_storage_classes` |
 | `taint` | `k8s.taint(node, key, value="", effect="", timeout="")` | `AttrDict` | Add a taint to a node. `effect`: `"NoSchedule"`, `"PreferNoSchedule"`, or `"NoExecute"` | `k8s.try_taint` |
-| `top_nodes` | `k8s.top_nodes(timeout="")` | `list[AttrDict]` | CPU/memory capacity and allocatable per node | `k8s.try_top_nodes` |
-| `top_pods` | `k8s.top_pods(namespace="", sort_by="", timeout="")` | `list[AttrDict]` | Resource requests and status per pod | `k8s.try_top_pods` |
+| `top_nodes` | `k8s.top_nodes(timeout="")` | `list[struct]` | CPU/memory capacity and allocatable (`AttrDict`) per node (`name`, `capacity`, `allocatable`) | `k8s.try_top_nodes` |
+| `top_pods` | `k8s.top_pods(namespace="", sort_by="", timeout="")` | `list[struct]` | Resource requests and status per pod (`name`, `namespace`, `status`, `cpu_request`, `memory_request`) | `k8s.try_top_pods` |
 | `uncordon` | `k8s.uncordon(node, timeout="")` | `AttrDict` | Re-enable scheduling on a node | `k8s.try_uncordon` |
 | `untaint` | `k8s.untaint(node, key, timeout="")` | `AttrDict` | Remove a taint from a node by key | `k8s.try_untaint` |
-| `validate` | `k8s.validate(manifest, policy=None, expression="", strict=False)` | `AttrDict` | Evaluate CEL validation policies or expressions against a manifest client-side prior to cluster submission. Returns `{"valid": bool, "violations": list[str], "policy": str}` | `k8s.try_validate` |
+| `validate` | `k8s.validate(manifest, policy=None, expression="", strict=False)` | `struct` | Evaluate CEL validation policies or expressions against a manifest client-side prior to cluster submission (`valid`, `message`, `violations`) | `k8s.try_validate` |
 | `version` | `k8s.version(timeout="")` | `AttrDict` | Kubernetes server version info (`.major`, `.minor`, `.git_version`, `.platform`) | `k8s.try_version` |
 | `wait_for` | `k8s.wait_for(kind, name, condition="", namespace="", timeout="")` | `AttrDict` | Block until the named resource meets the given condition (e.g., `"Available"`, `"Ready"`, `"Complete"`) or the timeout expires. Returns `{"ready": bool, "resource": AttrDict, "message": str}` | `k8s.try_wait_for` |
 | `watch` | `k8s.watch(kind, namespace="", labels="", timeout="", handler=None)` | `list[AttrDict]` or `None` | Watch a resource kind. If `handler` is supplied, call it per event (`handler(event_type, obj)`) and return `None`; otherwise collect events and return a list of `{"type": ..., "object": ...}` AttrDicts. `timeout` caps wall-clock duration | `k8s.try_watch` |
@@ -565,7 +565,7 @@ runtime provides platform and runtime information: platform, arch, cpu_count, un
 | `cpu_count` | `runtime.cpu_count()` | `int` | Number of logical CPUs | `runtime.try_cpu_count` |
 | `go_version` | `runtime.go_version()` | `string` | Go runtime version | `runtime.try_go_version` |
 | `platform` | `runtime.platform()` | `string` | Operating system name (e.g. `"linux"`, `"darwin"`, `"windows"`) | `runtime.try_platform` |
-| `uname` | `runtime.uname()` | `dict` | System information dictionary with keys: `system`, `node`, `release`, `version`, `machine` (Unix only; returns an error on Windows) | `runtime.try_uname` |
+| `uname` | `runtime.uname()` | `struct` | System information struct with fields: `system`, `node`, `release`, `version`, `machine` | `runtime.try_uname` |
 | `version` | `runtime.version()` | `string` | Starkite version string | `runtime.try_version` |
 
 ### Module `sandbox`

@@ -13,6 +13,7 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
 
 	"github.com/project-starkite/starkite/libkite"
@@ -470,13 +471,13 @@ func (p *Path) statMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tu
 	if err != nil {
 		return nil, err
 	}
-	dict := starlark.NewDict(5)
-	dict.SetKey(starlark.String("name"), starlark.String(info.Name()))
-	dict.SetKey(starlark.String("size"), starlark.MakeInt64(info.Size()))
-	dict.SetKey(starlark.String("mode"), starlark.String(info.Mode().String()))
-	dict.SetKey(starlark.String("is_dir"), starlark.Bool(info.IsDir()))
-	dict.SetKey(starlark.String("mod_time"), starlark.String(info.ModTime().Format(time.RFC3339)))
-	return dict, nil
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"name":     starlark.String(info.Name()),
+		"size":     starlark.MakeInt64(info.Size()),
+		"mode":     starlark.String(info.Mode().String()),
+		"is_dir":   starlark.Bool(info.IsDir()),
+		"mod_time": starlark.String(info.ModTime().Format(time.RFC3339)),
+	}), nil
 }
 
 // ownerMethod and groupMethod are platform-specific:

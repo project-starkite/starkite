@@ -152,9 +152,10 @@ def test_path_is_symlink():
 def test_path_stat():
     """Test stat method."""
     stat = fs.path(sys_file).stat()
-    assert("size" in stat, "stat should have size")
-    assert("mode" in stat, "stat should have mode")
-    assert("is_dir" in stat, "stat should have is_dir")
+    assert(type(stat) == "struct", "stat should return struct")
+    assert(stat.size >= 0, "stat should have size")
+    assert(stat.mode != "", "stat should have mode")
+    assert(stat.is_dir == False, "stat should have is_dir")
 
 def test_path_owner_group():
     """Test owner and group methods."""
@@ -273,7 +274,7 @@ def test_path_chmod():
     p.write_text("test")
     p.chmod(0o755)
     stat = p.stat()
-    assert("x" in stat["mode"], "chmod 755 should set execute bit")
+    assert("x" in stat.mode, "chmod 755 should set execute bit")
     p.remove()
 
 def test_path_symlink_to():
@@ -497,11 +498,10 @@ def test_path_disk_usage():
     root_p = "C:\\" if is_windows else "/"
     p = fs.path(root_p)
     usage = p.disk_usage()
-    assert("total" in usage, "disk_usage should have 'total' key")
-    assert("used" in usage, "disk_usage should have 'used' key")
-    assert("free" in usage, "disk_usage should have 'free' key")
-    assert(usage["total"] > 0, "total should be positive")
-    assert(usage["free"] > 0, "free should be positive")
+    assert(type(usage) == "struct", "disk_usage should return struct")
+    assert(usage.total > 0, "total should be positive")
+    assert(usage.used >= 0, "used should be non-negative")
+    assert(usage.free > 0, "free should be positive")
 
 def test_path_chown():
     """Test chown method (requires root, skip)."""

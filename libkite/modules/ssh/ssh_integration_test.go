@@ -855,11 +855,11 @@ func TestSSHConfigJumpHostSettings(t *testing.T) {
 	}
 
 	jumpAttr, _ := client.Attr("jump")
-	jumpD, ok := jumpAttr.(*starlark.Dict)
+	jumpSt, ok := jumpAttr.(*starlarkstruct.Struct)
 	if !ok {
-		t.Fatalf("jump attr is not dict: %v", jumpAttr)
+		t.Fatalf("jump attr is not struct: %v", jumpAttr)
 	}
-	uVal, _, _ := jumpD.Get(starlark.String("user"))
+	uVal, _ := jumpSt.Attr("user")
 	if s, ok := uVal.(starlark.String); !ok || string(s) != "vladimir" {
 		t.Errorf("jump.user attr = %v, want vladimir", uVal)
 	}
@@ -1096,22 +1096,22 @@ func TestSSHConfigStructuredAuthAndJump(t *testing.T) {
 		t.Errorf("jumpPort = %d, want 2222", client.jumpPort)
 	}
 
-	// Verify client.auth dict attribute
+	// Verify client.auth struct attribute
 	authVal, _ := client.Attr("auth")
 	if authVal == nil {
 		t.Fatal("expected client.auth attribute")
 	}
-	userVal, _, _ := authVal.(*starlark.Dict).Get(starlark.String("user"))
+	userVal, _ := authVal.(*starlarkstruct.Struct).Attr("user")
 	if userVal != starlark.String("pi") {
 		t.Errorf("auth.user = %v, want 'pi'", userVal)
 	}
 
-	// Verify client.jump dict attribute
+	// Verify client.jump struct attribute
 	jumpVal, _ := client.Attr("jump")
 	if jumpVal == nil {
 		t.Fatal("expected client.jump attribute")
 	}
-	hostVal, _, _ := jumpVal.(*starlark.Dict).Get(starlark.String("host"))
+	hostVal, _ := jumpVal.(*starlarkstruct.Struct).Attr("host")
 	if hostVal != starlark.String("jump.corp.net") {
 		t.Errorf("jump.host = %v, want 'jump.corp.net'", hostVal)
 	}

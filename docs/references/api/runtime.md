@@ -26,7 +26,7 @@ Top-level runtime builtins available in every script without a module prefix:
 | `runtime.cpu_count()` | `int` | Number of logical CPUs |
 | `runtime.version()` | `string` | Starkite version string |
 | `runtime.go_version()` | `string` | Go runtime version |
-| `runtime.uname()` | `dict` | System information dictionary with keys: `system`, `node`, `release`, `version`, `machine` (Unix only; returns an error on Windows) |
+| `runtime.uname()` | `struct` | System information struct with fields: `system`, `node`, `release`, `version`, `machine` |
 
 ## Examples
 
@@ -54,10 +54,10 @@ exec("GOOS=%s GOARCH=%s go build -o app ./cmd" % (os_name, arch))
 
 ```python
 info = runtime.uname()
-print("System:", info["system"])
-print("Host:", info["node"])
-print("Kernel:", info["release"])
-print("Arch:", info["machine"])
+print("System:", info.system)
+print("Host:", info.node)
+print("Kernel:", info.release)
+print("Arch:", info.machine)
 ```
 
 ### Version info

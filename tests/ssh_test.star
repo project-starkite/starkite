@@ -57,10 +57,12 @@ def test_config_all_params():
     assert(type(client) == "ssh.client", "config with all params should work")
     assert(client.exec_max_workers == 16, "exec_max_workers should be 16")
     assert(client.exec_policy == "linear", "exec_policy should be linear")
-    assert(client.auth["user"] == "admin", "auth.user should be admin")
-    assert(client.auth["use_agent"] == True, "auth.use_agent should be True")
-    assert(client.jump["host"] == "bastion.example.com", "jump.host should match")
-    assert(client.jump["port"] == 2222, "jump.port should be 2222")
+    assert(type(client.auth) == "struct", "client.auth should be a struct")
+    assert(client.auth.user == "admin", "auth.user should be admin")
+    assert(client.auth.use_agent == True, "auth.use_agent should be True")
+    assert(type(client.jump) == "struct", "client.jump should be a struct")
+    assert(client.jump.host == "bastion.example.com", "jump.host should match")
+    assert(client.jump.port == 2222, "jump.port should be 2222")
 
 def test_config_exec_max_workers():
     c = ssh.config(hosts=["h1", "h2"], auth={"user": "root"}, exec_max_workers=32, dry_run=True)
@@ -393,10 +395,10 @@ def test_ssh_config_jump_host_params():
         },
         dry_run = True,
     )
-    assert(client.jump != None, "jump dict should exist")
-    assert(client.jump["host"] == "rbp4-1", "jump.host should be rbp4-1")
-    assert(client.jump["user"] == "vladimir", "jump.user should be vladimir")
-    assert(client.jump["port"] == 2222, "jump.port should be 2222")
+    assert(client.jump != None, "jump struct should exist")
+    assert(client.jump.host == "rbp4-1", "jump.host should be rbp4-1")
+    assert(client.jump.user == "vladimir", "jump.user should be vladimir")
+    assert(client.jump.port == 2222, "jump.port should be 2222")
 
 def test_ssh_exec_with_jump_client():
     """Test exec through a configured jump host client."""
@@ -494,7 +496,7 @@ def test_ssh_config_use_agent():
         auth = {"user": "pi", "use_agent": True},
         dry_run = True,
     )
-    assert(client.auth["use_agent"] == True, "auth.use_agent should be True")
+    assert(client.auth.use_agent == True, "auth.use_agent should be True")
 
 def test_ssh_config_key_passphrase():
     """Test passphrase parameter in auth dict."""
@@ -524,7 +526,7 @@ def test_ssh_config_prompt():
         auth = {"user": "pi", "prompt": True},
         dry_run = True,
     )
-    assert(client.auth["prompt"] == True, "auth.prompt should be True")
+    assert(client.auth.prompt == True, "auth.prompt should be True")
 
 def test_scan_host_keys_validations():
     """Test parameter validation in ssh.scan_host_keys and ssh.keyscan."""

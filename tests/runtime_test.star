@@ -21,15 +21,11 @@ def test_cpu_count():
     assert(result > 0, "cpu_count should be positive")
 
 def test_uname():
-    """Test runtime.uname returns system info dict."""
+    """Test runtime.uname returns system info struct."""
     result = runtime.uname()
-    assert(type(result) == "dict", "uname should return dict")
-    assert("system" in result, "uname should have system")
-    assert("node" in result, "uname should have node")
-    assert("release" in result, "uname should have release")
-    assert("version" in result, "uname should have version")
-    assert("machine" in result, "uname should have machine")
-    assert(result["system"] != "", "system should not be empty")
+    assert(type(result) == "struct", "uname should return struct")
+    assert(result.system != "", "system should not be empty")
+    _ = (result.node, result.release, result.version, result.machine)
 
 def test_version():
     """Test runtime.version returns starkite version."""

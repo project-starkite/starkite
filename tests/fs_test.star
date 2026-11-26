@@ -100,9 +100,10 @@ def test_stat():
     """Test Path.stat."""
     info = path(sys_file).stat()
     assert(info != None, "should return stat for existing file")
-    assert("size" in info, "stat should have size")
-    assert("mode" in info, "stat should have mode")
-    assert("is_dir" in info, "stat should have is_dir")
+    assert(type(info) == "struct", "stat should return struct")
+    assert(info.size >= 0, "stat should have size")
+    assert(info.mode != "", "stat should have mode")
+    assert(info.is_dir == False, "stat should have is_dir")
 
 # ============================================================================
 # Directory tests
@@ -297,11 +298,10 @@ def test_disk_usage():
     """Test Path.disk_usage."""
     root_p = "C:\\" if is_windows else "/"
     usage = path(root_p).disk_usage()
-    assert(type(usage) == "dict", "disk_usage should return dict")
-    assert("total" in usage, "should have total")
-    assert("used" in usage, "should have used")
-    assert("free" in usage, "should have free")
-    assert(usage["total"] > 0, "total should be positive")
+    assert(type(usage) == "struct", "disk_usage should return struct")
+    assert(usage.total > 0, "total should be positive")
+    assert(usage.used >= 0, "used should be present")
+    assert(usage.free >= 0, "free should be present")
 
 # ============================================================================
 # Path manipulation tests

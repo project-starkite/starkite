@@ -7,11 +7,12 @@ import (
 	"unsafe"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"golang.org/x/sys/windows"
 )
 
-// diskUsageInfo returns disk usage stats for the given path as a Starlark dict.
-func diskUsageInfo(path string) (*starlark.Dict, error) {
+// diskUsageInfo returns disk usage stats for the given path as a struct.
+func diskUsageInfo(path string) (*starlarkstruct.Struct, error) {
 	pathPtr, err := windows.UTF16PtrFromString(path)
 	if err != nil {
 		return nil, fmt.Errorf("invalid path: %w", err)
@@ -27,9 +28,9 @@ func diskUsageInfo(path string) (*starlark.Dict, error) {
 		return nil, err
 	}
 
-	dict := starlark.NewDict(3)
-	dict.SetKey(starlark.String("total"), starlark.MakeInt64(int64(totalBytes)))
-	dict.SetKey(starlark.String("used"), starlark.MakeInt64(int64(totalBytes-totalFreeBytes)))
-	dict.SetKey(starlark.String("free"), starlark.MakeInt64(int64(totalFreeBytes)))
-	return dict, nil
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"total": starlark.MakeInt64(int64(totalBytes)),
+		"used":  starlark.MakeInt64(int64(totalBytes - totalFreeBytes)),
+		"free":  starlark.MakeInt64(int64(totalFreeBytes)),
+	}), nil
 }

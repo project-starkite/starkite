@@ -64,7 +64,7 @@ print(config.string)  # /home/user/config/app.yaml
 | `p.is_file()` | `bool` | Check if path is a regular file |
 | `p.is_dir()` | `bool` | Check if path is a directory |
 | `p.is_symlink()` | `bool` | Check if path is a symbolic link |
-| `p.stat()` | `dict` | Get file metadata |
+| `p.stat()` | `struct` | Get file metadata (`name`, `size`, `mode`, `is_dir`, `mod_time`) |
 | `p.owner()` | `string` | Get file owner name |
 | `p.group()` | `string` | Get file group name |
 
@@ -113,7 +113,7 @@ print(config.string)  # /home/user/config/app.yaml
 | `p.listdir()` | `list[Path]` | List directory entries as Paths |
 | `p.glob(pattern)` | `list[Path]` | Glob within this directory |
 | `p.walk()` | `list[tuple]` | Recursive directory traversal (Path, dirs, files) |
-| `p.disk_usage()` | `dict` | Disk space info with total, used, free |
+| `p.disk_usage()` | `struct` | Disk space info (`total`, `used`, `free`) |
 
 ### Examples
 
@@ -148,7 +148,7 @@ output.append_text("Details\n")
 
 # File metadata
 info = path("data.bin").stat()
-print("Size:", info["size"])
+print("Size:", info.size)
 
 # Directory operations
 tmp = path("/tmp/myapp/logs")

@@ -13,6 +13,7 @@ import (
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 	corev1 "k8s.io/api/core/v1"
@@ -357,12 +358,18 @@ func (c *K8sClient) topNodes(thread *starlark.Thread, fn *starlark.Builtin, args
 			allocMap = alloc
 		}
 
-		d := NewAttrDict(map[string]any{
-			"name":        node.GetName(),
-			"capacity":    capMap,
-			"allocatable": allocMap,
-		})
-		results = append(results, d)
+		if capMap == nil {
+			capMap = map[string]any{}
+		}
+		if allocMap == nil {
+			allocMap = map[string]any{}
+		}
+
+		results = append(results, starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"name":        starlark.String(node.GetName()),
+			"capacity":    NewAttrDict(capMap),
+			"allocatable": NewAttrDict(allocMap),
+		}))
 	}
 
 	return starlark.NewList(results), nil
@@ -424,14 +431,13 @@ func (c *K8sClient) topPods(thread *starlark.Thread, fn *starlark.Builtin, args 
 			}
 		}
 
-		d := NewAttrDict(map[string]any{
-			"name":           pod.GetName(),
-			"namespace":      pod.GetNamespace(),
-			"status":         phase,
-			"cpu_request":    totalCPU,
-			"memory_request": totalMem,
-		})
-		results = append(results, d)
+		results = append(results, starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"name":           starlark.String(pod.GetName()),
+			"namespace":      starlark.String(pod.GetNamespace()),
+			"status":         starlark.String(phase),
+			"cpu_request":    starlark.String(totalCPU),
+			"memory_request": starlark.String(totalMem),
+		}))
 	}
 
 	return starlark.NewList(results), nil

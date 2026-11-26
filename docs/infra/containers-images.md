@@ -120,12 +120,12 @@ def main():
 
     print("Found %d cached images:" % len(images))
     for img in images:
-        tags = ", ".join(img["repo_tags"]) if img["repo_tags"] else "<untagged>"
-        size_mb = img["size"] / (1024 * 1024)
-        print("  - ID: %s | Size: %.1f MB | Tags: %s" % (img["id"][:12], size_mb, tags))
+        tags = ", ".join(img.repo_tags) if img.repo_tags else "<untagged>"
+        size_mb = img.size / (1024 * 1024)
+        print("  - ID: %s | Size: %.1f MB | Tags: %s" % (img.id[:12], size_mb, tags))
 ```
 
-### Image Dictionary Fields
+### Image Struct Fields
 
 * `id` (*str*): SHA identifier of the image.
 * `repo_tags` (*list[str]*): Tag references associated with this image.
@@ -168,9 +168,9 @@ def main():
         volumes = False,
     )
 
-    print("Containers removed:", len(report["containers_deleted"]))
-    print("Images removed:", len(report["images_deleted"]))
-    mb_reclaimed = report["space_reclaimed"] / (1024 * 1024)
+    print("Containers removed:", len(report.containers_deleted))
+    print("Images removed:", len(report.images_deleted))
+    mb_reclaimed = report.space_reclaimed / (1024 * 1024)
     print("Disk space reclaimed: %.2f MB" % mb_reclaimed)
 ```
 
@@ -226,7 +226,7 @@ def main():
 
     # Clean up dangling images
     prune_res = client.prune(containers = False, images = True)
-    print("Reclaimed %d bytes from dangling images" % prune_res["space_reclaimed"])
+    print("Reclaimed %d bytes from dangling images" % prune_res.space_reclaimed)
 ```
 
 Execute the script with:

@@ -854,14 +854,14 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		c.mu.RLock()
 		keyPassphrase := c.keyPassphrase
 		c.mu.RUnlock()
-		d := starlark.NewDict(6)
-		d.SetKey(starlark.String("user"), starlark.String(c.user))
-		d.SetKey(starlark.String("key"), starlark.String(c.keyFile))
-		d.SetKey(starlark.String("passphrase"), starlark.String(keyPassphrase))
-		d.SetKey(starlark.String("password"), starlark.String(c.password))
-		d.SetKey(starlark.String("use_agent"), starlark.Bool(c.useAgent))
-		d.SetKey(starlark.String("prompt"), starlark.Bool(c.prompt))
-		return d, nil
+		return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"user":       starlark.String(c.user),
+			"key":        starlark.String(c.keyFile),
+			"passphrase": starlark.String(keyPassphrase),
+			"password":   starlark.String(c.password),
+			"use_agent":  starlark.Bool(c.useAgent),
+			"prompt":     starlark.Bool(c.prompt),
+		}), nil
 	case "jump":
 		if c.jumpHost == "" {
 			return starlark.None, nil
@@ -869,18 +869,18 @@ func (c *SSHClient) Attr(name string) (starlark.Value, error) {
 		c.mu.RLock()
 		jumpKeyPassphrase := c.jumpKeyPassphrase
 		c.mu.RUnlock()
-		d := starlark.NewDict(10)
-		d.SetKey(starlark.String("host"), starlark.String(c.jumpHost))
-		d.SetKey(starlark.String("port"), starlark.MakeInt(c.jumpPort))
-		d.SetKey(starlark.String("user"), starlark.String(c.jumpUser))
-		d.SetKey(starlark.String("key"), starlark.String(c.jumpKeyFile))
-		d.SetKey(starlark.String("passphrase"), starlark.String(jumpKeyPassphrase))
-		d.SetKey(starlark.String("password"), starlark.String(c.jumpPassword))
-		d.SetKey(starlark.String("use_agent"), starlark.Bool(c.jumpUseAgent))
-		d.SetKey(starlark.String("prompt"), starlark.Bool(c.jumpPrompt))
-		d.SetKey(starlark.String("host_key_check"), starlark.Bool(c.jumpHostKeyCheck))
-		d.SetKey(starlark.String("known_hosts_file"), starlark.String(c.jumpKnownHostsFile))
-		return d, nil
+		return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"host":             starlark.String(c.jumpHost),
+			"port":             starlark.MakeInt(c.jumpPort),
+			"user":             starlark.String(c.jumpUser),
+			"key":              starlark.String(c.jumpKeyFile),
+			"passphrase":       starlark.String(jumpKeyPassphrase),
+			"password":         starlark.String(c.jumpPassword),
+			"use_agent":        starlark.Bool(c.jumpUseAgent),
+			"prompt":           starlark.Bool(c.jumpPrompt),
+			"host_key_check":   starlark.Bool(c.jumpHostKeyCheck),
+			"known_hosts_file": starlark.String(c.jumpKnownHostsFile),
+		}), nil
 	case "exec_max_workers":
 		return starlark.MakeInt(c.execMaxWorkers), nil
 	case "exec_on_error":

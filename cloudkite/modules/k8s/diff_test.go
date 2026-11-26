@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -76,19 +77,23 @@ spec:
 		t.Fatalf("diff error: %v", err)
 	}
 
-	report, ok := res.(*AttrDict)
+	report, ok := res.(*starlarkstruct.Struct)
 	if !ok {
-		t.Fatalf("expected *AttrDict, got %T", res)
+		t.Fatalf("expected *starlarkstruct.Struct, got %T", res)
 	}
 
-	hasDrift, _ := report.ToMap()["has_drift"].(bool)
-	if !hasDrift {
-		t.Errorf("expected has_drift=true")
+	hasDriftVal, err := report.Attr("has_drift")
+	if err != nil || hasDriftVal != starlark.True {
+		t.Errorf("expected has_drift=true, got %v (err=%v)", hasDriftVal, err)
 	}
 
-	diffText, _ := report.ToMap()["diff"].(string)
-	if diffText == "" {
-		t.Errorf("expected non-empty diff string")
+	diffVal, err := report.Attr("diff")
+	diffText := ""
+	if s, ok := diffVal.(starlark.String); ok {
+		diffText = string(s)
+	}
+	if err != nil || diffText == "" {
+		t.Errorf("expected non-empty diff string, got %v (err=%v)", diffVal, err)
 	}
 	if !strings.Contains(diffText, "--- live") || !strings.Contains(diffText, "+++ applied") {
 		t.Errorf("diff string missing headers:\n%s", diffText)
@@ -126,19 +131,19 @@ spec:
 		t.Fatalf("diff error: %v", err)
 	}
 
-	report, ok := res.(*AttrDict)
+	report, ok := res.(*starlarkstruct.Struct)
 	if !ok {
-		t.Fatalf("expected *AttrDict, got %T", res)
+		t.Fatalf("expected *starlarkstruct.Struct, got %T", res)
 	}
 
-	hasDrift, _ := report.ToMap()["has_drift"].(bool)
-	if !hasDrift {
-		t.Errorf("expected has_drift=true for new resource")
+	hasDriftVal, err := report.Attr("has_drift")
+	if err != nil || hasDriftVal != starlark.True {
+		t.Errorf("expected has_drift=true for new resource, got %v (err=%v)", hasDriftVal, err)
 	}
 
-	liveVal := report.ToMap()["live"]
-	if liveVal != starlark.None {
-		t.Errorf("expected live=None for new resource, got %v", liveVal)
+	liveVal, err := report.Attr("live")
+	if err != nil || liveVal != starlark.None {
+		t.Errorf("expected live=None for new resource, got %v (err=%v)", liveVal, err)
 	}
 }
 

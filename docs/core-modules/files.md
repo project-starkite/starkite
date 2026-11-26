@@ -156,8 +156,8 @@ You can query file types, check existence, and inspect system metadata:
 
 * **`.exists()`**: Returns `True` if the path exists on disk.
 * **`.is_file()` / `.is_dir()` / `.is_symlink()`**: Type-checking predicates.
-* **`.stat()`**: Returns a dictionary containing file details (`name`, `size`, `mode`, `is_dir`, `mod_time`).
-* **`.disk_usage()`**: Returns a dictionary containing storage space info (`total`, `used`, `free` in bytes) for the partition hosting the path.
+* **`.stat()`**: Returns a `struct` containing file details (`name`, `size`, `mode`, `is_dir`, `mod_time`).
+* **`.disk_usage()`**: Returns a `struct` containing storage space info (`total`, `used`, `free` in bytes) for the partition hosting the path.
 
 ```python
 def main():
@@ -165,7 +165,7 @@ def main():
 
     if target.exists() and target.is_file():
         info = target.stat()
-        print("File size in bytes: " + str(info["size"]))
+        print("File size in bytes: " + str(info.size))
 ```
 
 ## Directory traversal and globbing

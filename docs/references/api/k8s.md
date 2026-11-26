@@ -37,7 +37,7 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | `k8s.list(kind, namespace="", labels="", fields="", timeout="")` | `list[AttrDict]` | List resources with optional label/field selectors |
 | `k8s.create(manifest, namespace="", dry_run=False, timeout="")` | `AttrDict` | Create a resource from a manifest (dict, AttrDict, or YAML string) |
 | `k8s.apply(manifest, namespace="", field_manager="starkite", dry_run=False, force=False, prune=False, prune_labels={}, timeout="")` | `AttrDict` | Apply a resource (server-side apply). When `prune=True`, prunes omitted resources managed by `field_manager` matching `prune_labels` |
-| `k8s.diff(manifest, namespace="", field_manager="starkite", timeout="")` | `AttrDict` | Server-side apply dry-run diff against live cluster state (`has_drift`, `drifted_fields`, `conflicts`, `diff`, `live`, `applied`) |
+| `k8s.diff(manifest, namespace="", field_manager="starkite", timeout="")` | `struct` | Server-side apply dry-run diff against live cluster state (`name`, `kind`, `namespace`, `has_drift`, `drifted_fields`, `conflicts`, `diff`, `live`, `merged`) |
 | `k8s.evict(name, namespace="", dry_run=False, timeout="")` | `AttrDict` | Evict a Pod via `/eviction` subresource, honoring `PodDisruptionBudgets` |
 | `k8s.delete(kind, name, namespace="", propagation="Background", timeout="")` | `None` | Delete a resource |
 | `k8s.patch(kind, name, patch, namespace="", type="merge", timeout="")` | `AttrDict` | Patch a resource. `type`: `"merge"`, `"strategic"`, or `"json"` |
@@ -46,7 +46,7 @@ All functions that perform I/O accept a `timeout` kwarg (duration string, e.g., 
 | `k8s.status(obj, status, namespace="", timeout="")` | `AttrDict` | Update the status subresource of a resource. Pass the resource as `obj` and the new status dict as `status` |
 | `k8s.event(obj, reason, message, type="Normal", namespace="", timeout="")` | `AttrDict` | Emit a Kubernetes event attached to `obj`. `type` can be `"Normal"` or `"Warning"` |
 | `k8s.events(target=None, kind="", name="", namespace="", type="", reason="", since="", limit=0, timeout="")` | `list[AttrDict]` | Query diagnostic event streams with dual-API normalization (`events.k8s.io/v1` and `core/v1`). Filter by target object, kind, name, type (`"Warning"`/`"Normal"`), reason substring, or relative duration (`since="30m"`). Returns items sorted newest first with relative `age` |
-| `k8s.validate(manifest, policy=None, expression="", strict=False)` | `AttrDict` | Evaluate CEL validation policies or expressions against a manifest client-side prior to cluster submission. Returns `{"valid": bool, "violations": list[str], "policy": str}` |
+| `k8s.validate(manifest, policy=None, expression="", strict=False)` | `struct` | Evaluate CEL validation policies or expressions against a manifest client-side prior to cluster submission (`valid`, `message`, `violations`) |
 | `k8s.claims(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `resource.k8s.io/v1` `ResourceClaim` objects for Dynamic Resource Allocation (DRA) |
 | `k8s.pvcs(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `PersistentVolumeClaim` objects |
 | `k8s.pvs(labels="", timeout="")` | `list[AttrDict]` | List cluster-scoped `PersistentVolume` objects |
@@ -249,8 +249,8 @@ Requires `metrics-server` running in the cluster.
 
 | Function | Returns | Description |
 |----------|---------|-------------|
-| `k8s.top_nodes(timeout="")` | `list[AttrDict]` | CPU/memory capacity and allocatable per node |
-| `k8s.top_pods(namespace="", sort_by="", timeout="")` | `list[AttrDict]` | Resource requests and status per pod |
+| `k8s.top_nodes(timeout="")` | `list[struct]` | CPU/memory capacity and allocatable (`AttrDict`) per node (`name`, `capacity`, `allocatable`) |
+| `k8s.top_pods(namespace="", sort_by="", timeout="")` | `list[struct]` | Resource requests and status per pod (`name`, `namespace`, `status`, `cpu_request`, `memory_request`) |
 
 ### Example
 

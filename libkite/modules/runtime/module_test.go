@@ -6,6 +6,7 @@ import (
 
 	"github.com/project-starkite/starkite/libkite"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 func TestModuleMetadata(t *testing.T) {
@@ -88,8 +89,12 @@ func TestRuntimeFunctions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("uname() error: %v", err)
 	}
-	if dictVal, ok := val.(*starlark.Dict); !ok || dictVal.Len() == 0 {
-		t.Fatalf("uname() returned invalid dict: %v", val)
+	stVal, ok := val.(*starlarkstruct.Struct)
+	if !ok {
+		t.Fatalf("uname() returned %T, want *starlarkstruct.Struct", val)
+	}
+	if sys, err := stVal.Attr("system"); err != nil || sys == starlark.String("") {
+		t.Fatalf("uname().system = (%v, %v), want non-empty", sys, err)
 	}
 
 	// Verify try_ members are registered on module

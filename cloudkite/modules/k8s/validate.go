@@ -9,6 +9,7 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"gopkg.in/yaml.v3"
 )
 
@@ -85,11 +86,7 @@ func runValidate(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tup
 			}
 			if !matchedAll {
 				// Match conditions did not match: policy does not apply, object is valid
-				return NewAttrDict(map[string]any{
-					"valid":      true,
-					"message":    "policy match conditions not met; validation skipped",
-					"violations": []any{},
-				}), nil
+				return validateResultStruct(true, "policy match conditions not met; validation skipped", nil), nil
 			}
 		}
 
@@ -148,16 +145,19 @@ func runValidate(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tup
 		}
 	}
 
-	violationsAny := make([]any, len(violations))
-	for i, viol := range violations {
-		violationsAny[i] = viol
-	}
+	return validateResultStruct(valid, msg, violations), nil
+}
 
-	return NewAttrDict(map[string]any{
-		"valid":      valid,
-		"message":    msg,
-		"violations": violationsAny,
-	}), nil
+func validateResultStruct(valid bool, message string, violations []string) starlark.Value {
+	elems := make([]starlark.Value, len(violations))
+	for i, viol := range violations {
+		elems[i] = starlark.String(viol)
+	}
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"valid":      starlark.Bool(valid),
+		"message":    starlark.String(message),
+		"violations": starlark.NewList(elems),
+	})
 }
 
 func (c *K8sClient) validate(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {

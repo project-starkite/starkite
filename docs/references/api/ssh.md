@@ -154,8 +154,8 @@ client = ssh.config(
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `auth` | `dict` | Resolved target authentication dictionary |
-| `jump` | `dict` \| `None` | Resolved bastion jump dictionary |
+| `auth` | `struct` | Resolved target authentication struct |
+| `jump` | `struct` \| `None` | Resolved bastion jump struct |
 | `hosts` | `list[string]` | List of resolved target host addresses |
 | `fleet` | `Fleet` \| `None` | Associated fleet instance |
 | `exec_policy` | `string` | Configured execution policy (`"concurrent"` or `"linear"`) |

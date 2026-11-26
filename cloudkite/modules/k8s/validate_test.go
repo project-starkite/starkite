@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 func TestValidateSingleExpression(t *testing.T) {
@@ -28,13 +29,12 @@ func TestValidateSingleExpression(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	ad, ok := val.(*AttrDict)
+	st, ok := val.(*starlarkstruct.Struct)
 	if !ok {
-		t.Fatalf("expected *AttrDict, got %T", val)
+		t.Fatalf("expected *starlarkstruct.Struct, got %T", val)
 	}
-	m := ad.ToMap()
-	if valid, _ := m["valid"].(bool); !valid {
-		t.Fatalf("expected valid=true, got %v", m["valid"])
+	if validVal, err := st.Attr("valid"); err != nil || validVal != starlark.True {
+		t.Fatalf("expected valid=true, got %v (err=%v)", validVal, err)
 	}
 
 	// Invalid expression: replicas > 5
@@ -45,17 +45,20 @@ func TestValidateSingleExpression(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	ad2, ok := val2.(*AttrDict)
+	st2, ok := val2.(*starlarkstruct.Struct)
 	if !ok {
-		t.Fatalf("expected *AttrDict, got %T", val2)
+		t.Fatalf("expected *starlarkstruct.Struct, got %T", val2)
 	}
-	m2 := ad2.ToMap()
-	if valid, _ := m2["valid"].(bool); valid {
-		t.Fatalf("expected valid=false, got %v", m2["valid"])
+	if validVal2, err := st2.Attr("valid"); err != nil || validVal2 != starlark.False {
+		t.Fatalf("expected valid=false, got %v (err=%v)", validVal2, err)
 	}
-	violations, _ := m2["violations"].([]any)
-	if len(violations) != 1 {
-		t.Fatalf("expected 1 violation, got %v", violations)
+	violVal, err := st2.Attr("violations")
+	if err != nil {
+		t.Fatalf("violations attr error: %v", err)
+	}
+	violations, ok := violVal.(*starlark.List)
+	if !ok || violations.Len() != 1 {
+		t.Fatalf("expected 1 violation, got %v", violVal)
 	}
 
 	// Strict=true on failure should return error
@@ -114,10 +117,9 @@ func TestValidatePolicyWithOptionalTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	ad := val.(*AttrDict)
-	m := ad.ToMap()
-	if valid, _ := m["valid"].(bool); !valid {
-		t.Fatalf("expected valid=true, got %v", m["violations"])
+	st := val.(*starlarkstruct.Struct)
+	if validVal, err := st.Attr("valid"); err != nil || validVal != starlark.True {
+		t.Fatalf("expected valid=true, got %v", validVal)
 	}
 
 	// Now make container privileged
@@ -147,13 +149,13 @@ func TestValidatePolicyWithOptionalTypes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	adPriv := valPriv.(*AttrDict)
-	mPriv := adPriv.ToMap()
-	if valid, _ := mPriv["valid"].(bool); valid {
-		t.Fatalf("expected valid=false for privileged container, got %v", mPriv["valid"])
+	stPriv := valPriv.(*starlarkstruct.Struct)
+	if validPriv, err := stPriv.Attr("valid"); err != nil || validPriv != starlark.False {
+		t.Fatalf("expected valid=false for privileged container, got %v", validPriv)
 	}
-	violations, _ := mPriv["violations"].([]any)
-	if len(violations) != 1 || violations[0] != "Privileged containers are not allowed" {
+	violPrivVal, _ := stPriv.Attr("violations")
+	violations := violPrivVal.(*starlark.List)
+	if violations.Len() != 1 || violations.Index(0) != starlark.String("Privileged containers are not allowed") {
 		t.Fatalf("unexpected violations: %v", violations)
 	}
 }
@@ -210,9 +212,8 @@ func TestValidateMatchConditions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	ad := val.(*AttrDict)
-	mDev := ad.ToMap()
-	if valid, _ := mDev["valid"].(bool); !valid {
-		t.Fatalf("expected valid=true because matchCondition skipped policy, got %v", mDev["violations"])
+	stDev := val.(*starlarkstruct.Struct)
+	if validDev, err := stDev.Attr("valid"); err != nil || validDev != starlark.True {
+		t.Fatalf("expected valid=true because matchCondition skipped policy, got %v", validDev)
 	}
 }

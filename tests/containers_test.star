@@ -497,18 +497,17 @@ def test_container_logs():
     srv.shutdown()
 
 def test_client_image_list():
-    """Verify client.image_list() lists local images with normalized dict keys."""
+    """Verify client.image_list() lists local images with struct entries."""
     srv, client, state = _create_mock_engine()
     imgs = client.image_list()
     assert(len(imgs) == 1, "should return 1 image")
     img = imgs[0]
-    assert(img["id"] == "sha256:img123456", "id should match")
-    assert(img["Id"] == "sha256:img123456", "Id should match")
-    assert(img["repo_tags"] == ["alpine:latest", "alpine:3.19"], "repo_tags should match")
-    assert(img["RepoTags"] == ["alpine:latest", "alpine:3.19"], "RepoTags should match")
-    assert(img["size"] == 7340032, "size should match")
-    assert(img["created"] == 1700000000, "created should match")
-    assert(img["labels"]["maintainer"] == "kite", "labels should match")
+    assert(type(img) == "struct", "image entry should be a struct")
+    assert(img.id == "sha256:img123456", "id should match")
+    assert(img.repo_tags == ["alpine:latest", "alpine:3.19"], "repo_tags should match")
+    assert(img.size == 7340032, "size should match")
+    assert(img.created == 1700000000, "created should match")
+    assert(img.labels["maintainer"] == "kite", "labels should match")
 
     srv.shutdown()
 
@@ -577,17 +576,18 @@ def test_client_prune():
 
     # 1. Default prune (containers only)
     rep1 = client.prune()
-    assert(rep1["containers_deleted"] == ["c_dead1", "c_dead2"], "containers_deleted matches")
-    assert(rep1["volumes_deleted"] == [], "volumes_deleted should be empty")
-    assert(rep1["images_deleted"] == [], "images_deleted should be empty")
-    assert(rep1["space_reclaimed"] == 4096, "space_reclaimed matches")
+    assert(type(rep1) == "struct", "prune report should be a struct")
+    assert(rep1.containers_deleted == ["c_dead1", "c_dead2"], "containers_deleted matches")
+    assert(rep1.volumes_deleted == [], "volumes_deleted should be empty")
+    assert(rep1.images_deleted == [], "images_deleted should be empty")
+    assert(rep1.space_reclaimed == 4096, "space_reclaimed matches")
 
     # 2. Comprehensive prune (containers, volumes, images)
     rep2 = client.prune(containers=True, volumes=True, images=True)
-    assert(rep2["containers_deleted"] == ["c_dead1", "c_dead2"], "containers_deleted matches")
-    assert(rep2["volumes_deleted"] == ["vol_unused1"], "volumes_deleted matches")
-    assert(rep2["images_deleted"] == ["sha256:dangling1"], "images_deleted matches")
-    assert(rep2["space_reclaimed"] == 4096 + 8192 + 16384, "combined space_reclaimed matches")
+    assert(rep2.containers_deleted == ["c_dead1", "c_dead2"], "containers_deleted matches")
+    assert(rep2.volumes_deleted == ["vol_unused1"], "volumes_deleted matches")
+    assert(rep2.images_deleted == ["sha256:dangling1"], "images_deleted matches")
+    assert(rep2.space_reclaimed == 4096 + 8192 + 16384, "combined space_reclaimed matches")
 
     srv.shutdown()
 

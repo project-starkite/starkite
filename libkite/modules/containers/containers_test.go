@@ -1227,16 +1227,14 @@ def main():
     if len(imgs) != 1:
         fail("expected 1 image, got %%d" %% len(imgs))
     img = imgs[0]
-    if img["id"] != "sha256:abcdef123456":
-        fail("unexpected image id: %%s" %% img["id"])
-    if img["Id"] != "sha256:abcdef123456":
-        fail("unexpected image Id: %%s" %% img["Id"])
-    if img["repo_tags"] != ["alpine:latest"]:
-        fail("unexpected repo_tags: %%s" %% str(img["repo_tags"]))
-    if img["size"] != 5242880:
-        fail("unexpected size: %%d" %% img["size"])
-    if img["labels"]["type"] != "base":
-        fail("unexpected label: %%s" %% img["labels"]["type"])
+    if img.id != "sha256:abcdef123456":
+        fail("unexpected image id: %%s" %% img.id)
+    if img.repo_tags != ["alpine:latest"]:
+        fail("unexpected repo_tags: %%s" %% str(img.repo_tags))
+    if img.size != 5242880:
+        fail("unexpected size: %%d" %% img.size)
+    if img.labels["type"] != "base":
+        fail("unexpected label: %%s" %% img.labels["type"])
 
     # 2. client.image_pull()
     c.image_pull("alpine:latest", auth={"username": "user", "password": "pw"})
@@ -1260,14 +1258,14 @@ def main():
 
     # 6. client.prune()
     rep = c.prune(containers=True, volumes=True, images=True)
-    if rep["containers_deleted"] != ["dead_box"]:
-        fail("unexpected containers_deleted: %%s" %% str(rep["containers_deleted"]))
-    if rep["volumes_deleted"] != ["dead_vol"]:
-        fail("unexpected volumes_deleted: %%s" %% str(rep["volumes_deleted"]))
-    if rep["images_deleted"] != ["sha256:dead_img"]:
-        fail("unexpected images_deleted: %%s" %% str(rep["images_deleted"]))
-    if rep["space_reclaimed"] != 7168:
-        fail("unexpected space_reclaimed: %%d" %% rep["space_reclaimed"])
+    if rep.containers_deleted != ["dead_box"]:
+        fail("unexpected containers_deleted: %%s" %% str(rep.containers_deleted))
+    if rep.volumes_deleted != ["dead_vol"]:
+        fail("unexpected volumes_deleted: %%s" %% str(rep.volumes_deleted))
+    if rep.images_deleted != ["sha256:dead_img"]:
+        fail("unexpected images_deleted: %%s" %% str(rep.images_deleted))
+    if rep.space_reclaimed != 7168:
+        fail("unexpected space_reclaimed: %%d" %% rep.space_reclaimed)
 
 main()
 `, host, tmpDir)

@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
 
 	"github.com/project-starkite/starkite/libkite"
@@ -397,13 +398,13 @@ func TestPathStat(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dict, ok := v.(*starlark.Dict)
+	st, ok := v.(*starlarkstruct.Struct)
 	if !ok {
-		t.Fatalf("stat should return dict, got %s", v.Type())
+		t.Fatalf("stat should return *starlarkstruct.Struct, got %s", v.Type())
 	}
 	for _, key := range []string{"name", "size", "mode", "is_dir", "mod_time"} {
-		if val, found, _ := dict.Get(starlark.String(key)); !found || val == nil {
-			t.Errorf("stat should have key %q", key)
+		if val, err := st.Attr(key); err != nil || val == nil {
+			t.Errorf("stat should have attr %q (err=%v)", key, err)
 		}
 	}
 }
@@ -1042,13 +1043,13 @@ func TestPathDiskUsage(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	dict, ok := v.(*starlark.Dict)
+	st, ok := v.(*starlarkstruct.Struct)
 	if !ok {
-		t.Fatalf("disk_usage should return dict, got %s", v.Type())
+		t.Fatalf("disk_usage should return *starlarkstruct.Struct, got %s", v.Type())
 	}
 	for _, key := range []string{"total", "used", "free"} {
-		if val, found, _ := dict.Get(starlark.String(key)); !found || val == nil {
-			t.Errorf("disk_usage should have key %q", key)
+		if val, err := st.Attr(key); err != nil || val == nil {
+			t.Errorf("disk_usage should have attr %q (err=%v)", key, err)
 		}
 	}
 }

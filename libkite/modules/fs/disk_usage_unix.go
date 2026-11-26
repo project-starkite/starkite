@@ -6,10 +6,11 @@ import (
 	"syscall"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
-// diskUsageInfo returns disk usage stats for the given path as a Starlark dict.
-func diskUsageInfo(path string) (*starlark.Dict, error) {
+// diskUsageInfo returns disk usage stats for the given path as a struct.
+func diskUsageInfo(path string) (*starlarkstruct.Struct, error) {
 	var stat syscall.Statfs_t
 	if err := syscall.Statfs(path, &stat); err != nil {
 		return nil, err
@@ -19,9 +20,9 @@ func diskUsageInfo(path string) (*starlark.Dict, error) {
 	free := stat.Bfree * uint64(stat.Bsize)
 	used := total - free
 
-	dict := starlark.NewDict(3)
-	dict.SetKey(starlark.String("total"), starlark.MakeInt64(int64(total)))
-	dict.SetKey(starlark.String("used"), starlark.MakeInt64(int64(used)))
-	dict.SetKey(starlark.String("free"), starlark.MakeInt64(int64(free)))
-	return dict, nil
+	return starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"total": starlark.MakeInt64(int64(total)),
+		"used":  starlark.MakeInt64(int64(used)),
+		"free":  starlark.MakeInt64(int64(free)),
+	}), nil
 }

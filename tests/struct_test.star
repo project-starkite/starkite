@@ -154,4 +154,5 @@ def test_struct_module_inputs():
         containers = [k8s.obj.container(name = "agent", image = "alpine:3.20")],
     )
     val = k8s.validate(pod, expression = "object.metadata.labels.app == 'edge'")
-    assert_true(val["valid"])
+    assert_equal(type(val), "struct")
+    assert_true(val.valid)
