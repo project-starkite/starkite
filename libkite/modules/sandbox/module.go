@@ -305,9 +305,12 @@ func (m *Module) runScript(thread *starlark.Thread, fn *starlark.Builtin, args s
 
 	// Append script vars
 	if p.Vars != nil && p.Vars != starlark.None {
-		dict, ok := p.Vars.(*starlark.Dict)
+		dict, ok, err := libkite.ValueToDict(p.Vars)
+		if err != nil {
+			return nil, fmt.Errorf("run_script: %w", err)
+		}
 		if !ok {
-			return nil, fmt.Errorf("run_script: vars must be dict, got %s", p.Vars.Type())
+			return nil, fmt.Errorf("run_script: vars must be dict or struct, got %s", p.Vars.Type())
 		}
 		for _, item := range dict.Items() {
 			k, kOk := starlark.AsString(item[0])
@@ -417,20 +420,24 @@ func parseEnvValue(v starlark.Value, fnName string) ([]string, error) {
 			}
 			envStrings = append(envStrings, s)
 		}
-	case *starlark.Dict:
-		for _, item := range val.Items() {
-			k, kOk := starlark.AsString(item[0])
-			if !kOk || k == "" {
-				return nil, fmt.Errorf("%s: env dict keys must be non-empty strings", fnName)
-			}
-			vStr, vOk := starlark.AsString(item[1])
-			if !vOk {
-				return nil, fmt.Errorf("%s: env dict value for %q must be string, got %s", fnName, k, item[1].Type())
-			}
-			envStrings = append(envStrings, fmt.Sprintf("%s=%s", k, vStr))
-		}
 	default:
-		return nil, fmt.Errorf("%s: env must be list, tuple, or dict, got %s", fnName, v.Type())
+		if dict, ok, err := libkite.ValueToDict(v); err != nil {
+			return nil, fmt.Errorf("%s: env: %w", fnName, err)
+		} else if ok {
+			for _, item := range dict.Items() {
+				k, kOk := starlark.AsString(item[0])
+				if !kOk || k == "" {
+					return nil, fmt.Errorf("%s: env keys must be non-empty strings", fnName)
+				}
+				vStr, vOk := starlark.AsString(item[1])
+				if !vOk {
+					return nil, fmt.Errorf("%s: env value for %q must be string, got %s", fnName, k, item[1].Type())
+				}
+				envStrings = append(envStrings, fmt.Sprintf("%s=%s", k, vStr))
+			}
+			return envStrings, nil
+		}
+		return nil, fmt.Errorf("%s: env must be list, tuple, dict, or struct, got %s", fnName, v.Type())
 	}
 	return envStrings, nil
 }
@@ -456,6 +463,11 @@ func mergeBaselineEnv(cfg *libkite.ModuleConfig, custom []string) []string {
 func parseMountElems(elems []starlark.Value) ([]sandbox.Mount, error) {
 	var result []sandbox.Mount
 	for idx, elem := range elems {
+		if d, ok, err := libkite.ValueToDict(elem); err != nil {
+			return nil, fmt.Errorf("mounts[%d]: %w", idx, err)
+		} else if ok {
+			elem = d
+		}
 		switch m := elem.(type) {
 		case *starlark.Dict:
 			var src, dst, modeStr, typeStr string

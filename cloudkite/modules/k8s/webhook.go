@@ -236,10 +236,15 @@ func buildValidationResponse(uid string, result starlark.Value, err error) map[s
 		return resp
 	}
 
-	dict, ok := result.(*starlark.Dict)
+	dict, ok, err := libkite.ValueToDict(result)
+	if err != nil {
+		resp["allowed"] = false
+		resp["status"] = map[string]any{"message": fmt.Sprintf("validate handler return conversion error: %v", err)}
+		return resp
+	}
 	if !ok {
 		resp["allowed"] = false
-		resp["status"] = map[string]any{"message": fmt.Sprintf("validate handler must return dict, got %s", result.Type())}
+		resp["status"] = map[string]any{"message": fmt.Sprintf("validate handler must return dict or struct, got %s", result.Type())}
 		return resp
 	}
 
@@ -277,23 +282,15 @@ func buildMutationResponse(uid string, original map[string]any, result starlark.
 		return resp
 	}
 
-	var modified map[string]any
-	switch v := result.(type) {
-	case *AttrDict:
-		modified = v.ToMap()
-	case *starlark.Dict:
-		var goVal any
-		if convErr := startype.Starlark(v).Go(&goVal); convErr != nil {
-			resp["allowed"] = false
-			resp["status"] = map[string]any{"message": fmt.Sprintf("mutate handler return conversion error: %v", convErr)}
-			return resp
-		}
-		if m, ok := goVal.(map[string]any); ok {
-			modified = m
-		}
-	default:
+	modified, ok, convErr := libkite.ValueToMap(result)
+	if convErr != nil {
 		resp["allowed"] = false
-		resp["status"] = map[string]any{"message": fmt.Sprintf("mutate handler must return dict or AttrDict, got %s", result.Type())}
+		resp["status"] = map[string]any{"message": fmt.Sprintf("mutate handler return conversion error: %v", convErr)}
+		return resp
+	}
+	if !ok {
+		resp["allowed"] = false
+		resp["status"] = map[string]any{"message": fmt.Sprintf("mutate handler must return dict, AttrDict, or struct, got %s", result.Type())}
 		return resp
 	}
 

@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"io"
 
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -17,20 +19,14 @@ type (
 	unstructuredList = unstructured.UnstructuredList
 )
 
-// dictToUnstructured converts a Starlark dictionary or AttrDict to an *unstructured.Unstructured.
+// dictToUnstructured converts a Starlark dictionary, AttrDict, or struct to an *unstructured.Unstructured.
 func dictToUnstructured(val starlark.Value) (*unstructured.Unstructured, error) {
-	switch v := val.(type) {
-	case *AttrDict:
-		return &unstructured.Unstructured{Object: v.ToMap()}, nil
-	case *starlark.Dict:
-		m, err := startype.Dict(v).ToMap()
-		if err != nil {
-			return nil, fmt.Errorf("dict to map: %w", err)
-		}
+	if m, ok, err := libkite.ValueToMap(val); err != nil {
+		return nil, fmt.Errorf("dict to map: %w", err)
+	} else if ok {
 		return &unstructured.Unstructured{Object: m}, nil
-	default:
-		return nil, fmt.Errorf("expected dict or AttrDict, got %s", val.Type())
 	}
+	return nil, fmt.Errorf("expected dict, AttrDict, or struct, got %s", val.Type())
 }
 
 // unstructuredToDict converts an *unstructured.Unstructured to an *AttrDict.
@@ -92,24 +88,25 @@ func yamlToUnstructuredList(yamlStr string) ([]*unstructured.Unstructured, error
 }
 
 // resolveManifest converts a Starlark value to a *starlark.Dict or *AttrDict.
-// Handles KubeObject (via ToDict), *AttrDict, *starlark.Dict, and YAML strings.
+// Handles KubeObject (via ToDict), *AttrDict, *starlark.Dict, *starlarkstruct.Struct, and YAML strings.
 func resolveManifest(val starlark.Value) (starlark.Value, error) {
 	switch v := val.(type) {
 	case KubeObject:
 		return v.ToDict(), nil
 	case *AttrDict:
 		return v, nil
-	case *starlark.Dict:
-		return v, nil
+	case *starlark.Dict, *starlarkstruct.Struct:
+		d, _, err := libkite.ValueToDict(v)
+		return d, err
 	case starlark.String:
 		return parseYAML(string(v))
 	default:
-		return nil, fmt.Errorf("expected k8s object, dict, or YAML string, got %s", val.Type())
+		return nil, fmt.Errorf("expected k8s object, dict, struct, or YAML string, got %s", val.Type())
 	}
 }
 
 // parseManifest converts a Starlark value to a list of Unstructured objects.
-// Handles: KubeObject, *AttrDict, *starlark.Dict, YAML string (including multi-doc), *starlark.List.
+// Handles: KubeObject, *AttrDict, *starlark.Dict, *starlarkstruct.Struct, YAML string (including multi-doc), *starlark.List.
 func parseManifest(val starlark.Value) ([]*unstructured.Unstructured, error) {
 	switch v := val.(type) {
 	case KubeObject:
@@ -120,14 +117,7 @@ func parseManifest(val starlark.Value) ([]*unstructured.Unstructured, error) {
 		}
 		return []*unstructured.Unstructured{obj}, nil
 
-	case *AttrDict:
-		obj, err := dictToUnstructured(v)
-		if err != nil {
-			return nil, err
-		}
-		return []*unstructured.Unstructured{obj}, nil
-
-	case *starlark.Dict:
+	case *AttrDict, *starlark.Dict, *starlarkstruct.Struct:
 		obj, err := dictToUnstructured(v)
 		if err != nil {
 			return nil, err
@@ -149,25 +139,22 @@ func parseManifest(val starlark.Value) ([]*unstructured.Unstructured, error) {
 		return result, nil
 
 	default:
-		return nil, fmt.Errorf("expected k8s object, dict, YAML string, or list, got %s", val.Type())
+		return nil, fmt.Errorf("expected k8s object, dict, struct, YAML string, or list, got %s", val.Type())
 	}
 }
 
-// toYAMLString converts a Starlark value (KubeObject, AttrDict, dict, or list) to a YAML string.
+// toYAMLString converts a Starlark value (KubeObject, AttrDict, dict, struct, or list) to a YAML string.
 func toYAMLString(val starlark.Value) (string, error) {
 	switch v := val.(type) {
 	case KubeObject:
-		m, err := startype.Dict(v.ToDict()).ToMap()
+		m, err := libkite.ValueToGo(v.ToDict())
 		if err != nil {
 			return "", err
 		}
-		return marshalYAML(m)
+		return marshalYAML(m.(map[string]any))
 
-	case *AttrDict:
-		return marshalYAML(v.ToMap())
-
-	case *starlark.Dict:
-		m, err := startype.Dict(v).ToMap()
+	case *AttrDict, *starlark.Dict, *starlarkstruct.Struct:
+		m, _, err := libkite.ValueToMap(v)
 		if err != nil {
 			return "", err
 		}

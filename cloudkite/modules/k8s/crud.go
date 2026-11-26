@@ -361,12 +361,27 @@ func (c *K8sClient) apply(thread *starlark.Thread, fn *starlark.Builtin, args st
 				}
 				pruneLabelSelector = strings.Join(pairs, ",")
 			case *starlark.Dict:
-				d, _ := startype.Dict(pl).ToMap()
+				d, _, err := libkite.ValueToMap(pl)
+				if err != nil {
+					return nil, fmt.Errorf("k8s.apply: prune_labels: %w", err)
+				}
 				var pairs []string
 				for k, v := range d {
 					pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
 				}
 				pruneLabelSelector = strings.Join(pairs, ",")
+			default:
+				if sv, ok := pl.(starlark.Value); ok {
+					if d, isMap, err := libkite.ValueToMap(sv); err != nil {
+						return nil, fmt.Errorf("k8s.apply: prune_labels: %w", err)
+					} else if isMap {
+						var pairs []string
+						for k, v := range d {
+							pairs = append(pairs, fmt.Sprintf("%s=%v", k, v))
+						}
+						pruneLabelSelector = strings.Join(pairs, ",")
+					}
+				}
 			}
 		}
 
@@ -530,20 +545,17 @@ func (c *K8sClient) patch(thread *starlark.Thread, fn *starlark.Builtin, args st
 
 	// Convert patch to JSON
 	var patchBytes []byte
-	switch v := patchData.(type) {
-	case *starlark.Dict:
-		dict, err := dictToUnstructured(v)
-		if err != nil {
-			return nil, fmt.Errorf("k8s.patch: %w", err)
-		}
-		patchBytes, err = json.Marshal(dict.Object)
+	if s, ok := patchData.(starlark.String); ok {
+		patchBytes = []byte(string(s))
+	} else if m, ok, err := libkite.ValueToMap(patchData); err != nil {
+		return nil, fmt.Errorf("k8s.patch: %w", err)
+	} else if ok {
+		patchBytes, err = json.Marshal(m)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.patch: marshal: %w", err)
 		}
-	case starlark.String:
-		patchBytes = []byte(string(v))
-	default:
-		return nil, fmt.Errorf("k8s.patch: patch must be dict or JSON string, got %s", patchData.Type())
+	} else {
+		return nil, fmt.Errorf("k8s.patch: patch must be dict, struct, or JSON string, got %s", patchData.Type())
 	}
 
 	// Map patch type string to k8s type
@@ -595,8 +607,12 @@ func (c *K8sClient) label(thread *starlark.Thread, fn *starlark.Builtin, args st
 	filteredKwargs := filterKwarg(kwargs, "labels", &labelsDict)
 	remaining := args
 	if labelsDict == nil && len(args) > 2 {
-		if d, ok := args[2].(*starlark.Dict); ok {
+		if d, ok, err := libkite.ValueToDict(args[2]); err != nil {
+			return nil, fmt.Errorf("k8s.label: labels: %w", err)
+		} else if ok {
 			labelsDict = d
+		} else if args[2] != starlark.None {
+			return nil, fmt.Errorf("k8s.label: labels must be a dict or struct, got %s", args[2].Type())
 		}
 		remaining = args[:2]
 	}
@@ -684,8 +700,12 @@ func (c *K8sClient) annotate(thread *starlark.Thread, fn *starlark.Builtin, args
 	filteredKwargs := filterKwarg(kwargs, "annotations", &annotationsDict)
 	remaining := args
 	if annotationsDict == nil && len(args) > 2 {
-		if d, ok := args[2].(*starlark.Dict); ok {
+		if d, ok, err := libkite.ValueToDict(args[2]); err != nil {
+			return nil, fmt.Errorf("k8s.annotate: annotations: %w", err)
+		} else if ok {
 			annotationsDict = d
+		} else if args[2] != starlark.None {
+			return nil, fmt.Errorf("k8s.annotate: annotations must be a dict or struct, got %s", args[2].Type())
 		}
 		remaining = args[:2]
 	}
@@ -821,34 +841,29 @@ func (c *K8sClient) apiResources(thread *starlark.Thread, fn *starlark.Builtin, 
 func injectOwnerRef(obj *unstructuredObj, owner starlark.Value) error {
 	var apiVersion, kind, name, uid string
 
-	switch o := owner.(type) {
-	case *AttrDict:
-		m := o.ToMap()
-		apiVersion, _ = m["apiVersion"].(string)
-		kind, _ = m["kind"].(string)
-		if meta, ok := m["metadata"].(map[string]any); ok {
-			name, _ = meta["name"].(string)
-			uid, _ = meta["uid"].(string)
+	var m map[string]any
+	if ko, ok := owner.(KubeObject); ok {
+		var err error
+		m, _, err = libkite.ValueToMap(ko.ToDict())
+		if err != nil {
+			return fmt.Errorf("owner conversion error: %w", err)
 		}
-	case *starlark.Dict:
-		if v, found, _ := o.Get(starlark.String("apiVersion")); found {
-			apiVersion, _ = starlark.AsString(v)
+	} else {
+		var ok bool
+		var err error
+		m, ok, err = libkite.ValueToMap(owner)
+		if err != nil {
+			return fmt.Errorf("owner conversion error: %w", err)
 		}
-		if v, found, _ := o.Get(starlark.String("kind")); found {
-			kind, _ = starlark.AsString(v)
+		if !ok {
+			return fmt.Errorf("owner must be a dict, AttrDict, or struct, got %s", owner.Type())
 		}
-		if v, found, _ := o.Get(starlark.String("metadata")); found {
-			if meta, ok := v.(*starlark.Dict); ok {
-				if n, f, _ := meta.Get(starlark.String("name")); f {
-					name, _ = starlark.AsString(n)
-				}
-				if u, f, _ := meta.Get(starlark.String("uid")); f {
-					uid, _ = starlark.AsString(u)
-				}
-			}
-		}
-	default:
-		return fmt.Errorf("owner must be a dict or AttrDict, got %s", owner.Type())
+	}
+	apiVersion, _ = m["apiVersion"].(string)
+	kind, _ = m["kind"].(string)
+	if meta, ok := m["metadata"].(map[string]any); ok {
+		name, _ = meta["name"].(string)
+		uid, _ = meta["uid"].(string)
 	}
 
 	if apiVersion == "" || kind == "" || name == "" || uid == "" {
@@ -909,31 +924,18 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("k8s.status: requires obj and status arguments")
 	}
 
-	var objKind, objName, objNs string
-	switch o := objValue.(type) {
-	case *AttrDict:
-		m := o.ToMap()
-		objKind, _ = m["kind"].(string)
-		if meta, ok := m["metadata"].(map[string]any); ok {
-			objName, _ = meta["name"].(string)
-			objNs, _ = meta["namespace"].(string)
-		}
-	case *starlark.Dict:
-		if v, found, _ := o.Get(starlark.String("kind")); found {
-			objKind, _ = starlark.AsString(v)
-		}
-		if v, found, _ := o.Get(starlark.String("metadata")); found {
-			if meta, ok := v.(*starlark.Dict); ok {
-				if n, f, _ := meta.Get(starlark.String("name")); f {
-					objName, _ = starlark.AsString(n)
-				}
-				if n, f, _ := meta.Get(starlark.String("namespace")); f {
-					objNs, _ = starlark.AsString(n)
-				}
-			}
-		}
-	default:
-		return nil, fmt.Errorf("k8s.status: obj must be a dict or AttrDict, got %s", objValue.Type())
+	m, ok, err := libkite.ValueToMap(objValue)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.status: obj: %w", err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("k8s.status: obj must be a dict, AttrDict, or struct, got %s", objValue.Type())
+	}
+	objKind, _ := m["kind"].(string)
+	var objName, objNs string
+	if meta, ok := m["metadata"].(map[string]any); ok {
+		objName, _ = meta["name"].(string)
+		objNs, _ = meta["namespace"].(string)
 	}
 
 	if objKind == "" || objName == "" {
@@ -946,18 +948,12 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 		objNs = c.namespace
 	}
 
-	var statusMap map[string]any
-	switch s := statusValue.(type) {
-	case *AttrDict:
-		statusMap = s.ToMap()
-	case *starlark.Dict:
-		var err error
-		statusMap, err = startype.Dict(s).ToMap()
-		if err != nil {
-			return nil, fmt.Errorf("k8s.status: %w", err)
-		}
-	default:
-		return nil, fmt.Errorf("k8s.status: status must be a dict or AttrDict, got %s", statusValue.Type())
+	statusMap, ok, err := libkite.ValueToMap(statusValue)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.status: %w", err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("k8s.status: status must be a dict, AttrDict, or struct, got %s", statusValue.Type())
 	}
 
 	gvr, namespaced, err := c.resolver.Resolve(objKind)

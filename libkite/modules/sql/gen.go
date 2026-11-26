@@ -100,22 +100,27 @@ func (c *Connection) insert(thread *starlark.Thread, fn *starlark.Builtin, args 
 
 // insertRows normalizes the second insert argument into a slice of row dicts.
 func insertRows(v starlark.Value) ([]*starlark.Dict, error) {
-	switch t := v.(type) {
-	case *starlark.Dict:
-		return []*starlark.Dict{t}, nil
-	case *starlark.List:
+	if d, ok, err := libkite.ValueToDict(v); err != nil {
+		return nil, err
+	} else if ok {
+		return []*starlark.Dict{d}, nil
+	}
+	if t, ok := v.(*starlark.List); ok {
 		out := make([]*starlark.Dict, 0, t.Len())
-		for i := 0; i < t.Len(); i++ {
-			d, ok := t.Index(i).(*starlark.Dict)
+		for i := range t.Len() {
+			elem := t.Index(i)
+			d, ok, err := libkite.ValueToDict(elem)
+			if err != nil {
+				return nil, fmt.Errorf("row %d: %w", i, err)
+			}
 			if !ok {
-				return nil, fmt.Errorf("row %d is %s, want a dict", i, t.Index(i).Type())
+				return nil, fmt.Errorf("row %d is %s, want a dict or struct", i, elem.Type())
 			}
 			out = append(out, d)
 		}
 		return out, nil
-	default:
-		return nil, fmt.Errorf("second argument must be a dict or list of dicts, got %s", v.Type())
 	}
+	return nil, fmt.Errorf("second argument must be a dict, struct, or list thereof, got %s", v.Type())
 }
 
 func isValidSQLIdent(ident string) bool {

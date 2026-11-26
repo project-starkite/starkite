@@ -86,9 +86,10 @@ func (m *Module) urlFactory(thread *starlark.Thread, fn *starlark.Builtin, args 
 // configFn configures the HTTP client.
 // Usage: http.config(timeout="30s", headers={"Authorization": "Bearer token"})
 func (m *Module) configFn(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	// Extract headers dict manually (startype.Args doesn't handle *starlark.Dict)
-	var headers *starlark.Dict
-	filteredKwargs := filterKwarg(kwargs, "headers", &headers)
+	headers, filteredKwargs, err := filterDictKwarg(kwargs, "headers", "http.config")
+	if err != nil {
+		return nil, err
+	}
 
 	var timeoutStr string
 	for _, kv := range filteredKwargs {
@@ -222,10 +223,13 @@ func (m *Module) serveFn(thread *starlark.Thread, fn *starlark.Builtin,
 	srv := srvVal.(*Server)
 
 	// Register handler(s)
-	switch h := handler.(type) {
-	case *starlark.Dict:
-		// Dict: pattern → handler mapping
-		for _, item := range h.Items() {
+	if h, ok := handler.(starlark.Callable); ok {
+		// Single callable → handle all paths
+		srv.handlers = append(srv.handlers, registeredHandler{pattern: "/", handler: h})
+	} else if d, ok, err := libkite.ValueToDict(handler); err != nil {
+		return nil, fmt.Errorf("http.serve: routes: %w", err)
+	} else if ok {
+		for _, item := range d.Items() {
 			pattern, ok := starlark.AsString(item[0])
 			if !ok {
 				return nil, fmt.Errorf("http.serve: route pattern must be a string, got %s", item[0].Type())
@@ -236,31 +240,34 @@ func (m *Module) serveFn(thread *starlark.Thread, fn *starlark.Builtin,
 			}
 			srv.handlers = append(srv.handlers, registeredHandler{pattern: pattern, handler: callable})
 		}
-	case starlark.Callable:
-		// Single callable → handle all paths
-		srv.handlers = append(srv.handlers, registeredHandler{pattern: "/", handler: h})
-	default:
-		return nil, fmt.Errorf("http.serve: first argument must be callable or dict, got %s", handler.Type())
+	} else {
+		return nil, fmt.Errorf("http.serve: first argument must be callable, dict, or struct, got %s", handler.Type())
 	}
 
 	// Block via serveMethod
 	return srv.serveMethod(thread, fn, nil, nil)
 }
 
-// filterKwarg extracts a single kwarg by name (expected to be *starlark.Dict),
-// sets *dest if found, and returns remaining kwargs.
-func filterKwarg(kwargs []starlark.Tuple, name string, dest **starlark.Dict) []starlark.Tuple {
+func filterDictKwarg(kwargs []starlark.Tuple, name, caller string) (*starlark.Dict, []starlark.Tuple, error) {
+	var dest *starlark.Dict
 	filtered := make([]starlark.Tuple, 0, len(kwargs))
 	for _, kv := range kwargs {
 		if string(kv[0].(starlark.String)) == name {
-			if d, ok := kv[1].(*starlark.Dict); ok {
-				*dest = d
+			if kv[1] != nil && kv[1] != starlark.None {
+				d, ok, err := libkite.ValueToDict(kv[1])
+				if err != nil {
+					return nil, nil, fmt.Errorf("%s: %s: %w", caller, name, err)
+				}
+				if !ok {
+					return nil, nil, fmt.Errorf("%s: '%s' must be a dict or struct, got %s", caller, name, kv[1].Type())
+				}
+				dest = d
 			}
 		} else {
 			filtered = append(filtered, kv)
 		}
 	}
-	return filtered
+	return dest, filtered, nil
 }
 
 // requestHelper executes an HTTP request given a method and arguments.

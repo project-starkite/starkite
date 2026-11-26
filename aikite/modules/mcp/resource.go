@@ -41,9 +41,12 @@ func resourceURI(name string) string { return resourceURIPrefix + name }
 // records. Validates that keys are strings, values are callables with compatible
 // arity (0 or 1), and rejects *args/**kwargs.
 func coerceResources(v starlark.Value) ([]*resourceEntry, error) {
-	d, ok := v.(*starlark.Dict)
+	d, ok, err := libkite.ValueToDict(v)
+	if err != nil {
+		return nil, fmt.Errorf("resources: %w", err)
+	}
 	if !ok {
-		return nil, fmt.Errorf("resources must be a dict, got %s", v.Type())
+		return nil, fmt.Errorf("resources must be a dict or struct, got %s", v.Type())
 	}
 	out := make([]*resourceEntry, 0, d.Len())
 	for _, item := range d.Items() {
@@ -153,7 +156,7 @@ func extractResourceContent(v starlark.Value, defaultMime string) (string, strin
 	if s, ok := starlark.AsString(v); ok {
 		return s, defaultMime
 	}
-	if d, ok := v.(*starlark.Dict); ok {
+	if d, ok, err := libkite.ValueToDict(v); err == nil && ok {
 		var content, mime string
 		if cv, found, _ := d.Get(starlark.String("content")); found {
 			if s, ok := starlark.AsString(cv); ok {

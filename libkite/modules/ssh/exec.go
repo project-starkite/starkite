@@ -93,9 +93,11 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		key := string(kv[0].(starlark.String))
 		switch key {
 		case "env":
-			if d, ok := kv[1].(*starlark.Dict); ok {
-				envDict = d
+			d, err := coerceSSHDict("ssh.exec", "env", kv[1])
+			if err != nil {
+				return nil, err
 			}
+			envDict = d
 		case "commands":
 			rawCommands = kv[1]
 		default:

@@ -742,8 +742,12 @@ func (c *K8sClient) setEnv(thread *starlark.Thread, fn *starlark.Builtin, args s
 	filteredKwargs := filterKwarg(kwargs, "env", &envDict)
 	remaining := args
 	if envDict == nil && len(args) > 2 {
-		if d, ok := args[2].(*starlark.Dict); ok {
+		if d, ok, err := libkite.ValueToDict(args[2]); err != nil {
+			return nil, fmt.Errorf("k8s.set_env: env: %w", err)
+		} else if ok {
 			envDict = d
+		} else if args[2] != starlark.None {
+			return nil, fmt.Errorf("k8s.set_env: env must be a dict or struct, got %s", args[2].Type())
 		}
 		remaining = args[:2]
 	}

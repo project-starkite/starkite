@@ -7,6 +7,7 @@ import (
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 // buildCallablesFromSource executes a Starlark script and returns the named
@@ -213,5 +214,20 @@ def f():
 	}
 	if res.Contents[0].MIMEType != "application/json" {
 		t.Errorf("MIMEType = %q", res.Contents[0].MIMEType)
+	}
+}
+
+func TestCoerceResourcesAndPrompts_AcceptStruct(t *testing.T) {
+	fns := buildCallablesFromSource(t, `def f(): return "x"`, "f")
+	st := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"status": fns[0],
+	})
+	resEntries, err := coerceResources(st)
+	if err != nil || len(resEntries) != 1 || resEntries[0].name != "status" {
+		t.Fatalf("coerceResources(struct) = (%+v, %v)", resEntries, err)
+	}
+	promptEntries, err := coercePrompts(st)
+	if err != nil || len(promptEntries) != 1 || promptEntries[0].name != "status" {
+		t.Fatalf("coercePrompts(struct) = (%+v, %v)", promptEntries, err)
 	}
 }

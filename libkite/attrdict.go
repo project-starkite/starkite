@@ -213,8 +213,8 @@ func (d *AttrDict) SetKey(k, v starlark.Value) error {
 	if !ok {
 		return fmt.Errorf("AttrDict key must be string, got %s", k.Type())
 	}
-	var goVal any
-	if err := startype.Starlark(v).Go(&goVal); err != nil {
+	goVal, err := ValueToGo(v)
+	if err != nil {
 		return fmt.Errorf("AttrDict SetKey: %w", err)
 	}
 	return d.Set(key, goVal)

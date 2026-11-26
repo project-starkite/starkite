@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -401,5 +402,46 @@ func TestModuleDebugFlag(t *testing.T) {
 	}
 	if m.defaultLogger.level != "debug" {
 		t.Errorf("expected debug level with Debug flag, got %q", m.defaultLogger.level)
+	}
+}
+
+func TestLogStructAttrs(t *testing.T) {
+	l, buf := newTestLogger(t, "info", "json")
+	st := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"vm":   starlark.String("edge-1"),
+		"zone": starlark.String("us-west1-b"),
+	})
+
+	// 1. parseLogArgs accepts struct directly
+	_, slogAttrs, err := parseLogArgs(starlark.Tuple{starlark.String("boot")}, []starlark.Tuple{
+		{starlark.String("attrs"), st},
+	})
+	if err != nil {
+		t.Fatalf("parseLogArgs with struct failed: %v", err)
+	}
+	if len(slogAttrs) != 4 {
+		t.Fatalf("expected 4 slog attr items, got %d", len(slogAttrs))
+	}
+
+	// 2. logger.attrs(struct) works end-to-end
+	attrsFn, err := l.Attr("attrs")
+	if err != nil {
+		t.Fatal(err)
+	}
+	subVal, err := starlark.Call(&starlark.Thread{Name: "t"}, attrsFn, starlark.Tuple{st}, nil)
+	if err != nil {
+		t.Fatalf("logger.attrs(struct) failed: %v", err)
+	}
+	infoFn, _ := subVal.(*Logger).Attr("info")
+	if _, err := starlark.Call(&starlark.Thread{Name: "t"}, infoFn, starlark.Tuple{starlark.String("ready")}, nil); err != nil {
+		t.Fatalf("logger.info failed: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
+		t.Fatalf("json output invalid: %v (%s)", err, buf.String())
+	}
+	if decoded["vm"] != "edge-1" || decoded["zone"] != "us-west1-b" {
+		t.Fatalf("unexpected log JSON fields: %#v", decoded)
 	}
 }

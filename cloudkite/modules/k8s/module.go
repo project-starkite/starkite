@@ -75,12 +75,12 @@ func (m *Module) configFactory(thread *starlark.Thread, fn *starlark.Builtin, ar
 	for _, kv := range kwargs {
 		if string(kv[0].(starlark.String)) == "jump" {
 			if kv[1] != starlark.None {
-				if d, ok := kv[1].(*starlark.Dict); ok {
+				if d, ok, err := libkite.ValueToDict(kv[1]); err != nil {
+					return nil, fmt.Errorf("k8s.config: 'jump' %w", err)
+				} else if ok {
 					rawJump = d
-				} else if a, ok := kv[1].(*AttrDict); ok {
-					rawJump = a.ToDict()
 				} else {
-					return nil, fmt.Errorf("k8s.config: 'jump' must be a dict, got %s", kv[1].Type())
+					return nil, fmt.Errorf("k8s.config: 'jump' must be a dict or struct, got %s", kv[1].Type())
 				}
 			}
 		}

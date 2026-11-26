@@ -336,11 +336,11 @@ func (m *Module) sshScanHostKeys(thread *starlark.Thread, fn *starlark.Builtin, 
 		case "types":
 			rawTypes = kv[1]
 		case "jump":
-			if d, ok := kv[1].(*starlark.Dict); ok {
-				jumpDict = d
-			} else {
-				return nil, fmt.Errorf("ssh.scan_host_keys: 'jump' must be a dict, got %s", kv[1].Type())
+			d, err := coerceSSHDict("ssh.scan_host_keys", "jump", kv[1])
+			if err != nil {
+				return nil, err
 			}
+			jumpDict = d
 		default:
 			leftoverKwargs = append(leftoverKwargs, kv)
 		}

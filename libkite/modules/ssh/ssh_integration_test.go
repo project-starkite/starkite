@@ -1943,3 +1943,56 @@ func TestSSHPermissions_ScopedNetworkAndKeyReads(t *testing.T) {
 		t.Errorf("expected fs.read permission error from buildSSHConfig, got %v", err)
 	}
 }
+
+func TestSSHConfigWithStructAuthJumpAndEnv(t *testing.T) {
+	m := New()
+	_, err := m.Load(&libkite.ModuleConfig{DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread := &starlark.Thread{Name: "test-ssh-struct"}
+	checker, err := libkite.NewPermissionChecker(libkite.AllowAllPermissions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	libkite.SetPermissions(thread, checker)
+
+	authStruct := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"user":      starlark.String("deploy"),
+		"use_agent": starlark.True,
+	})
+	jumpStruct := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"host": starlark.String("bastion.internal"),
+		"port": starlark.MakeInt(2222),
+	})
+	envStruct := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"ENV": starlark.String("prod"),
+	})
+
+	cVal, err := m.sshConfig(thread, nil, nil, []starlark.Tuple{
+		{starlark.String("hosts"), starlark.NewList([]starlark.Value{starlark.String("10.0.0.5")})},
+		{starlark.String("auth"), authStruct},
+		{starlark.String("jump"), jumpStruct},
+		{starlark.String("env"), envStruct},
+	})
+	if err != nil {
+		t.Fatalf("sshConfig(struct) failed: %v", err)
+	}
+	client := cVal.(*SSHClient)
+	if client.user != "deploy" || client.jumpHost != "bastion.internal" || client.jumpPort != 2222 || client.defaultEnv["ENV"] != "prod" {
+		t.Fatalf("unexpected SSHClient fields: user=%q jumpHost=%q jumpPort=%d env=%v", client.user, client.jumpHost, client.jumpPort, client.defaultEnv)
+	}
+
+	execFn, _ := client.Attr("exec")
+	res, err := starlark.Call(thread, execFn, starlark.Tuple{starlark.String("env")}, []starlark.Tuple{
+		{starlark.String("env"), starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{"PORT": starlark.String("8080")})},
+	})
+	if err != nil {
+		t.Fatalf("client.exec(env=struct) failed: %v", err)
+	}
+	r0 := res.(*starlark.List).Index(0).(*starlarkstruct.Struct)
+	stdout, _ := r0.Attr("stdout")
+	if !strings.Contains(string(stdout.(starlark.String)), "PORT=") {
+		t.Fatalf("expected PORT= in dry-run output, got %v", stdout)
+	}
+}

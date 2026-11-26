@@ -6,9 +6,11 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/project-starkite/starkite/libkite"
 	yamllib "github.com/project-starkite/starkite/libkite/modules/yaml"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 // FieldType indicates the expected type for an object field.
@@ -407,7 +409,7 @@ func (r *KubeResource) buildSubObjectDict() *starlark.Dict {
 				resVal, found, _ := result.Get(starlark.String("resources"))
 				var resDict *starlark.Dict
 				if found {
-					if d, ok := resVal.(*starlark.Dict); ok {
+					if d, ok, _ := libkite.ValueToDict(resVal); ok {
 						resDict = d
 					}
 				}
@@ -738,6 +740,17 @@ func snakeToCamel(s string) string {
 	return b.String()
 }
 
+func structToCamelDict(s *starlarkstruct.Struct) *starlark.Dict {
+	names := s.AttrNames()
+	d := starlark.NewDict(len(names))
+	for _, k := range names {
+		if fv, err := s.Attr(k); err == nil {
+			_ = d.SetKey(starlark.String(snakeToCamel(k)), normalizeSnakeKeysValue(fv))
+		}
+	}
+	return d
+}
+
 // normalizeSnakeKeys recursively converts dictionary keys in nested maps/lists
 // from snake_case to Kubernetes camelCase.
 func normalizeSnakeKeys(val any) any {
@@ -753,6 +766,8 @@ func normalizeSnakeKeys(val any) any {
 			}
 		}
 		return d
+	case *starlarkstruct.Struct:
+		return structToCamelDict(v)
 	case *starlark.List:
 		elems := make([]starlark.Value, v.Len())
 		for i := 0; i < v.Len(); i++ {
@@ -777,6 +792,9 @@ func normalizeSnakeKeys(val any) any {
 }
 
 func normalizeSnakeKeysValue(val starlark.Value) starlark.Value {
+	if d, ok, err := libkite.ValueToDict(val); err == nil && ok {
+		val = d
+	}
 	switch v := val.(type) {
 	case *starlark.Dict:
 		d := starlark.NewDict(v.Len())
@@ -789,6 +807,8 @@ func normalizeSnakeKeysValue(val starlark.Value) starlark.Value {
 			}
 		}
 		return d
+	case *starlarkstruct.Struct:
+		return structToCamelDict(v)
 	case *starlark.List:
 		elems := make([]starlark.Value, v.Len())
 		for i := 0; i < v.Len(); i++ {
@@ -804,6 +824,8 @@ func normalizeSnakeKeysValue(val starlark.Value) starlark.Value {
 // to standard Gateway API parentRef structures.
 func normalizeParentRefs(val any) any {
 	switch v := val.(type) {
+	case *starlarkstruct.Struct:
+		return structToCamelDict(v)
 	case *starlark.List:
 		elems := make([]starlark.Value, v.Len())
 		for i := 0; i < v.Len(); i++ {
@@ -986,14 +1008,14 @@ func newKubeResource(schema *ResourceSchema, args starlark.Tuple, kwargs []starl
 				return nil, fmt.Errorf("k8s.obj.%s: %w", strings.ToLower(schema.Kind), err)
 			}
 			extractFieldsFromMap(schema, m, data)
-		case *starlark.Dict:
-			m, err := startype.Dict(v).ToMap()
+		case *starlark.Dict, *starlarkstruct.Struct, *AttrDict:
+			m, _, err := libkite.ValueToMap(v)
 			if err != nil {
 				return nil, fmt.Errorf("k8s.obj.%s: %w", strings.ToLower(schema.Kind), err)
 			}
 			extractFieldsFromMap(schema, m, data)
 		default:
-			return nil, fmt.Errorf("k8s.obj.%s: positional arg must be YAML string, dict, or k8s object, got %s", strings.ToLower(schema.Kind), v.Type())
+			return nil, fmt.Errorf("k8s.obj.%s: positional arg must be YAML string, dict, struct, or k8s object, got %s", strings.ToLower(schema.Kind), v.Type())
 		}
 	}
 
@@ -1202,7 +1224,8 @@ func goToStarlark(val any, typ FieldType) (starlark.Value, error) {
 }
 
 // resolveStarlarkValue recursively walks a Starlark value and replaces
-// KubeResource with ToDict() so startype sees only standard types.
+// KubeResource with ToDict() and structs with *starlark.Dict so conversion
+// adapters see standard Starlark dicts.
 func resolveStarlarkValue(v starlark.Value) starlark.Value {
 	switch val := v.(type) {
 	case *KubeResource:
@@ -1210,7 +1233,16 @@ func resolveStarlarkValue(v starlark.Value) starlark.Value {
 	case *starlark.Dict:
 		resolved := starlark.NewDict(val.Len())
 		for _, kv := range val.Items() {
-			resolved.SetKey(kv[0], resolveStarlarkValue(kv[1]))
+			_ = resolved.SetKey(kv[0], resolveStarlarkValue(kv[1]))
+		}
+		return resolved
+	case *starlarkstruct.Struct:
+		names := val.AttrNames()
+		resolved := starlark.NewDict(len(names))
+		for _, k := range names {
+			if fv, err := val.Attr(k); err == nil {
+				_ = resolved.SetKey(starlark.String(k), resolveStarlarkValue(fv))
+			}
 		}
 		return resolved
 	case *starlark.List:
@@ -1219,6 +1251,12 @@ func resolveStarlarkValue(v starlark.Value) starlark.Value {
 			elems[i] = resolveStarlarkValue(val.Index(i))
 		}
 		return starlark.NewList(elems)
+	case starlark.Tuple:
+		elems := make([]starlark.Value, len(val))
+		for i, elem := range val {
+			elems[i] = resolveStarlarkValue(elem)
+		}
+		return starlark.Tuple(elems)
 	default:
 		return v
 	}
@@ -1269,49 +1307,42 @@ func starlarkToGo(val starlark.Value, typ FieldType) (any, error) {
 		if kr, ok := val.(*KubeResource); ok {
 			return kr, nil
 		}
-		if d, ok := val.(*starlark.Dict); ok {
-			resolved := resolveStarlarkValue(d).(*starlark.Dict)
-			return startype.Dict(resolved).ToMap()
+		if m, ok, err := libkite.ValueToMap(resolveStarlarkValue(val)); err != nil {
+			return nil, err
+		} else if ok {
+			return m, nil
 		}
-		return nil, fmt.Errorf("expected k8s object or dict, got %s", val.Type())
+		return nil, fmt.Errorf("expected k8s object, dict, or struct, got %s", val.Type())
 
 	case FieldList:
 		if l, ok := val.(*starlark.List); ok {
 			items := make([]any, 0, l.Len())
 			for i := 0; i < l.Len(); i++ {
-				item := l.Index(i)
-				if kr, ok := item.(*KubeResource); ok {
-					items = append(items, kr)
-				} else {
-					goVal, err := startype.Starlark(item).ToGoValue()
-					if err != nil {
-						return nil, err
-					}
-					items = append(items, goVal)
+				goVal, err := starlarkToGo(l.Index(i), FieldAny)
+				if err != nil {
+					return nil, err
 				}
+				items = append(items, goVal)
 			}
 			return items, nil
 		}
 		return nil, fmt.Errorf("expected list, got %s", val.Type())
 
 	case FieldDict:
-		if d, ok := val.(*starlark.Dict); ok {
-			resolved := resolveStarlarkValue(d).(*starlark.Dict)
-			return startype.Dict(resolved).ToMap()
+		if m, ok, err := libkite.ValueToMap(resolveStarlarkValue(val)); err != nil {
+			return nil, err
+		} else if ok {
+			return m, nil
 		}
-		return nil, fmt.Errorf("expected dict, got %s", val.Type())
+		return nil, fmt.Errorf("expected dict or struct, got %s", val.Type())
 
 	case FieldAny:
 		if kr, ok := val.(*KubeResource); ok {
 			return kr, nil
 		}
-		if d, ok := val.(*starlark.Dict); ok {
-			resolved := resolveStarlarkValue(d).(*starlark.Dict)
-			return startype.Dict(resolved).ToMap()
-		}
-		return startype.Starlark(val).ToGoValue()
+		return libkite.ValueToGo(resolveStarlarkValue(val))
 
 	default:
-		return startype.Starlark(val).ToGoValue()
+		return libkite.ValueToGo(val)
 	}
 }

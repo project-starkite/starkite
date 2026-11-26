@@ -26,9 +26,12 @@ type promptEntry struct {
 // records. Validates shapes; rejects callables using *args/**kwargs so the
 // advertised MCP argument schema matches the function signature.
 func coercePrompts(v starlark.Value) ([]*promptEntry, error) {
-	d, ok := v.(*starlark.Dict)
+	d, ok, err := libkite.ValueToDict(v)
+	if err != nil {
+		return nil, fmt.Errorf("prompts: %w", err)
+	}
 	if !ok {
-		return nil, fmt.Errorf("prompts must be a dict, got %s", v.Type())
+		return nil, fmt.Errorf("prompts must be a dict or struct, got %s", v.Type())
 	}
 	out := make([]*promptEntry, 0, d.Len())
 	for _, item := range d.Items() {

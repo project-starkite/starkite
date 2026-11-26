@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -299,5 +300,31 @@ func TestSandbox_PermissionsEnforcement(t *testing.T) {
 		{starlark.String("memory"), starlark.String("-10MB")},
 	}); err == nil {
 		t.Fatal("expected error for negative memory")
+	}
+}
+
+func TestSandboxEnvAndMountAcceptStruct(t *testing.T) {
+	envStruct := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"MODE": starlark.String("test"),
+	})
+	envList, err := parseEnvValue(envStruct, "sandbox.config")
+	if err != nil {
+		t.Fatalf("parseEnvValue(struct) failed: %v", err)
+	}
+	if len(envList) != 1 || envList[0] != "MODE=test" {
+		t.Fatalf("unexpected envList: %v", envList)
+	}
+
+	mntStruct := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"type": starlark.String("tmpfs"),
+		"dest": starlark.String("/tmp"),
+		"mode": starlark.String("rw"),
+	})
+	mounts, err := parseMountElems([]starlark.Value{mntStruct})
+	if err != nil {
+		t.Fatalf("parseMountElems(struct) failed: %v", err)
+	}
+	if len(mounts) != 1 || mounts[0].Destination != "/tmp" {
+		t.Fatalf("unexpected mounts: %+v", mounts)
 	}
 }

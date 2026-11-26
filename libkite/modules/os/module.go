@@ -495,7 +495,9 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 		return nil, fmt.Errorf("os.exec: timeout must be a duration string (e.g. \"60s\"), got %s", timeoutStr.Type())
 	}
 
-	if d, ok := envDict.(*starlark.Dict); ok {
+	if d, ok, err := libkite.ValueToDict(envDict); err != nil {
+		return nil, fmt.Errorf("os.exec: env: %w", err)
+	} else if ok {
 		for _, item := range d.Items() {
 			if k, ok := starlark.AsString(item[0]); ok {
 				if v, ok := starlark.AsString(item[1]); ok {
@@ -503,6 +505,8 @@ func (m *Module) runCmd(thread *starlark.Thread, args starlark.Tuple, kwargs []s
 				}
 			}
 		}
+	} else if envDict != nil && envDict != starlark.None {
+		return nil, fmt.Errorf("os.exec: env must be a dict or struct, got %s", envDict.Type())
 	}
 
 	p := execParams{

@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -454,4 +455,26 @@ func callWriterMethod(w *Writer, name string, args ...starlark.Value) (starlark.
 
 func kw(name string, val starlark.Value) starlark.Tuple {
 	return starlark.Tuple{starlark.String(name), val}
+}
+
+func TestWriterWriteFileListOfStructs(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "structs.csv")
+
+	row := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"name":   starlark.String("edge-1"),
+		"region": starlark.String("us-west1"),
+	})
+	data := starlark.NewList([]starlark.Value{row})
+	w := newTestWriter(data)
+	if _, err := callWriterMethod(w, "write_file", starlark.String(path)); err != nil {
+		t.Fatalf("write_file with struct rows failed: %v", err)
+	}
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(content) != "name,region\nedge-1,us-west1\n" {
+		t.Fatalf("unexpected CSV output: %q", string(content))
+	}
 }

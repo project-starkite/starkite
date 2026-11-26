@@ -6,6 +6,7 @@ import (
 
 	"github.com/project-starkite/starkite/libkite"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 // AttrDict is an alias to the canonical libkite.AttrDict.
@@ -66,8 +67,17 @@ func extractTargetID(target starlark.Value) (string, error) {
 			}
 		}
 		return "", fmt.Errorf("containers: target dict has no 'id' or 'name' field")
+	case *starlarkstruct.Struct:
+		for _, key := range []string{"id", "Id", "name", "Name"} {
+			if val, err := v.Attr(key); err == nil {
+				if s, ok := starlark.AsString(val); ok && s != "" {
+					return s, nil
+				}
+			}
+		}
+		return "", fmt.Errorf("containers: target struct has no 'id' or 'name' field")
 	default:
-		return "", fmt.Errorf("containers: expected container AttrDict/dict or string ID/name, got %s", target.Type())
+		return "", fmt.Errorf("containers: expected container AttrDict/dict/struct or string ID/name, got %s", target.Type())
 	}
 }
 
@@ -85,6 +95,14 @@ func extractTargetName(target starlark.Value, fallback string) string {
 	case *starlark.Dict:
 		for _, key := range []string{"name", "Name"} {
 			if val, found, _ := v.Get(starlark.String(key)); found {
+				if s, ok := starlark.AsString(val); ok && s != "" {
+					return s
+				}
+			}
+		}
+	case *starlarkstruct.Struct:
+		for _, key := range []string{"name", "Name"} {
+			if val, err := v.Attr(key); err == nil {
 				if s, ok := starlark.AsString(val); ok && s != "" {
 					return s
 				}

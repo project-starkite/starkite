@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -834,5 +835,52 @@ func TestHTTPServer_PartialTLSRejectedAndInvalidStatusHandled(t *testing.T) {
 	rec := httptest.NewRecorder()
 	if err := writeExplicitResponse(rec, badResp, starlark.String("nope")); err == nil || !strings.Contains(err.Error(), "invalid HTTP status code") {
 		t.Errorf("expected invalid status code error, got %v", err)
+	}
+}
+
+func TestWriteResponseStructVariants(t *testing.T) {
+	// 1. Returning a struct auto-encodes as JSON with nested struct intact.
+	rec1 := httptest.NewRecorder()
+	payload := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"cluster": starlark.String("hub"),
+		"meta": starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"zone": starlark.String("us-central1"),
+		}),
+	})
+	if err := writeResponse(rec1, payload); err != nil {
+		t.Fatalf("writeResponse(struct) failed: %v", err)
+	}
+	if !strings.Contains(rec1.Header().Get("Content-Type"), "application/json") {
+		t.Errorf("Content-Type = %q, want application/json", rec1.Header().Get("Content-Type"))
+	}
+	if !strings.Contains(rec1.Body.String(), `"zone":"us-central1"`) {
+		t.Errorf("nested struct serialized wrong: %s", rec1.Body.String())
+	}
+
+	// 2. Returning a dict containing a nested struct expands nested struct cleanly.
+	rec2 := httptest.NewRecorder()
+	outer := starlark.NewDict(1)
+	_ = outer.SetKey(starlark.String("payload"), payload)
+	if err := writeResponse(rec2, outer); err != nil {
+		t.Fatalf("writeResponse(dict with struct) failed: %v", err)
+	}
+	if strings.Contains(rec2.Body.String(), "struct(") {
+		t.Errorf("nested struct was stringified instead of JSON object: %s", rec2.Body.String())
+	}
+
+	// 3. Explicit struct response {status, headers=struct(...), body}.
+	rec3 := httptest.NewRecorder()
+	exp := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"status": starlark.MakeInt(202),
+		"headers": starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"X-Struct-Header": starlark.String("ok"),
+		}),
+		"body": starlark.String("accepted"),
+	})
+	if err := writeResponse(rec3, exp); err != nil {
+		t.Fatalf("writeResponse(explicit struct) failed: %v", err)
+	}
+	if rec3.Code != 202 || rec3.Body.String() != "accepted" || rec3.Header().Get("X-Struct-Header") != "ok" {
+		t.Fatalf("unexpected explicit struct response: code=%d header=%q body=%q", rec3.Code, rec3.Header().Get("X-Struct-Header"), rec3.Body.String())
 	}
 }

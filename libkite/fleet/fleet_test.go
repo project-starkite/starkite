@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 func TestResourceNormalization(t *testing.T) {
@@ -303,5 +304,25 @@ func TestFleetStringFormat(t *testing.T) {
 	f := New([]Resource{{Name: "n1", Address: "1.1.1.1"}})
 	if !strings.Contains(f.String(), "count=1") {
 		t.Errorf("unexpected string: %s", f.String())
+	}
+}
+
+func TestFleetFromStructSource(t *testing.T) {
+	thread := &starlark.Thread{Name: "test-from-struct"}
+	vm1 := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"name":    starlark.String("edge-vm-1"),
+		"address": starlark.String("10.128.0.5"),
+		"kind":    starlark.String("gce-vm"),
+		"zone":    starlark.String("us-west1-b"),
+	})
+	f, err := FromSource(thread, starlark.NewList([]starlark.Value{vm1}))
+	if err != nil {
+		t.Fatalf("FromSource(struct) failed: %v", err)
+	}
+	if len(f.resources) != 1 || f.resources[0].Name != "edge-vm-1" || f.resources[0].Address != "10.128.0.5" {
+		t.Fatalf("unexpected struct resource: %+v", f.resources)
+	}
+	if f.resources[0].Labels["zone"] != "us-west1-b" {
+		t.Fatalf("expected zone label promoted, got %+v", f.resources[0].Labels)
 	}
 }

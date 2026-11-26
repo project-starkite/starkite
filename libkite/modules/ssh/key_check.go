@@ -275,11 +275,11 @@ func (m *Module) sshCheckAuthorizedKey(thread *starlark.Thread, fn *starlark.Bui
 		case "hosts":
 			rawHosts = kv[1]
 		case "jump":
-			if d, ok := kv[1].(*starlark.Dict); ok {
-				jumpDict = d
-			} else {
-				return nil, fmt.Errorf("ssh.check_authorized_key: 'jump' must be a dict, got %s", kv[1].Type())
+			d, err := coerceSSHDict("ssh.check_authorized_key", "jump", kv[1])
+			if err != nil {
+				return nil, err
 			}
+			jumpDict = d
 		default:
 			leftoverKwargs = append(leftoverKwargs, kv)
 		}

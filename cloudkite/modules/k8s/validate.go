@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"cel.dev/cel-go/cel"
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 	"gopkg.in/yaml.v3"
@@ -19,21 +20,32 @@ type celValidation struct {
 
 // runValidate evaluates CEL expressions or ValidatingAdmissionPolicy rules against a manifest in-process.
 func runValidate(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	var manifest, policy starlark.Value
+	filteredKwargs := filterKwargValue(kwargs, "manifest", &manifest)
+	filteredKwargs = filterKwargValue(filteredKwargs, "policy", &policy)
+	remaining := args
+	if manifest == nil && len(remaining) > 0 {
+		manifest = remaining[0]
+		remaining = remaining[1:]
+	}
+	if policy == nil && len(remaining) > 0 {
+		policy = remaining[0]
+		remaining = remaining[1:]
+	}
+
 	var p struct {
-		Manifest   any    `name:"manifest"`
-		Policy     any    `name:"policy"`
 		Expression string `name:"expression"`
 		Strict     bool   `name:"strict"`
 	}
-	if err := startype.Args(args, kwargs).Go(&p); err != nil {
+	if err := startype.Args(remaining, filteredKwargs).Go(&p); err != nil {
 		return nil, err
 	}
 
-	if p.Manifest == nil {
+	if manifest == nil || manifest == starlark.None {
 		return nil, fmt.Errorf("k8s.validate: manifest is required")
 	}
 
-	manifestMap, err := extractMap(p.Manifest)
+	manifestMap, err := extractMap(manifest)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.validate: manifest extraction error: %w", err)
 	}
@@ -46,8 +58,8 @@ func runValidate(thread *starlark.Thread, b *starlark.Builtin, args starlark.Tup
 		})
 	}
 
-	if p.Policy != nil {
-		policyMap, err := extractMap(p.Policy)
+	if policy != nil && policy != starlark.None {
+		policyMap, err := extractMap(policy)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.validate: policy extraction error: %w", err)
 		}
@@ -203,6 +215,8 @@ func extractMap(v any) (map[string]any, error) {
 		return normalizeAnyMap(val), nil
 	case map[any]any:
 		return toStringMap(val), nil
+	case starlark.String:
+		return extractMap(string(val))
 	case string:
 		var res map[string]any
 		if err := yaml.Unmarshal([]byte(val), &res); err == nil && res != nil {
@@ -213,8 +227,13 @@ func extractMap(v any) (map[string]any, error) {
 		}
 		return normalizeAnyMap(res), nil
 	default:
-		var res map[string]any
 		if sv, ok := v.(starlark.Value); ok {
+			if m, isMap, mapErr := libkite.ValueToMap(sv); mapErr != nil {
+				return nil, mapErr
+			} else if isMap && m != nil {
+				return normalizeAnyMap(m), nil
+			}
+			var res map[string]any
 			if err := startype.Starlark(sv).Go(&res); err == nil && res != nil {
 				return normalizeAnyMap(res), nil
 			}

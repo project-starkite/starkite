@@ -305,4 +305,26 @@ def test_post_struct():
 	if !strings.Contains(lastBody, `"cluster":"hub"`) || !strings.Contains(lastBody, `"zone":"us-central1"`) {
 		t.Errorf("unexpected struct post body: %s", lastBody)
 	}
+
+	// 6. Test http.post and http.config with struct headers, plus invalid headers rejection
+	_, err = starlark.ExecFile(thread, "test_struct_headers.star", fmt.Sprintf(`
+http.config(headers = struct(Authorization = "Bearer from-config"))
+resp = http.post("%s/struct-hdrs", body = struct(ok = True), headers = {"X-Extra": "1"})
+`, ts.URL), starlark.StringDict{
+		"http":   dict["http"],
+		"struct": starlark.NewBuiltin("struct", starlarkstruct.Make),
+	})
+	if err != nil {
+		t.Fatalf("struct headers test failed: %v", err)
+	}
+	if lastAuth != "Bearer from-config" {
+		t.Errorf("expected Authorization from struct config headers, got %q", lastAuth)
+	}
+
+	_, err = starlark.ExecFile(thread, "test_bad_headers.star", `
+http.config(headers = 123)
+`, starlark.StringDict{"http": dict["http"]})
+	if err == nil {
+		t.Fatal("expected error for invalid non-dict/struct headers in http.config")
+	}
 }

@@ -111,9 +111,11 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		return starlark.None, nil
 	}
 
-	// Auto-detect: dict rows or list rows
+	// Auto-detect: dict/struct rows or list rows
 	firstElem := w.data.Index(0)
-	if _, ok := firstElem.(*starlark.Dict); ok {
+	if _, ok, err := libkite.ValueToDict(firstElem); err != nil {
+		return nil, fmt.Errorf("csv.writer.write_file: %w", err)
+	} else if ok {
 		return w.writeDictRows(p.Path, p.Sep, headersList)
 	}
 	return w.writeListRows(p.Path, p.Sep)
@@ -179,9 +181,15 @@ func (w *Writer) writeDictRows(path, sep string, headersList *starlark.List) (st
 		}
 	}
 
-	// If no headers provided, extract from first dict
+	// If no headers provided, extract from first dict or struct
 	if len(headers) == 0 {
-		firstDict := w.data.Index(0).(*starlark.Dict)
+		firstDict, ok, err := libkite.ValueToDict(w.data.Index(0))
+		if err != nil {
+			return nil, fmt.Errorf("csv.writer.write_file: %w", err)
+		}
+		if !ok {
+			return nil, fmt.Errorf("csv.writer.write_file: expected dict or struct, got %s", w.data.Index(0).Type())
+		}
 		for _, item := range firstDict.Items() {
 			headers = append(headers, stringValue(item[0]))
 		}
@@ -215,11 +223,14 @@ func (w *Writer) writeDictRows(path, sep string, headersList *starlark.List) (st
 	var record starlark.Value
 	row := make([]string, len(headerKeys))
 	for iter.Next(&record) {
-		dict, ok := record.(*starlark.Dict)
-		if !ok {
+		dict, ok, err := libkite.ValueToDict(record)
+		if err != nil || !ok {
 			outFile.Close()
 			os.Remove(path)
-			return nil, fmt.Errorf("csv.writer.write_file: expected dict, got %s", record.Type())
+			if err != nil {
+				return nil, fmt.Errorf("csv.writer.write_file: %w", err)
+			}
+			return nil, fmt.Errorf("csv.writer.write_file: expected dict or struct, got %s", record.Type())
 		}
 		for i, key := range headerKeys {
 			if val, found, _ := dict.Get(key); found {

@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 
@@ -121,7 +120,14 @@ func (u *URL) doRequest(thread *starlark.Thread, method string, hasBody bool, ar
 		case "body":
 			body = kv[1]
 		case "headers":
-			if d, ok := kv[1].(*starlark.Dict); ok {
+			if kv[1] != nil && kv[1] != starlark.None {
+				d, ok, err := libkite.ValueToDict(kv[1])
+				if err != nil {
+					return nil, fmt.Errorf("http.url.%s: headers: %w", strings.ToLower(method), err)
+				}
+				if !ok {
+					return nil, fmt.Errorf("http.url.%s: headers must be a dict or struct, got %s", strings.ToLower(method), kv[1].Type())
+				}
 				headers = d
 			}
 		case "timeout":
@@ -150,17 +156,12 @@ func (u *URL) doRequest(thread *starlark.Thread, method string, hasBody bool, ar
 		switch v := body.(type) {
 		case starlark.String:
 			reqBody = bytes.NewBufferString(string(v))
-		case *starlark.Dict, *starlarkstruct.Struct:
+		case *starlark.Dict, *starlarkstruct.Struct, *libkite.AttrDict:
 			isDict = true
-			expanded, expErr := libkite.ExpandStructs(v)
-			if expErr != nil {
-				return nil, expErr
-			}
-			var goVal map[string]any
-			if err := startype.Starlark(expanded).Go(&goVal); err != nil {
+			goVal, _, err := libkite.ValueToMap(v)
+			if err != nil {
 				return nil, err
 			}
-			sanitizeMapKeys(goVal)
 			jsonData, err := json.Marshal(goVal)
 			if err != nil {
 				return nil, err

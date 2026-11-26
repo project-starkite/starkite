@@ -131,9 +131,12 @@ func (l *Logger) attrsMethod(_ *starlark.Thread, _ *starlark.Builtin, args starl
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	dict, ok := p.Attrs.(*starlark.Dict)
+	dict, ok, err := libkite.ValueToDict(p.Attrs)
+	if err != nil {
+		return nil, fmt.Errorf("logger.attrs: %w", err)
+	}
 	if !ok {
-		return nil, fmt.Errorf("logger.attrs: argument must be a dict")
+		return nil, fmt.Errorf("logger.attrs: argument must be a dict or struct")
 	}
 	slogAttrs, err := dictToSlogAttrs(dict)
 	if err != nil {
@@ -173,11 +176,13 @@ func parseLogArgs(args starlark.Tuple, kwargs []starlark.Tuple) (string, []any, 
 	}
 	var slogAttrs []any
 	if p.Attrs != nil {
-		dict, ok := p.Attrs.(*starlark.Dict)
-		if !ok {
-			return "", nil, fmt.Errorf("attrs must be a dict")
+		dict, ok, err := libkite.ValueToDict(p.Attrs)
+		if err != nil {
+			return "", nil, err
 		}
-		var err error
+		if !ok {
+			return "", nil, fmt.Errorf("attrs must be a dict or struct")
+		}
 		slogAttrs, err = dictToSlogAttrs(dict)
 		if err != nil {
 			return "", nil, err

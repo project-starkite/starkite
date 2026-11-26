@@ -178,8 +178,14 @@ func (m *Module) sshExec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		case "jump", "jump_host", "jump_user", "jump_key", "jump_password", "jump_key_passphrase", "jump_port":
 			return nil, fmt.Errorf("ssh.exec: bastion/jump host routing is not supported in module-scope functions; use ssh.config(jump={...}) instead")
 		case "env":
-			if d, ok := kv[1].(*starlark.Dict); ok {
+			d, ok, err := libkite.ValueToDict(kv[1])
+			if err != nil {
+				return nil, fmt.Errorf("ssh.exec: env: %w", err)
+			}
+			if ok {
 				defaultEnv = d
+			} else if kv[1] != nil && kv[1] != starlark.None {
+				return nil, fmt.Errorf("ssh.exec: 'env' must be a dict or struct, got %s", kv[1].Type())
 			}
 		default:
 			remainingKwargs = append(remainingKwargs, kv)
@@ -471,6 +477,20 @@ func ParseJumpDict(d *starlark.Dict, targetAuth ...AuthConfig) (JumpConfig, erro
 
 var parseJumpDict = ParseJumpDict
 
+func coerceSSHDict(fnName, param string, v starlark.Value) (*starlark.Dict, error) {
+	if v == nil || v == starlark.None {
+		return nil, nil
+	}
+	d, ok, err := libkite.ValueToDict(v)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %s: %w", fnName, param, err)
+	}
+	if !ok {
+		return nil, fmt.Errorf("%s: '%s' must be a dict or struct, got %s", fnName, param, v.Type())
+	}
+	return d, nil
+}
+
 // sshConfig creates a configured SSH client.
 // Usage: ssh.config(hosts=["host1", "host2"], auth={"user": "root", "key": "/path/to/key"}, jump={"host": "bastion"})
 func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -503,20 +523,26 @@ func (m *Module) sshConfig(thread *starlark.Thread, fn *starlark.Builtin, args s
 		case "hosts":
 			rawHosts = kv[1]
 		case "auth":
-			if d, ok := kv[1].(*starlark.Dict); ok {
-				rawAuth = d
-			} else {
-				return nil, fmt.Errorf("ssh.config: 'auth' must be a dict, got %s", kv[1].Type())
+			d, err := coerceSSHDict("ssh.config", "auth", kv[1])
+			if err != nil {
+				return nil, err
 			}
+			rawAuth = d
 		case "jump":
-			if d, ok := kv[1].(*starlark.Dict); ok {
-				rawJump = d
-			} else {
-				return nil, fmt.Errorf("ssh.config: 'jump' must be a dict, got %s", kv[1].Type())
+			d, err := coerceSSHDict("ssh.config", "jump", kv[1])
+			if err != nil {
+				return nil, err
 			}
+			rawJump = d
 		case "env":
-			if d, ok := kv[1].(*starlark.Dict); ok {
+			d, ok, err := libkite.ValueToDict(kv[1])
+			if err != nil {
+				return nil, fmt.Errorf("ssh.exec: env: %w", err)
+			}
+			if ok {
 				defaultEnv = d
+			} else if kv[1] != nil && kv[1] != starlark.None {
+				return nil, fmt.Errorf("ssh.exec: 'env' must be a dict or struct, got %s", kv[1].Type())
 			}
 		case "user", "key", "password", "key_passphrase", "passphrase", "use_agent", "ask_passphrase", "prompt", "ask_password":
 			return nil, fmt.Errorf("ssh.config: flat credential parameter %q is not supported; configure target credentials in auth={...}", key)

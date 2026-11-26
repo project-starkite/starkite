@@ -133,3 +133,82 @@ out = k8s.yaml(manifest)
 		}
 	}
 }
+
+func TestK8sInputsAcceptStructs(t *testing.T) {
+	manifest := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"apiVersion": starlark.String("apps/v1"),
+		"kind":       starlark.String("Deployment"),
+		"metadata": starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"name":      starlark.String("edge-app"),
+			"namespace": starlark.String("default"),
+			"uid":       starlark.String("uid-1"),
+			"labels":    starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{"app": starlark.String("edge")}),
+		}),
+		"spec": starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"replicas": starlark.MakeInt(2),
+		}),
+	})
+
+	// 1. parseManifest & resolveManifest & toYAMLString
+	objs, err := parseManifest(manifest)
+	if err != nil || len(objs) != 1 || objs[0].GetName() != "edge-app" {
+		t.Fatalf("parseManifest(struct) = (%v, %v)", objs, err)
+	}
+	if _, err := resolveManifest(manifest); err != nil {
+		t.Fatalf("resolveManifest(struct) failed: %v", err)
+	}
+	yamlOut, err := toYAMLString(manifest)
+	if err != nil || !strings.Contains(yamlOut, "name: edge-app") {
+		t.Fatalf("toYAMLString(struct) failed: %v\n%s", err, yamlOut)
+	}
+
+	// 2. injectOwnerRef with struct owner
+	if err := injectOwnerRef(objs[0], manifest); err != nil {
+		t.Fatalf("injectOwnerRef(struct) failed: %v", err)
+	}
+	if len(objs[0].GetOwnerReferences()) != 1 {
+		t.Fatalf("expected 1 owner reference, got %+v", objs[0].GetOwnerReferences())
+	}
+
+	// 3. runValidate with struct manifest & struct policy
+	policy := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"apiVersion": starlark.String("admissionregistration.k8s.io/v1"),
+		"kind":       starlark.String("ValidatingAdmissionPolicy"),
+		"spec": starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+			"validations": starlark.NewList([]starlark.Value{
+				starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+					"expression": starlark.String("object.spec.replicas >= 2"),
+					"message":    starlark.String("replicas must be >= 2"),
+				}),
+			}),
+		}),
+	})
+	res, err := runValidate(&starlark.Thread{Name: "test"}, nil, nil, []starlark.Tuple{
+		{starlark.String("manifest"), manifest},
+		{starlark.String("policy"), policy},
+	})
+	if err != nil {
+		t.Fatalf("runValidate(struct) failed: %v", err)
+	}
+	if valid, err := res.(starlark.HasAttrs).Attr("valid"); err != nil || valid != starlark.True {
+		t.Fatalf("expected valid=True, got valid=%v err=%v", valid, err)
+	}
+
+	// 4. k8s.obj.deployment accepts struct labels, annotations, container dicts/lists, and struct base clone
+	script := `
+labels = struct(app = "edge")
+c = k8s.obj.container(name = "app", image = "nginx:1.27", ports = [struct(containerPort = 80)])
+dep = k8s.obj.deployment(name = "web", replicas = 2, labels = labels, containers = [c])
+cloned = k8s.obj.deployment(struct(metadata = struct(name = "web2", labels = struct(app = "edge")), spec = struct(replicas = 3)))
+`
+	out := evalK8sStarlark(t, script)
+	depDict := out["dep"].(*KubeResource).ToDict()
+	if !strings.Contains(depDict.String(), `"edge"`) {
+		t.Fatalf("depDict missing struct label: %s", depDict.String())
+	}
+	clonedSpec, _, _ := out["cloned"].(*KubeResource).ToDict().Get(starlark.String("spec"))
+	reps, _, _ := clonedSpec.(*starlark.Dict).Get(starlark.String("replicas"))
+	if reps.(starlark.Int).String() != "3" {
+		t.Fatalf("cloned replicas = %v, want 3", reps)
+	}
+}

@@ -429,16 +429,14 @@ func (c *K8sClient) getClientset() (kubernetes.Interface, error) {
 	return nil, fmt.Errorf("no kubernetes clientset or rest config available")
 }
 
-// filterKwarg extracts a *starlark.Dict kwarg by name (converting *AttrDict to *starlark.Dict if needed),
+// filterKwarg extracts a *starlark.Dict kwarg by name (converting *AttrDict or struct to *starlark.Dict if needed),
 // sets *dest if found, and returns remaining kwargs for startype.Args.
 func filterKwarg(kwargs []starlark.Tuple, name string, dest **starlark.Dict) []starlark.Tuple {
 	filtered := make([]starlark.Tuple, 0, len(kwargs))
 	for _, kv := range kwargs {
 		if string(kv[0].(starlark.String)) == name {
-			if d, ok := kv[1].(*starlark.Dict); ok {
+			if d, ok, err := libkite.ValueToDict(kv[1]); err == nil && ok {
 				*dest = d
-			} else if a, ok := kv[1].(*AttrDict); ok {
-				*dest = a.ToDict()
 			}
 		} else {
 			filtered = append(filtered, kv)

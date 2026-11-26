@@ -154,9 +154,12 @@ func (s *Shell) prepareParams(methodName string, args starlark.Tuple, kwargs []s
 	maps.Copy(envMap, s.env)
 
 	if envVal != starlark.None {
-		dict, ok := envVal.(*starlark.Dict)
+		dict, ok, err := libkite.ValueToDict(envVal)
+		if err != nil {
+			return "", execParams{}, fmt.Errorf("%s: env: %w", methodName, err)
+		}
 		if !ok {
-			return "", execParams{}, fmt.Errorf("%s: env must be a dict, got %s", methodName, envVal.Type())
+			return "", execParams{}, fmt.Errorf("%s: env must be a dict or struct, got %s", methodName, envVal.Type())
 		}
 		for _, item := range dict.Items() {
 			k, ok1 := starlark.AsString(item[0])
@@ -329,9 +332,12 @@ func (m *Module) shell(thread *starlark.Thread, fn *starlark.Builtin, args starl
 
 	envMap := make(map[string]string)
 	if envVal != starlark.None {
-		d, ok := envVal.(*starlark.Dict)
+		d, ok, err := libkite.ValueToDict(envVal)
+		if err != nil {
+			return nil, fmt.Errorf("os.shell: env: %w", err)
+		}
 		if !ok {
-			return nil, fmt.Errorf("os.shell: env must be a dict, got %s", envVal.Type())
+			return nil, fmt.Errorf("os.shell: env must be a dict or struct, got %s", envVal.Type())
 		}
 		for _, item := range d.Items() {
 			k, ok1 := starlark.AsString(item[0])

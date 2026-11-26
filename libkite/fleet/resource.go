@@ -5,8 +5,10 @@ import (
 	"maps"
 	"strings"
 
+	"github.com/project-starkite/starkite/libkite"
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 )
 
 // Resource represents a single compute entity in a fleet.
@@ -98,13 +100,32 @@ func NormalizeStarlarkValue(val starlark.Value) (Resource, error) {
 			if !ok {
 				continue
 			}
-			var goVal any
-			if err := startype.Starlark(item[1]).Go(&goVal); err != nil {
+			goVal, err := libkite.ValueToGo(item[1])
+			if err != nil {
 				goVal = item[1].String()
 			}
 			raw[k] = goVal
 		}
 		return normalizeMap(raw)
+
+	case *starlarkstruct.Struct:
+		names := v.AttrNames()
+		raw := make(map[string]any, len(names))
+		for _, k := range names {
+			fv, err := v.Attr(k)
+			if err != nil {
+				continue
+			}
+			goVal, err := libkite.ValueToGo(fv)
+			if err != nil {
+				goVal = fv.String()
+			}
+			raw[k] = goVal
+		}
+		return normalizeMap(raw)
+
+	case *libkite.AttrDict:
+		return normalizeMap(v.ToMap())
 
 	default:
 		return Resource{}, fmt.Errorf("unsupported Starlark resource type: %s", val.Type())

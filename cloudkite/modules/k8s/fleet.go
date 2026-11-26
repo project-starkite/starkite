@@ -25,7 +25,14 @@ func (c *K8sClient) fleet(thread *starlark.Thread, fn *starlark.Builtin, args st
 	for _, kv := range kwargs {
 		key := string(kv[0].(starlark.String))
 		if key == "labels" {
-			if d, ok := kv[1].(*starlark.Dict); ok {
+			if kv[1] != nil && kv[1] != starlark.None {
+				d, ok, err := libkite.ValueToDict(kv[1])
+				if err != nil {
+					return nil, fmt.Errorf("k8s.fleet: labels: %w", err)
+				}
+				if !ok {
+					return nil, fmt.Errorf("k8s.fleet: labels must be a dict or struct, got %s", kv[1].Type())
+				}
 				rawLabels = d
 			}
 		} else {

@@ -639,7 +639,9 @@ func (c *Client) execFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 
 	var env []string
 	if envVal != nil && envVal != starlark.None {
-		if envDict, ok := envVal.(*starlark.Dict); ok {
+		if envDict, ok, err := libkite.ValueToDict(envVal); err != nil {
+			return nil, fmt.Errorf("containers: exec env: %w", err)
+		} else if ok {
 			for _, item := range envDict.Items() {
 				k, ok1 := starlark.AsString(item[0])
 				v, ok2 := starlark.AsString(item[1])
@@ -648,12 +650,8 @@ func (c *Client) execFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 				}
 				env = append(env, fmt.Sprintf("%s=%s", k, v))
 			}
-		} else if envAttr, ok := envVal.(*AttrDict); ok {
-			for k, v := range envAttr.ToMap() {
-				env = append(env, fmt.Sprintf("%s=%v", k, v))
-			}
 		} else {
-			return nil, fmt.Errorf("containers: exec env must be a dictionary, got %s", envVal.Type())
+			return nil, fmt.Errorf("containers: exec env must be a dictionary or struct, got %s", envVal.Type())
 		}
 	}
 
@@ -796,12 +794,13 @@ func (c *Client) imagePullFn(thread *starlark.Thread, fn *starlark.Builtin, args
 
 	var authEncoded string
 	if authVal != nil && authVal != starlark.None {
-		switch a := authVal.(type) {
-		case starlark.String:
+		if a, ok := authVal.(starlark.String); ok {
 			authEncoded = a.GoString()
-		case *starlark.Dict:
-			m := make(map[string]any)
-			for _, item := range a.Items() {
+		} else if d, ok, err := libkite.ValueToDict(authVal); err != nil {
+			return nil, fmt.Errorf("containers: auth: %w", err)
+		} else if ok {
+			m := make(map[string]any, d.Len())
+			for _, item := range d.Items() {
 				k, _ := starlark.AsString(item[0])
 				v, _ := starlark.AsString(item[1])
 				m[k] = v
@@ -811,8 +810,8 @@ func (c *Client) imagePullFn(thread *starlark.Thread, fn *starlark.Builtin, args
 				return nil, fmt.Errorf("containers: marshal auth: %w", err)
 			}
 			authEncoded = base64.StdEncoding.EncodeToString(data)
-		default:
-			return nil, fmt.Errorf("containers: auth must be dict or string, got %s", authVal.Type())
+		} else {
+			return nil, fmt.Errorf("containers: auth must be dict, struct, or string, got %s", authVal.Type())
 		}
 	}
 
@@ -1067,9 +1066,12 @@ func (c *Client) buildContainerConfig(
 
 	// Ports
 	if portsVal != nil && portsVal != starlark.None {
-		dict, ok := portsVal.(*starlark.Dict)
+		dict, ok, err := libkite.ValueToDict(portsVal)
+		if err != nil {
+			return nil, fmt.Errorf("containers: ports: %w", err)
+		}
 		if !ok {
-			return nil, fmt.Errorf("containers: ports must be a dict, got %s", portsVal.Type())
+			return nil, fmt.Errorf("containers: ports must be a dict or struct, got %s", portsVal.Type())
 		}
 		cfg.ExposedPorts = make(map[string]struct{})
 		cfg.HostConfig.PortBindings = make(map[string][]PortBinding)
@@ -1104,9 +1106,12 @@ func (c *Client) buildContainerConfig(
 
 	// Volumes
 	if volumesVal != nil && volumesVal != starlark.None {
-		dict, ok := volumesVal.(*starlark.Dict)
+		dict, ok, err := libkite.ValueToDict(volumesVal)
+		if err != nil {
+			return nil, fmt.Errorf("containers: volumes: %w", err)
+		}
 		if !ok {
-			return nil, fmt.Errorf("containers: volumes must be a dict, got %s", volumesVal.Type())
+			return nil, fmt.Errorf("containers: volumes must be a dict or struct, got %s", volumesVal.Type())
 		}
 		for _, item := range dict.Items() {
 			hostPath, ok1 := starlark.AsString(item[0])

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"go.starlark.net/starlark"
+	"go.starlark.net/starlarkstruct"
 
 	"github.com/project-starkite/starkite/libkite"
 )
@@ -481,5 +482,30 @@ func TestSanitizeDSN_ScrubsMySQLAndPostgresPasswords(t *testing.T) {
 		if got != tc.expected {
 			t.Errorf("sanitizeDSN(%q) = %q, want %q", tc.dsn, got, tc.expected)
 		}
+	}
+}
+
+func TestInsertWithStructs(t *testing.T) {
+	th := threadWith(t, libkite.AllowAllPermissions())
+	c := openMem(t, th)
+	defer c.db.Close()
+
+	callMethod(t, th, c, "exec", starlark.String("CREATE TABLE nodes (name TEXT, zone TEXT)"))
+
+	row1 := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"name": starlark.String("edge-1"),
+		"zone": starlark.String("us-west1-a"),
+	})
+	row2 := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"name": starlark.String("edge-2"),
+		"zone": starlark.String("us-west1-b"),
+	})
+
+	callMethod(t, th, c, "insert", starlark.String("nodes"), row1)
+	callMethod(t, th, c, "insert", starlark.String("nodes"), starlark.NewList([]starlark.Value{row2}))
+
+	cnt := callMethod(t, th, c, "query_value", starlark.String("SELECT count(*) FROM nodes"))
+	if cnt != starlark.MakeInt(2) {
+		t.Fatalf("count = %v, want 2", cnt)
 	}
 }

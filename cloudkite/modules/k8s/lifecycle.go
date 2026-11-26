@@ -19,17 +19,7 @@ import (
 
 // extractObjectMeta extracts kind, name, namespace, and generation from a Starlark object.
 func extractObjectMeta(val starlark.Value) (kind, name, namespace string, gen int64, err error) {
-	var u *unstructured.Unstructured
-	switch v := val.(type) {
-	case KubeObject:
-		u, err = dictToUnstructured(v.ToDict())
-	case *AttrDict:
-		u, err = dictToUnstructured(v)
-	case *starlark.Dict:
-		u, err = dictToUnstructured(v)
-	default:
-		return "", "", "", 0, fmt.Errorf("expected k8s object or dict, got %s", val.Type())
-	}
+	u, err := toUnstructuredObj(val)
 	if err != nil {
 		return "", "", "", 0, err
 	}
@@ -49,20 +39,13 @@ func (m *Module) isDeleting(thread *starlark.Thread, fn *starlark.Builtin, args 
 	}
 
 	var dt any
-	switch v := objVal.(type) {
-	case *AttrDict:
-		if meta, ok := v.ToMap()["metadata"].(map[string]any); ok {
+	if m, ok, err := libkite.ValueToMap(objVal); err != nil {
+		return nil, fmt.Errorf("k8s.is_deleting: %w", err)
+	} else if ok {
+		if meta, ok := m["metadata"].(map[string]any); ok {
 			dt = meta["deletionTimestamp"]
 		}
-	case *starlark.Dict:
-		if metaVal, found, _ := v.Get(starlark.String("metadata")); found {
-			if metaDict, ok := metaVal.(*starlark.Dict); ok {
-				if dtVal, found, _ := metaDict.Get(starlark.String("deletionTimestamp")); found {
-					dt = dtVal
-				}
-			}
-		}
-	default:
+	} else {
 		return starlark.False, nil
 	}
 
@@ -288,28 +271,15 @@ func (c *K8sClient) finalizerRemove(thread *starlark.Thread, fn *starlark.Builti
 
 func extractFinalizers(val starlark.Value) []string {
 	var list []string
-	switch v := val.(type) {
-	case *AttrDict:
-		if meta, ok := v.ToMap()["metadata"].(map[string]any); ok {
-			if finList, ok := meta["finalizers"].([]any); ok {
-				for _, f := range finList {
-					if s, ok := f.(string); ok {
-						list = append(list, s)
-					}
-				}
-			}
-		}
-	case *starlark.Dict:
-		if metaVal, found, _ := v.Get(starlark.String("metadata")); found {
-			if metaDict, ok := metaVal.(*starlark.Dict); ok {
-				if finVal, found, _ := metaDict.Get(starlark.String("finalizers")); found {
-					if finList, ok := finVal.(*starlark.List); ok {
-						for i := 0; i < finList.Len(); i++ {
-							if s, ok := starlark.AsString(finList.Index(i)); ok {
-								list = append(list, s)
-							}
-						}
-					}
+	m, ok, err := libkite.ValueToMap(val)
+	if err != nil || !ok {
+		return list
+	}
+	if meta, ok := m["metadata"].(map[string]any); ok {
+		if finList, ok := meta["finalizers"].([]any); ok {
+			for _, f := range finList {
+				if s, ok := f.(string); ok {
+					list = append(list, s)
 				}
 			}
 		}
@@ -494,16 +464,10 @@ func (c *K8sClient) conditionSet(thread *starlark.Thread, fn *starlark.Builtin, 
 }
 
 func toUnstructuredObj(val starlark.Value) (*unstructured.Unstructured, error) {
-	switch v := val.(type) {
-	case KubeObject:
-		return dictToUnstructured(v.ToDict())
-	case *AttrDict:
-		return dictToUnstructured(v)
-	case *starlark.Dict:
-		return dictToUnstructured(v)
-	default:
-		return nil, fmt.Errorf("expected k8s object or dict, got %s", val.Type())
+	if ko, ok := val.(KubeObject); ok {
+		return dictToUnstructured(ko.ToDict())
 	}
+	return dictToUnstructured(val)
 }
 
 var eventSeq atomic.Uint64

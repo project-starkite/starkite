@@ -107,3 +107,51 @@ def test_struct_builtin_interop():
     assert_equal(type(user), "struct")
     assert_true(user.name() != "")
     assert_true(user != struct(name = user.name))
+
+def test_struct_module_inputs():
+    # log accepts struct in attrs
+    log.info("struct-test", attrs = struct(vm = "edge-1", port = 443))
+    sub = log.logger().attrs(struct(region = "us-west1"))
+    sub.info("sublogger")
+
+    # sql.insert accepts struct row and list of structs
+    db = sql.open("sqlite", ":memory:")
+    db.exec("CREATE TABLE edges (name TEXT, zone TEXT)")
+    db.insert("edges", struct(name = "edge-1", zone = "us-west1-a"))
+    db.insert("edges", [struct(name = "edge-2", zone = "us-west1-b")])
+    assert_equal(db.query_value("SELECT count(*) FROM edges"), 2)
+    db.close()
+
+    # csv.source accepts list of structs
+    csv_path = fs.path(temp_dir()) / "struct_rows.csv"
+    csv.source([struct(name = "edge-1", zone = "us-west1-a")]).write_file(csv_path.string)
+    rows = csv.file(csv_path.string).read(header = True)
+    assert_equal(len(rows), 1)
+    assert_equal(rows[0]["name"], "edge-1")
+    csv_path.remove()
+
+    # fleet.new accepts list of structs
+    fl = fleet.new([struct(name = "edge-1", address = "10.0.0.10", region = "us-west1")])
+    assert_equal(fl.count, 1)
+    assert_equal(fl.addresses(), ["10.0.0.10"])
+
+    # ssh.config accepts struct for auth, jump, and env
+    c = ssh.config(
+        hosts = ["10.0.0.10"],
+        auth = struct(user = "deploy", use_agent = True),
+        jump = struct(host = "bastion.internal", port = 2222),
+        env = struct(APP_ENV = "prod"),
+        dry_run = True,
+    )
+    res = c.exec("uptime", env = struct(PORT = "8080"))
+    assert_equal(len(res), 1)
+    assert_contains(res[0].stdout, "PORT=")
+
+    # k8s.obj and k8s.validate accept structs
+    pod = k8s.obj.pod(
+        name = "edge-pod",
+        labels = struct(app = "edge"),
+        containers = [k8s.obj.container(name = "agent", image = "alpine:3.20")],
+    )
+    val = k8s.validate(pod, expression = "object.metadata.labels.app == 'edge'")
+    assert_true(val["valid"])

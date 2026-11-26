@@ -330,3 +330,69 @@ func TestExpandStructs(t *testing.T) {
 		t.Fatalf("expected nesting depth error on cycle, got: %v", err)
 	}
 }
+
+func TestValueToDictAndMapAndAttrDictSetKey(t *testing.T) {
+	inner := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"zone": starlark.String("us-central1-a"),
+	})
+	rec := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"name":  starlark.String("edge-1"),
+		"count": starlark.MakeInt(2),
+		"meta":  inner,
+	})
+
+	// 1. ValueToDict converts struct (and expands nested structs) to *starlark.Dict.
+	dict, ok, err := ValueToDict(rec)
+	if err != nil || !ok || dict == nil {
+		t.Fatalf("ValueToDict(struct) failed: ok=%v err=%v", ok, err)
+	}
+	metaVal, found, _ := dict.Get(starlark.String("meta"))
+	if !found {
+		t.Fatal("ValueToDict missing meta key")
+	}
+	if _, isDict := metaVal.(*starlark.Dict); !isDict {
+		t.Fatalf("nested struct expected *starlark.Dict, got %T", metaVal)
+	}
+
+	// Non-mapping returns (nil, false, nil).
+	if d, ok, err := ValueToDict(starlark.MakeInt(7)); err != nil || ok || d != nil {
+		t.Fatalf("ValueToDict(int) = (%v, %v, %v), want (nil, false, nil)", d, ok, err)
+	}
+
+	// 2. ValueToMap directly builds map[string]any without intermediate dict conversion.
+	m, ok, err := ValueToMap(rec)
+	if err != nil || !ok {
+		t.Fatalf("ValueToMap(struct) failed: ok=%v err=%v", ok, err)
+	}
+	if m["name"] != "edge-1" || m["count"] != int64(2) {
+		t.Fatalf("unexpected top-level map fields: %#v", m)
+	}
+	nested, ok := m["meta"].(map[string]any)
+	if !ok || nested["zone"] != "us-central1-a" {
+		t.Fatalf("unexpected nested map: %#v", m["meta"])
+	}
+
+	// 3. Callable field fails cleanly in ValueToMap.
+	fnStruct := starlarkstruct.FromStringDict(starlarkstruct.Default, starlark.StringDict{
+		"cb": starlark.NewBuiltin("cb", func(*starlark.Thread, *starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
+			return starlark.None, nil
+		}),
+	})
+	if _, _, err := ValueToMap(fnStruct); err == nil {
+		t.Fatal("expected ValueToMap error on callable field")
+	}
+
+	// 4. AttrDict.SetKey accepts struct values directly.
+	ad := NewAttrDict(nil)
+	if err := ad.SetKey(starlark.String("cfg"), rec); err != nil {
+		t.Fatalf("AttrDict.SetKey(struct) failed: %v", err)
+	}
+	gotCfg, ok := ad.GetField("cfg")
+	if !ok {
+		t.Fatal("AttrDict missing cfg after SetKey")
+	}
+	gotMap, ok := gotCfg.(map[string]any)
+	if !ok || gotMap["name"] != "edge-1" {
+		t.Fatalf("unexpected stored AttrDict cfg: %#v", gotCfg)
+	}
+}
