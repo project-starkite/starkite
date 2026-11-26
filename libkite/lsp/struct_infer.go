@@ -1,11 +1,13 @@
 package lsp
 
 import (
+	"cmp"
 	"crypto/sha256"
 	"encoding/hex"
+	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 
 	"github.com/M31-Labs/starlsp"
@@ -110,8 +112,8 @@ func (h *Host) lookupStructSchema(owner string) *structSchema {
 }
 
 func (h *Host) putStructSchema(members []structMember) string {
-	sort.Slice(members, func(i, j int) bool {
-		return members[i].symbol.Name < members[j].symbol.Name
+	slices.SortFunc(members, func(a, b structMember) int {
+		return cmp.Compare(a.symbol.Name, b.symbol.Name)
 	})
 
 	sum := sha256.New()
@@ -407,34 +409,37 @@ func (h *Host) inferExpr(expr syntax.Expr, ctx *inferContext) inferredValue {
 	return inferredValue{kind: starlsp.KindProperty}
 }
 
+func (h *Host) mergeStructSchemas(leftOwner, rightOwner string) string {
+	ls := h.lookupStructSchema(leftOwner)
+	rs := h.lookupStructSchema(rightOwner)
+	switch {
+	case ls == nil && rs == nil:
+		return ""
+	case ls == nil:
+		return rightOwner
+	case rs == nil:
+		return leftOwner
+	}
+
+	merged := make(map[string]structMember, len(ls.byName)+len(rs.byName))
+	maps.Copy(merged, ls.byName)
+	maps.Copy(merged, rs.byName)
+	members := make([]structMember, 0, len(merged))
+	for _, m := range merged {
+		members = append(members, m)
+	}
+	return h.putStructSchema(members)
+}
+
 func (h *Host) inferStructMerge(leftExpr, rightExpr syntax.Expr, ctx *inferContext) inferredValue {
 	child := ctx.childExpr()
 	left := h.inferExpr(leftExpr, child)
 	right := h.inferExpr(rightExpr, child)
 
-	ls := h.lookupStructSchema(left.valueOwner)
-	rs := h.lookupStructSchema(right.valueOwner)
-	switch {
-	case ls == nil && rs == nil:
+	owner := h.mergeStructSchemas(left.valueOwner, right.valueOwner)
+	if owner == "" {
 		return inferredValue{kind: starlsp.KindProperty}
-	case ls == nil:
-		return inferredValue{kind: starlsp.KindProperty, valueOwner: right.valueOwner, returnsText: "struct"}
-	case rs == nil:
-		return inferredValue{kind: starlsp.KindProperty, valueOwner: left.valueOwner, returnsText: "struct"}
 	}
-
-	merged := make(map[string]structMember, len(ls.byName)+len(rs.byName))
-	for k, m := range ls.byName {
-		merged[k] = m
-	}
-	for k, m := range rs.byName {
-		merged[k] = m
-	}
-	members := make([]structMember, 0, len(merged))
-	for _, m := range merged {
-		members = append(members, m)
-	}
-	owner := h.putStructSchema(members)
 	return inferredValue{kind: starlsp.KindProperty, valueOwner: owner, returnsText: "struct"}
 }
 
@@ -751,21 +756,8 @@ func (h *Host) inferDefReturnOwner(defStmt *syntax.DefStmt, ctx *inferContext) s
 		if owner == val.valueOwner {
 			continue
 		}
-		leftSchema := h.lookupStructSchema(owner)
-		rightSchema := h.lookupStructSchema(val.valueOwner)
-		if leftSchema != nil && rightSchema != nil {
-			combined := make(map[string]structMember, len(leftSchema.byName)+len(rightSchema.byName))
-			for k, m := range leftSchema.byName {
-				combined[k] = m
-			}
-			for k, m := range rightSchema.byName {
-				combined[k] = m
-			}
-			members := make([]structMember, 0, len(combined))
-			for _, m := range combined {
-				members = append(members, m)
-			}
-			owner = h.putStructSchema(members)
+		if merged := h.mergeStructSchemas(owner, val.valueOwner); merged != "" {
+			owner = merged
 		}
 	}
 	return owner

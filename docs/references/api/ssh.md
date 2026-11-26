@@ -95,7 +95,7 @@ client = ssh.config(
     },
     jump  = {
         "host": "bastion.corp.net",
-        "user": "vladimir",
+        "user": "alice",
         "key":  "~/.ssh/bastion_key",
         "port": 22,
     },
@@ -207,7 +207,7 @@ Inherits authentication, bastion routing, and target inventory from the configur
 client = ssh.config(
     fleet = pi_cluster,
     auth  = {"user": "pi", "password": "initial_password"},
-    jump  = {"host": "bastion.lan", "user": "vladimir"},
+    jump  = {"host": "bastion.lan", "user": "alice"},
 )
 
 # Installs key through bastion tunnel onto all fleet nodes
