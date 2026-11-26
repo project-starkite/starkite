@@ -189,48 +189,43 @@ def main():
 #   kite run .                        # print YAML
 #   kite run . | kubectl apply -f -   # apply to a cluster
 
-def _labels(app):
-    return {
-        "app.kubernetes.io/name": app,
-        "app.kubernetes.io/managed-by": "starkite",
-    }
-
 def main():
-    namespace = var_str("namespace", "default")
     app = var_str("app_name", "myapp")
-    image_tag = var_str("image_tag", "latest")
-    replicas = var_int("replicas", 3)
+    cfg = struct(
+        namespace = var_str("namespace", "default"),
+        app = app,
+        image = "%s:%s" % (app, var_str("image_tag", "latest")),
+        replicas = var_int("replicas", 3),
+        port = 8080,
+        labels = {
+            "app.kubernetes.io/name": app,
+            "app.kubernetes.io/managed-by": "starkite",
+        },
+        selector = {"app.kubernetes.io/name": app},
+    )
 
-    deployment = {
-        "apiVersion": "apps/v1",
-        "kind": "Deployment",
-        "metadata": {"name": app, "namespace": namespace, "labels": _labels(app)},
-        "spec": {
-            "replicas": replicas,
-            "selector": {"matchLabels": {"app.kubernetes.io/name": app}},
-            "template": {
-                "metadata": {"labels": _labels(app)},
-                "spec": {"containers": [{
-                    "name": app,
-                    "image": "%s:%s" % (app, image_tag),
-                    "ports": [{"containerPort": 8080}],
-                }]},
-            },
-        },
-    }
-    service = {
-        "apiVersion": "v1",
-        "kind": "Service",
-        "metadata": {"name": app, "namespace": namespace, "labels": _labels(app)},
-        "spec": {
-            "selector": {"app.kubernetes.io/name": app},
-            "ports": [{"port": 80, "targetPort": 8080}],
-        },
-    }
-    print("---")
-    print(yaml.encode(deployment))
-    print("---")
-    print(yaml.encode(service))
+    deployment = k8s.obj.deployment(
+        name = cfg.app,
+        namespace = cfg.namespace,
+        labels = cfg.labels,
+        replicas = cfg.replicas,
+        selector = {"matchLabels": cfg.selector},
+        containers = [
+            k8s.obj.container(
+                name = cfg.app,
+                image = cfg.image,
+                ports = [k8s.obj.container_port(container_port = cfg.port)],
+            ),
+        ],
+    )
+    service = k8s.obj.service(
+        name = cfg.app,
+        namespace = cfg.namespace,
+        labels = cfg.labels,
+        selector = cfg.selector,
+        ports = [k8s.obj.service_port(port = 80, target_port = cfg.port)],
+    )
+    print(k8s.yaml([deployment, service]))
 `,
 	},
 }

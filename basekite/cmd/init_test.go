@@ -86,3 +86,23 @@ func TestModuleIdentity(t *testing.T) {
 		})
 	}
 }
+
+func TestRunInitKubernetesTemplateUsesStructAndK8sObj(t *testing.T) {
+	dir := filepath.Join(t.TempDir(), "k8s-app")
+	initName, initTemplate, listTemplates = "", "kubernetes", false
+	t.Cleanup(func() { initName, initTemplate, listTemplates = "", "basic", false })
+
+	if err := runInit(nil, []string{dir}); err != nil {
+		t.Fatalf("runInit kubernetes: %v", err)
+	}
+	mainStar, err := os.ReadFile(filepath.Join(dir, "main.star"))
+	if err != nil {
+		t.Fatalf("read main.star: %v", err)
+	}
+	src := string(mainStar)
+	for _, want := range []string{"struct(", "k8s.obj.deployment(", "k8s.obj.service(", "k8s.yaml("} {
+		if !strings.Contains(src, want) {
+			t.Errorf("kubernetes template main.star missing %q:\n%s", want, src)
+		}
+	}
+}

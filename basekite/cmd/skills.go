@@ -153,7 +153,7 @@ func renderSkill(w io.Writer, cat *catalog.Catalog, cfg SkillConfig) error {
 func renderTier1Invariants(w io.Writer) {
 	fmt.Fprintln(w, "## Tier 1: Core Language Invariants & Execution Rules")
 	fmt.Fprintln(w)
-	fmt.Fprintln(w, "Autonomous agents generating Starkite scripts MUST adhere to five load-bearing execution rules:")
+	fmt.Fprintln(w, "Autonomous agents generating Starkite scripts MUST adhere to six core execution rules:")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "1. **Automatic Entrypoint Execution (`main()`)**:")
 	fmt.Fprintln(w, "   - Starkite scripts define entry logic inside `def main():` or `def main(ctx):`.")
@@ -180,6 +180,11 @@ func renderTier1Invariants(w io.Writer) {
 	fmt.Fprintln(w, "5. **Starlark Native String Methods**:")
 	fmt.Fprintln(w, "   - Strings in Starlark are native objects with built-in methods: `s.split(sep)`, `s.startswith(pfx)`, `s.endswith(sfx)`, `s.strip()`, `s.replace(old, new)`, and `sep.join(list)`.")
 	fmt.Fprintln(w, "   - **DO NOT** call `strings.split()` or `strings.has_prefix()`. The `strings` module provides only specialized non-builtin helpers (`center`, `cut`, `equal`, `has_any`, `ljust`, `quote`, `unquote`).")
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "6. **Container Conventions (`struct`, `dict`, `AttrDict`)**:")
+	fmt.Fprintln(w, "   - Use `struct(...)` for fixed-schema records, typed configuration, helper return values, and loaded module exports (dot access `cfg.port`, immutable).")
+	fmt.Fprintln(w, "   - Use `dict` (`{...}`) for dynamic key-value maps, HTTP headers, environment maps, label maps, and keyed lookups.")
+	fmt.Fprintln(w, "   - Built-in dynamic inspection calls (`k8s.get`, `k8s.list`, `containers.inspect`) return `AttrDict` for dot-access over arbitrary schemas.")
 	fmt.Fprintln(w)
 }
 
@@ -235,14 +240,14 @@ func renderTier2Recipes(w io.Writer, cfg SkillConfig) {
 		io.WriteString(w, "### Concurrent Fan-Out & Rate-Limited Pipelines\n```python\n"+
 			"def check_endpoint(target):\n"+
 			"    res = http.try_get(\"https://\" + target + \"/healthz\")\n"+
-			"    return {\"target\": target, \"alive\": res.ok and res.value.status_code == 200}\n"+
+			"    return struct(target = target, alive = res.ok and res.value.status_code == 200)\n"+
 			"\n"+
 			"def main():\n"+
 			"    endpoints = [\"node1.internal\", \"node2.internal\", \"node3.internal\"]\n"+
 			"    # Concurrently check endpoints with worker pool limit of 2\n"+
 			"    results = concur.map(endpoints, check_endpoint, workers=2)\n"+
 			"    for r in results:\n"+
-			"        log.info(\"Endpoint %s alive=%s\" % (r[\"target\"], r[\"alive\"]))\n"+
+			"        log.info(\"Endpoint %s alive=%s\" % (r.target, r.alive))\n"+
 			"```\n\n")
 	}
 

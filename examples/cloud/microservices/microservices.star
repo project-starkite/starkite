@@ -4,7 +4,7 @@
 # Replaces: helm install myapp ./umbrella-chart (umbrella chart with subcharts)
 #
 # Composable make_deployment()/make_service() functions replace Helm subcharts.
-# Frontend + API + Worker deployed from a shared service profile dict.
+# Frontend + API + Worker deployed from a shared service profile struct.
 # Cross-service wiring is just code ("http://api:%d" % port).
 # Pipe pattern — generates YAML to stdout.
 #
@@ -19,9 +19,9 @@
 
 # Service profiles — each entry defines a "subchart"
 services = {
-    "frontend": {"port": 80,   "replicas": 2, "health": "/"},
-    "api":      {"port": 8080, "replicas": 3, "health": "/healthz"},
-    "worker":   {"port": 9090, "replicas": 2, "health": "/healthz"},
+    "frontend": struct(port = 80,   replicas = 2, health = "/"),
+    "api":      struct(port = 8080, replicas = 3, health = "/healthz"),
+    "worker":   struct(port = 9090, replicas = 2, health = "/healthz"),
 }
 
 def make_deployment(name, profile, registry, tag, log_level, api_url, ns):
@@ -29,7 +29,7 @@ def make_deployment(name, profile, registry, tag, log_level, api_url, ns):
     container = k8s.obj.container(
         name=name,
         image="%s/%s:%s" % (registry, name, tag),
-        ports=[k8s.obj.container_port(container_port=profile["port"], name="http")],
+        ports=[k8s.obj.container_port(container_port=profile.port, name="http")],
         env=[
             k8s.obj.env_var(name="SERVICE_NAME", value=name),
             k8s.obj.env_var(name="LOG_LEVEL", value=log_level),
@@ -39,12 +39,12 @@ def make_deployment(name, profile, registry, tag, log_level, api_url, ns):
             k8s.obj.env_from(config_map_ref={"name": "shared-config"}),
         ],
         readiness_probe=k8s.obj.probe(
-            http_get={"path": profile["health"], "port": profile["port"]},
+            http_get={"path": profile.health, "port": profile.port},
             initial_delay_seconds=5,
             period_seconds=10,
         ),
         liveness_probe=k8s.obj.probe(
-            http_get={"path": profile["health"], "port": profile["port"]},
+            http_get={"path": profile.health, "port": profile.port},
             initial_delay_seconds=15,
             period_seconds=20,
         ),
@@ -58,7 +58,7 @@ def make_deployment(name, profile, registry, tag, log_level, api_url, ns):
         name=name,
         namespace=ns,
         labels={"app": "microservices", "component": name},
-        replicas=profile["replicas"],
+        replicas=profile.replicas,
         containers=[container],
     )
 
@@ -69,7 +69,7 @@ def make_service(name, profile, ns):
         namespace=ns,
         labels={"app": "microservices", "component": name},
         selector={"app": "microservices", "component": name},
-        ports=[k8s.obj.service_port(name="http", port=profile["port"], target_port=profile["port"])],
+        ports=[k8s.obj.service_port(name="http", port=profile.port, target_port=profile.port)],
     )
 
 def build_ingress(domain, ns):
@@ -105,7 +105,7 @@ def main():
     ns = var_str("namespace", "default")
 
     # Cross-service wiring — just code, not template expressions
-    api_port = services["api"]["port"]
+    api_port = services["api"].port
     api_url = "http://api:%d" % api_port
 
     resources = []

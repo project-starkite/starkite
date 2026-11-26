@@ -14,7 +14,7 @@ This skill teaches autonomous agents how to author idiomatic, sandboxed, and rob
 
 ## Tier 1: Core Language Invariants & Execution Rules
 
-Autonomous agents generating Starkite scripts MUST adhere to five load-bearing execution rules:
+Autonomous agents generating Starkite scripts MUST adhere to six core execution rules:
 
 1. **Automatic Entrypoint Execution (`main()`)**:
    - Starkite scripts define entry logic inside `def main():` or `def main(ctx):`.
@@ -41,6 +41,11 @@ Autonomous agents generating Starkite scripts MUST adhere to five load-bearing e
 5. **Starlark Native String Methods**:
    - Strings in Starlark are native objects with built-in methods: `s.split(sep)`, `s.startswith(pfx)`, `s.endswith(sfx)`, `s.strip()`, `s.replace(old, new)`, and `sep.join(list)`.
    - **DO NOT** call `strings.split()` or `strings.has_prefix()`. The `strings` module provides only specialized non-builtin helpers (`center`, `cut`, `equal`, `has_any`, `ljust`, `quote`, `unquote`).
+
+6. **Container Conventions (`struct`, `dict`, `AttrDict`)**:
+   - Use `struct(...)` for fixed-schema records, typed configuration, helper return values, and loaded module exports (dot access `cfg.port`, immutable).
+   - Use `dict` (`{...}`) for dynamic key-value maps, HTTP headers, environment maps, label maps, and keyed lookups.
+   - Built-in dynamic inspection calls (`k8s.get`, `k8s.list`, `containers.inspect`) return `AttrDict` for dot-access over arbitrary schemas.
 
 ## Tier 2: Scripting Idioms & Production Recipes
 
@@ -86,14 +91,14 @@ def main():
 ```python
 def check_endpoint(target):
     res = http.try_get("https://" + target + "/healthz")
-    return {"target": target, "alive": res.ok and res.value.status_code == 200}
+    return struct(target = target, alive = res.ok and res.value.status_code == 200)
 
 def main():
     endpoints = ["node1.internal", "node2.internal", "node3.internal"]
     # Concurrently check endpoints with worker pool limit of 2
     results = concur.map(endpoints, check_endpoint, workers=2)
     for r in results:
-        log.info("Endpoint %s alive=%s" % (r["target"], r["alive"]))
+        log.info("Endpoint %s alive=%s" % (r.target, r.alive))
 ```
 
 ### Kubernetes Cluster Triage & Resource Inspection
