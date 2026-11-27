@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -140,5 +141,78 @@ func TestDownloadAndReplace(t *testing.T) {
 
 	if string(content) != string(binaryData) {
 		t.Errorf("dstPath content = %q, want %q", string(content), string(binaryData))
+	}
+}
+
+func TestDownloadAndReplace_EnforcesMaxSize(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("0123456789abcdef"))
+	}))
+	defer srv.Close()
+
+	dstPath := filepath.Join(t.TempDir(), "kite")
+	if err := os.WriteFile(dstPath, []byte("keep-original"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	err := downloadAndReplaceWithContext(t.Context(), srv.URL, srv.URL, dstPath, "kite", 8)
+	if err == nil || !strings.Contains(err.Error(), "exceeds maximum allowed size") {
+		t.Fatalf("expected size limit error, got %v", err)
+	}
+	got, err := os.ReadFile(dstPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "keep-original" {
+		t.Fatalf("destination overwritten after oversize error: %q", string(got))
+	}
+}
+
+func TestReplaceExecutableWithBackup_SwapAndRollback(t *testing.T) {
+	dir := t.TempDir()
+	dstPath := filepath.Join(dir, "kite")
+	tmpPath := filepath.Join(dir, "kite.tmp")
+	if err := os.WriteFile(dstPath, []byte("old-bin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tmpPath, []byte("new-bin"), 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := replaceExecutableWithBackup(tmpPath, dstPath); err != nil {
+		t.Fatalf("replaceExecutableWithBackup failed: %v", err)
+	}
+	got, err := os.ReadFile(dstPath)
+	if err != nil || string(got) != "new-bin" {
+		t.Fatalf("expected new-bin after swap, got %q (err=%v)", string(got), err)
+	}
+	if _, err := os.Stat(dstPath + ".old"); !os.IsNotExist(err) {
+		t.Fatalf("expected .old backup to be removed after swap, err=%v", err)
+	}
+
+	// Missing tmpPath forces rename failure and must roll back dstPath.
+	if err := replaceExecutableWithBackup(filepath.Join(dir, "missing.tmp"), dstPath); err == nil {
+		t.Fatal("expected error when tmpPath does not exist")
+	}
+	gotAfterRollback, err := os.ReadFile(dstPath)
+	if err != nil || string(gotAfterRollback) != "new-bin" {
+		t.Fatalf("expected rollback to restore new-bin, got %q (err=%v)", string(gotAfterRollback), err)
+	}
+}
+
+func TestCommandAndExecContext_NilAndParentCancellation(t *testing.T) {
+	if got := commandContext(nil); got == nil {
+		t.Fatal("commandContext(nil) returned nil")
+	}
+
+	parent, parentCancel := context.WithCancel(context.Background())
+	ctx, cancel := execContext(parent, 30)
+	defer cancel()
+	parentCancel()
+
+	select {
+	case <-ctx.Done():
+	default:
+		t.Fatal("expected execContext child to cancel when parent cancels")
 	}
 }

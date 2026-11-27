@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 
@@ -51,7 +50,8 @@ func evalCode(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+	parentCtx := commandContext(cmd)
+	if handled, err := MaybeHandoffToSandbox(parentCtx); handled || err != nil {
 		return err
 	}
 
@@ -100,7 +100,7 @@ func evalCode(cmd *cobra.Command, args []string) error {
 	}
 	defer rt.Close()
 
-	ctx, cancel := execContext(timeout)
+	ctx, cancel := execContext(parentCtx, timeout)
 	defer cancel()
 
 	if err := rt.Execute(ctx, code); err != nil {

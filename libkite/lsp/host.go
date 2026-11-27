@@ -13,6 +13,9 @@
 package lsp
 
 import (
+	"fmt"
+	"io"
+	"runtime/debug"
 	"strings"
 	"sync"
 
@@ -31,6 +34,7 @@ type Host struct {
 	cat  *catalog.Catalog
 
 	mu        sync.RWMutex
+	log       io.Writer
 	structs   map[string]*structSchema
 	fileCache map[string]cachedStarFile
 }
@@ -39,6 +43,22 @@ type Host struct {
 // so kitecloud completes the k8s module and kitecmd does not.
 func NewHost(newRegistry func(*libkite.ModuleConfig) *libkite.Registry) *Host {
 	return &Host{newRegistry: newRegistry}
+}
+
+// SetLog configures a writer for panic diagnostics recovered during host callbacks.
+func (h *Host) SetLog(w io.Writer) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	h.log = w
+}
+
+func (h *Host) logPanic(op string, r any) {
+	h.mu.RLock()
+	w := h.log
+	h.mu.RUnlock()
+	if w != nil {
+		fmt.Fprintf(w, "starkite lsp host panic in %s: %v\n%s\n", op, r, debug.Stack())
+	}
 }
 
 func (h *Host) Name() string { return "starkite" }
@@ -51,23 +71,35 @@ func (h *Host) build() {
 	})
 }
 
-func (h *Host) Globals() []starlsp.Symbol {
+func (h *Host) Globals() (out []starlsp.Symbol) {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logPanic("Globals", r)
+			out = nil
+		}
+	}()
 	h.build()
 	syms := h.cat.Globals()
-	out := make([]starlsp.Symbol, len(syms))
+	out = make([]starlsp.Symbol, len(syms))
 	for i, s := range syms {
 		out[i] = toLspSymbol(s)
 	}
 	return out
 }
 
-func (h *Host) Members(owner string) []starlsp.Symbol {
+func (h *Host) Members(owner string) (out []starlsp.Symbol) {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logPanic("Members", r)
+			out = nil
+		}
+	}()
 	if strings.HasPrefix(owner, structOwnerPrefix) {
 		return h.structMembers(owner)
 	}
 	h.build()
 	syms := h.cat.Members(owner)
-	out := make([]starlsp.Symbol, len(syms))
+	out = make([]starlsp.Symbol, len(syms))
 	for i, s := range syms {
 		out[i] = toLspSymbol(s)
 	}
@@ -76,7 +108,13 @@ func (h *Host) Members(owner string) []starlsp.Symbol {
 
 // ResolveType maps a receiver expression to the module or object type whose
 // members it exposes.
-func (h *Host) ResolveType(req starlsp.TypeRequest) (string, bool) {
+func (h *Host) ResolveType(req starlsp.TypeRequest) (typ string, found bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logPanic("ResolveType", r)
+			typ, found = "", false
+		}
+	}()
 	h.build()
 	expr := strings.TrimSpace(req.Expr)
 	if expr == "" {
@@ -111,22 +149,27 @@ func (h *Host) ResolveType(req starlsp.TypeRequest) (string, bool) {
 
 // Document supplies prose and a signature for a name whose value carries
 // neither, which is every Starlark builtin.
-func (h *Host) Document(owner, name string) (starlsp.Symbol, bool) {
+func (h *Host) Document(owner, name string) (sym starlsp.Symbol, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logPanic("Document", r)
+			sym, ok = starlsp.Symbol{}, false
+		}
+	}()
 	if strings.HasPrefix(owner, structOwnerPrefix) {
 		return h.structDocument(owner, name)
 	}
 	h.build()
-	var sym catalog.Symbol
-	var ok bool
+	var catSym catalog.Symbol
 	if owner != "" {
-		sym, ok = h.cat.LookupMember(owner, name)
+		catSym, ok = h.cat.LookupMember(owner, name)
 	} else {
-		sym, ok = h.cat.LookupGlobal(name)
+		catSym, ok = h.cat.LookupGlobal(name)
 	}
 	if !ok {
 		return starlsp.Symbol{}, false
 	}
-	return toLspSymbol(sym), true
+	return toLspSymbol(catSym), true
 }
 
 func toLspSymbol(s catalog.Symbol) starlsp.Symbol {
@@ -157,7 +200,13 @@ func toLspKind(k catalog.Kind) starlsp.Kind {
 }
 
 // Lint reports the Starkite conventions the language does not know about.
-func (h *Host) Lint(doc *starlsp.Document, file *syntax.File) []starlsp.Diagnostic {
+func (h *Host) Lint(doc *starlsp.Document, file *syntax.File) (diags []starlsp.Diagnostic) {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logPanic("Lint", r)
+			diags = nil
+		}
+	}()
 	return h.conventionLints(doc, file)
 }
 

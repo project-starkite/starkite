@@ -69,11 +69,10 @@ func watchScript(cmd *cobra.Command, args []string) error {
 	perms := activeProfile.CompilePermissions()
 	checker, _ := libkite.NewPermissionChecker(perms)
 
-	preloaded := GetActivePreloadedClosure()
-	if preloaded == nil && absPath != "" {
+	var preloaded *libkite.StaticLoadClosure
+	if absPath != "" {
 		if closure, err := libkite.ResolveStaticLoadClosure(absPath, filepath.Dir(absPath), nil); err == nil {
 			preloaded = closure
-			SetActivePreloadedClosure(preloaded)
 		}
 	}
 
@@ -81,7 +80,8 @@ func watchScript(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if handled, err := MaybeHandoffToSandboxWithScript(cmd.Context(), absPath); handled || err != nil {
+	ctx := commandContext(cmd)
+	if handled, err := MaybeHandoffToSandboxWithScript(ctx, absPath, preloaded); handled || err != nil {
 		return err
 	}
 
@@ -103,8 +103,7 @@ func watchScript(cmd *cobra.Command, args []string) error {
 	fmt.Println()
 
 	// Run script initially
-	ctx := cmd.Context()
-	runWatchedScript(ctx, absPath, perms, isModule, varStore)
+	runWatchedScript(ctx, absPath, perms, isModule, varStore, preloaded)
 
 	// Debounce timer
 	var debounceTimer *time.Timer
@@ -121,7 +120,7 @@ func watchScript(cmd *cobra.Command, args []string) error {
 		case <-debounceCh:
 			debounceCh = nil
 			fmt.Println("\n--- File changed, re-executing ---")
-			runWatchedScript(ctx, absPath, perms, isModule, varStore)
+			runWatchedScript(ctx, absPath, perms, isModule, varStore, preloaded)
 		case event, ok := <-watcher.Events:
 			if !ok {
 				return nil
@@ -153,8 +152,7 @@ func watchScript(cmd *cobra.Command, args []string) error {
 	}
 }
 
-func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.PermissionConfig, isModule bool, varStore *varstore.Vars) {
-	preloaded := GetActivePreloadedClosure()
+func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.PermissionConfig, isModule bool, varStore *varstore.Vars, preloaded *libkite.StaticLoadClosure) {
 	if closure, cerr := libkite.ResolveStaticLoadClosure(scriptPath, filepath.Dir(scriptPath), nil); cerr == nil && closure != nil {
 		preloaded = closure
 	}
@@ -222,7 +220,7 @@ func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.Per
 	}
 	defer rt.Close()
 
-	execCtx, cancel := execContext(timeout)
+	execCtx, cancel := execContext(ctx, timeout)
 	defer cancel()
 
 	// Execute the script

@@ -5,10 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
+	"syscall"
 	"testing"
 	"time"
 
@@ -262,7 +263,10 @@ func Execute() int {
 		os.Args = append([]string{os.Args[0], "run"}, os.Args[1:]...)
 	}
 
-	if err := rootCmd.Execute(); err != nil {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if err := rootCmd.ExecuteContext(ctx); err != nil {
 		// ExitError with code 0 — silent success (e.g. exit(0))
 		if exitErr, ok := errors.AsType[*libkite.ExitError](err); ok {
 			return exitErr.Code
@@ -321,14 +325,24 @@ func GetTimeout() int {
 	return timeout
 }
 
-// execContext returns a context and cancel func derived from the given
-// timeout in seconds. A timeout of 0 or less returns context.Background and
-// a no-op cancel.
-func execContext(timeoutSec int) (context.Context, context.CancelFunc) {
-	if timeoutSec <= 0 {
-		return context.Background(), func() {}
+// commandContext returns the command's context when available, or context.Background.
+func commandContext(cmd *cobra.Command) context.Context {
+	if cmd != nil && cmd.Context() != nil {
+		return cmd.Context()
 	}
-	return context.WithTimeout(context.Background(), time.Duration(timeoutSec)*time.Second)
+	return context.Background()
+}
+
+// execContext returns a context and cancel func derived from parent with the
+// given timeout in seconds. A timeout of 0 or less preserves parent without a deadline.
+func execContext(parent context.Context, timeoutSec int) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	if timeoutSec <= 0 {
+		return parent, func() {}
+	}
+	return context.WithTimeout(parent, time.Duration(timeoutSec)*time.Second)
 }
 
 // GetVariables returns the configured variables
@@ -533,26 +547,6 @@ func ResolveRuntimeEnv(prof *sandbox.Profile) (map[string]string, []string, erro
 	return envMap, envSlice, nil
 }
 
-var (
-	activePreloadedClosureMu sync.RWMutex
-	activePreloadedClosure   *libkite.StaticLoadClosure
-)
-
-// GetActivePreloadedClosure returns the statically preloaded module closure
-// discovered prior to sandbox confinement, if any.
-func GetActivePreloadedClosure() *libkite.StaticLoadClosure {
-	activePreloadedClosureMu.RLock()
-	defer activePreloadedClosureMu.RUnlock()
-	return activePreloadedClosure
-}
-
-// SetActivePreloadedClosure records the statically preloaded module closure.
-func SetActivePreloadedClosure(closure *libkite.StaticLoadClosure) {
-	activePreloadedClosureMu.Lock()
-	defer activePreloadedClosureMu.Unlock()
-	activePreloadedClosure = closure
-}
-
 func isRunningInTest() bool {
 	if os.Getenv("STARKITE_TEST_FORCE_SANDBOX") != "" {
 		return false
@@ -569,12 +563,16 @@ func isRunningInTest() bool {
 //   - (true, err) when the sandbox driver handled execution in a subprocess/container (caller must return/exit immediately)
 //   - (false, err) when sandbox initialization failed.
 func MaybeHandoffToSandbox(ctx context.Context) (bool, error) {
-	return MaybeHandoffToSandboxWithScript(ctx, "")
+	return MaybeHandoffToSandboxWithScript(ctx, "", nil)
 }
 
 // MaybeHandoffToSandboxWithScript checks whether a sandbox is requested and routes
-// execution through the resolved sandbox driver, passing scriptPath for runtime asset baseline protection.
-func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bool, error) {
+// execution through the resolved sandbox driver, passing scriptPath and an optional
+// statically preloaded module closure for runtime asset baseline protection.
+func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string, preloaded *libkite.StaticLoadClosure) (bool, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	if os.Getenv(sandbox.InsideEnvVar) == "1" {
 		return false, nil
 	}
@@ -590,9 +588,9 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 	}
 
 	cwd, _ := os.Getwd()
-	if scriptPath != "" && GetActivePreloadedClosure() == nil {
+	if scriptPath != "" && preloaded == nil {
 		if closure, err := libkite.ResolveStaticLoadClosure(scriptPath, cwd, nil); err == nil && closure != nil {
-			SetActivePreloadedClosure(closure)
+			preloaded = closure
 		}
 	}
 
@@ -642,8 +640,8 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 		Stderr:           os.Stderr,
 	}
 
-	if closure := GetActivePreloadedClosure(); closure != nil {
-		for _, p := range closure.ReadPaths {
+	if preloaded != nil {
+		for _, p := range preloaded.ReadPaths {
 			cleanP := filepath.Clean(p)
 			alreadyMounted := false
 			for _, m := range spec.Mounts {
@@ -706,12 +704,12 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 	res, execErr := driver.Exec(ctx, spec)
 	if execErr != nil {
 		if res != nil && res.ExitCode != 0 {
-			os.Exit(res.ExitCode)
+			return true, libkite.NewExitError(res.ExitCode)
 		}
 		return true, execErr
 	}
-	if res.ExitCode != 0 {
-		os.Exit(res.ExitCode)
+	if res != nil && res.ExitCode != 0 {
+		return true, libkite.NewExitError(res.ExitCode)
 	}
 	return true, nil
 }

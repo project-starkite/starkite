@@ -18,7 +18,13 @@ import (
 // relative to the caller, and a bare "namespace/name" is an installed identity
 // resolved from the version-addressed module cache, pinned by mod.lock when one
 // governs the caller.
-func (h *Host) ResolveLoad(req starlsp.LoadRequest) (string, bool) {
+func (h *Host) ResolveLoad(req starlsp.LoadRequest) (resolved string, ok bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			h.logPanic("ResolveLoad", r)
+			resolved, ok = "", false
+		}
+	}()
 	target := strings.TrimSpace(req.Target)
 	if target == "" || req.From == "" {
 		return "", false

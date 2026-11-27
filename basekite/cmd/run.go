@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -165,11 +164,10 @@ func runScript(cmd *cobra.Command, args []string) error {
 	perms := profile.CompilePermissions()
 	checker, _ := libkite.NewPermissionChecker(perms)
 
-	preloaded := GetActivePreloadedClosure()
-	if preloaded == nil && scriptPath != "" {
+	var preloaded *libkite.StaticLoadClosure
+	if scriptPath != "" {
 		if closure, err := libkite.ResolveStaticLoadClosure(scriptPath, filepath.Dir(scriptPath), nil); err == nil {
 			preloaded = closure
-			SetActivePreloadedClosure(preloaded)
 		}
 	}
 
@@ -180,10 +178,12 @@ func runScript(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	parentCtx := commandContext(cmd)
+
 	// Sandbox handoff: if a sandbox profile is enabled, hand the
 	// entire script execution to the OS-level sandbox driver and
 	// return its result.
-	if handled, err := MaybeHandoffToSandboxWithScript(context.Background(), scriptPath); handled || err != nil {
+	if handled, err := MaybeHandoffToSandboxWithScript(parentCtx, scriptPath, preloaded); handled || err != nil {
 		return err
 	}
 
@@ -239,16 +239,16 @@ func runScript(cmd *cobra.Command, args []string) error {
 	}
 	defer rt.Close()
 
-	ctx, cancel := execContext(timeout)
+	ctx, cancel := execContext(parentCtx, timeout)
 	defer cancel()
 
 	// Execute the script
 	if err := rt.Execute(ctx, string(content)); err != nil {
 		// Check if it's already a typed error
-		if _, ok := err.(*libkite.ScriptError); ok {
+		if _, ok := errors.AsType[*libkite.ScriptError](err); ok {
 			return err
 		}
-		if _, ok := err.(*libkite.ExitError); ok {
+		if _, ok := errors.AsType[*libkite.ExitError](err); ok {
 			return err
 		}
 		// Wrap other errors — use err.Error() as Message without Cause

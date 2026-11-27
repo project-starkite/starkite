@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -165,5 +166,45 @@ func TestChildTestArgs(t *testing.T) {
 		if !found {
 			t.Errorf("childTestArgs missing %q, got: %v", sub, args)
 		}
+	}
+}
+
+func TestRunTestsParallel_WorkersClampAndBufferedOutput(t *testing.T) {
+	dir := t.TempDir()
+	f1 := filepath.Join(dir, "a_test.star")
+	f2 := filepath.Join(dir, "b_test.star")
+	if err := os.WriteFile(f1, []byte("def test_a():\n    print(\"ALPHA\")\n    assert(True)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(f2, []byte("def test_b():\n    print(\"BETA\")\n    assert(True)\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	origVerbose := testVerbose
+	testVerbose = true
+	defer func() { testVerbose = origVerbose }()
+
+	// Capture stdout from ordered flush in runTestFilesParallel with workers > len(files).
+	origStdout := os.Stdout
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	os.Stdout = w
+	results := runTestFilesParallel(t.Context(), []string{f1, f2}, 8, nil, nil)
+	_ = w.Close()
+	os.Stdout = origStdout
+
+	if len(results) != 2 || !results[0].Passed || !results[1].Passed {
+		t.Fatalf("unexpected parallel results: %+v", results)
+	}
+	buf := make([]byte, 4096)
+	n, _ := r.Read(buf)
+	_ = r.Close()
+	out := string(buf[:n])
+	alphaIdx := strings.Index(out, "ALPHA")
+	betaIdx := strings.Index(out, "BETA")
+	if alphaIdx < 0 || betaIdx < 0 || alphaIdx > betaIdx {
+		t.Fatalf("expected deterministic per-file ordered output (ALPHA before BETA), got:\n%s", out)
 	}
 }

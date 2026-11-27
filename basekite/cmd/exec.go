@@ -146,7 +146,7 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		Stderr:           io.MultiWriter(os.Stderr, stderrBuf),
 	}
 
-	ctx, cancel := execContext(timeout)
+	ctx, cancel := execContext(commandContext(cmd), timeout)
 	defer cancel()
 
 	res, execErr := driver.Exec(ctx, spec)

@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -15,6 +17,7 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/cobra"
+	"go.starlark.net/starlark"
 )
 
 var (
@@ -103,13 +106,15 @@ func runTests(cmd *cobra.Command, args []string) error {
 	// kite per file, each with the sandbox engaged via env var. The
 	// single-file path is handled by MaybeHandoffToSandbox below — that
 	// produces one sandbox for that one file, which is the same outcome.
+	parentCtx := commandContext(cmd)
+
 	profile, err := GetSandbox()
 	if err != nil {
 		return err
 	}
 	insideSandbox := os.Getenv(sandbox.InsideEnvVar) == "1"
 	if !profile.IsZero() && !insideSandbox && len(testFiles) > 1 && !isRunningInTest() {
-		return runTestFilesInSandbox(testFiles)
+		return runTestFilesInSandbox(parentCtx, testFiles)
 	}
 
 	varStore, err := loadVarStore()
@@ -124,11 +129,11 @@ func runTests(cmd *cobra.Command, args []string) error {
 	perms := activeProfile.CompilePermissions()
 
 	if len(testFiles) == 1 {
-		if handled, err := MaybeHandoffToSandboxWithScript(context.Background(), testFiles[0]); handled || err != nil {
+		if handled, err := MaybeHandoffToSandboxWithScript(parentCtx, testFiles[0], nil); handled || err != nil {
 			return err
 		}
 	} else {
-		if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+		if handled, err := MaybeHandoffToSandbox(parentCtx); handled || err != nil {
 			return err
 		}
 	}
@@ -138,11 +143,11 @@ func runTests(cmd *cobra.Command, args []string) error {
 
 	if testParallel > 1 && len(testFiles) > 1 {
 		// Run test files in parallel
-		results = runTestFilesParallel(testFiles, testParallel, perms, varStore)
+		results = runTestFilesParallel(parentCtx, testFiles, testParallel, perms, varStore)
 	} else {
 		// Run test files sequentially
 		for _, testFile := range testFiles {
-			fileResults := runTestFile(testFile, perms, varStore)
+			fileResults := runTestFile(parentCtx, testFile, perms, varStore, nil)
 			results = append(results, fileResults...)
 		}
 	}
@@ -161,38 +166,51 @@ func runTests(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runTestFilesParallel(testFiles []string, workers int, perms *libkite.PermissionConfig, varStore *varstore.Vars) []testResult {
-	// Create work channel
-	work := make(chan string, len(testFiles))
-	for _, f := range testFiles {
-		work <- f
+type fileTestOutcome struct {
+	results []testResult
+	output  string
+}
+
+func runTestFilesParallel(ctx context.Context, testFiles []string, workers int, perms *libkite.PermissionConfig, varStore *varstore.Vars) []testResult {
+	if workers <= 0 {
+		workers = 1
+	}
+	if workers > len(testFiles) {
+		workers = len(testFiles)
+	}
+
+	type indexedFile struct {
+		idx  int
+		path string
+	}
+	work := make(chan indexedFile, len(testFiles))
+	for i, f := range testFiles {
+		work <- indexedFile{idx: i, path: f}
 	}
 	close(work)
 
-	// Create results channel
-	resultsChan := make(chan []testResult, len(testFiles))
-
-	// Start workers
+	outcomes := make([]fileTestOutcome, len(testFiles))
 	var wg sync.WaitGroup
 	for range workers {
 		wg.Go(func() {
-			for testFile := range work {
-				fileResults := runTestFile(testFile, perms, varStore)
-				resultsChan <- fileResults
+			for item := range work {
+				var buf bytes.Buffer
+				res := runTestFile(ctx, item.path, perms, varStore, &buf)
+				outcomes[item.idx] = fileTestOutcome{
+					results: res,
+					output:  buf.String(),
+				}
 			}
 		})
 	}
+	wg.Wait()
 
-	// Wait for all workers to finish
-	go func() {
-		wg.Wait()
-		close(resultsChan)
-	}()
-
-	// Collect results
 	var allResults []testResult
-	for fileResults := range resultsChan {
-		allResults = append(allResults, fileResults...)
+	for _, out := range outcomes {
+		if out.output != "" {
+			fmt.Print(out.output)
+		}
+		allResults = append(allResults, out.results...)
 	}
 
 	return allResults
@@ -228,9 +246,12 @@ func findTestFiles(path string) ([]string, error) {
 	return files, err
 }
 
-func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *varstore.Vars) []testResult {
+func runTestFile(parentCtx context.Context, testFile string, perms *libkite.PermissionConfig, varStore *varstore.Vars, out io.Writer) []testResult {
+	if out == nil {
+		out = os.Stdout
+	}
 	if testVerbose {
-		fmt.Printf("Running %s\n", testFile)
+		fmt.Fprintf(out, "Running %s\n", testFile)
 	}
 
 	// Read file
@@ -264,8 +285,8 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 	policy := activeProf.PolicySummary(envFlags, envInherit, testFile)
 	envMap, _, _ := ResolveRuntimeEnv(&activeProf)
 
-	preloaded := GetActivePreloadedClosure()
-	if preloaded == nil && testFile != "" {
+	var preloaded *libkite.StaticLoadClosure
+	if testFile != "" {
 		if closure, err := libkite.ResolveStaticLoadClosure(testFile, filepath.Dir(testFile), nil); err == nil {
 			preloaded = closure
 		}
@@ -296,6 +317,11 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 		Env:           envMap,
 		Preloaded:     preloaded,
 	}
+	if out != os.Stdout {
+		cfg.Print = func(_ *starlark.Thread, msg string) {
+			fmt.Fprintln(out, msg)
+		}
+	}
 
 	// Create runtime
 	rt, err := libkite.New(cfg)
@@ -309,7 +335,7 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 	}
 	defer rt.Close()
 
-	ctx, cancel := execContext(timeout)
+	ctx, cancel := execContext(parentCtx, timeout)
 	defer cancel()
 
 	// Execute and collect test results with filter
@@ -349,11 +375,11 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 				if tr.Error != "" {
 					reason = " (" + tr.Error + ")"
 				}
-				fmt.Printf("  - %s [SKIPPED]%s\n", tr.Name, reason)
+				fmt.Fprintf(out, "  - %s [SKIPPED]%s\n", tr.Name, reason)
 			} else if tr.Passed {
-				fmt.Printf("  ✓ %s (%s)\n", tr.Name, tr.Duration)
+				fmt.Fprintf(out, "  ✓ %s (%s)\n", tr.Name, tr.Duration)
 			} else {
-				fmt.Printf("  ✗ %s: %s\n", tr.Name, tr.Error)
+				fmt.Fprintf(out, "  ✗ %s: %s\n", tr.Name, tr.Error)
 			}
 		}
 	}
@@ -369,7 +395,7 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 // The sandbox profile value is forwarded via STARKITE_SANDBOX_PROFILE env var;
 // the parent's --sandbox-profile flag (if any) is translated to the same env var
 // on the child so the child's resolution path is identical to a direct invocation.
-func runTestFilesInSandbox(testFiles []string) error {
+func runTestFilesInSandbox(ctx context.Context, testFiles []string) error {
 	self, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolving kite binary: %w", err)
@@ -394,28 +420,38 @@ func runTestFilesInSandbox(testFiles []string) error {
 
 	if workers == 1 {
 		for _, file := range testFiles {
-			if !runOneTestFileInSandbox(self, file, value) {
+			if !runOneTestFileInSandbox(ctx, self, file, value, nil) {
 				failed = true
 			}
 		}
 	} else {
+		type sandboxOutcome struct {
+			ok     bool
+			output string
+		}
+		outcomes := make([]sandboxOutcome, len(testFiles))
 		sem := make(chan struct{}, workers)
-		var mu sync.Mutex
 		var wg sync.WaitGroup
-		for _, file := range testFiles {
+		for idx, file := range testFiles {
 			wg.Add(1)
 			sem <- struct{}{}
-			go func(f string) {
+			go func(i int, f string) {
 				defer wg.Done()
 				defer func() { <-sem }()
-				if !runOneTestFileInSandbox(self, f, value) {
-					mu.Lock()
-					failed = true
-					mu.Unlock()
-				}
-			}(file)
+				var buf bytes.Buffer
+				ok := runOneTestFileInSandbox(ctx, self, f, value, &buf)
+				outcomes[i] = sandboxOutcome{ok: ok, output: buf.String()}
+			}(idx, file)
 		}
 		wg.Wait()
+		for _, out := range outcomes {
+			if out.output != "" {
+				fmt.Print(out.output)
+			}
+			if !out.ok {
+				failed = true
+			}
+		}
 	}
 
 	elapsed := time.Since(startTime).Round(time.Millisecond)
@@ -429,17 +465,29 @@ func runTestFilesInSandbox(testFiles []string) error {
 	return nil
 }
 
-func runOneTestFileInSandbox(kiteBin, file, sandboxValue string) bool {
-	fmt.Printf("\n--- %s ---\n", file)
+func runOneTestFileInSandbox(ctx context.Context, kiteBin, file, sandboxValue string, out io.Writer) bool {
+	if out == nil {
+		fmt.Printf("\n--- %s ---\n", file)
+	} else {
+		fmt.Fprintf(out, "\n--- %s ---\n", file)
+	}
 	absFile, err := filepath.Abs(file)
 	if err != nil {
 		absFile = file
 	}
 	args := childTestArgs(absFile)
-	cmd := exec.Command(kiteBin, args...)
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	cmd := exec.CommandContext(ctx, kiteBin, args...)
 	cmd.Dir = filepath.Dir(absFile)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	if out == nil {
+		cmd.Stdout = os.Stdout
+		cmd.Stderr = os.Stderr
+	} else {
+		cmd.Stdout = out
+		cmd.Stderr = out
+	}
 	cmd.Env = append(os.Environ(), sandbox.ProfileEnvVar+"="+sandboxValue)
 	if sandboxDriver != "" {
 		cmd.Env = append(cmd.Env, sandbox.DriverEnvVar+"="+sandboxDriver)

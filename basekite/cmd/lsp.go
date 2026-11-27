@@ -48,11 +48,13 @@ func runLSP(cmd *cobra.Command, args []string) error {
 
 	// The Starkite host layers over the vanilla specification host, so a script
 	// receives both Starlark universe builtins and runtime standard library modules.
-	host := starlsp.Hosts(starlsp.NewVanilla(), lsp.NewHost(NewRegistry))
+	starkiteHost := lsp.NewHost(NewRegistry)
+	starkiteHost.SetLog(os.Stderr)
+	host := starlsp.Hosts(starlsp.NewVanilla(), starkiteHost)
 
 	server, err := starlsp.New(starlsp.Options{
 		Host: host,
-		In:   cmd.InOrStdin(),
+		In:   lsp.NewBoundedReader(cmd.InOrStdin(), lsp.FramingLimits{}),
 		Out:  cmd.OutOrStdout(),
 		Log:  os.Stderr,
 	})
@@ -65,5 +67,15 @@ func runLSP(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
+	return runServerSafe(server)
+}
+
+func runServerSafe(server *starlsp.Server) (err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Fprintf(os.Stderr, "kite lsp: panic recovered: %v\n", r)
+			err = fmt.Errorf("language server panic: %v", r)
+		}
+	}()
 	return server.Run()
 }

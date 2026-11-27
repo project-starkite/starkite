@@ -307,7 +307,7 @@ func collectStmtAssigns(stmt syntax.Stmt, dst map[string]syntax.Expr) {
 func (h *Host) loadModule(path string) *parsedModule {
 	clean := filepath.Clean(path)
 	info, err := os.Stat(clean)
-	if err != nil || info.IsDir() {
+	if err != nil || !info.Mode().IsRegular() || info.Size() > DefaultMaxContentLength {
 		return nil
 	}
 	modTime := info.ModTime().UnixNano()

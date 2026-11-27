@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"bufio"
-	"context"
 	"errors"
 	"fmt"
 	"strings"
@@ -49,7 +48,8 @@ func startRepl(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	if handled, err := MaybeHandoffToSandbox(context.Background()); handled || err != nil {
+	parentCtx := commandContext(cmd)
+	if handled, err := MaybeHandoffToSandbox(parentCtx); handled || err != nil {
 		return err
 	}
 
@@ -162,7 +162,7 @@ func startRepl(cmd *cobra.Command, args []string) error {
 				multilineBuffer.Reset()
 				inMultiline = false
 
-				ctx, cancel := execContext(timeout)
+				ctx, cancel := execContext(parentCtx, timeout)
 				err := rt.ExecuteRepl(ctx, code)
 				cancel()
 				if err != nil {
@@ -179,7 +179,7 @@ func startRepl(cmd *cobra.Command, args []string) error {
 		}
 
 		// Execute single line
-		ctx, cancel := execContext(timeout)
+		ctx, cancel := execContext(parentCtx, timeout)
 		err = rt.ExecuteRepl(ctx, line)
 		cancel()
 		if err != nil {
