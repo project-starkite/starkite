@@ -5,6 +5,10 @@ builds:
     dir: ./kite
     main: .
     binary: kite
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
     tags:
       - grammar_subset
       - grammar_subset_starlark
@@ -15,9 +19,6 @@ builds:
     goarch:
       - amd64
       - arm64
-    ignore:
-      - goos: windows
-        goarch: arm64
     ldflags:
       - -s -w
       - -X github.com/project-starkite/starkite/basekite/version.Version={{.Version}}

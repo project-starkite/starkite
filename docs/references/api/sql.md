@@ -186,7 +186,7 @@ db.driver    # → "sqlite"
 | BOOLEAN | `bool` | see SQLite note below |
 | NULL | `None` | a `None` parameter binds SQL NULL |
 | TIMESTAMP, DATETIME | `string` (RFC 3339) | parse with `time.parse` |
-| BLOB, BYTEA | `string` | |
+| BLOB, BYTEA | `bytes` | |
 
 **SQLite type fidelity:** SQLite has no native boolean — a `True` parameter is stored as `1` and read back as the integer `1`, not `True`. PostgreSQL and MySQL with a real `BOOLEAN` column return `bool`. This is driver-native behavior.
 

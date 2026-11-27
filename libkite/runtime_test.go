@@ -205,7 +205,8 @@ func TestRuntime_Call_NilContext_Allowed(t *testing.T) {
 	// nil ctx: no cancel wiring; watcher goroutine must not start.
 	before := runtime.NumGoroutine()
 	for range 20 {
-		if _, err := rt.Call(nil, "one", nil, nil); err != nil { //nolint:staticcheck // intentional nil
+		//lint:ignore SA1012 intentional nil context test
+		if _, err := rt.Call(nil, "one", nil, nil); err != nil {
 			t.Fatalf("Call(nil): %v", err)
 		}
 	}

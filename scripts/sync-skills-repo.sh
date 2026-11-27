@@ -11,7 +11,7 @@ KITE_BIN="${2:-$REPO_ROOT/bin/kite}"
 if [ ! -x "$KITE_BIN" ]; then
     echo "ERROR: kite binary not found at $KITE_BIN. Building..."
     mkdir -p "$REPO_ROOT/bin"
-    (cd "$REPO_ROOT/kite" && go build -ldflags="-s -w" -o "$REPO_ROOT/bin/kite" .)
+    (cd "$REPO_ROOT/kite" && go build -tags 'grammar_subset,grammar_subset_starlark' -ldflags="-s -w" -o "$REPO_ROOT/bin/kite" .)
 fi
 
 mkdir -p "$SKILLS_REPO_DIR"

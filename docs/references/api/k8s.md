@@ -171,7 +171,7 @@ if result.ready:
 | `k8s.logs_follow(name, handler, namespace="", container="", tail=0, timeout="")` | `None` | Stream logs, calling `handler(line)` per line. Blocks until the pod ends or `timeout` elapses |
 | `k8s.exec(name, command, namespace="", container="", timeout="")` | `AttrDict` | Run a command in a pod. `command` may be a string (executed via `/bin/sh -c`) or a list (argv). Returns `{"stdout", "stderr", "code"}` |
 | `k8s.debug(name, image="nicolaka/netshoot", target_container="", command=None, namespace="", timeout="3m")` | `AttrDict` | Attach an ephemeral container to a running pod for zero-shell diagnostics. Returns `{"stdout", "stderr", "code", "container", "pod"}` |
-| `k8s.port_forward(name, port, local_port=0, namespace="")` | `PortForwardHandle` | Forward a local port to a pod port. Blocks until interrupted. `local_port=0` picks a free port |
+| `k8s.port_forward(name, port, local_port=0, namespace="")` | `PortForwardHandle` | Forward a local port to a pod port in the background and return a handle with `.local_port` and `.stop()`. `local_port=0` picks a free port |
 | `k8s.cp(pod, src, dst, namespace="", container="", timeout="")` | `AttrDict` | Copy files to/from a pod. Use `pod:path` as `src` to download, `pod:path` as `dst` to upload |
 
 ### Example — tail logs

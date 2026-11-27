@@ -13,7 +13,7 @@ ALL_LDFLAGS=-ldflags "$(COMMON_LDFLAGS) -X github.com/project-starkite/starkite/
 
 KITE_TAGS=grammar_subset,grammar_subset_starlark
 
-MODULES=libkite basekite cloudkite aikite kite tests/sandbox tests/dogfood
+MODULES=libkite libkite/lsp basekite cloudkite aikite kite tests/sandbox tests/dogfood
 
 .PHONY: kite all build-base build-cloud build-ai clean test test-libkite test-base test-cloud test-ai test-all test-lsp test-lint test-dogfood lint-scripts package-vscode test-install-script install deps lint fmt fix vet test-race preflight run-example repl help
 
@@ -50,7 +50,6 @@ fmt: fix ## Run go fix, go fmt, and verify formatting across all files
 	@for dir in $(MODULES); do \
 		(cd $$dir && go fmt ./...); \
 	done
-	@(cd libkite/lsp && go fmt ./...)
 	@DIFFS=$$(gofmt -l .); \
 	if [ -n "$$DIFFS" ]; then \
 		echo "Formatting differences found in the following files:"; \
@@ -65,16 +64,20 @@ vet: ## Run go vet across all workspace modules (linux, darwin, windows)
 			(cd $$dir && CGO_ENABLED=0 GOOS=$$os GOARCH=amd64 go vet ./...) || exit 1; \
 		done; \
 	done
-	@(cd libkite/lsp && go vet ./...)
 
 test-race: ## Run all Go unit tests with race detection
 	@for dir in $(MODULES); do \
 		echo "=== Testing $$dir (race) ==="; \
-		(cd $$dir && go test -race ./...) || exit 1; \
+		(cd $$dir && go test -race -timeout=5m ./...) || exit 1; \
 	done
 
 lint: ## Run staticcheck across all workspace packages
-	@PATH="$$(go env GOPATH)/bin:$$PATH" staticcheck ./libkite/... ./basekite/... ./cloudkite/... ./aikite/... ./kite/... ./tests/sandbox/...
+	@for dir in $(MODULES); do \
+		echo "=== Linting $$dir (linux/darwin/windows) ==="; \
+		for os in linux darwin windows; do \
+			(cd $$dir && PATH="$$(go env GOPATH)/bin:$$PATH" CGO_ENABLED=0 GOOS=$$os staticcheck ./...) || exit 1; \
+		done; \
+	done
 
 generate-api-docs: ## Regenerate libkite/catalog/apidocs/table_gen.go from docs/references/api/*.md
 	go run ./libkite/catalog/internal/gendocs

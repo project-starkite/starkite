@@ -11,7 +11,7 @@ The `retry` module provides retry logic with fixed delay and exponential backoff
 | Function | Returns | Description |
 |----------|---------|-------------|
 | `retry.do(func, max_attempts=3, delay="1s", retry_on=None, on_retry=None, timeout="", jitter=False)` | `RetryResult` | Retry `func` with fixed delay between attempts |
-| `retry.with_backoff(func, max_attempts=5, delay="500ms", max_delay="30s", retry_on=None, on_retry=None, timeout="", jitter=True)` | `RetryResult` | Retry `func` with exponential backoff |
+| `retry.with_backoff(func, max_attempts=5, delay="500ms", max_delay="30s", backoff_factor=2.0, retry_on=None, on_retry=None, timeout="", jitter=True)` | `RetryResult` | Retry `func` with exponential backoff |
 
 ## Parameters
 
@@ -21,7 +21,8 @@ The `retry` module provides retry logic with fixed delay and exponential backoff
 | `max_attempts` | `3` / `5` | Maximum number of attempts |
 | `delay` | `"1s"` / `"500ms"` | Initial delay between retries |
 | `max_delay` | `"30s"` | Maximum delay (backoff only) |
-| `retry_on` | `None` | A predicate `func(error) -> bool` to decide whether to retry. `None` = retry all errors |
+| `backoff_factor` | `2.0` | Multiplier applied to the delay after each attempt (`with_backoff` only, must be `>= 1.0`) |
+| `retry_on` | `None` | Predicate `func(value) -> bool` evaluated on a successful evaluatable return value (`Result`, `RetryResult`, `bool`, or `None`); returns `True` to trigger a retry. Runtime errors, failed `Result` values, and `False` always retry up to `max_attempts` |
 | `on_retry` | `None` | A callback `func(attempt, error)` called before each retry |
 | `timeout` | `""` | Overall timeout for all attempts. Empty = no timeout |
 | `jitter` | `False` / `True` | Add random jitter to delays |
@@ -34,7 +35,7 @@ The `retry` module provides retry logic with fixed delay and exponential backoff
 | `value` | `any` | The return value on success |
 | `error` | `string` | The last error message on failure |
 | `attempts` | `int` | Total number of attempts made |
-| `elapsed` | `DurationValue` | Total time spent retrying |
+| `elapsed` | `string` | Total time spent retrying (Go duration string) |
 | `errors` | `list` | All error messages from failed attempts |
 
 ## Examples
@@ -72,14 +73,11 @@ if r.ok:
 ### Selective retry
 
 ```python
-def is_transient(err):
-    return "timeout" in err or "503" in err
+def is_transient(res):
+    return res.ok and res.value.status_code == 503
 
 def fetch():
-    resp = http.url("https://api.example.com/resource").get()
-    if resp.status_code != 200:
-        fail(str(resp.status_code))
-    return json.decode(resp.body)
+    return http.try_get("https://api.example.com/resource")
 
 r = retry.do(fetch, retry_on=is_transient, max_attempts=3)
 ```

@@ -30,11 +30,11 @@ jobs:
           go-version: stable
           cache-dependency-path: |
             libkite/go.sum
+            libkite/lsp/go.sum
             basekite/go.sum
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
-            tests/sandbox/go.sum
 
       - uses: goreleaser/goreleaser-action@v6
         with:
@@ -72,11 +72,11 @@ jobs:
           go-version: stable
           cache-dependency-path: |
             libkite/go.sum
+            libkite/lsp/go.sum
             basekite/go.sum
             cloudkite/go.sum
             aikite/go.sum
             kite/go.sum
-            tests/sandbox/go.sum
 
       - name: Install ko
         uses: ko-build/setup-ko@v0.9
@@ -162,13 +162,16 @@ jobs:
           go-version: stable
           cache-dependency-path: |
             libkite/go.sum
+            libkite/lsp/go.sum
             basekite/go.sum
+            cloudkite/go.sum
+            aikite/go.sum
             kite/go.sum
 
       - name: Build kite binary
         run: |
           mkdir -p bin
-          cd kite && go build -ldflags="-s -w" -o ../bin/kite .
+          cd kite && go build -tags 'grammar_subset,grammar_subset_starlark' -ldflags="-s -w" -o ../bin/kite .
 
       - name: Checkout project-starkite/skills repository
         uses: actions/checkout@v4

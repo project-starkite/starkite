@@ -461,7 +461,7 @@ k8s provides 3-tier Kubernetes operations: CRUD (get, list, apply, delete, patch
 | `namespace_name` | `k8s.namespace_name()` | `string` | Default namespace for the current context | `k8s.try_namespace_name` |
 | `obj` | `k8s.obj()` | `None` | - | - |
 | `patch` | `k8s.patch(kind, name, patch, namespace="", type="merge", timeout="")` | `AttrDict` | Patch a resource. `type`: `"merge"`, `"strategic"`, or `"json"` | `k8s.try_patch` |
-| `port_forward` | `k8s.port_forward(name, port, local_port=0, namespace="")` | `PortForwardHandle` | Forward a local port to a pod port. Blocks until interrupted. `local_port=0` picks a free port | `k8s.try_port_forward` |
+| `port_forward` | `k8s.port_forward(name, port, local_port=0, namespace="")` | `PortForwardHandle` | Forward a local port to a pod port in the background and return a handle with `.local_port` and `.stop()`. `local_port=0` picks a free port | `k8s.try_port_forward` |
 | `pvcs` | `k8s.pvcs(namespace="", labels="", timeout="")` | `list[AttrDict]` | List `PersistentVolumeClaim` objects | `k8s.try_pvcs` |
 | `pvs` | `k8s.pvs(labels="", timeout="")` | `list[AttrDict]` | List cluster-scoped `PersistentVolume` objects | `k8s.try_pvs` |
 | `resize` | `k8s.resize(name, container, cpu=None, memory=None, requests=None, limits=None, namespace="", timeout="30s")` | `AttrDict` | Resize CPU and memory allocations of a running container in-place without pod restart | `k8s.try_resize` |
@@ -558,7 +558,7 @@ retry provides retry functionality: do, with_backoff
 | Member | Signature | Returns | Description | Safe Variant |
 |---|---|---|---|---|
 | `do` | `retry.do(func, max_attempts=3, delay="1s", retry_on=None, on_retry=None, timeout="", jitter=False)` | `RetryResult` | Retry `func` with fixed delay between attempts | `retry.try_do` |
-| `with_backoff` | `retry.with_backoff(func, max_attempts=5, delay="500ms", max_delay="30s", retry_on=None, on_retry=None, timeout="", jitter=True)` | `RetryResult` | Retry `func` with exponential backoff | `retry.try_with_backoff` |
+| `with_backoff` | `retry.with_backoff(func, max_attempts=5, delay="500ms", max_delay="30s", backoff_factor=2.0, retry_on=None, on_retry=None, timeout="", jitter=True)` | `RetryResult` | Retry `func` with exponential backoff | `retry.try_with_backoff` |
 
 ### Module `runtime`
 

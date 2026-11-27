@@ -21,6 +21,7 @@ builds:
       - CGO_ENABLED=0
     flags:
       - -trimpath
+      - -tags=grammar_subset,grammar_subset_starlark
     ldflags:
       - -s -w
       - -X github.com/project-starkite/starkite/basekite/version.Version={{.Env.VERSION}}
