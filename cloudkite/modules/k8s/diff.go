@@ -63,7 +63,7 @@ func (c *K8sClient) diff(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		ns = "default"
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.diff: %w", err)
 	}

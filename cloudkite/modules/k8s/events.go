@@ -297,7 +297,7 @@ func (c *K8sClient) events(thread *starlark.Thread, fn *starlark.Builtin, args s
 		ns = c.namespace
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.events: %w", err)
 	}

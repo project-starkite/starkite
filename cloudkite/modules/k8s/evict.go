@@ -39,7 +39,7 @@ func (c *K8sClient) evict(thread *starlark.Thread, fn *starlark.Builtin, args st
 		ns = "default"
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.evict: %w", err)
 	}

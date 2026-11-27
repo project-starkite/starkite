@@ -52,7 +52,7 @@ func (c *K8sClient) watch(thread *starlark.Thread, fn *starlark.Builtin, args st
 	}
 
 	// Set up context with timeout
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.watch: %w", err)
 	}
@@ -178,7 +178,7 @@ func (c *K8sClient) waitFor(thread *starlark.Thread, fn *starlark.Builtin, args 
 		ns = c.namespace
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.wait_for: %w", err)
 	}

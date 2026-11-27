@@ -138,7 +138,7 @@ func (c *K8sClient) finalizerAdd(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("k8s.finalizer.add: %w", err)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.finalizer.add: %w", err)
 	}
@@ -232,7 +232,7 @@ func (c *K8sClient) finalizerRemove(thread *starlark.Thread, fn *starlark.Builti
 		return nil, fmt.Errorf("k8s.finalizer.remove: %w", err)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.finalizer.remove: %w", err)
 	}
@@ -381,7 +381,7 @@ func (c *K8sClient) conditionSet(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("k8s.condition.set: %w", err)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.condition.set: %w", err)
 	}
@@ -550,7 +550,7 @@ func (c *K8sClient) event(thread *starlark.Thread, fn *starlark.Builtin, args st
 		},
 	}
 
-	ctx, cancel, err := c.contextWithTimeout("")
+	ctx, cancel, err := c.contextWithTimeout(thread, "")
 	if err != nil {
 		return nil, fmt.Errorf("k8s.event: %w", err)
 	}

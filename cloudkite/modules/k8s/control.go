@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -367,12 +368,59 @@ type controller struct {
 
 	autoWatchMu sync.Mutex
 	watchedGVRs map[schema.GroupVersionResource]context.CancelFunc
+	stopping    bool
+	watchWG     sync.WaitGroup
+
+	workerMu        sync.Mutex
+	workersStopping bool
+	workerWG        sync.WaitGroup
+}
+
+func newChildThread(parent *starlark.Thread, name string, ctx context.Context) (*starlark.Thread, func()) {
+	var th *starlark.Thread
+	if rt := libkite.GetRuntime(parent); rt != nil {
+		th = rt.NewThread(name)
+	} else {
+		th = &starlark.Thread{Name: name}
+		if parent != nil {
+			th.Print = parent.Print
+			if perms := libkite.GetPermissions(parent); perms != nil {
+				libkite.SetPermissions(th, perms)
+			}
+		}
+	}
+	if ctx != nil {
+		libkite.SetThreadContext(th, ctx)
+		return th, libkite.WatchContext(ctx, th)
+	}
+	return th, func() {}
 }
 
 // run starts the controller and blocks until stopped.
 func (c *controller) run() (starlark.Value, error) {
 	c.ctx, c.cancel = context.WithCancel(libkite.ThreadContext(c.thread))
 	defer c.cancel()
+
+	var healthLn net.Listener
+	if c.healthPort > 0 {
+		var err error
+		healthLn, err = net.Listen("tcp", fmt.Sprintf(":%d", c.healthPort))
+		if err != nil {
+			return nil, fmt.Errorf("k8s.control: health server listen: %w", err)
+		}
+	}
+
+	var elector *leaderelection.LeaderElector
+	if c.enableLeaderElection {
+		var err error
+		elector, err = c.newLeaderElector()
+		if err != nil {
+			if healthLn != nil {
+				_ = healthLn.Close()
+			}
+			return nil, fmt.Errorf("k8s.control: leader election: %w", err)
+		}
+	}
 
 	c.queue = workqueue.NewRateLimitingQueue(workqueue.NewItemExponentialFailureRateLimiter(c.backoff, 5*time.Minute))
 	defer c.queue.ShutDown()
@@ -423,22 +471,37 @@ func (c *controller) run() (starlark.Value, error) {
 	}
 
 	// Start health server if configured
-	if c.healthPort > 0 {
+	if healthLn != nil {
 		wg.Go(func() {
-			c.runHealthServer()
+			c.runHealthServer(healthLn)
 		})
 	}
 
 	// Start worker goroutines (leader-only if leader election enabled)
-	if c.enableLeaderElection {
-		c.runWithLeaderElection(&wg)
+	if elector != nil {
+		wg.Go(func() {
+			elector.Run(c.ctx)
+		})
 	} else {
-		c.startWorkers(&wg)
+		c.startWorkers(&c.workerWG)
 	}
 
 	// Block until context cancelled
 	<-c.ctx.Done()
+	c.autoWatchMu.Lock()
+	c.stopping = true
+	for _, cancelWatch := range c.watchedGVRs {
+		cancelWatch()
+	}
+	c.autoWatchMu.Unlock()
+
+	c.workerMu.Lock()
+	c.workersStopping = true
+	c.workerMu.Unlock()
+
 	c.queue.ShutDown()
+	c.watchWG.Wait()
+	c.workerWG.Wait()
 	wg.Wait()
 
 	return starlark.None, nil
@@ -446,6 +509,11 @@ func (c *controller) run() (starlark.Value, error) {
 
 // startWorkers launches worker goroutines that process the queue.
 func (c *controller) startWorkers(wg *sync.WaitGroup) {
+	c.workerMu.Lock()
+	defer c.workerMu.Unlock()
+	if c.workersStopping {
+		return
+	}
 	c.leading.Store(true)
 	for i := 0; i < c.workers; i++ {
 		wg.Go(func() {
@@ -454,14 +522,12 @@ func (c *controller) startWorkers(wg *sync.WaitGroup) {
 	}
 }
 
-// runWithLeaderElection wraps worker startup in leader election.
-// Watches run always (warm cache on standbys); workers run only when leader.
-func (c *controller) runWithLeaderElection(wg *sync.WaitGroup) {
+// newLeaderElector creates the distributed Lease-based leader elector before
+// starting controller loops so initialization errors surface immediately.
+func (c *controller) newLeaderElector() (*leaderelection.LeaderElector, error) {
 	clientset, err := c.client.getClientset()
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "k8s.control: leader election: failed to create clientset: %v\n", err)
-		c.cancel()
-		return
+		return nil, fmt.Errorf("failed to create clientset: %w", err)
 	}
 
 	id := c.leaderElectionIdentity
@@ -485,31 +551,31 @@ func (c *controller) runWithLeaderElection(wg *sync.WaitGroup) {
 		},
 	}
 
-	wg.Go(func() {
-		leaderelection.RunOrDie(c.ctx, leaderelection.LeaderElectionConfig{
-			Lock:            lock,
-			LeaseDuration:   15 * time.Second,
-			RenewDeadline:   10 * time.Second,
-			RetryPeriod:     2 * time.Second,
-			ReleaseOnCancel: true,
-			Callbacks: leaderelection.LeaderCallbacks{
-				OnStartedLeading: func(ctx context.Context) {
-					c.leading.Store(true)
-					fmt.Fprintf(os.Stderr, "k8s.control: started leading (%s)\n", id)
-					c.startWorkers(wg)
-				},
-				OnStoppedLeading: func() {
-					c.leading.Store(false)
-					fmt.Fprintf(os.Stderr, "k8s.control: stopped leading\n")
-					c.cancel()
-				},
-				OnNewLeader: func(identity string) {
-					if identity != id {
-						fmt.Fprintf(os.Stderr, "k8s.control: new leader: %s\n", identity)
-					}
-				},
+	return leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
+		Lock:            lock,
+		LeaseDuration:   15 * time.Second,
+		RenewDeadline:   10 * time.Second,
+		RetryPeriod:     2 * time.Second,
+		ReleaseOnCancel: true,
+		Callbacks: leaderelection.LeaderCallbacks{
+			OnStartedLeading: func(ctx context.Context) {
+				if ctx.Err() != nil {
+					return
+				}
+				fmt.Fprintf(os.Stderr, "k8s.control: started leading (%s)\n", id)
+				c.startWorkers(&c.workerWG)
 			},
-		})
+			OnStoppedLeading: func() {
+				c.leading.Store(false)
+				fmt.Fprintf(os.Stderr, "k8s.control: stopped leading\n")
+				c.cancel()
+			},
+			OnNewLeader: func(identity string) {
+				if identity != id {
+					fmt.Fprintf(os.Stderr, "k8s.control: new leader: %s\n", identity)
+				}
+			},
+		},
 	})
 }
 
@@ -773,6 +839,9 @@ func (c *controller) AutoWatch(gvr schema.GroupVersionResource) {
 	c.autoWatchMu.Lock()
 	defer c.autoWatchMu.Unlock()
 
+	if c.stopping || c.ctx == nil || c.ctx.Err() != nil {
+		return
+	}
 	if _, exists := c.watchedGVRs[gvr]; exists || gvr == c.gvr {
 		return
 	}
@@ -781,7 +850,11 @@ func (c *controller) AutoWatch(gvr schema.GroupVersionResource) {
 	c.watchedGVRs[gvr] = cancel
 
 	if c.client != nil && c.client.dynClient != nil {
-		go c.runDynamicChildWatch(watchCtx, gvr)
+		c.watchWG.Add(1)
+		go func() {
+			defer c.watchWG.Done()
+			c.runDynamicChildWatch(watchCtx, gvr)
+		}()
 	}
 }
 
@@ -961,20 +1034,12 @@ func (c *controller) doWatchRelated(r relatedWatcher) error {
 				continue
 			}
 
-			childThread := &starlark.Thread{Name: "related-mapper"}
-			if c.thread != nil {
-				childThread.Print = c.thread.Print
-			}
-			if perms := libkite.GetPermissions(c.thread); perms != nil {
-				libkite.SetPermissions(childThread, perms)
-			}
-			if c.ctx != nil {
-				libkite.SetThreadContext(childThread, c.ctx)
-			}
+			childThread, stopChild := newChildThread(c.thread, "related-mapper", c.ctx)
 			childThread.SetLocal(ActiveControllerKey, c)
 
 			attrDict := unstructuredToAttrDict(obj.DeepCopy())
 			res, err := libkite.CallSafe(childThread, r.mapFn, starlark.Tuple{attrDict}, nil)
+			stopChild()
 			if err != nil {
 				fmt.Fprintf(os.Stderr, "k8s.control: map_func error for %s on %s/%s: %v\n", r.kind, obj.GetNamespace(), obj.GetName(), err)
 				continue
@@ -1085,23 +1150,33 @@ func (c *controller) healthHandler() http.Handler {
 	return mux
 }
 
-func (c *controller) runHealthServer() {
+func (c *controller) runHealthServer(ln net.Listener) {
 	srv := &http.Server{
-		Addr:    fmt.Sprintf(":%d", c.healthPort),
-		Handler: c.healthHandler(),
+		Handler:           c.healthHandler(),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       10 * time.Second,
+		WriteTimeout:      10 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
-	go func() {
-		<-c.ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = srv.Shutdown(shutdownCtx)
-	}()
+	ctx, cancel := context.WithCancel(c.ctx)
+	defer cancel()
 
-	fmt.Fprintf(os.Stderr, "k8s.control: health server listening on :%d\n", c.healthPort)
-	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+	var wg sync.WaitGroup
+	wg.Go(func() {
+		<-ctx.Done()
+		shutdownCtx, sdCancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer sdCancel()
+		_ = srv.Shutdown(shutdownCtx)
+	})
+
+	fmt.Fprintf(os.Stderr, "k8s.control: health server listening on %s\n", ln.Addr().String())
+	if err := srv.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		fmt.Fprintf(os.Stderr, "k8s.control: health server error: %v\n", err)
 	}
+	cancel()
+	wg.Wait()
 }
 
 func (c *controller) emitEvent(obj *unstructured.Unstructured, eventType, reason, message string) {
@@ -1226,20 +1301,8 @@ func (c *controller) dispatch(item queueItem) error {
 
 	attrDict := unstructuredToAttrDict(obj.DeepCopy())
 
-	// Create a child thread for the handler call
-	childThread := &starlark.Thread{Name: "controller-worker"}
-	if c.thread != nil {
-		childThread.Print = c.thread.Print
-	}
-	// Copy permissions from parent thread
-	if perms := libkite.GetPermissions(c.thread); perms != nil {
-		libkite.SetPermissions(childThread, perms)
-	}
-	if c.ctx != nil {
-		libkite.SetThreadContext(childThread, c.ctx)
-		stopWatch := libkite.WatchContext(c.ctx, childThread)
-		defer stopWatch()
-	}
+	childThread, stopWatch := newChildThread(c.thread, "controller-worker", c.ctx)
+	defer stopWatch()
 	childThread.SetLocal(ActiveControllerKey, c)
 
 	isDeleting := !obj.GetDeletionTimestamp().IsZero()
@@ -1691,16 +1754,8 @@ func splitKey(key string) (namespace, name string) {
 
 // applyPredicate calls the predicate function and returns true if the event should be enqueued.
 func (c *controller) applyPredicate(eventType string, obj *unstructuredObj) bool {
-	filterThread := &starlark.Thread{Name: "controller-predicate"}
-	if c.thread != nil {
-		filterThread.Print = c.thread.Print
-		if perms := libkite.GetPermissions(c.thread); perms != nil {
-			libkite.SetPermissions(filterThread, perms)
-		}
-	}
-	if c.ctx != nil {
-		libkite.SetThreadContext(filterThread, c.ctx)
-	}
+	filterThread, stopFilter := newChildThread(c.thread, "controller-predicate", c.ctx)
+	defer stopFilter()
 	attrDict := unstructuredToAttrDict(obj.DeepCopy())
 	result, err := libkite.CallSafe(filterThread, c.predicateFn, starlark.Tuple{
 		starlark.String(eventType),

@@ -87,7 +87,7 @@ func (c *K8sClient) fleet(thread *starlark.Thread, fn *starlark.Builtin, args st
 		opts.FieldSelector = p.Fields
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.fleet: %w", err)
 	}

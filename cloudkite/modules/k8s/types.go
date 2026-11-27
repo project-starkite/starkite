@@ -1,7 +1,9 @@
 package k8s
 
 import (
+	"fmt"
 	"sync"
+	"sync/atomic"
 
 	"go.starlark.net/starlark"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -41,16 +43,20 @@ type PortForwardHandle struct {
 	localPort int
 	stopCh    chan struct{}
 	stopOnce  sync.Once
+	stopped   atomic.Bool
 }
 
-func (h *PortForwardHandle) String() string        { return "<port_forward>" }
-func (h *PortForwardHandle) Type() string          { return "port_forward" }
-func (h *PortForwardHandle) Freeze()               {}
-func (h *PortForwardHandle) Truth() starlark.Bool  { return starlark.True }
-func (h *PortForwardHandle) Hash() (uint32, error) { return 0, nil }
+func (h *PortForwardHandle) String() string       { return "<port_forward>" }
+func (h *PortForwardHandle) Type() string         { return "port_forward" }
+func (h *PortForwardHandle) Freeze()              {}
+func (h *PortForwardHandle) Truth() starlark.Bool { return starlark.True }
+func (h *PortForwardHandle) Hash() (uint32, error) {
+	return 0, fmt.Errorf("unhashable type: %s", h.Type())
+}
 
 // Stop closes the port-forward stopCh at most once.
 func (h *PortForwardHandle) Stop() {
+	h.stopped.Store(true)
 	if h.stopCh != nil {
 		h.stopOnce.Do(func() {
 			close(h.stopCh)

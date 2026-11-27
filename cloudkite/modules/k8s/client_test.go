@@ -1,7 +1,12 @@
 package k8s
 
 import (
+	"errors"
+	"io"
+	"path/filepath"
 	"sort"
+	"strings"
+	"sync"
 	"testing"
 
 	"go.starlark.net/starlark"
@@ -93,5 +98,68 @@ func TestClientTryNonexistent(t *testing.T) {
 	}
 	if v != nil {
 		t.Fatalf("Attr(\"try_bogus\") = %v, want nil", v)
+	}
+}
+
+type fakeUtilExitError int
+
+func (e fakeUtilExitError) Error() string   { return "exit status" }
+func (e fakeUtilExitError) String() string  { return "exit status" }
+func (e fakeUtilExitError) Exited() bool    { return true }
+func (e fakeUtilExitError) ExitStatus() int { return int(e) }
+
+func TestK8sHardeningHelpers(t *testing.T) {
+	// 1. PortForwardHandle.Hash() must return unhashable error.
+	h := &PortForwardHandle{}
+	if _, err := h.Hash(); err == nil || !strings.Contains(err.Error(), "unhashable") {
+		t.Fatalf("expected unhashable error, got %v", err)
+	}
+
+	// 2. classifyExecStreamError returns exit code for utilexec.ExitError and Go error otherwise.
+	if code, err := classifyExecStreamError(nil); err != nil || code != 0 {
+		t.Fatalf("nil streamErr: got (%d, %v), want (0, nil)", code, err)
+	}
+	if code, err := classifyExecStreamError(fakeUtilExitError(17)); err != nil || code != 17 {
+		t.Fatalf("ExitError streamErr: got (%d, %v), want (17, nil)", code, err)
+	}
+	if code, err := classifyExecStreamError(errors.New("spdy reset")); err == nil || code != 0 {
+		t.Fatalf("transport err: got (%d, %v), want (0, non-nil)", code, err)
+	}
+
+	// 3. K8sClient Close/Dialer concurrent access is race-free.
+	kc := &K8sClient{}
+	var wg sync.WaitGroup
+	for range 8 {
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			_ = kc.Close()
+		}()
+		go func() {
+			defer wg.Done()
+			_ = kc.Dialer()
+		}()
+	}
+	wg.Wait()
+
+	// 4. packLocalToTar must not emit a tar EOF trailer when an error occurs.
+	missingPath := filepath.Join(t.TempDir(), "does-not-exist")
+	pr, pw := io.Pipe()
+	errCh := make(chan error, 1)
+	go func() {
+		_, _, err := packLocalToTar(missingPath, pw)
+		_ = pw.Close()
+		errCh <- err
+	}()
+	written, readErr := io.ReadAll(pr)
+	_ = pr.Close()
+	if readErr != nil {
+		t.Fatalf("pipe read failed: %v", readErr)
+	}
+	if packErr := <-errCh; packErr == nil {
+		t.Fatal("expected packLocalToTar error on missing source")
+	}
+	if len(written) != 0 {
+		t.Fatalf("expected 0 bytes written on packLocalToTar error (no EOF trailer), got %d bytes", len(written))
 	}
 }

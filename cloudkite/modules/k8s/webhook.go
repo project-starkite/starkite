@@ -177,16 +177,7 @@ func (wh *webhookHandler) ServeHTTP(w gohttp.ResponseWriter, r *gohttp.Request) 
 
 	objectAttr := NewAttrDict(object)
 
-	childThread := &starlark.Thread{Name: "webhook-handler"}
-	if wh.thread != nil {
-		childThread.Print = wh.thread.Print
-	}
-	if perms := libkite.GetPermissions(wh.thread); perms != nil {
-		libkite.SetPermissions(childThread, perms)
-	}
-	reqCtx := r.Context()
-	libkite.SetThreadContext(childThread, reqCtx)
-	stopWatch := libkite.WatchContext(reqCtx, childThread)
+	childThread, stopWatch := newChildThread(wh.thread, "webhook-handler", r.Context())
 	defer stopWatch()
 
 	// Dispatch to the appropriate handler.

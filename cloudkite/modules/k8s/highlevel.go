@@ -1,6 +1,7 @@
 package k8s
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -105,7 +106,7 @@ func (c *K8sClient) deployHighLevel(thread *starlark.Thread, fn *starlark.Builti
 		return nil, fmt.Errorf("k8s.deploy: marshal deployment: %w", err)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.deploy: %w", err)
 	}
@@ -237,7 +238,7 @@ func (c *K8sClient) run(thread *starlark.Thread, fn *starlark.Builtin, args star
 		},
 	}}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.run: %w", err)
 	}
@@ -258,11 +259,10 @@ func (c *K8sClient) run(thread *starlark.Thread, fn *starlark.Builtin, args star
 
 	// Wait for completion if restart=Never
 	if restart == "Never" && !effectiveDryRun {
+	waitLoop:
 		for {
-			select {
-			case <-ctx.Done():
-				goto done
-			default:
+			if ctx.Err() != nil {
+				break
 			}
 			obj, err := c.dynClient.Resource(podGVR).Namespace(ns).Get(ctx, p.Name, metav1.GetOptions{})
 			if err != nil {
@@ -272,10 +272,15 @@ func (c *K8sClient) run(thread *starlark.Thread, fn *starlark.Builtin, args star
 			if phase == "Succeeded" || phase == "Failed" {
 				break
 			}
-			time.Sleep(2 * time.Second)
+			timer := time.NewTimer(2 * time.Second)
+			select {
+			case <-ctx.Done():
+				timer.Stop()
+				break waitLoop
+			case <-timer.C:
+			}
 		}
 	}
-done:
 
 	result := NewAttrDict(map[string]any{
 		"name": created.GetName(),
@@ -297,7 +302,9 @@ done:
 
 		// Cleanup if rm=True
 		if p.Rm {
-			c.dynClient.Resource(podGVR).Namespace(ns).Delete(ctx, p.Name, metav1.DeleteOptions{})
+			cleanupCtx, cleanupCancel := context.WithTimeout(context.WithoutCancel(ctx), 15*time.Second)
+			_ = c.dynClient.Resource(podGVR).Namespace(ns).Delete(cleanupCtx, p.Name, metav1.DeleteOptions{})
+			cleanupCancel()
 		}
 	}
 
@@ -357,7 +364,7 @@ func (c *K8sClient) expose(thread *starlark.Thread, fn *starlark.Builtin, args s
 		},
 	}}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.expose: %w", err)
 	}
@@ -416,7 +423,7 @@ func (c *K8sClient) scale(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, fmt.Errorf("k8s.scale: marshal: %w", err)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.scale: %w", err)
 	}
@@ -515,7 +522,7 @@ func (c *K8sClient) autoscale(thread *starlark.Thread, fn *starlark.Builtin, arg
 		},
 	}}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.autoscale: %w", err)
 	}
@@ -568,7 +575,7 @@ func (c *K8sClient) rollout(thread *starlark.Thread, fn *starlark.Builtin, args 
 		return nil, fmt.Errorf("k8s.rollout: %w", err)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.rollout: %w", err)
 	}
@@ -711,7 +718,7 @@ func (c *K8sClient) setImage(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 	patchBytes, _ := json.Marshal(patchObj)
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.set_image: %w", err)
 	}
@@ -799,7 +806,7 @@ func (c *K8sClient) setEnv(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 	patchBytes, _ := json.Marshal(patchObj)
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.set_env: %w", err)
 	}
@@ -887,7 +894,7 @@ func (c *K8sClient) setResources(thread *starlark.Thread, fn *starlark.Builtin, 
 	}
 	patchBytes, _ := json.Marshal(patchObj)
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.set_resources: %w", err)
 	}
@@ -1001,7 +1008,7 @@ func (c *K8sClient) resize(thread *starlark.Thread, fn *starlark.Builtin, args s
 		return nil, fmt.Errorf("k8s.resize: marshal patch: %w", err)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.resize: %w", err)
 	}
@@ -1129,7 +1136,7 @@ func (c *K8sClient) route(thread *starlark.Thread, b *starlark.Builtin, args sta
 		routeManifest["spec"].(map[string]any)["hostnames"] = []any{p.Host}
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.route: %w", err)
 	}

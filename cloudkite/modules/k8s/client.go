@@ -37,6 +37,7 @@ type K8sClient struct {
 	timeout     string
 	config      *libkite.ModuleConfig
 	thread      *starlark.Thread
+	dialerMu    sync.Mutex
 	dialer      *ssh.TunnelDialer
 }
 
@@ -155,8 +156,11 @@ func (c *K8sClient) AttrNames() []string {
 
 // contextWithTimeout returns a context with timeout using fallback logic:
 // per-call timeout → client default → thread context.
-func (c *K8sClient) contextWithTimeout(perCallTimeout string) (context.Context, context.CancelFunc, error) {
-	baseCtx := libkite.ThreadContext(c.thread)
+func (c *K8sClient) contextWithTimeout(thread *starlark.Thread, perCallTimeout string) (context.Context, context.CancelFunc, error) {
+	if thread == nil {
+		thread = c.thread
+	}
+	baseCtx := libkite.ThreadContext(thread)
 	timeout := perCallTimeout
 	if timeout == "" {
 		timeout = c.timeout
@@ -527,16 +531,20 @@ func (c *K8sClient) closeClient(thread *starlark.Thread, fn *starlark.Builtin, a
 
 // Close terminates any active tunnel dialer and associated network channels.
 func (c *K8sClient) Close() error {
-	if c.dialer != nil {
-		err := c.dialer.Close()
-		c.dialer = nil
-		return err
+	c.dialerMu.Lock()
+	dialer := c.dialer
+	c.dialer = nil
+	c.dialerMu.Unlock()
+	if dialer != nil {
+		return dialer.Close()
 	}
 	return nil
 }
 
 // Dialer returns the configured TunnelDialer, or nil if not running over an SSH tunnel.
 func (c *K8sClient) Dialer() *ssh.TunnelDialer {
+	c.dialerMu.Lock()
+	defer c.dialerMu.Unlock()
 	return c.dialer
 }
 

@@ -43,7 +43,7 @@ func (c *K8sClient) get(thread *starlark.Thread, fn *starlark.Builtin, args star
 		ns = c.namespace
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.get: %w", err)
 	}
@@ -103,7 +103,7 @@ func (c *K8sClient) listResources(thread *starlark.Thread, fn *starlark.Builtin,
 		opts.FieldSelector = p.Fields
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.list: %w", err)
 	}
@@ -169,7 +169,7 @@ func (c *K8sClient) create(thread *starlark.Thread, fn *starlark.Builtin, args s
 		ns = c.namespace
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.create: %w", err)
 	}
@@ -264,7 +264,7 @@ func (c *K8sClient) apply(thread *starlark.Thread, fn *starlark.Builtin, args st
 		ns = c.namespace
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.apply: %w", err)
 	}
@@ -484,7 +484,7 @@ func (c *K8sClient) del(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, fmt.Errorf("k8s.delete: unknown propagation policy %q", p.Propagation)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.delete: %w", err)
 	}
@@ -571,7 +571,7 @@ func (c *K8sClient) patch(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, fmt.Errorf("k8s.patch: unknown patch type %q (use merge, strategic, or json)", p.Type)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.patch: %w", err)
 	}
@@ -664,7 +664,7 @@ func (c *K8sClient) label(thread *starlark.Thread, fn *starlark.Builtin, args st
 		ns = c.namespace
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.label: %w", err)
 	}
@@ -756,7 +756,7 @@ func (c *K8sClient) annotate(thread *starlark.Thread, fn *starlark.Builtin, args
 		ns = c.namespace
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.annotate: %w", err)
 	}
@@ -961,7 +961,7 @@ func (c *K8sClient) updateStatus(thread *starlark.Thread, fn *starlark.Builtin, 
 		return nil, fmt.Errorf("k8s.status: %w", err)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.status: %w", err)
 	}
@@ -1037,7 +1037,7 @@ func (c *K8sClient) claims(thread *starlark.Thread, fn *starlark.Builtin, args s
 		opts.LabelSelector = p.Labels
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.claims: %w", err)
 	}
@@ -1096,7 +1096,7 @@ func (c *K8sClient) pvcs(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		opts.LabelSelector = p.Labels
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.pvcs: %w", err)
 	}
@@ -1149,7 +1149,7 @@ func (c *K8sClient) pvs(thread *starlark.Thread, fn *starlark.Builtin, args star
 		opts.LabelSelector = p.Labels
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.pvs: %w", err)
 	}
@@ -1197,7 +1197,7 @@ func (c *K8sClient) storageClasses(thread *starlark.Thread, fn *starlark.Builtin
 		opts.LabelSelector = p.Labels
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.storage_classes: %w", err)
 	}

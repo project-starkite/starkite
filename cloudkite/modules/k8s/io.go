@@ -2,10 +2,11 @@ package k8s
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
+	"os"
 	"strings"
 	"time"
 
@@ -14,11 +15,13 @@ import (
 
 	"github.com/project-starkite/starkite/libkite"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/portforward"
 	"k8s.io/client-go/tools/remotecommand"
 	"k8s.io/client-go/transport/spdy"
+	utilexec "k8s.io/client-go/util/exec"
 )
 
 // logs retrieves logs from a pod.
@@ -70,7 +73,7 @@ func (c *K8sClient) logs(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		opts.SinceSeconds = &secs
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.logs: %w", err)
 	}
@@ -138,7 +141,7 @@ func (c *K8sClient) logsFollow(thread *starlark.Thread, fn *starlark.Builtin, ar
 		logOpts.TailLines = &lines
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.logs_follow: %w", err)
 	}
@@ -272,7 +275,7 @@ func (c *K8sClient) execCmd(thread *starlark.Thread, fn *starlark.Builtin, args 
 		return nil, fmt.Errorf("k8s.exec: %w", err)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.exec: %w", err)
 	}
@@ -284,9 +287,9 @@ func (c *K8sClient) execCmd(thread *starlark.Thread, fn *starlark.Builtin, args 
 		Stderr: &stderr,
 	})
 
-	exitCode := 0
-	if streamErr != nil {
-		exitCode = 1
+	exitCode, err := classifyExecStreamError(streamErr)
+	if err != nil {
+		return nil, fmt.Errorf("k8s.exec: %w", err)
 	}
 
 	return NewAttrDict(map[string]any{
@@ -294,6 +297,16 @@ func (c *K8sClient) execCmd(thread *starlark.Thread, fn *starlark.Builtin, args 
 		"stderr": stderr.String(),
 		"code":   int64(exitCode),
 	}), nil
+}
+
+func classifyExecStreamError(streamErr error) (int, error) {
+	if streamErr == nil {
+		return 0, nil
+	}
+	if exitErr, ok := errors.AsType[utilexec.ExitError](streamErr); ok {
+		return exitErr.ExitStatus(), nil
+	}
+	return 0, streamErr
 }
 
 // portForward establishes a port-forward to a pod.
@@ -321,8 +334,10 @@ func (c *K8sClient) portForward(thread *starlark.Thread, fn *starlark.Builtin, a
 	}
 
 	localPort := p.LocalPort
-	if localPort == 0 {
-		localPort = p.Port
+
+	clientset, err := c.getClientset()
+	if err != nil {
+		return nil, fmt.Errorf("k8s.port_forward: %w", err)
 	}
 
 	transport, upgrader, err := spdy.RoundTripperFor(c.restCfg)
@@ -330,14 +345,16 @@ func (c *K8sClient) portForward(thread *starlark.Thread, fn *starlark.Builtin, a
 		return nil, fmt.Errorf("k8s.port_forward: %w", err)
 	}
 
-	reqURL, err := url.Parse(c.restCfg.Host + fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", ns, p.Name))
-	if err != nil {
-		return nil, fmt.Errorf("k8s.port_forward: invalid URL: %w", err)
-	}
+	reqURL := clientset.CoreV1().RESTClient().Post().
+		Resource("pods").
+		Namespace(ns).
+		Name(p.Name).
+		SubResource("portforward").
+		URL()
 
 	dialer := spdy.NewDialer(upgrader, &http.Client{Transport: transport}, "POST", reqURL)
 
-	stopCh := make(chan struct{}, 1)
+	stopCh := make(chan struct{})
 	readyCh := make(chan struct{})
 
 	ports := []string{fmt.Sprintf("%d:%d", localPort, p.Port)}
@@ -353,7 +370,11 @@ func (c *K8sClient) portForward(thread *starlark.Thread, fn *starlark.Builtin, a
 		errCh <- fw.ForwardPorts()
 	}()
 
-	// Wait for ready or error
+	handle := &PortForwardHandle{
+		stopCh: stopCh,
+	}
+
+	threadCtx := libkite.ThreadContext(thread)
 	select {
 	case <-readyCh:
 		actualPorts, err := fw.GetPorts()
@@ -361,13 +382,20 @@ func (c *K8sClient) portForward(thread *starlark.Thread, fn *starlark.Builtin, a
 			localPort = int(actualPorts[0].Local)
 		}
 	case err := <-errCh:
+		handle.Stop()
 		return nil, fmt.Errorf("k8s.port_forward: %w", err)
+	case <-threadCtx.Done():
+		handle.Stop()
+		return nil, fmt.Errorf("k8s.port_forward: canceled: %w", threadCtx.Err())
 	}
 
-	handle := &PortForwardHandle{
-		localPort: localPort,
-		stopCh:    stopCh,
-	}
+	handle.localPort = localPort
+	go func() {
+		if err := <-errCh; err != nil && !handle.stopped.Load() {
+			fmt.Fprintf(os.Stderr, "k8s.port_forward: stopped unexpectedly: %v\n", err)
+			handle.Stop()
+		}
+	}()
 	libkite.RegisterCleanup(thread, handle.Stop)
 	return handle, nil
 }
@@ -432,7 +460,7 @@ func (c *K8sClient) debug(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, fmt.Errorf("k8s.debug: %w", err)
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.debug: %w", err)
 	}
@@ -476,6 +504,12 @@ func (c *K8sClient) debug(thread *starlark.Thread, fn *starlark.Builtin, args st
 
 		currentPod, getErr := clientset.CoreV1().Pods(ns).Get(ctx, p.Name, metav1.GetOptions{})
 		if getErr != nil {
+			if ctx.Err() != nil {
+				return nil, fmt.Errorf("k8s.debug: canceled waiting for container %q: %w", debugContainerName, ctx.Err())
+			}
+			if apierrors.IsNotFound(getErr) || apierrors.IsForbidden(getErr) || apierrors.IsUnauthorized(getErr) {
+				return nil, fmt.Errorf("k8s.debug: get pod %q: %w", p.Name, getErr)
+			}
 			continue
 		}
 
@@ -485,6 +519,16 @@ func (c *K8sClient) debug(thread *starlark.Thread, fn *starlark.Builtin, args st
 				continue
 			}
 			foundStatus = true
+
+			if cs.State.Waiting != nil {
+				switch cs.State.Waiting.Reason {
+				case "ErrImagePull", "ImagePullBackOff", "CreateContainerConfigError", "InvalidImageName", "RunContainerError":
+					if cs.State.Waiting.Message != "" {
+						return nil, fmt.Errorf("k8s.debug: container %q %s: %s", debugContainerName, cs.State.Waiting.Reason, cs.State.Waiting.Message)
+					}
+					return nil, fmt.Errorf("k8s.debug: container %q %s", debugContainerName, cs.State.Waiting.Reason)
+				}
+			}
 
 			// If terminated, get exit code and logs
 			if cs.State.Terminated != nil {

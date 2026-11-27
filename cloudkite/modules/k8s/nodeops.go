@@ -42,7 +42,7 @@ func (c *K8sClient) drain(thread *starlark.Thread, fn *starlark.Builtin, args st
 		return nil, err
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.drain: %w", err)
 	}
@@ -137,7 +137,7 @@ func (c *K8sClient) cordon(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 	patchBytes, _ := json.Marshal(patchObj)
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.cordon: %w", err)
 	}
@@ -178,7 +178,7 @@ func (c *K8sClient) uncordon(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 	patchBytes, _ := json.Marshal(patchObj)
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.uncordon: %w", err)
 	}
@@ -222,7 +222,7 @@ func (c *K8sClient) taint(thread *starlark.Thread, fn *starlark.Builtin, args st
 		effect = "NoSchedule"
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.taint: %w", err)
 	}
@@ -278,7 +278,7 @@ func (c *K8sClient) untaint(thread *starlark.Thread, fn *starlark.Builtin, args 
 		return nil, err
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.untaint: %w", err)
 	}
@@ -333,7 +333,7 @@ func (c *K8sClient) topNodes(thread *starlark.Thread, fn *starlark.Builtin, args
 		return nil, err
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.top_nodes: %w", err)
 	}
@@ -396,7 +396,7 @@ func (c *K8sClient) topPods(thread *starlark.Thread, fn *starlark.Builtin, args 
 		ns = c.namespace
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.top_pods: %w", err)
 	}
@@ -500,7 +500,7 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 			return nil, fmt.Errorf("k8s.cp: %w", err)
 		}
 
-		ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+		ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.cp: %w", err)
 		}
@@ -580,7 +580,7 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 			return nil, fmt.Errorf("k8s.cp: %w", err)
 		}
 
-		ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+		ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 		if err != nil {
 			return nil, fmt.Errorf("k8s.cp: %w", err)
 		}
@@ -610,17 +610,20 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 		}
 
 		pr, pw := io.Pipe()
-		var fileCount int
-		var totalBytes int64
+		type packResult struct {
+			files int
+			bytes int64
+			err   error
+		}
+		packCh := make(chan packResult, 1)
 		go func() {
 			fc, tb, packErr := packLocalToTar(localSrc, pw)
-			fileCount = fc
-			totalBytes = tb
 			if packErr != nil {
 				_ = pw.CloseWithError(packErr)
 			} else {
 				_ = pw.Close()
 			}
+			packCh <- packResult{files: fc, bytes: tb, err: packErr}
 		}()
 
 		var stdout, stderr bytes.Buffer
@@ -630,14 +633,21 @@ func (c *K8sClient) cp(thread *starlark.Thread, fn *starlark.Builtin, args starl
 			Stderr: &stderr,
 		})
 		_ = pr.Close()
+		packRes := <-packCh
 		if err != nil {
+			if packRes.err != nil {
+				return nil, fmt.Errorf("k8s.cp: exec upload: %w (pack: %v; stderr: %s)", err, packRes.err, stderr.String())
+			}
 			return nil, fmt.Errorf("k8s.cp: exec upload: %w (%s)", err, stderr.String())
+		}
+		if packRes.err != nil {
+			return nil, fmt.Errorf("k8s.cp: pack upload: %w", packRes.err)
 		}
 
 		return NewAttrDict(map[string]any{
 			"source":    p.Src,
-			"files":     fileCount,
-			"bytes":     totalBytes,
+			"files":     packRes.files,
+			"bytes":     packRes.bytes,
 			"direction": "to_pod",
 		}), nil
 	}
@@ -741,7 +751,6 @@ func packLocalToTar(localSrc string, pw *io.PipeWriter) (int, int64, error) {
 
 	fi, err := os.Stat(srcClean)
 	if err != nil {
-		_ = tw.Close()
 		return 0, 0, fmt.Errorf("stat local source %q: %w", srcClean, err)
 	}
 
@@ -751,23 +760,19 @@ func packLocalToTar(localSrc string, pw *io.PipeWriter) (int, int64, error) {
 	if !fi.IsDir() {
 		hdr, err := tar.FileInfoHeader(fi, "")
 		if err != nil {
-			_ = tw.Close()
 			return 0, 0, err
 		}
 		hdr.Name = filepath.Base(srcClean)
 		if err := tw.WriteHeader(hdr); err != nil {
-			_ = tw.Close()
 			return 0, 0, err
 		}
 		f, err := os.Open(srcClean)
 		if err != nil {
-			_ = tw.Close()
 			return 0, 0, err
 		}
 		written, copyErr := io.Copy(tw, f)
 		f.Close()
 		if copyErr != nil {
-			_ = tw.Close()
 			return 0, 0, copyErr
 		}
 		count++
@@ -808,7 +813,6 @@ func packLocalToTar(localSrc string, pw *io.PipeWriter) (int, int64, error) {
 			return nil
 		})
 		if walkErr != nil {
-			_ = tw.Close()
 			return count, totalBytes, walkErr
 		}
 	}
@@ -846,7 +850,7 @@ func (c *K8sClient) describe(thread *starlark.Thread, fn *starlark.Builtin, args
 		ns = c.namespace
 	}
 
-	ctx, cancel, err := c.contextWithTimeout(p.Timeout)
+	ctx, cancel, err := c.contextWithTimeout(thread, p.Timeout)
 	if err != nil {
 		return nil, fmt.Errorf("k8s.describe: %w", err)
 	}

@@ -3,11 +3,14 @@ package k8s
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/project-starkite/starkite/libkite"
 	"go.starlark.net/starlark"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -1331,5 +1334,119 @@ def reconcile(event, obj):
 	}
 	for range 4 {
 		<-done
+	}
+}
+
+func TestNewChildThreadAndHealthBindFailure(t *testing.T) {
+	// 1. Without Runtime: preserves Print and Permissions from parent thread.
+	checker, err := libkite.NewPermissionChecker(&libkite.PermissionConfig{Default: libkite.DefaultDeny})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var printed []string
+	parent := &starlark.Thread{
+		Name: "parent",
+		Print: func(_ *starlark.Thread, msg string) {
+			printed = append(printed, msg)
+		},
+	}
+	libkite.SetPermissions(parent, checker)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	child, stop := newChildThread(parent, "child-plain", ctx)
+	defer stop()
+
+	child.Print(child, "hello")
+	if len(printed) != 1 || printed[0] != "hello" {
+		t.Fatalf("expected Print propagation, got %v", printed)
+	}
+	if libkite.GetPermissions(child) == nil {
+		t.Fatal("expected permissions propagated to child thread")
+	}
+
+	// 2. With Runtime: creates managed runtime thread preserving GetRuntime.
+	rt, err := libkite.NewTrusted(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rt.Close()
+	rtThread := rt.NewThread("rt-parent")
+	childRT, stopRT := newChildThread(rtThread, "child-rt", ctx)
+	defer stopRT()
+	if libkite.GetRuntime(childRT) != rt {
+		t.Fatal("expected childRT to inherit Runtime")
+	}
+
+	// 3. Health server bind conflict must fail controller.run() synchronously.
+	ln, err := net.Listen("tcp", ":0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ln.Close()
+	occupiedPort := ln.Addr().(*net.TCPAddr).Port
+
+	bindCtx, bindCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer bindCancel()
+	bindThread := &starlark.Thread{Name: "ctrl-bind"}
+	libkite.SetThreadContext(bindThread, bindCtx)
+
+	c := &controller{
+		healthPort: occupiedPort,
+		thread:     bindThread,
+	}
+	if _, err := c.run(); err == nil || !strings.Contains(err.Error(), "health server listen") {
+		t.Fatalf("expected health server listen error on occupied port, got %v", err)
+	}
+}
+
+func TestControllerAutoWatchShutdownNoRace(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	fakeDynClient := dynamicfake.NewSimpleDynamicClient(runtime.NewScheme())
+	fakeDynClient.PrependWatchReactor("*", func(action clienttesting.Action) (bool, watch.Interface, error) {
+		return true, watch.NewFake(), nil
+	})
+
+	c := &controller{
+		kind: "TestApp",
+		gvr:  schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: "testapps"},
+		client: &K8sClient{
+			dynClient: fakeDynClient,
+			namespace: "default",
+		},
+		ctx:         ctx,
+		watchedGVRs: make(map[schema.GroupVersionResource]context.CancelFunc),
+	}
+
+	resources := []string{"configmaps", "secrets", "services", "pods", "jobs", "deployments", "roles", "ingresses"}
+	done := make(chan struct{}, len(resources))
+	for _, res := range resources {
+		gvr := schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: res}
+		go func() {
+			defer func() { done <- struct{}{} }()
+			c.AutoWatch(gvr)
+		}()
+	}
+
+	time.Sleep(5 * time.Millisecond)
+	cancel()
+	c.autoWatchMu.Lock()
+	c.stopping = true
+	for _, cancelWatch := range c.watchedGVRs {
+		cancelWatch()
+	}
+	c.autoWatchMu.Unlock()
+	c.watchWG.Wait()
+
+	for range resources {
+		<-done
+	}
+
+	lateGVR := schema.GroupVersionResource{Group: "example.io", Version: "v1", Resource: "cronjobs"}
+	c.AutoWatch(lateGVR)
+	if _, exists := c.watchedGVRs[lateGVR]; exists {
+		t.Fatal("expected AutoWatch after shutdown not to register new watcher")
 	}
 }
