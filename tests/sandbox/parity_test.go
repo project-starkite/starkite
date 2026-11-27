@@ -325,6 +325,9 @@ assert(not res.ok, "sibling secret in $HOME must not be readable under user home
 }
 
 func TestLegacyFlag_SandboxNetRemoved(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
 	kite := buildKite(t)
 	workDir := createNonHomeTempDir(t)
 
@@ -349,6 +352,9 @@ func TestLegacyFlag_SandboxNetRemoved(t *testing.T) {
 }
 
 func TestParity_ScopedNetworkEndpoints(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
 	kite := buildKite(t)
 	workDir := createNonHomeTempDir(t)
 
@@ -379,6 +385,9 @@ assert("Hint: pass --sandbox-net-allow=example.com" in res_denied.error or "no m
 }
 
 func TestParity_NetworkDenyAirGapping(t *testing.T) {
+	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
+		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
 	kite := buildKite(t)
 	workDir := createNonHomeTempDir(t)
 

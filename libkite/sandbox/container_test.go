@@ -1,7 +1,9 @@
 package sandbox
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -363,5 +365,67 @@ func TestContainerDriver_BinaryAndImageMatchingAndEtcBoundary(t *testing.T) {
 	}
 	if !strings.Contains(joined, "/usr/local/bin/kitedev run") {
 		t.Errorf("expected non-kite binary prefix kitedev to remain preserved, got: %s", joined)
+	}
+}
+
+func TestContainerDriver_ExecStreamedStderrAndCancelCleanup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses POSIX shell script mock container CLI")
+	}
+
+	tmpDir := t.TempDir()
+	rmLog := filepath.Join(tmpDir, "rm.log")
+	mockCLI := filepath.Join(tmpDir, "mock-engine")
+	script := `#!/bin/sh
+case "$1" in
+  run)
+    if [ "${MOCK_SLEEP:-}" = "1" ]; then
+      sleep 30 &
+      wait
+      exit 0
+    fi
+    echo "permission denied" >&2
+    exit 1
+    ;;
+  rm)
+    echo "$@" >> "` + rmLog + `"
+    exit 0
+    ;;
+esac
+`
+	if err := os.WriteFile(mockCLI, []byte(script), 0o755); err != nil {
+		t.Fatalf("write mock CLI: %v", err)
+	}
+
+	d := NewContainerDriver("docker", mockCLI)
+	var stderrBuf bytes.Buffer
+	res, err := d.Exec(context.Background(), &ExecutionSpec{
+		Command: []string{"echo", "hi"},
+		Stderr:  &stderrBuf,
+	})
+	if err != nil {
+		t.Fatalf("Exec returned unexpected error: %v", err)
+	}
+	if res.ExitCode != 1 {
+		t.Fatalf("ExitCode = %d, want 1", res.ExitCode)
+	}
+	if !strings.Contains(res.Stderr, "sandbox:") || !strings.Contains(stderrBuf.String(), "sandbox:") {
+		t.Errorf("expected enriched stderr in both res.Stderr and spec.Stderr;\nres=%q\nbuf=%q", res.Stderr, stderrBuf.String())
+	}
+
+	t.Setenv("MOCK_SLEEP", "1")
+	ctx, cancel := context.WithTimeout(context.Background(), 150*time.Millisecond)
+	defer cancel()
+
+	_, err = d.Exec(ctx, &ExecutionSpec{
+		Command: []string{"echo", "hi"},
+		Env:     []string{"MOCK_SLEEP=1"},
+	})
+	if !errors.Is(err, context.DeadlineExceeded) && !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected timeout/cancel error, got %v", err)
+	}
+	data, readErr := os.ReadFile(rmLog)
+	if readErr != nil || !strings.Contains(string(data), "rm -f starkite-sbx-") {
+		t.Errorf("expected container rm -f cleanup on cancel, log=%q err=%v", string(data), readErr)
 	}
 }

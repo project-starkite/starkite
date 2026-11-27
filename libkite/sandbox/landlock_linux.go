@@ -570,20 +570,16 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	}
 
 	if !spec.NoExec && isWritableMountOrScratch(targetBin, spec.Mounts) {
-		return &ExecResult{
-			Duration: time.Since(start),
-			Stderr:   FormatPermissionError(os.ErrPermission, targetBin, spec).Error() + "\n",
-			ExitCode: 126,
-		}, nil
+		res := policyDeniedResult(spec, FormatPermissionError(os.ErrPermission, targetBin, spec))
+		res.Duration = time.Since(start)
+		return res, nil
 	}
 
 	if os.Getenv(InsideEnvVar) == "1" {
 		if policyErr := checkContainerExecPolicy(spec); policyErr != nil {
-			return &ExecResult{
-				Duration: time.Since(start),
-				Stderr:   policyErr.Error() + "\n",
-				ExitCode: 126,
-			}, nil
+			res := policyDeniedResult(spec, policyErr)
+			res.Duration = time.Since(start)
+			return res, nil
 		}
 	}
 
@@ -601,11 +597,9 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	}
 	if !useSelfReexec && os.Getenv(InsideEnvVar) != "1" {
 		if !spec.NoExec && len(spec.AllowedExecPaths) > 0 && !isAllowedExecTarget(targetBin, spec.Cwd, spec.AllowedExecPaths) {
-			return &ExecResult{
-				Duration: time.Since(start),
-				Stderr:   FormatPermissionError(syscall.EACCES, targetBin, spec).Error() + "\n",
-				ExitCode: 126,
-			}, nil
+			res := policyDeniedResult(spec, FormatPermissionError(syscall.EACCES, targetBin, spec))
+			res.Duration = time.Since(start)
+			return res, nil
 		}
 	}
 
@@ -669,7 +663,7 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 			cmd.SysProcAttr = &syscall.SysProcAttr{}
 		}
 		cmd.SysProcAttr.Pdeathsig = syscall.SIGKILL
-		cmd.SysProcAttr.Setpgid = true
+		configureSubprocessCancel(cmd)
 
 		var stdoutBuf, stderrBuf bytes.Buffer
 		if spec.Stdout != nil {
@@ -678,7 +672,7 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 			cmd.Stdout = &stdoutBuf
 		}
 		if spec.Stderr != nil {
-			cmd.Stderr = spec.Stderr
+			cmd.Stderr = io.MultiWriter(&stderrBuf, spec.Stderr)
 		} else {
 			cmd.Stderr = &stderrBuf
 		}
@@ -689,6 +683,10 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 		err := cmd.Run()
 		duration := time.Since(start)
 
+		if execCtx.Err() != nil {
+			reapSubprocessGroup(cmd)
+		}
+
 		result := &ExecResult{
 			Duration: duration,
 			Stdout:   stdoutBuf.String(),
@@ -696,10 +694,19 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 			ExitCode: -1,
 		}
 
-		if execCtx.Err() == context.DeadlineExceeded {
+		if errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 			result.TimedOut = true
 			result.ExitCode = 124
-			return result, fmt.Errorf("sandbox: command timed out after %v", spec.Timeout)
+			if spec.Timeout > 0 {
+				return result, fmt.Errorf("sandbox: command timed out after %v: %w", spec.Timeout, execCtx.Err())
+			}
+			return result, fmt.Errorf("sandbox: command timed out: %w", execCtx.Err())
+		}
+		if errors.Is(execCtx.Err(), context.Canceled) {
+			if cmd.ProcessState != nil {
+				result.ExitCode = cmd.ProcessState.ExitCode()
+			}
+			return result, execCtx.Err()
 		}
 
 		if cmd.ProcessState != nil {
@@ -711,7 +718,7 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 
 	wantUserNS := spec.Network == NetworkNone || spec.Network == NetworkLoopback
 	result, err := runAttempt(wantUserNS)
-	if err != nil && (spec.Network == NetworkNone || spec.Network == "") && useSelfReexec {
+	if err != nil && ctx.Err() == nil && (spec.Network == NetworkNone || spec.Network == "") && useSelfReexec {
 		var exitErr *exec.ExitError
 		if !errors.As(err, &exitErr) &&
 			(errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOSYS) || errors.Is(err, os.ErrPermission)) {
@@ -722,9 +729,12 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	}
 
 	if err != nil {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+			return result, err
+		}
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			result.ExitCode = exitErr.ExitCode()
-			result.Stderr = enrichPermissionStderr(result.Stderr, spec)
+			applyPermissionStderr(result, spec)
 			return result, nil
 		}
 		if wantUserNS && (errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) || errors.Is(err, syscall.EINVAL) || errors.Is(err, syscall.ENOSYS) || errors.Is(err, os.ErrPermission)) {
@@ -733,9 +743,7 @@ func (d *LandlockDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 		return result, FormatPermissionError(fmt.Errorf("sandbox: landlock exec failed: %w", err), targetBin, spec)
 	}
 
-	if result.ExitCode != 0 {
-		result.Stderr = enrichPermissionStderr(result.Stderr, spec)
-	}
+	applyPermissionStderr(result, spec)
 
 	return result, nil
 }

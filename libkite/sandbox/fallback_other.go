@@ -9,7 +9,7 @@ import (
 )
 
 // FallbackDriver is a placeholder driver for operating systems without
-// native kernel-level sandboxing (e.g. Windows).
+// native kernel-level sandboxing.
 type FallbackDriver struct{}
 
 func init() {

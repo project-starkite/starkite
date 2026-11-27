@@ -367,7 +367,7 @@ func TestDiagnostics_EnrichExecDiagnostics(t *testing.T) {
 		t.Errorf("expected library hint in stderr for dyld, got: %q", resDylib.Stderr)
 	}
 
-	// Generic "image not found" without dyld or library context must NOT trigger library hint (Finding MED-04)
+	// Generic "image not found" without dyld or library context must NOT trigger library hint
 	resGenericImg := &ExecResult{
 		ExitCode: 1,
 		Stderr:   "docker: Error response from daemon: image not found: my-image:latest",

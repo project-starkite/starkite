@@ -7,6 +7,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -173,16 +174,14 @@ func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	var cmd *exec.Cmd
 	if os.Getenv(InsideEnvVar) == "1" {
 		if policyErr := checkContainerExecPolicy(spec); policyErr != nil {
-			return &ExecResult{
-				ExitCode: 126,
-				Stderr:   policyErr.Error() + "\n",
-			}, policyErr
+			return policyDeniedResult(spec, policyErr), nil
 		}
 		cmd = exec.CommandContext(execCtx, spec.Command[0], spec.Command[1:]...)
 	} else {
 		args := append([]string{"-p", sbpl, "--"}, spec.Command...)
 		cmd = exec.CommandContext(execCtx, "/usr/bin/sandbox-exec", args...)
 	}
+	configureSubprocessCancel(cmd)
 
 	var isHomeOrRoot bool
 	cleanCwd := ""
@@ -222,7 +221,7 @@ func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	}
 
 	if spec.Stderr != nil {
-		cmd.Stderr = spec.Stderr
+		cmd.Stderr = io.MultiWriter(&stderrBuf, spec.Stderr)
 	} else {
 		cmd.Stderr = &stderrBuf
 	}
@@ -234,16 +233,29 @@ func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	err := cmd.Run()
 	duration := time.Since(start)
 
+	if execCtx.Err() != nil {
+		reapSubprocessGroup(cmd)
+	}
+
 	result := &ExecResult{
 		Duration: duration,
 		Stdout:   stdoutBuf.String(),
 		Stderr:   stderrBuf.String(),
 	}
 
-	if execCtx.Err() == context.DeadlineExceeded {
+	if errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 		result.TimedOut = true
 		result.ExitCode = 124
-		return result, fmt.Errorf("sandbox: command timed out after %v", spec.Timeout)
+		if spec.Timeout > 0 {
+			return result, fmt.Errorf("sandbox: command timed out after %v: %w", spec.Timeout, execCtx.Err())
+		}
+		return result, fmt.Errorf("sandbox: command timed out: %w", execCtx.Err())
+	}
+	if errors.Is(execCtx.Err(), context.Canceled) {
+		if cmd.ProcessState != nil {
+			result.ExitCode = cmd.ProcessState.ExitCode()
+		}
+		return result, execCtx.Err()
 	}
 
 	if cmd.ProcessState != nil {
@@ -253,15 +265,13 @@ func (d *SeatbeltDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRe
 	if err != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			result.ExitCode = exitErr.ExitCode()
-			result.Stderr = enrichPermissionStderr(result.Stderr, spec)
+			applyPermissionStderr(result, spec)
 			return result, nil
 		}
 		return result, FormatPermissionError(fmt.Errorf("sandbox: seatbelt exec failed: %w", err), spec.Command[0], spec)
 	}
 
-	if result.ExitCode != 0 {
-		result.Stderr = enrichPermissionStderr(result.Stderr, spec)
-	}
+	applyPermissionStderr(result, spec)
 
 	return result, nil
 }

@@ -3,13 +3,17 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -26,6 +30,7 @@ const (
 // ContainerDriver implements the Driver interface by orchestrating ephemeral
 // containers via the Podman, Docker, or Nerdctl CLI.
 type ContainerDriver struct {
+	mu      sync.Mutex
 	engine  string // "podman", "docker", or "nerdctl"
 	binPath string // Path to the container CLI binary
 }
@@ -76,12 +81,18 @@ func (d *ContainerDriver) Name() string {
 	return d.engine
 }
 
-// Available reports whether the container CLI binary is installed and executable on the host.
-func (d *ContainerDriver) Available() bool {
+func (d *ContainerDriver) resolveBinary() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.binPath == "" {
 		d.binPath, _ = exec.LookPath(d.engine)
 	}
-	return d.binPath != ""
+	return d.binPath
+}
+
+// Available reports whether the container CLI binary is installed and executable on the host.
+func (d *ContainerDriver) Available() bool {
+	return d.resolveBinary() != ""
 }
 
 // ValidateSpec verifies that the ExecutionSpec is valid for containerized execution.
@@ -408,6 +419,14 @@ func checkContainerExecPolicy(spec *ExecutionSpec) error {
 	return nil
 }
 
+func newEphemeralContainerName() string {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return fmt.Sprintf("starkite-sbx-%d", time.Now().UnixNano())
+	}
+	return "starkite-sbx-" + hex.EncodeToString(b[:])
+}
+
 // Exec executes the command inside an ephemeral container using the container engine CLI.
 func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecResult, error) {
 	if err := d.ValidateSpec(spec); err != nil {
@@ -415,14 +434,20 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 	}
 
 	if policyErr := checkContainerExecPolicy(spec); policyErr != nil {
-		return &ExecResult{
-			ExitCode: 126,
-			Stderr:   policyErr.Error() + "\n",
-		}, nil
+		return policyDeniedResult(spec, policyErr), nil
+	}
+
+	binPath := d.resolveBinary()
+	if binPath == "" {
+		return nil, fmt.Errorf("sandbox: container engine %q CLI binary not found in PATH", d.engine)
 	}
 
 	start := time.Now()
 	cliArgs := d.BuildArgs(spec)
+	containerName := newEphemeralContainerName()
+	if len(cliArgs) > 0 && cliArgs[0] == "run" {
+		cliArgs = append([]string{"run", "--name", containerName}, cliArgs[1:]...)
+	}
 
 	execCtx := ctx
 	var cancel context.CancelFunc
@@ -443,7 +468,8 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 		}
 	}
 
-	cmd := exec.CommandContext(execCtx, d.binPath, cliArgs...)
+	cmd := exec.CommandContext(execCtx, binPath, cliArgs...)
+	configureSubprocessCancel(cmd)
 
 	var stdoutBuf, stderrBuf bytes.Buffer
 
@@ -454,7 +480,7 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 	}
 
 	if spec.Stderr != nil {
-		cmd.Stderr = spec.Stderr
+		cmd.Stderr = io.MultiWriter(&stderrBuf, spec.Stderr)
 	} else {
 		cmd.Stderr = &stderrBuf
 	}
@@ -466,16 +492,34 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 	err := cmd.Run()
 	duration := time.Since(start)
 
+	if execCtx.Err() != nil {
+		reapSubprocessGroup(cmd)
+		// Killing the local container CLI does not guarantee the daemon stops
+		// the container, so force-remove it by its ephemeral name.
+		rmCtx, rmCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		_ = exec.CommandContext(rmCtx, binPath, "rm", "-f", containerName).Run()
+		rmCancel()
+	}
+
 	result := &ExecResult{
 		Duration: duration,
 		Stdout:   stdoutBuf.String(),
 		Stderr:   stderrBuf.String(),
 	}
 
-	if execCtx.Err() == context.DeadlineExceeded {
+	if errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 		result.TimedOut = true
 		result.ExitCode = 124
-		return result, fmt.Errorf("sandbox: container command timed out after %v", spec.Timeout)
+		if spec.Timeout > 0 {
+			return result, fmt.Errorf("sandbox: container command timed out after %v: %w", spec.Timeout, execCtx.Err())
+		}
+		return result, fmt.Errorf("sandbox: container command timed out: %w", execCtx.Err())
+	}
+	if errors.Is(execCtx.Err(), context.Canceled) {
+		if cmd.ProcessState != nil {
+			result.ExitCode = cmd.ProcessState.ExitCode()
+		}
+		return result, execCtx.Err()
 	}
 
 	if cmd.ProcessState != nil {
@@ -489,15 +533,13 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 			if result.ExitCode == 137 && strings.Contains(strings.ToLower(result.Stderr), "oom") {
 				result.KilledByOOM = true
 			}
-			result.Stderr = enrichPermissionStderr(result.Stderr, spec)
+			applyPermissionStderr(result, spec)
 			return result, nil
 		}
 		return result, FormatPermissionError(fmt.Errorf("sandbox: container execution failed: %w", err), spec.Command[0], spec)
 	}
 
-	if result.ExitCode != 0 {
-		result.Stderr = enrichPermissionStderr(result.Stderr, spec)
-	}
+	applyPermissionStderr(result, spec)
 
 	return result, nil
 }

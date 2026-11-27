@@ -1,44 +1,15 @@
-// Package sandbox describes the platform-agnostic interface for running
-// kite scripts inside an OS-level sandbox (gVisor on Linux). Concrete
-// backends register themselves via the Backend variable; on platforms
-// without a registered backend, --sandbox returns a friendly error.
-//
-// This package intentionally has no dependency on gVisor or any other
-// sandbox runtime — it stays portable so libkite embedders aren't forced
-// to pull in heavyweight sandbox dependencies they don't use.
+// Package sandbox provides the platform-agnostic Driver, Registry, and ExecutionSpec
+// interfaces for running scripts and subprocesses inside OS-level containment
+// (Landlock + Seccomp-BPF on Linux, Seatbelt on macOS, AppContainer + Job Objects
+// on Windows, and container engines).
 package sandbox
 
 import (
-	"context"
-	"fmt"
-	"runtime"
 	"time"
 )
 
-// ExecSpec describes a script execution that should happen inside a sandbox.
-// The backend is responsible for re-executing the kite binary inside the
-// sandboxed environment with the appropriate arguments.
-type ExecSpec struct {
-	ScriptPath string   // path to the .star file
-	Args       []string // additional script arguments
-	Env        []string // KEY=VALUE environment forwarded into the sandbox
-	Cwd        string   // working directory for the sandboxed process
-	Profile    Profile  // resolved sandbox profile
-}
-
-// Runner executes an ExecSpec inside a sandbox. When Run returns nil, the
-// script has already executed inside the sandbox; the caller must not also
-// run it natively.
-type Runner interface {
-	Run(ctx context.Context, spec ExecSpec) error
-}
-
-// Backend is the registered sandbox runner. nil means no backend is available
-// on this platform/build (the typical case on macOS and Windows).
-var Backend Runner
-
 // InsideEnvVar is the environment variable that signals "this kite process
-// is running inside an active sandbox." The sandbox backend sets it on the
+// is running inside an active sandbox." The sandbox driver sets it on the
 // inner kite invocation; the CLI's MaybeHandoffToSandbox checks it to avoid
 // recursive re-sandboxing. Any code that needs to know "am I inside a
 // sandbox?" should consult this variable rather than hard-coding the name.
@@ -53,26 +24,8 @@ const InsideEnvVar = "STARKITE_INSIDE_SANDBOX"
 // or a named profile under "sandbox:<name>" in config.yaml.
 const ProfileEnvVar = "STARKITE_SANDBOX_PROFILE"
 
-// EngagementEnvVar is an alias for ProfileEnvVar.
-const EngagementEnvVar = ProfileEnvVar
-
 // DriverEnvVar is the environment variable that overrides the sandbox execution driver engine.
 const DriverEnvVar = "STARKITE_SANDBOX_DRIVER"
-
-// Available reports whether a sandbox driver or backend is registered and usable.
-func Available() bool {
-	if Backend != nil {
-		return true
-	}
-	_, err := AutoDetect()
-	return err == nil
-}
-
-// PlatformError is the standard error returned when a sandbox is requested
-// on a platform without a usable registered driver.
-func PlatformError() error {
-	return fmt.Errorf("no usable sandbox driver available on %s", runtime.GOOS)
-}
 
 // NetworkMode is the sandbox network configuration as understood by the
 // platform-agnostic profile schema. The runtime backend translates each

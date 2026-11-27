@@ -345,9 +345,12 @@ func TestWindowsDriver_LeaseJournalAndSweep(t *testing.T) {
 		PID:             99999999, // Dead PID
 		ProfileName:     "starkite.sbx.deadtest",
 		AppContainerSID: "S-1-15-2-1",
+		ScratchDir:      filepath.Join(os.TempDir(), "starkite-sbx-deadtest"),
 		Paths:           []string{tmpDir},
 		CreatedAt:       time.Now(),
 	}
+	_ = os.MkdirAll(dummyLease.ScratchDir, 0o700)
+	defer os.RemoveAll(dummyLease.ScratchDir)
 
 	if err := recordWindowsLease(dummyLease); err != nil {
 		t.Fatalf("recordWindowsLease failed: %v", err)
@@ -356,6 +359,10 @@ func TestWindowsDriver_LeaseJournalAndSweep(t *testing.T) {
 	// Sweep should clean up dead PID lease
 	if err := sweepStaleWindowsLeases(); err != nil {
 		t.Errorf("sweepStaleWindowsLeases failed: %v", err)
+	}
+
+	if _, statErr := os.Stat(dummyLease.ScratchDir); !os.IsNotExist(statErr) {
+		t.Errorf("expected orphaned scratch dir %q to be swept, err=%v", dummyLease.ScratchDir, statErr)
 	}
 
 	path := getLeaseFilePath()

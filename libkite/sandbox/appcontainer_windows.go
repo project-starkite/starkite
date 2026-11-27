@@ -150,7 +150,8 @@ func deleteAppContainerProfileByName(name string) error {
 		return err
 	}
 	r1, _, _ := procDeleteAppContainerProfile.Call(uintptr(unsafe.Pointer(namePtr)))
-	if r1 != 0 {
+	// S_OK (0) or HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND / ERROR_PATH_NOT_FOUND).
+	if r1 != 0 && r1 != 0x80070002 && r1 != 0x80070003 {
 		return fmt.Errorf("sandbox: DeleteAppContainerProfile(%s) failed: 0x%08x", name, uint32(r1))
 	}
 	return nil

@@ -19,7 +19,6 @@ const (
 	DriverDocker       = "docker"
 	DriverNerdctl      = "nerdctl"
 	DriverGVisor       = "gvisor"
-	DriverWasm         = "wasm"
 )
 
 func normalizeDriverName(name string) string {
@@ -88,7 +87,7 @@ func (r *Registry) Register(driver Driver) {
 func (r *Registry) Unregister(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	delete(r.drivers, name)
+	delete(r.drivers, normalizeDriverName(name))
 }
 
 // Get retrieves a driver by name.
@@ -118,54 +117,35 @@ func (r *Registry) List() []string {
 
 // AutoDetect selects the preferred driver for the current operating system.
 func (r *Registry) AutoDetect() (Driver, error) {
-	r.mu.RLock()
-	defer r.mu.RUnlock()
-
+	// Snapshot candidate drivers before invoking Available() so external probes
+	// never execute while holding r.mu.
+	var order []string
 	switch runtime.GOOS {
 	case "linux":
-		// Prefer Landlock on Linux (native in-process kernel LSM)
-		if d, ok := r.drivers[DriverLandlock]; ok && d.Available() {
-			return d, nil
-		}
-		// Fallback to gVisor or Podman if Landlock is unavailable
-		if d, ok := r.drivers[DriverGVisor]; ok && d.Available() {
-			return d, nil
-		}
-		if d, ok := r.drivers[DriverPodman]; ok && d.Available() {
-			return d, nil
-		}
-		if d, ok := r.drivers[DriverDocker]; ok && d.Available() {
-			return d, nil
-		}
+		order = []string{DriverLandlock, DriverGVisor, DriverPodman, DriverDocker}
 	case "darwin":
-		// Prefer Seatbelt on macOS
-		if d, ok := r.drivers[DriverSeatbelt]; ok && d.Available() {
-			return d, nil
-		}
-		// Fallback to Docker or Podman
-		if d, ok := r.drivers[DriverPodman]; ok && d.Available() {
-			return d, nil
-		}
-		if d, ok := r.drivers[DriverDocker]; ok && d.Available() {
-			return d, nil
-		}
+		order = []string{DriverSeatbelt, DriverPodman, DriverDocker}
 	case "windows":
-		// Prefer native Windows sandbox driver
-		if d, ok := r.drivers[DriverWindows]; ok && d.Available() {
-			return d, nil
+		order = []string{DriverWindows, DriverDocker, DriverPodman}
+	}
+	order = append(order, DriverLandlock, DriverSeatbelt, DriverWindows, DriverPodman, DriverDocker, DriverNerdctl, DriverGVisor)
+
+	r.mu.RLock()
+	seen := make(map[string]bool, len(order))
+	candidates := make([]Driver, 0, len(r.drivers))
+	for _, name := range order {
+		if seen[name] {
+			continue
 		}
-		// Fallback to container providers on Windows
-		if d, ok := r.drivers[DriverDocker]; ok && d.Available() {
-			return d, nil
-		}
-		if d, ok := r.drivers[DriverPodman]; ok && d.Available() {
-			return d, nil
+		seen[name] = true
+		if d, ok := r.drivers[name]; ok {
+			candidates = append(candidates, d)
 		}
 	}
+	r.mu.RUnlock()
 
-	// Fallback to any available registered driver
-	for _, name := range []string{DriverLandlock, DriverSeatbelt, DriverWindows, DriverPodman, DriverDocker, DriverNerdctl, DriverGVisor, DriverWasm} {
-		if d, ok := r.drivers[name]; ok && d.Available() {
+	for _, d := range candidates {
+		if d.Available() {
 			return d, nil
 		}
 	}

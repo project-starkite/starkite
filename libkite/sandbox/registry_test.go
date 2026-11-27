@@ -3,6 +3,7 @@ package sandbox
 import (
 	"runtime"
 	"slices"
+	"sync"
 	"testing"
 )
 
@@ -142,4 +143,33 @@ func TestGlobalRegistry_Functions(t *testing.T) {
 	if !found {
 		t.Errorf("expected global-mock in List()")
 	}
+}
+
+func TestRegistry_UnregisterNormalizesAlias(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(&mockDriver{name: DriverWindows, available: true})
+	reg.Unregister(DriverAppContainer)
+	if _, err := reg.Get(DriverWindows); err == nil {
+		t.Errorf("expected %s alias to unregister %s", DriverAppContainer, DriverWindows)
+	}
+}
+
+func TestRegistry_AutoDetectAndContainerAvailable_NoRace(t *testing.T) {
+	reg := NewRegistry()
+	reg.Register(NewPodmanDriver())
+	reg.Register(NewDockerDriver())
+	reg.Register(NewNerdctlDriver())
+	reg.Register(NewGVisorDriver())
+	reg.Register(&mockDriver{name: DriverLandlock, available: true})
+	reg.Register(&mockDriver{name: DriverSeatbelt, available: true})
+	reg.Register(&mockDriver{name: DriverWindows, available: true})
+
+	var wg sync.WaitGroup
+	for range 16 {
+		wg.Go(func() {
+			_, _ = reg.AutoDetect()
+			_, _ = reg.Resolve(DriverDefault)
+		})
+	}
+	wg.Wait()
 }

@@ -26,14 +26,6 @@ type SeccompFilterOptions struct {
 	AuditLog     bool // Return SECCOMP_RET_LOG instead of SECCOMP_RET_ERRNO|EPERM for audit testing
 }
 
-// BuildNetworkFilter returns a classic BPF (cBPF) filter with network isolation
-// and process/IPC boundary hardening enabled.
-func BuildNetworkFilter() ([]unix.SockFilter, error) {
-	return BuildSeccompFilter(SeccompFilterOptions{
-		BlockNetwork: true,
-	})
-}
-
 // BuildSeccompFilter constructs a classic BPF (cBPF) filter enforcing:
 //  1. Architecture validation against auditArch (mismatch returns EINVAL).
 //  2. Always-on process memory protection: blocks SYS_PTRACE, SYS_PROCESS_VM_READV,

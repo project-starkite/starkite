@@ -561,7 +561,7 @@ func isRunningInTest() bool {
 }
 
 // MaybeHandoffToSandbox checks whether a sandbox is requested (via
-// --sandbox flag or STARKITE_SECURITY_SANDBOX env var) and routes
+// --sandbox flag or STARKITE_SANDBOX_PROFILE env var) and routes
 // execution through the resolved sandbox driver.
 //
 // Returns:
@@ -596,18 +596,13 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string) (bo
 		}
 	}
 
-	// Legacy Backend support if registered
-	if sandbox.Backend != nil {
-		return true, sandbox.Backend.Run(ctx, sandbox.ExecSpec{Profile: profile})
-	}
-
 	explicitDriver := strings.TrimSpace(sandboxDriver) != "" ||
 		strings.TrimSpace(os.Getenv(sandbox.DriverEnvVar)) != "" ||
 		(profile.Driver != "" && profile.Driver != sandbox.DriverDefault && profile.Driver != "auto")
 
 	drvName := profile.Driver
 	if drvName == "" || drvName == sandbox.DriverDefault || drvName == "auto" {
-		if !explicitDriver && sandbox.Backend == nil {
+		if !explicitDriver {
 			d, err := sandbox.AutoDetect()
 			if err != nil {
 				return false, nil

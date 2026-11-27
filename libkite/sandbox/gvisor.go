@@ -5,8 +5,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
+	"sync"
 	"time"
 )
 
@@ -20,6 +22,7 @@ const (
 // 1. Delegating via Podman/Docker with --runtime=runsc (preferred in container environments).
 // 2. Invoking standalone /usr/bin/runsc directly in rootless mode on Linux hosts.
 type GVisorDriver struct {
+	mu        sync.Mutex
 	runscPath string
 }
 
@@ -40,17 +43,25 @@ func (d *GVisorDriver) Name() string {
 	return DriverGVisor
 }
 
-// Available reports whether standalone runsc is installed on this host.
-func (d *GVisorDriver) Available() bool {
+func (d *GVisorDriver) resolveRunsc() string {
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	if d.runscPath != "" {
-		_, err := os.Stat(d.runscPath)
-		return err == nil
+		if _, err := os.Stat(d.runscPath); err == nil {
+			return d.runscPath
+		}
+		d.runscPath = ""
 	}
 	if bin, err := exec.LookPath(BinRunsc); err == nil {
 		d.runscPath = bin
-		return true
+		return bin
 	}
-	return false
+	return ""
+}
+
+// Available reports whether standalone runsc is installed on this host.
+func (d *GVisorDriver) Available() bool {
+	return d.resolveRunsc() != ""
 }
 
 // ValidateSpec verifies that the ExecutionSpec is valid for gVisor execution.
@@ -80,7 +91,7 @@ func (d *GVisorDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecResu
 	}
 
 	// Strategy B: Direct standalone runsc execution (Linux)
-	if d.runscPath != "" {
+	if d.resolveRunsc() != "" {
 		return d.execStandaloneRunsc(ctx, spec)
 	}
 
@@ -89,16 +100,17 @@ func (d *GVisorDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecResu
 
 func (d *GVisorDriver) execStandaloneRunsc(ctx context.Context, spec *ExecutionSpec) (*ExecResult, error) {
 	if policyErr := checkContainerExecPolicy(spec); policyErr != nil {
-		return &ExecResult{
-			ExitCode: 126,
-			Stderr:   policyErr.Error() + "\n",
-		}, nil
+		return policyDeniedResult(spec, policyErr), nil
 	}
 	if spec.Network != NetworkHost && spec.Network != "" {
 		return nil, fmt.Errorf("sandbox: standalone runsc cannot enforce network=%q without a container engine (podman/docker/nerdctl)", spec.Network)
 	}
 	if len(spec.Mounts) > 0 || spec.MaxMemoryMB > 0 || spec.MaxCPUs > 0 || spec.MaxPIDs > 0 || spec.NoExec || len(spec.AllowedExecPaths) > 0 {
 		return nil, errors.New("sandbox: standalone runsc cannot enforce mounts, resource limits, or exec restrictions without a container engine (podman/docker/nerdctl)")
+	}
+	runscPath := d.resolveRunsc()
+	if runscPath == "" {
+		return nil, errors.New("sandbox: standalone runsc binary not found")
 	}
 
 	start := time.Now()
@@ -113,7 +125,8 @@ func (d *GVisorDriver) execStandaloneRunsc(ctx context.Context, spec *ExecutionS
 	args := []string{"--rootless", "do", "--"}
 	args = append(args, spec.Command...)
 
-	cmd := exec.CommandContext(execCtx, d.runscPath, args...)
+	cmd := exec.CommandContext(execCtx, runscPath, args...)
+	configureSubprocessCancel(cmd)
 
 	if spec.Cwd != "" {
 		cmd.Dir = spec.Cwd
@@ -133,7 +146,7 @@ func (d *GVisorDriver) execStandaloneRunsc(ctx context.Context, spec *ExecutionS
 	}
 
 	if spec.Stderr != nil {
-		cmd.Stderr = spec.Stderr
+		cmd.Stderr = io.MultiWriter(&stderrBuf, spec.Stderr)
 	} else {
 		cmd.Stderr = &stderrBuf
 	}
@@ -145,16 +158,29 @@ func (d *GVisorDriver) execStandaloneRunsc(ctx context.Context, spec *ExecutionS
 	err := cmd.Run()
 	duration := time.Since(start)
 
+	if execCtx.Err() != nil {
+		reapSubprocessGroup(cmd)
+	}
+
 	result := &ExecResult{
 		Duration: duration,
 		Stdout:   stdoutBuf.String(),
 		Stderr:   stderrBuf.String(),
 	}
 
-	if execCtx.Err() == context.DeadlineExceeded {
+	if errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 		result.TimedOut = true
 		result.ExitCode = 124
-		return result, fmt.Errorf("sandbox: gVisor command timed out after %v", spec.Timeout)
+		if spec.Timeout > 0 {
+			return result, fmt.Errorf("sandbox: gVisor command timed out after %v: %w", spec.Timeout, execCtx.Err())
+		}
+		return result, fmt.Errorf("sandbox: gVisor command timed out: %w", execCtx.Err())
+	}
+	if errors.Is(execCtx.Err(), context.Canceled) {
+		if cmd.ProcessState != nil {
+			result.ExitCode = cmd.ProcessState.ExitCode()
+		}
+		return result, execCtx.Err()
 	}
 
 	if cmd.ProcessState != nil {
@@ -164,15 +190,13 @@ func (d *GVisorDriver) execStandaloneRunsc(ctx context.Context, spec *ExecutionS
 	if err != nil {
 		if exitErr, ok := errors.AsType[*exec.ExitError](err); ok {
 			result.ExitCode = exitErr.ExitCode()
-			result.Stderr = enrichPermissionStderr(result.Stderr, spec)
+			applyPermissionStderr(result, spec)
 			return result, nil
 		}
 		return result, FormatPermissionError(fmt.Errorf("sandbox: gVisor runsc exec failed: %w", err), spec.Command[0], spec)
 	}
 
-	if result.ExitCode != 0 {
-		result.Stderr = enrichPermissionStderr(result.Stderr, spec)
-	}
+	applyPermissionStderr(result, spec)
 
 	return result, nil
 }

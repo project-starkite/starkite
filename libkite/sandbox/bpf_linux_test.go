@@ -16,10 +16,10 @@ import (
 	"golang.org/x/sys/unix"
 )
 
-func TestBuildNetworkFilter_InstructionCount(t *testing.T) {
-	filter, err := BuildNetworkFilter()
+func TestBuildSeccompFilter_NetworkInstructionCount(t *testing.T) {
+	filter, err := BuildSeccompFilter(SeccompFilterOptions{BlockNetwork: true})
 	if err != nil {
-		t.Fatalf("BuildNetworkFilter() returned unexpected error: %v", err)
+		t.Fatalf("BuildSeccompFilter(BlockNetwork=true) returned unexpected error: %v", err)
 	}
 
 	// 4 header + 19 denied (3 process memory + 4 pidfd/signal + 12 SysV IPC) + 3 SYS_KILL + 6 SYS_SOCKET + 2 terminal = 34
@@ -61,9 +61,9 @@ func TestBuildSeccompFilter_OptionsAndStructure(t *testing.T) {
 	}
 
 	// 4. Verify header and terminal instructions on standard network filter
-	filter, err := BuildNetworkFilter()
+	filter, err := BuildSeccompFilter(SeccompFilterOptions{BlockNetwork: true})
 	if err != nil {
-		t.Fatalf("BuildNetworkFilter() error: %v", err)
+		t.Fatalf("BuildSeccompFilter(BlockNetwork=true) error: %v", err)
 	}
 
 	// [0] Load architecture: seccomp_data.arch (offset 4)
@@ -178,9 +178,9 @@ func runSeccompChildTest(t *testing.T) {
 	}
 
 	// 1. Build and apply filter
-	filter, err := BuildNetworkFilter()
+	filter, err := BuildSeccompFilter(SeccompFilterOptions{BlockNetwork: true})
 	if err != nil {
-		t.Fatalf("BuildNetworkFilter failed: %v", err)
+		t.Fatalf("BuildSeccompFilter(BlockNetwork=true) failed: %v", err)
 	}
 
 	if err := ApplySeccompFilter(filter); err != nil {

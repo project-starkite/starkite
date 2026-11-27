@@ -3,6 +3,7 @@ package sandbox
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"slices"
@@ -369,6 +370,30 @@ func enrichPermissionStderr(stderr string, spec *ExecutionSpec) string {
 		stderr += "\n"
 	}
 	return stderr + diag + "\n"
+}
+
+// applyPermissionStderr enriches failed execution stderr with policy attribution
+// and streams any appended diagnostic lines to spec.Stderr when provided.
+func applyPermissionStderr(res *ExecResult, spec *ExecutionSpec) {
+	if res == nil || res.ExitCode == 0 {
+		return
+	}
+	prev := res.Stderr
+	res.Stderr = enrichPermissionStderr(res.Stderr, spec)
+	if spec != nil && spec.Stderr != nil && len(res.Stderr) > len(prev) {
+		_, _ = io.WriteString(spec.Stderr, res.Stderr[len(prev):])
+	}
+}
+
+func policyDeniedResult(spec *ExecutionSpec, err error) *ExecResult {
+	msg := err.Error() + "\n"
+	if spec != nil && spec.Stderr != nil {
+		_, _ = io.WriteString(spec.Stderr, msg)
+	}
+	return &ExecResult{
+		ExitCode: 126,
+		Stderr:   msg,
+	}
 }
 
 // EnrichExecDiagnostics inspects an ExecResult for failed commands and appends

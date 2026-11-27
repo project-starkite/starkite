@@ -367,10 +367,9 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 // not share sandbox state (filesystem mutations in /tmp, in-sandbox
 // listening ports, gVisor-internal kernel state).
 //
-// The sandbox value (built-in name, file path, or named profile) is
-// forwarded via STARKITE_SECURITY_SANDBOX env var; the parent's --sandbox
-// flag (if any) is translated to the same env var on the child so the
-// child's resolution path is identical to a shebang-style invocation.
+// The sandbox profile value is forwarded via STARKITE_SANDBOX_PROFILE env var;
+// the parent's --sandbox-profile flag (if any) is translated to the same env var
+// on the child so the child's resolution path is identical to a direct invocation.
 func runTestFilesInSandbox(testFiles []string) error {
 	self, err := os.Executable()
 	if err != nil {

@@ -5,12 +5,13 @@ package sandbox
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 	"syscall"
@@ -105,10 +106,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		policySpec := *spec
 		policySpec.Command = append([]string{exePath}, spec.Command[1:]...)
 		if policyErr := checkContainerExecPolicy(&policySpec); policyErr != nil {
-			return &ExecResult{
-				ExitCode: 126,
-				Stderr:   policyErr.Error() + "\n",
-			}, nil
+			return policyDeniedResult(spec, policyErr), nil
 		}
 	}
 
@@ -118,8 +116,9 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	}
 	defer job.close()
 
-	// Set up inheritable standard I/O pipes.
-	stdinR, stdinW, err := createInheritablePipe(true)
+	// Set up standard I/O pipes non-inheritably; child ends are marked inheritable
+	// only inside the syscall.ForkLock window around CreateProcess.
+	stdinR, stdinW, err := createNonInheritablePipe()
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +137,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		closeStdinW()
 	}()
 
-	stdoutR, stdoutW, err := createInheritablePipe(false)
+	stdoutR, stdoutW, err := createNonInheritablePipe()
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +150,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		}
 	}()
 
-	stderrR, stderrW, err := createInheritablePipe(false)
+	stderrR, stderrW, err := createNonInheritablePipe()
 	if err != nil {
 		return nil, err
 	}
@@ -293,21 +292,133 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		} else {
 			fmt.Fprintln(os.Stderr, "sandbox: working directory is $HOME; isolated to script file only. No other files in $HOME are accessible.")
 		}
-		if err := addDirTraverse(cleanCwd); err != nil {
-			return nil, err
-		}
 	}
 
-	// Ephemeral scratch directory with strict W^X enforcement in a single ACL transaction.
+	// Prepare ephemeral scratch directory before applying any DACLs so its path can be recorded in the lease first.
 	candScratch := filepath.Join(os.TempDir(), "starkite-sbx-"+profile.name)
 	if err := os.MkdirAll(candScratch, 0700); err != nil {
 		return nil, fmt.Errorf("sandbox: failed to create scratch directory %q: %w", candScratch, err)
 	}
 	defer os.RemoveAll(candScratch)
+	candScratch = resolveCanonicalWindowsPath(candScratch)
+	scratchDir = candScratch
+
+	// Precompute every canonical path whose DACL will be touched and persist the lease before mutating any ACLs.
+	plannedSet := make(map[string]bool)
+	var plannedPaths []string
+	planPath := func(p string) {
+		if p == "" {
+			return
+		}
+		clean := resolveCanonicalWindowsPath(p)
+		key := strings.ToLower(clean)
+		if !plannedSet[key] {
+			plannedSet[key] = true
+			plannedPaths = append(plannedPaths, clean)
+		}
+	}
+
+	if isHomeOrRoot {
+		planPath(cleanCwd)
+	}
+	planPath(candScratch)
+
+	for _, m := range spec.Mounts {
+		target := m.Source
+		if target == "" && m.Type == MountTmpfs {
+			target = m.Destination
+		}
+		if target == "" {
+			continue
+		}
+		cleanMount := resolveCanonicalWindowsPath(target)
+		if isHomeOrRoot && ((cleanHome != "" && strings.EqualFold(cleanMount, cleanHome)) || isDriveRoot(cleanMount)) {
+			continue
+		}
+		if m.Mode == MountRW || m.Type == MountTmpfs || !equalOrHasPathPrefixFold(cleanMount, canonSysRoot) {
+			planPath(cleanMount)
+		}
+	}
+
+	scriptFile := spec.ScriptFile
+	if scriptFile != "" && !filepath.IsAbs(scriptFile) && spec.Cwd != "" {
+		scriptFile = filepath.Join(spec.Cwd, scriptFile)
+	}
+	if scriptFile != "" && !equalOrHasPathPrefixFold(resolveCanonicalWindowsPath(scriptFile), canonSysRoot) {
+		planPath(scriptFile)
+		if !isHomeOrRoot {
+			scriptDir := filepath.Dir(scriptFile)
+			planPath(scriptDir)
+			for _, asset := range []string{"mod.yaml", "mod.lock", "star.mod", "config.yaml"} {
+				assetPath := filepath.Join(scriptDir, asset)
+				if _, statErr := os.Stat(assetPath); statErr == nil {
+					planPath(assetPath)
+				}
+			}
+		}
+	}
+	if !isHomeOrRoot && cleanCwd != "" {
+		planPath(cleanCwd)
+		cfgPath := filepath.Join(cleanCwd, "config.yaml")
+		if _, statErr := os.Stat(cfgPath); statErr == nil {
+			planPath(cfgPath)
+		}
+	}
+
+	var starkiteDir, modulesDir, userCfg string
+	if !isHomeOrRoot && cleanHome != "" {
+		starkiteDir = filepath.Join(cleanHome, ".starkite")
+		modulesDir = filepath.Join(starkiteDir, "modules")
+		_ = os.MkdirAll(modulesDir, 0755)
+		planPath(starkiteDir)
+		planPath(modulesDir)
+		userCfg = filepath.Join(starkiteDir, "config.yaml")
+		if _, statErr := os.Stat(userCfg); statErr == nil {
+			planPath(userCfg)
+		}
+	}
+
+	var resolvedExecs []string
+	if len(spec.AllowedExecPaths) > 0 {
+		resolvedExecs = ResolveExecutablePaths(spec.AllowedExecPaths, spec.Cwd, userHome)
+		for _, exe := range resolvedExecs {
+			cleanExe := resolveCanonicalWindowsPath(exe)
+			if equalOrHasPathPrefixFold(cleanExe, canonSysRoot) {
+				continue
+			}
+			planPath(cleanExe)
+			planPath(filepath.Dir(cleanExe))
+		}
+	}
+	if exePath != "" && !equalOrHasPathPrefixFold(exePath, canonSysRoot) {
+		planPath(exePath)
+		planPath(filepath.Dir(exePath))
+	}
+
+	creationTime, _ := getProcessCreationTime(os.Getpid())
+	lease := windowsLease{
+		PID:                 os.Getpid(),
+		ProcessCreationTime: creationTime,
+		ProfileName:         profile.name,
+		AppContainerSID:     profile.appContainer.String(),
+		ScratchDir:          candScratch,
+		Paths:               plannedPaths,
+		CreatedAt:           time.Now().UTC(),
+	}
+	if err := recordWindowsLease(lease); err != nil {
+		return nil, fmt.Errorf("sandbox: record lease journal: %w", err)
+	}
+
+	if isHomeOrRoot {
+		if err := addDirTraverse(cleanCwd); err != nil {
+			return nil, err
+		}
+	}
+
 	if err := setScratchDirDacl(candScratch, profile.appContainer); err != nil {
 		return nil, fmt.Errorf("sandbox: failed to configure scratch DACL on %q: %w", candScratch, err)
 	}
-	scratchDir = candScratch
+	recordGranted(candScratch)
 
 	// Unveil explicit mounts first so directory mounts take precedence over non-inheriting traverse rules.
 	for _, m := range spec.Mounts {
@@ -334,10 +445,6 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	}
 
 	// Unveil script file and runtime manifests (read-only), with non-inheriting directory traverse on parent dir.
-	scriptFile := spec.ScriptFile
-	if scriptFile != "" && !filepath.IsAbs(scriptFile) && spec.Cwd != "" {
-		scriptFile = filepath.Join(spec.Cwd, scriptFile)
-	}
 	if scriptFile != "" && !equalOrHasPathPrefixFold(resolveCanonicalWindowsPath(scriptFile), canonSysRoot) {
 		if err := addGrant(scriptFile, readOnlyAccessMask); err != nil {
 			return nil, err
@@ -371,12 +478,8 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 
 	// Unveil ~/.starkite runtime assets (strictly read-only on config.yaml and modules cache).
 	if !isHomeOrRoot && cleanHome != "" {
-		starkiteDir := filepath.Join(cleanHome, ".starkite")
-		modulesDir := filepath.Join(starkiteDir, "modules")
-		_ = os.MkdirAll(modulesDir, 0755)
 		_ = addDirTraverse(starkiteDir)
 		_ = addGrant(modulesDir, readOnlyAccessMask)
-		userCfg := filepath.Join(starkiteDir, "config.yaml")
 		if _, statErr := os.Stat(userCfg); statErr == nil {
 			_ = addGrant(userCfg, readOnlyAccessMask)
 		}
@@ -384,19 +487,16 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 
 	// Unveil allowed executables outside SystemRoot; Windows system binaries are
 	// TrustedInstaller-owned and already grant ALL APPLICATION PACKAGES execute.
-	if len(spec.AllowedExecPaths) > 0 {
-		resolvedExecs := ResolveExecutablePaths(spec.AllowedExecPaths, spec.Cwd, userHome)
-		for _, exe := range resolvedExecs {
-			cleanExe := resolveCanonicalWindowsPath(exe)
-			if equalOrHasPathPrefixFold(cleanExe, canonSysRoot) {
-				continue
-			}
-			if err := addGrant(cleanExe, execAccessMask); err != nil {
-				return nil, err
-			}
-			if err := addDirTraverse(filepath.Dir(cleanExe)); err != nil {
-				return nil, err
-			}
+	for _, exe := range resolvedExecs {
+		cleanExe := resolveCanonicalWindowsPath(exe)
+		if equalOrHasPathPrefixFold(cleanExe, canonSysRoot) {
+			continue
+		}
+		if err := addGrant(cleanExe, execAccessMask); err != nil {
+			return nil, err
+		}
+		if err := addDirTraverse(filepath.Dir(cleanExe)); err != nil {
+			return nil, err
 		}
 	}
 
@@ -409,16 +509,6 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 			return nil, err
 		}
 	}
-
-	// Record lease in journal.
-	lease := windowsLease{
-		PID:             os.Getpid(),
-		ProfileName:     profile.name,
-		AppContainerSID: profile.appContainer.String(),
-		Paths:           grantedPaths,
-		CreatedAt:       time.Now(),
-	}
-	_ = recordWindowsLease(lease)
 
 	attrs, err := buildWindowsStartupAttrs(spec, stdinHandle, stdoutHandle, stderrHandle, secCaps)
 	if err != nil {
@@ -436,7 +526,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	}
 
 	var cwdPtr *uint16
-	cwd := spec.Cwd
+	var cwd string
 	cwdAccessible := false
 	if cleanCwd != "" {
 		for _, p := range grantedPaths {
@@ -480,33 +570,27 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	creationFlags := uint32(windows.CREATE_SUSPENDED | windows.EXTENDED_STARTUPINFO_PRESENT | windows.CREATE_UNICODE_ENVIRONMENT)
 
 	startTime := time.Now()
-	err = windows.CreateProcess(
+	err = createSuspendedWindowsProcess(
 		appNamePtr,
 		cmdLine,
-		nil,
-		nil,
-		true, // bInheritHandles (restricted via PROC_THREAD_ATTRIBUTE_HANDLE_LIST)
 		creationFlags,
 		envPtr,
 		cwdPtr,
 		&attrs.startupInfoEx.StartupInfo,
 		&procInfo,
+		[]*os.File{stdinR, stdoutW, stderrW},
 	)
 	if err != nil {
 		return nil, FormatPermissionError(fmt.Errorf("sandbox: CreateProcessW (%s) failed: %w", exePath, err), exePath, spec)
 	}
+	// Parent ends are closed inside createSuspendedWindowsProcess under ForkLock.
+	stdinR = nil
+	stdoutW = nil
+	stderrW = nil
 	defer func() {
 		_ = windows.CloseHandle(procInfo.Thread)
 		_ = windows.CloseHandle(procInfo.Process)
 	}()
-
-	// Close child-side pipe ends in parent immediately after CreateProcess.
-	_ = stdinR.Close()
-	stdinR = nil
-	_ = stdoutW.Close()
-	stdoutW = nil
-	_ = stderrW.Close()
-	stderrW = nil
 
 	// Attach suspended process to Job Object before allowing any thread instructions to run.
 	if err := job.assignProcess(procInfo.Process); err != nil {
@@ -522,9 +606,12 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	// Stream stdin/stdout/stderr concurrently.
 	var stdoutBuf, stderrBuf bytes.Buffer
 	var ioWg sync.WaitGroup
+	var stdinDone chan struct{}
 
 	if spec.Stdin != nil {
+		stdinDone = make(chan struct{})
 		go func(w *os.File, r io.Reader) {
+			defer close(stdinDone)
 			_, _ = io.Copy(w, r)
 			closeStdinW()
 		}(stdinW, spec.Stdin)
@@ -568,7 +655,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	select {
 	case <-waitCh:
 	case <-execCtx.Done():
-		if spec.Timeout > 0 && execCtx.Err() == context.DeadlineExceeded {
+		if errors.Is(execCtx.Err(), context.DeadlineExceeded) {
 			timedOut = true
 		}
 		job.terminate(137)
@@ -578,6 +665,9 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	// Ensure all child processes in the job are terminated so stdout/stderr pipes close cleanly.
 	job.terminate(1)
 	closeStdinW()
+	if stdinDone != nil && spec.Stdin != os.Stdin {
+		<-stdinDone
+	}
 	ioWg.Wait()
 
 	duration := time.Since(startTime)
@@ -603,18 +693,17 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 		Stderr:      stderrBuf.String(),
 	}
 
-	if res.ExitCode != 0 && !timedOut && !killedByOOM {
-		prevStderr := res.Stderr
-		res.Stderr = enrichPermissionStderr(res.Stderr, spec)
-		if spec.Stderr != nil && len(res.Stderr) > len(prevStderr) {
-			_, _ = io.WriteString(spec.Stderr, res.Stderr[len(prevStderr):])
-		}
+	if !timedOut && !killedByOOM {
+		applyPermissionStderr(res, spec)
 	}
 
 	if timedOut {
-		return res, fmt.Errorf("sandbox: execution timed out after %v", spec.Timeout)
+		if spec.Timeout > 0 {
+			return res, fmt.Errorf("sandbox: execution timed out after %v: %w", spec.Timeout, execCtx.Err())
+		}
+		return res, fmt.Errorf("sandbox: execution timed out: %w", execCtx.Err())
 	}
-	if execCtx.Err() != nil && !timedOut {
+	if execCtx.Err() != nil {
 		return res, execCtx.Err()
 	}
 
@@ -659,8 +748,12 @@ func createWindowsEnvBlock(env []string) ([]uint16, error) {
 		// Provide a minimal valid empty double-NUL terminated block.
 		return []uint16{0, 0}, nil
 	}
-	seenIdx := make(map[string]int)
-	var deduped []string
+	seenIdx := make(map[string]int, len(env))
+	type envEntry struct {
+		upperKey string
+		kv       string
+	}
+	var deduped []envEntry
 	for _, kv := range env {
 		if strings.ContainsRune(kv, 0) {
 			return nil, fmt.Errorf("sandbox: environment variable contains NUL byte")
@@ -671,18 +764,18 @@ func createWindowsEnvBlock(env []string) ([]uint16, error) {
 		}
 		upper := strings.ToUpper(k)
 		if idx, exists := seenIdx[upper]; exists {
-			deduped[idx] = kv
+			deduped[idx].kv = kv
 		} else {
 			seenIdx[upper] = len(deduped)
-			deduped = append(deduped, kv)
+			deduped = append(deduped, envEntry{upperKey: upper, kv: kv})
 		}
 	}
-	sort.Slice(deduped, func(i, j int) bool {
-		return strings.ToUpper(deduped[i]) < strings.ToUpper(deduped[j])
+	slices.SortFunc(deduped, func(a, b envEntry) int {
+		return strings.Compare(a.upperKey, b.upperKey)
 	})
 	var block []uint16
-	for _, kv := range deduped {
-		u16, err := windows.UTF16FromString(kv)
+	for _, entry := range deduped {
+		u16, err := windows.UTF16FromString(entry.kv)
 		if err != nil {
 			return nil, err
 		}
@@ -692,32 +785,76 @@ func createWindowsEnvBlock(env []string) ([]uint16, error) {
 	return block, nil
 }
 
-// createInheritablePipe creates an os.File pipe pair where only the child-facing
-// end is marked inheritable (HANDLE_FLAG_INHERIT).
-func createInheritablePipe(inheritRead bool) (r *os.File, w *os.File, err error) {
+// createSuspendedWindowsProcess acquires syscall.ForkLock around toggling
+// HANDLE_FLAG_INHERIT and CreateProcess so concurrent os/exec calls cannot
+// inherit the sandbox child pipe ends.
+func createSuspendedWindowsProcess(
+	appNamePtr, cmdLine *uint16,
+	creationFlags uint32,
+	envPtr, cwdPtr *uint16,
+	startupInfo *windows.StartupInfo,
+	procInfo *windows.ProcessInformation,
+	childFiles []*os.File,
+) error {
+	syscall.ForkLock.Lock()
+	defer syscall.ForkLock.Unlock()
+
+	for i, f := range childFiles {
+		if f == nil {
+			continue
+		}
+		if err := windows.SetHandleInformation(windows.Handle(f.Fd()), windows.HANDLE_FLAG_INHERIT, windows.HANDLE_FLAG_INHERIT); err != nil {
+			for j := 0; j < i; j++ {
+				if childFiles[j] != nil {
+					_ = windows.SetHandleInformation(windows.Handle(childFiles[j].Fd()), windows.HANDLE_FLAG_INHERIT, 0)
+				}
+			}
+			return fmt.Errorf("sandbox: SetHandleInformation(child) failed: %w", err)
+		}
+	}
+
+	err := windows.CreateProcess(
+		appNamePtr,
+		cmdLine,
+		nil,
+		nil,
+		true, // bInheritHandles (restricted via PROC_THREAD_ATTRIBUTE_HANDLE_LIST)
+		creationFlags,
+		envPtr,
+		cwdPtr,
+		startupInfo,
+		procInfo,
+	)
+	if err != nil {
+		for _, f := range childFiles {
+			if f != nil {
+				_ = windows.SetHandleInformation(windows.Handle(f.Fd()), windows.HANDLE_FLAG_INHERIT, 0)
+			}
+		}
+		return err
+	}
+
+	for _, f := range childFiles {
+		if f != nil {
+			_ = f.Close()
+		}
+	}
+	return nil
+}
+
+// createNonInheritablePipe creates an os.File pipe pair with HANDLE_FLAG_INHERIT cleared on both ends.
+func createNonInheritablePipe() (r *os.File, w *os.File, err error) {
 	r, w, err = os.Pipe()
 	if err != nil {
 		return nil, nil, fmt.Errorf("sandbox: os.Pipe failed: %w", err)
 	}
-
-	childFile := w
-	parentFile := r
-	if inheritRead {
-		childFile = r
-		parentFile = w
+	for _, f := range []*os.File{r, w} {
+		if err := windows.SetHandleInformation(windows.Handle(f.Fd()), windows.HANDLE_FLAG_INHERIT, 0); err != nil {
+			_ = r.Close()
+			_ = w.Close()
+			return nil, nil, fmt.Errorf("sandbox: SetHandleInformation failed: %w", err)
+		}
 	}
-
-	if err := windows.SetHandleInformation(windows.Handle(parentFile.Fd()), windows.HANDLE_FLAG_INHERIT, 0); err != nil {
-		_ = r.Close()
-		_ = w.Close()
-		return nil, nil, fmt.Errorf("sandbox: SetHandleInformation(parent) failed: %w", err)
-	}
-	if err := windows.SetHandleInformation(windows.Handle(childFile.Fd()), windows.HANDLE_FLAG_INHERIT, windows.HANDLE_FLAG_INHERIT); err != nil {
-		_ = r.Close()
-		_ = w.Close()
-		return nil, nil, fmt.Errorf("sandbox: SetHandleInformation(child) failed: %w", err)
-	}
-
 	return r, w, nil
 }
 

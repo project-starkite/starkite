@@ -151,7 +151,7 @@ func TestSandboxPerTestFile(t *testing.T) {
 
 // runStarTest builds kite, copies the named .star file into a non-$HOME
 // temp dir, and runs `kite test <file>` with the sandbox engaged via
-// either the --sandbox flag or STARKITE_SECURITY_SANDBOX env var.
+// either the --sandbox-profile flag or STARKITE_SANDBOX_PROFILE env var.
 // Asserts the printed test summary shows passes and zero failures.
 func runStarTest(t *testing.T, scriptName, profile string, eng engagement, extraArgs ...string) {
 	t.Helper()
