@@ -160,7 +160,10 @@ def f(uri):
 }
 
 func TestExtractResourceContent_StringReturn(t *testing.T) {
-	text, mime := extractResourceContent(starlark.String("hello"), "text/plain")
+	text, mime, err := extractResourceContent(starlark.String("hello"), "text/plain")
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
 	if text != "hello" {
 		t.Errorf("text = %q", text)
 	}
@@ -173,7 +176,10 @@ func TestExtractResourceContent_DictReturn_CustomMIME(t *testing.T) {
 	d := starlark.NewDict(2)
 	_ = d.SetKey(starlark.String("content"), starlark.String(`{"a":1}`))
 	_ = d.SetKey(starlark.String("mime_type"), starlark.String("application/json"))
-	text, mime := extractResourceContent(d, "text/plain")
+	text, mime, err := extractResourceContent(d, "text/plain")
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
 	if text != `{"a":1}` {
 		t.Errorf("text = %q", text)
 	}
@@ -185,12 +191,43 @@ func TestExtractResourceContent_DictReturn_CustomMIME(t *testing.T) {
 func TestExtractResourceContent_DictReturn_MissingMIME_UsesDefault(t *testing.T) {
 	d := starlark.NewDict(1)
 	_ = d.SetKey(starlark.String("content"), starlark.String("x"))
-	text, mime := extractResourceContent(d, "text/plain")
+	text, mime, err := extractResourceContent(d, "text/plain")
+	if err != nil {
+		t.Fatalf("unexpected err: %v", err)
+	}
 	if text != "x" {
 		t.Errorf("text = %q", text)
 	}
 	if mime != "text/plain" {
 		t.Errorf("mime = %q", mime)
+	}
+}
+
+func TestResourceURIAndInvalidContentErrors(t *testing.T) {
+	if got := resourceURI("file:///etc/hosts"); got != "file:///etc/hosts" {
+		t.Fatalf("resourceURI explicit URI = %q, want file:///etc/hosts", got)
+	}
+	if got := resourceURI("cluster-info"); got != "starkite://resources/cluster-info" {
+		t.Fatalf("resourceURI short name = %q, want starkite://resources/cluster-info", got)
+	}
+
+	missingContent := starlark.NewDict(1)
+	_ = missingContent.SetKey(starlark.String("mime_type"), starlark.String("text/plain"))
+	if _, _, err := extractResourceContent(missingContent, "text/plain"); err == nil || !strings.Contains(err.Error(), "content") {
+		t.Fatalf("expected missing content error, got %v", err)
+	}
+
+	nonStringContent := starlark.NewDict(1)
+	_ = nonStringContent.SetKey(starlark.String("content"), starlark.MakeInt(42))
+	if _, _, err := extractResourceContent(nonStringContent, "text/plain"); err == nil || !strings.Contains(err.Error(), "must be a string") {
+		t.Fatalf("expected non-string content error, got %v", err)
+	}
+
+	nonStringMime := starlark.NewDict(2)
+	_ = nonStringMime.SetKey(starlark.String("content"), starlark.String("ok"))
+	_ = nonStringMime.SetKey(starlark.String("mime_type"), starlark.MakeInt(1))
+	if _, _, err := extractResourceContent(nonStringMime, "text/plain"); err == nil || !strings.Contains(err.Error(), "mime_type") {
+		t.Fatalf("expected non-string mime_type error, got %v", err)
 	}
 }
 

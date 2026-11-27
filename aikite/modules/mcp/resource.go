@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -34,8 +35,13 @@ type resourceEntry struct {
 	arity       int // 0 or 1
 }
 
-// resourceURI returns the auto-generated MCP URI for a resource name.
-func resourceURI(name string) string { return resourceURIPrefix + name }
+// resourceURI returns the MCP URI for a resource name, preserving explicit URI schemes.
+func resourceURI(name string) string {
+	if strings.Contains(name, "://") {
+		return name
+	}
+	return resourceURIPrefix + name
+}
 
 // coerceResources converts the user's Starlark dict into a slice of registration
 // records. Validates that keys are strings, values are callables with compatible
@@ -116,8 +122,17 @@ func starlarkDoc(callable starlark.Callable) string {
 // {"content": "...", "mime_type": "..."} for explicit MIME. Any Starlark
 // error is surfaced as the MCP handler error.
 func buildResourceHandler(r *resourceEntry, rt *libkite.Runtime) func(context.Context, *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
+	return buildResourceHandlerWithStdio(r, rt, false)
+}
+
+func buildResourceHandlerWithStdio(r *resourceEntry, rt *libkite.Runtime, stdioMode bool) func(context.Context, *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
 	return func(ctx context.Context, req *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
 		thread := rt.NewThread("mcp-resource-" + r.name)
+		if stdioMode {
+			thread.Print = func(_ *starlark.Thread, msg string) {
+				fmt.Fprintln(os.Stderr, msg)
+			}
+		}
 		libkite.SetThreadContext(thread, ctx)
 		stopWatch := libkite.WatchContext(ctx, thread)
 		defer stopWatch()
@@ -131,12 +146,20 @@ func buildResourceHandler(r *resourceEntry, rt *libkite.Runtime) func(context.Co
 			args = starlark.Tuple{starlark.String(req.Params.URI)}
 		}
 
-		result, err := libkite.CallSafe(thread, r.fn, args, nil)
-		if err != nil {
-			return nil, fmt.Errorf("resource %q: %w", r.name, err)
+		var text, mime string
+		callErr := libkite.WithCallLock(thread, func() error {
+			result, err := starlark.Call(thread, r.fn, args, nil)
+			if err != nil {
+				return err
+			}
+			var extractErr error
+			text, mime, extractErr = extractResourceContent(result, r.mimeType)
+			return extractErr
+		})
+		if callErr != nil {
+			return nil, fmt.Errorf("resource %q: %w", r.name, callErr)
 		}
 
-		text, mime := extractResourceContent(result, r.mimeType)
 		return &mcpsdk.ReadResourceResult{
 			Contents: []*mcpsdk.ResourceContents{{
 				URI:      req.Params.URI,
@@ -150,28 +173,39 @@ func buildResourceHandler(r *resourceEntry, rt *libkite.Runtime) func(context.Co
 // extractResourceContent interprets a resource function's return value.
 //
 //   - starlark.String → use directly with defaultMime
-//   - *starlark.Dict with "content" (required) and optional "mime_type"
+//   - dict/struct → requires string "content" and optional string "mime_type"
 //   - anything else → stringify via String() and use defaultMime
-func extractResourceContent(v starlark.Value, defaultMime string) (string, string) {
+func extractResourceContent(v starlark.Value, defaultMime string) (string, string, error) {
 	if s, ok := starlark.AsString(v); ok {
-		return s, defaultMime
+		return s, defaultMime, nil
 	}
-	if d, ok, err := libkite.ValueToDict(v); err == nil && ok {
-		var content, mime string
-		if cv, found, _ := d.Get(starlark.String("content")); found {
-			if s, ok := starlark.AsString(cv); ok {
-				content = s
+	d, ok, err := libkite.ValueToDict(v)
+	if err != nil {
+		return "", "", err
+	}
+	if ok {
+		cv, found, getErr := d.Get(starlark.String("content"))
+		if getErr != nil {
+			return "", "", getErr
+		}
+		if !found {
+			return "", "", fmt.Errorf("resource dict/struct must include 'content'")
+		}
+		content, ok := starlark.AsString(cv)
+		if !ok {
+			return "", "", fmt.Errorf("resource 'content' must be a string, got %s", cv.Type())
+		}
+		mime := defaultMime
+		if mv, found, getErr := d.Get(starlark.String("mime_type")); getErr == nil && found && mv != starlark.None {
+			mStr, ok := starlark.AsString(mv)
+			if !ok {
+				return "", "", fmt.Errorf("resource 'mime_type' must be a string, got %s", mv.Type())
+			}
+			if mStr != "" {
+				mime = mStr
 			}
 		}
-		if mv, found, _ := d.Get(starlark.String("mime_type")); found {
-			if s, ok := starlark.AsString(mv); ok {
-				mime = s
-			}
-		}
-		if mime == "" {
-			mime = defaultMime
-		}
-		return content, mime
+		return content, mime, nil
 	}
-	return strings.TrimSpace(v.String()), defaultMime
+	return strings.TrimSpace(v.String()), defaultMime, nil
 }

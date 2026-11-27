@@ -90,7 +90,6 @@ func (m *Module) connectBuiltin(thread *starlark.Thread, fn *starlark.Builtin, a
 		return nil, fmt.Errorf("mcp.connect: %w", libkite.WrapOSPermissionError("mcp", "client", targetDesc, err))
 	}
 	client := newMCPClient(session, subproc)
-	client.thread = thread
 	libkite.RegisterCleanup(thread, func() {
 		_ = client.doClose()
 	})
@@ -163,12 +162,16 @@ func buildTransportWithConfig(thread *starlark.Thread, argv []string, urlStr str
 
 	var httpClient *http.Client
 	if thread != nil {
+		perms := libkite.GetPermissions(thread)
 		httpClient = &http.Client{
 			CheckRedirect: func(req *http.Request, via []*http.Request) error {
 				if len(via) >= 10 {
 					return fmt.Errorf("stopped after 10 redirects")
 				}
-				return libkite.Check(thread, "mcp", "client", "connect", req.URL.String())
+				if perms != nil {
+					return perms.Check("mcp", "client", "connect", req.URL.String())
+				}
+				return nil
 			},
 		}
 	}

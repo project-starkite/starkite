@@ -1,9 +1,11 @@
 package mcp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"github.com/vladimirvivien/startype"
@@ -151,8 +153,17 @@ func inferParamSchema(def starlark.Value) map[string]any {
 // translates Starlark errors into MCP error responses so the server stays
 // alive.
 func buildToolHandler(t *Tool, rt *libkite.Runtime) func(context.Context, *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
+	return buildToolHandlerWithStdio(t, rt, false)
+}
+
+func buildToolHandlerWithStdio(t *Tool, rt *libkite.Runtime, stdioMode bool) func(context.Context, *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 	return func(ctx context.Context, req *mcpsdk.CallToolRequest) (*mcpsdk.CallToolResult, error) {
 		toolThread := rt.NewThread("mcp-tool-" + t.Name())
+		if stdioMode {
+			toolThread.Print = func(_ *starlark.Thread, msg string) {
+				fmt.Fprintln(os.Stderr, msg)
+			}
+		}
 		libkite.SetThreadContext(toolThread, ctx)
 		stopWatch := libkite.WatchContext(ctx, toolThread)
 		defer stopWatch()
@@ -176,36 +187,83 @@ func buildToolHandler(t *Tool, rt *libkite.Runtime) func(context.Context, *mcpsd
 			kwargs = append(kwargs, starlark.Tuple{starlark.String(k), sv})
 		}
 
-		result, err := libkite.CallSafe(toolThread, t.Fn(), starlark.Tuple{}, kwargs)
-		if err != nil {
-			return errorResult(err), nil
+		var out any
+		callErr := libkite.WithCallLock(toolThread, func() error {
+			result, err := starlark.Call(toolThread, t.Fn(), starlark.Tuple{}, kwargs)
+			if err != nil {
+				return err
+			}
+			var convErr error
+			out, convErr = startype.Starlark(result).ToGoValue()
+			if convErr != nil {
+				out = result.String()
+			}
+			return nil
+		})
+		if callErr != nil {
+			return errorResult(callErr), nil
 		}
 
-		// Project the return value into a JSON-friendly Go shape.
-		out, convErr := startype.Starlark(result).ToGoValue()
-		if convErr != nil {
-			out = result.String()
-		}
 		return &mcpsdk.CallToolResult{
 			Content: []mcpsdk.Content{&mcpsdk.TextContent{Text: serializeText(out)}},
 		}, nil
 	}
 }
 
-// unmarshalArgs decodes MCP's raw-JSON tool arguments into a map[string]any.
-// An empty/nil payload is treated as "no arguments" (empty map).
+// unmarshalArgs decodes MCP's raw-JSON tool arguments into a map[string]any
+// while preserving integral numbers as int64 for Starlark int conversion.
 func unmarshalArgs(raw json.RawMessage) (map[string]any, error) {
 	if len(raw) == 0 {
 		return map[string]any{}, nil
 	}
 	var out map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&out); err != nil {
 		return nil, fmt.Errorf("tool arguments: %w", err)
 	}
 	if out == nil {
-		out = map[string]any{}
+		return map[string]any{}, nil
 	}
-	return out, nil
+	norm, err := normalizeJSONValue(out)
+	if err != nil {
+		return nil, fmt.Errorf("tool arguments: %w", err)
+	}
+	return norm.(map[string]any), nil
+}
+
+func normalizeJSONValue(v any) (any, error) {
+	switch x := v.(type) {
+	case json.Number:
+		if i, err := x.Int64(); err == nil {
+			return i, nil
+		}
+		f, err := x.Float64()
+		if err != nil {
+			return nil, err
+		}
+		return f, nil
+	case map[string]any:
+		for k, elem := range x {
+			norm, err := normalizeJSONValue(elem)
+			if err != nil {
+				return nil, err
+			}
+			x[k] = norm
+		}
+		return x, nil
+	case []any:
+		for i, elem := range x {
+			norm, err := normalizeJSONValue(elem)
+			if err != nil {
+				return nil, err
+			}
+			x[i] = norm
+		}
+		return x, nil
+	default:
+		return v, nil
+	}
 }
 
 // serializeText returns v as a text representation suitable for a TextContent.

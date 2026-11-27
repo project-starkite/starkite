@@ -5,12 +5,13 @@ import (
 	"crypto/tls"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
+	"strings"
+	"sync"
 	"time"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -26,6 +27,14 @@ const (
 	defaultHTTPPath      = "/"
 	httpShutdownTimeout  = 5 * time.Second
 )
+
+var stdioMu sync.Mutex
+
+type nopWriteCloser struct {
+	io.Writer
+}
+
+func (nopWriteCloser) Close() error { return nil }
 
 // serveBuiltin is the `mcp.serve(...)` Starlark builtin. It validates kwargs,
 // coerces tools/resources/prompts, and starts a blocking MCP server on
@@ -79,6 +88,9 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 	if p.Port < 0 {
 		return nil, fmt.Errorf("mcp.serve: port must be non-negative, got %d", p.Port)
 	}
+	if p.Port > 65535 {
+		return nil, fmt.Errorf("mcp.serve: port must be between 0 and 65535, got %d", p.Port)
+	}
 	// Reject partial TLS config early so the error surfaces at validation time
 	// (before any expensive work runs).
 	if (p.TLSCert != "") != (p.TLSKey != "") {
@@ -87,6 +99,9 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 	// TLS without port doesn't make sense (stdio ignores them).
 	if p.Port == 0 && (p.TLSCert != "" || p.Host != "" || p.Path != "") {
 		return nil, fmt.Errorf("mcp.serve: host/path/tls_* kwargs require port to be set")
+	}
+	if p.Port > 0 && p.Path != "" && !strings.HasPrefix(p.Path, "/") {
+		return nil, fmt.Errorf("mcp.serve: path must start with '/', got %q", p.Path)
 	}
 
 	var tools []*Tool
@@ -128,12 +143,22 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 		}
 	}
 
+	if m.mcfg != nil && m.mcfg.DryRun {
+		if p.Port > 0 {
+			fmt.Fprintf(os.Stderr, "[DRY RUN] mcp.serve: would listen on %s:%d%s\n", firstNonEmpty(p.Host, defaultHTTPHost), p.Port, firstNonEmpty(p.Path, defaultHTTPPath))
+		} else {
+			fmt.Fprintf(os.Stderr, "[DRY RUN] mcp.serve: would serve %q on stdio\n", p.Name)
+		}
+		return starlark.None, nil
+	}
+
 	rt := libkite.GetRuntime(thread)
 	if rt == nil {
 		return nil, fmt.Errorf("mcp.serve: no runtime available in thread")
 	}
 
-	server, err := buildServer(p.Name, p.Version, tools, resources, prompts, rt)
+	stdioMode := p.Port == 0
+	server, err := buildServerWithOptions(p.Name, p.Version, tools, resources, prompts, rt, stdioMode)
 	if err != nil {
 		return nil, err
 	}
@@ -152,9 +177,12 @@ func (m *Module) serveBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 }
 
 // buildServer constructs an MCP server from the resolved inputs and registers
-// the provided tools, resources, and prompts. Extracted so unit tests can
-// exercise registration logic without calling server.Run (which blocks on stdio).
+// the provided tools, resources, and prompts.
 func buildServer(name, version string, tools []*Tool, resources []*resourceEntry, prompts []*promptEntry, rt *libkite.Runtime) (*mcpsdk.Server, error) {
+	return buildServerWithOptions(name, version, tools, resources, prompts, rt, false)
+}
+
+func buildServerWithOptions(name, version string, tools []*Tool, resources []*resourceEntry, prompts []*promptEntry, rt *libkite.Runtime, stdioMode bool) (*mcpsdk.Server, error) {
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{Name: name, Version: version}, nil)
 
 	for _, t := range tools {
@@ -166,7 +194,7 @@ func buildServer(name, version string, tools []*Tool, resources []*resourceEntry
 			Name:        t.Name(),
 			Description: t.Description(),
 			InputSchema: schema,
-		}, buildToolHandler(t, rt))
+		}, buildToolHandlerWithStdio(t, rt, stdioMode))
 	}
 
 	for _, r := range resources {
@@ -175,7 +203,7 @@ func buildServer(name, version string, tools []*Tool, resources []*resourceEntry
 			URI:         r.uri,
 			Description: r.description,
 			MIMEType:    r.mimeType,
-		}, buildResourceHandler(r, rt))
+		}, buildResourceHandlerWithStdio(r, rt, stdioMode))
 	}
 
 	for _, p := range prompts {
@@ -183,34 +211,34 @@ func buildServer(name, version string, tools []*Tool, resources []*resourceEntry
 			Name:        p.name,
 			Description: p.description,
 			Arguments:   p.arguments,
-		}, buildPromptHandler(p, rt))
+		}, buildPromptHandlerWithStdio(p, rt, stdioMode))
 	}
 
 	return server, nil
 }
 
-// runStdioServer blocks on server.Run(&StdioTransport{}) with signal-driven
-// graceful shutdown. Follows the pattern from libkite/modules/http/server.go.
+// runStdioServer runs the MCP server over stdio while diverting accidental
+// os.Stdout writes to os.Stderr so JSON-RPC framing on stdout stays clean.
 func runStdioServer(parentCtx context.Context, server *mcpsdk.Server) error {
 	if parentCtx == nil {
 		parentCtx = context.Background()
 	}
-	ctx, cancel := context.WithCancel(parentCtx)
-	defer cancel()
 
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
-
-	go func() {
-		select {
-		case <-sigCh:
-			cancel()
-		case <-ctx.Done():
-		}
+	stdioMu.Lock()
+	origStdout := os.Stdout
+	os.Stdout = os.Stderr
+	stdioMu.Unlock()
+	defer func() {
+		stdioMu.Lock()
+		os.Stdout = origStdout
+		stdioMu.Unlock()
 	}()
 
-	if err := server.Run(ctx, &mcpsdk.StdioTransport{}); err != nil && !errors.Is(err, context.Canceled) {
+	transport := &mcpsdk.IOTransport{
+		Reader: os.Stdin,
+		Writer: nopWriteCloser{origStdout},
+	}
+	if err := server.Run(parentCtx, transport); err != nil && !errors.Is(err, context.Canceled) {
 		return fmt.Errorf("mcp.serve: %w", err)
 	}
 	return nil
@@ -222,37 +250,23 @@ type httpOpts struct {
 	port                        int
 }
 
-// runHTTPServer is the production HTTP entry: wires SIGINT/SIGTERM to a cancel
-// context, then delegates to runHTTPServerCtx for the actual listen loop.
+// runHTTPServer delegates to runHTTPServerCtx under parentCtx.
 func runHTTPServer(parentCtx context.Context, server *mcpsdk.Server, opts httpOpts) error {
 	if parentCtx == nil {
 		parentCtx = context.Background()
 	}
-	ctx, cancel := context.WithCancel(parentCtx)
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(sigCh)
-
-	go func() {
-		select {
-		case <-sigCh:
-			cancel()
-		case <-ctx.Done():
-		}
-	}()
-
-	return runHTTPServerCtx(ctx, server, opts)
+	return runHTTPServerCtx(parentCtx, server, opts)
 }
 
-// runHTTPServerCtx runs the HTTP transport under an explicit cancellation
-// context, exposing the test seam needed to spin up an ephemeral-port server
-// and shut it down deterministically.
-//
-// Shuts down gracefully when ctx is cancelled (up to httpShutdownTimeout).
-// Prints a one-line startup message to stderr on entry.
+// runHTTPServerCtx binds the HTTP listener before reporting readiness and shuts
+// down gracefully when ctx is cancelled.
 func runHTTPServerCtx(ctx context.Context, server *mcpsdk.Server, opts httpOpts) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	srvCtx, srvCancel := context.WithCancel(ctx)
+	defer srvCancel()
+
 	handler := mcpsdk.NewStreamableHTTPHandler(
 		func(*http.Request) *mcpsdk.Server { return server },
 		nil,
@@ -262,16 +276,26 @@ func runHTTPServerCtx(ctx context.Context, server *mcpsdk.Server, opts httpOpts)
 	mux.Handle(opts.path, handler)
 
 	addr := net.JoinHostPort(opts.host, strconv.Itoa(opts.port))
-	httpSrv := &http.Server{Addr: addr, Handler: mux}
+	ln, err := net.Listen("tcp", addr)
+	if err != nil {
+		return fmt.Errorf("mcp.serve: %w", err)
+	}
+
+	httpSrv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
 
 	tlsEnabled := opts.tlsCert != "" && opts.tlsKey != ""
 	if tlsEnabled {
 		httpSrv.TLSConfig = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
 
-	// Shutdown loop — kicks in when the caller cancels ctx.
 	go func() {
-		<-ctx.Done()
+		<-srvCtx.Done()
 		shutdownCtx, sdCancel := context.WithTimeout(context.Background(), httpShutdownTimeout)
 		defer sdCancel()
 		_ = httpSrv.Shutdown(shutdownCtx)
@@ -281,13 +305,16 @@ func runHTTPServerCtx(ctx context.Context, server *mcpsdk.Server, opts httpOpts)
 	if tlsEnabled {
 		scheme = "https"
 	}
-	fmt.Fprintf(os.Stderr, "mcp.serve: listening on %s://%s%s\n", scheme, addr, opts.path)
+	listenAddr := addr
+	if opts.port == 0 {
+		listenAddr = ln.Addr().String()
+	}
+	fmt.Fprintf(os.Stderr, "mcp.serve: listening on %s://%s%s\n", scheme, listenAddr, opts.path)
 
-	var err error
 	if tlsEnabled {
-		err = httpSrv.ListenAndServeTLS(opts.tlsCert, opts.tlsKey)
+		err = httpSrv.ServeTLS(ln, opts.tlsCert, opts.tlsKey)
 	} else {
-		err = httpSrv.ListenAndServe()
+		err = httpSrv.Serve(ln)
 	}
 	if errors.Is(err, http.ErrServerClosed) {
 		return nil

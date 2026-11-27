@@ -335,6 +335,36 @@ func TestClient_Discovery_LazyAndCached(t *testing.T) {
 	if err := client.ensureDiscovered(); err != nil {
 		t.Errorf("second discovery: %v", err)
 	}
+
+	got := execOnClient(t, client, `names = dir(client.tools)`)
+	_ = got
+}
+
+func TestClient_AttrNamesSortedAndRetryableDiscovery(t *testing.T) {
+	client, cleanup := startInMemoryServer(t, []string{"zeta", "alpha", "mid"}, nil)
+	defer cleanup()
+
+	names := client.tools.AttrNames()
+	if len(names) != 3 || names[0] != "alpha" || names[1] != "mid" || names[2] != "zeta" {
+		t.Fatalf("AttrNames() = %v, want sorted [alpha mid zeta]", names)
+	}
+
+	// Simulate an already-canceled first ListTools call: it should fail without
+	// permanently caching the transient error so a subsequent non-canceled call succeeds.
+	retryClient, cleanup2 := startInMemoryServer(t, []string{"ping"}, nil)
+	defer cleanup2()
+
+	canceledCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	canceledThread := &starlark.Thread{Name: "canceled"}
+	libkite.SetThreadContext(canceledThread, canceledCtx)
+
+	if err := retryClient.ensureDiscoveredWithThread(canceledThread); err == nil {
+		t.Fatal("expected first discovery on canceled thread to fail")
+	}
+	if err := retryClient.ensureDiscovered(); err != nil {
+		t.Fatalf("subsequent discovery should succeed after transient error, got: %v", err)
+	}
 }
 
 // Compile-time assertion that errorIterator satisfies starlark.Iterator.

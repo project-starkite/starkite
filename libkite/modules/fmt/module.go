@@ -4,6 +4,7 @@ package fmtmod
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/vladimirvivien/startype"
@@ -61,7 +62,7 @@ func (m *Module) Aliases() starlark.StringDict {
 
 func (m *Module) FactoryMethod() string { return "" }
 
-// printf prints formatted output to stdout.
+// printf prints formatted output to the thread's Print handler (or stdout).
 func (m *Module) printf(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) == 0 {
 		return starlark.None, nil
@@ -72,7 +73,11 @@ func (m *Module) printf(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, err
 	}
 
-	fmt.Print(format)
+	if thread != nil && thread.Print != nil {
+		thread.Print(thread, strings.TrimSuffix(format, "\n"))
+	} else {
+		fmt.Print(format)
+	}
 	return starlark.None, nil
 }
 
@@ -87,7 +92,11 @@ func (m *Module) println(thread *starlark.Thread, fn *starlark.Builtin, args sta
 		}
 		goArgs[i] = goVal
 	}
-	fmt.Println(goArgs...)
+	if thread != nil && thread.Print != nil {
+		thread.Print(thread, strings.TrimSuffix(fmt.Sprintln(goArgs...), "\n"))
+	} else {
+		fmt.Println(goArgs...)
+	}
 	return starlark.None, nil
 }
 

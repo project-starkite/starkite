@@ -158,6 +158,32 @@ func TestErrorResult_ShapesMCPResult(t *testing.T) {
 	}
 }
 
+func TestBuildToolHandler_JSONIntegerPreservesStarlarkInt(t *testing.T) {
+	tools := buildToolFromSource(t, `
+def kind(n):
+    return type(n) + ":" + str(n)
+`, "kind")
+	rt := newTestRuntime(t)
+	handler := buildToolHandler(tools[0], rt)
+
+	res, err := handler(context.Background(), &mcpsdk.CallToolRequest{
+		Params: &mcpsdk.CallToolParamsRaw{
+			Name:      "kind",
+			Arguments: rawArgs(t, map[string]any{"n": 42}),
+		},
+	})
+	if err != nil {
+		t.Fatalf("handler err = %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("unexpected IsError result: %v", res.Content[0])
+	}
+	text := res.Content[0].(*mcpsdk.TextContent).Text
+	if text != "int:42" {
+		t.Fatalf("got %q, want %q", text, "int:42")
+	}
+}
+
 type strErr string
 
 func (s strErr) Error() string { return string(s) }

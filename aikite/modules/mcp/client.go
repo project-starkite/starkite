@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os/exec"
 	"runtime"
+	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -16,10 +17,10 @@ import (
 	"go.starlark.net/starlark"
 )
 
-// defaultDiscoveryTimeout bounds the initial ListTools call made on first
-// access to client.tools. Conservative default; users experiencing timeouts
-// can add a call with their own context later.
-const defaultDiscoveryTimeout = 30 * time.Second
+const (
+	defaultDiscoveryTimeout = 30 * time.Second
+	defaultToolCallTimeout  = 30 * time.Second
+)
 
 // MCPClient is the Starlark-visible handle returned by mcp.connect().
 //
@@ -32,17 +33,10 @@ const defaultDiscoveryTimeout = 30 * time.Second
 // Truthiness is False after close.
 type MCPClient struct {
 	session *mcpsdk.ClientSession
-	// cmd is non-nil when the transport spawned a subprocess. We keep the
-	// reference so close() can terminate the process regardless of what the
-	// session's Close() does with the pipe.
-	cmd    *exec.Cmd
-	thread *starlark.Thread
-	closed atomic.Bool
+	closed  atomic.Bool
 
-	// Lazy-discovery state, guarded by toolsOnce. toolsErr is non-nil if
-	// discovery failed — retained so repeated accesses get consistent errors.
-	toolsOnce    sync.Once
-	toolsErr     error
+	toolsMu      sync.Mutex
+	toolsLoaded  bool
 	toolsByName  map[string]*cachedTool
 	toolsInOrder []*cachedTool
 
@@ -64,8 +58,8 @@ var _ starlark.HasAttrs = (*MCPClient)(nil)
 // newMCPClient constructs an MCPClient, wires its tools namespace, and
 // installs a GC finalizer as a safety net in case the script forgets to
 // call .close(). The finalizer runs only if the client is not already closed.
-func newMCPClient(session *mcpsdk.ClientSession, cmd *exec.Cmd) *MCPClient {
-	c := &MCPClient{session: session, cmd: cmd}
+func newMCPClient(session *mcpsdk.ClientSession, _ *exec.Cmd) *MCPClient {
+	c := &MCPClient{session: session}
 	c.tools = &MCPToolsNamespace{client: c}
 	runtime.SetFinalizer(c, (*MCPClient).finalize)
 	return c
@@ -95,21 +89,12 @@ func (c *MCPClient) Attr(name string) (starlark.Value, error) {
 
 func (c *MCPClient) AttrNames() []string { return []string{"tools", "call", "close"} }
 
-// doClose closes the session and kills the subprocess (if any). Idempotent via
-// CompareAndSwap; safe to call from both .close() and the finalizer.
+// doClose closes the session cleanly. CommandTransport reaps any owned subprocess.
 func (c *MCPClient) doClose() error {
 	if !c.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	var firstErr error
-	if err := c.session.Close(); err != nil {
-		firstErr = err
-	}
-	if c.cmd != nil && c.cmd.Process != nil {
-		_ = c.cmd.Process.Kill()
-		_ = c.cmd.Wait()
-	}
-	return firstErr
+	return c.session.Close()
 }
 
 // finalize is the runtime.SetFinalizer callback. Exists purely as a safety net
@@ -136,10 +121,10 @@ func (c *MCPClient) callBuiltin(thread *starlark.Thread, _ *starlark.Builtin, ar
 	if !ok {
 		return nil, fmt.Errorf("mcp.Client.call: tool name must be a string, got %s", args[0].Type())
 	}
-	if err := c.ensureDiscovered(); err != nil {
+	if err := c.ensureDiscoveredWithThread(thread); err != nil {
 		return nil, fmt.Errorf("mcp.Client.call: %w", err)
 	}
-	if _, ok := c.toolsByName[name]; !ok {
+	if _, ok := c.lookupTool(name); !ok {
 		return nil, fmt.Errorf("mcp.Client.call: no such tool %q on server", name)
 	}
 	return c.invoke(thread, name, kwargs)
@@ -171,8 +156,10 @@ func (c *MCPClient) invoke(thread *starlark.Thread, name string, kwargs []starla
 	}
 
 	callCtx := libkite.ThreadContext(thread)
-	if thread == nil {
-		callCtx = libkite.ThreadContext(c.thread)
+	var cancel context.CancelFunc
+	if _, hasDeadline := callCtx.Deadline(); !hasDeadline {
+		callCtx, cancel = context.WithTimeout(callCtx, defaultToolCallTimeout)
+		defer cancel()
 	}
 	res, err := c.session.CallTool(callCtx, &mcpsdk.CallToolParams{
 		Name:      name,
@@ -184,35 +171,67 @@ func (c *MCPClient) invoke(thread *starlark.Thread, name string, kwargs []starla
 	return newMCPResult(res), nil
 }
 
-// ensureDiscovered lazily populates the tool cache. Both client.tools.X and
-// client.call() funnel through this; the sync.Once makes it safe across
-// concurrent accesses (though the module isn't goroutine-hardened overall).
 func (c *MCPClient) ensureDiscovered() error {
-	c.toolsOnce.Do(func() {
-		if c.closed.Load() {
-			c.toolsErr = errors.New("mcp client is closed")
-			return
+	return c.ensureDiscoveredWithThread(nil)
+}
+
+func (c *MCPClient) ensureDiscoveredWithThread(thread *starlark.Thread) error {
+	c.toolsMu.Lock()
+	defer c.toolsMu.Unlock()
+
+	if c.toolsLoaded {
+		return nil
+	}
+	if c.closed.Load() {
+		return errors.New("mcp client is closed")
+	}
+	ctx, cancel := context.WithTimeout(libkite.ThreadContext(thread), defaultDiscoveryTimeout)
+	defer cancel()
+	list, err := c.session.ListTools(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("list tools: %w", err)
+	}
+	toolsByName := make(map[string]*cachedTool, len(list.Tools))
+	toolsInOrder := make([]*cachedTool, 0, len(list.Tools))
+	for _, t := range list.Tools {
+		ct := &cachedTool{
+			name:        t.Name,
+			description: t.Description,
+			client:      c,
 		}
-		ctx, cancel := context.WithTimeout(libkite.ThreadContext(c.thread), defaultDiscoveryTimeout)
-		defer cancel()
-		list, err := c.session.ListTools(ctx, nil)
-		if err != nil {
-			c.toolsErr = fmt.Errorf("list tools: %w", err)
-			return
+		toolsByName[t.Name] = ct
+		toolsInOrder = append(toolsInOrder, ct)
+	}
+	c.toolsByName = toolsByName
+	c.toolsInOrder = toolsInOrder
+	c.toolsLoaded = true
+	return nil
+}
+
+func (c *MCPClient) lookupTool(name string) (*cachedTool, bool) {
+	c.toolsMu.Lock()
+	defer c.toolsMu.Unlock()
+	t, ok := c.toolsByName[name]
+	return t, ok
+}
+
+func (c *MCPClient) listValidAttrNames() []string {
+	c.toolsMu.Lock()
+	defer c.toolsMu.Unlock()
+	out := make([]string, 0, len(c.toolsByName))
+	for name := range c.toolsByName {
+		if isValidIdentifier(name) {
+			out = append(out, name)
 		}
-		c.toolsByName = make(map[string]*cachedTool, len(list.Tools))
-		c.toolsInOrder = make([]*cachedTool, 0, len(list.Tools))
-		for _, t := range list.Tools {
-			ct := &cachedTool{
-				name:        t.Name,
-				description: t.Description,
-				client:      c,
-			}
-			c.toolsByName[t.Name] = ct
-			c.toolsInOrder = append(c.toolsInOrder, ct)
-		}
-	})
-	return c.toolsErr
+	}
+	slices.Sort(out)
+	return out
+}
+
+func (c *MCPClient) listToolsSnapshot() []*cachedTool {
+	c.toolsMu.Lock()
+	defer c.toolsMu.Unlock()
+	return slices.Clone(c.toolsInOrder)
 }
 
 // MCPToolsNamespace is the .tools value on an MCPClient. Implements both
@@ -243,7 +262,7 @@ func (n *MCPToolsNamespace) Attr(name string) (starlark.Value, error) {
 	if err := n.client.ensureDiscovered(); err != nil {
 		return nil, err
 	}
-	t, ok := n.client.toolsByName[name]
+	t, ok := n.client.lookupTool(name)
 	if !ok {
 		return nil, nil
 	}
@@ -254,20 +273,14 @@ func (n *MCPToolsNamespace) AttrNames() []string {
 	if err := n.client.ensureDiscovered(); err != nil {
 		return nil
 	}
-	out := make([]string, 0, len(n.client.toolsByName))
-	for name := range n.client.toolsByName {
-		if isValidIdentifier(name) {
-			out = append(out, name)
-		}
-	}
-	return out
+	return n.client.listValidAttrNames()
 }
 
 func (n *MCPToolsNamespace) Iterate() starlark.Iterator {
 	if err := n.client.ensureDiscovered(); err != nil {
 		return &errorIterator{err: err}
 	}
-	return &toolsIterator{tools: n.client.toolsInOrder}
+	return &toolsIterator{tools: n.client.listToolsSnapshot()}
 }
 
 // toolsIterator yields MCPTool values in the order returned by ListTools.

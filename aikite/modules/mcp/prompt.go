@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"fmt"
+	"os"
 
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 	"go.starlark.net/starlark"
@@ -96,8 +97,17 @@ func buildPromptEntry(name string, callable starlark.Callable) (*promptEntry, er
 // silently. Missing required arguments surface when starlark.Call reports
 // an error.
 func buildPromptHandler(p *promptEntry, rt *libkite.Runtime) func(context.Context, *mcpsdk.GetPromptRequest) (*mcpsdk.GetPromptResult, error) {
+	return buildPromptHandlerWithStdio(p, rt, false)
+}
+
+func buildPromptHandlerWithStdio(p *promptEntry, rt *libkite.Runtime, stdioMode bool) func(context.Context, *mcpsdk.GetPromptRequest) (*mcpsdk.GetPromptResult, error) {
 	return func(ctx context.Context, req *mcpsdk.GetPromptRequest) (*mcpsdk.GetPromptResult, error) {
 		thread := rt.NewThread("mcp-prompt-" + p.name)
+		if stdioMode {
+			thread.Print = func(_ *starlark.Thread, msg string) {
+				fmt.Fprintln(os.Stderr, msg)
+			}
+		}
 		libkite.SetThreadContext(thread, ctx)
 		stopWatch := libkite.WatchContext(ctx, thread)
 		defer stopWatch()
@@ -116,14 +126,21 @@ func buildPromptHandler(p *promptEntry, rt *libkite.Runtime) func(context.Contex
 			}
 		}
 
-		result, err := libkite.CallSafe(thread, p.fn, starlark.Tuple{}, kwargs)
-		if err != nil {
-			return nil, fmt.Errorf("prompt %q: %w", p.name, err)
-		}
-
-		text, ok := starlark.AsString(result)
-		if !ok {
-			return nil, fmt.Errorf("prompt %q: function must return a string, got %s", p.name, result.Type())
+		var text string
+		callErr := libkite.WithCallLock(thread, func() error {
+			result, err := starlark.Call(thread, p.fn, starlark.Tuple{}, kwargs)
+			if err != nil {
+				return err
+			}
+			var ok bool
+			text, ok = starlark.AsString(result)
+			if !ok {
+				return fmt.Errorf("function must return a string, got %s", result.Type())
+			}
+			return nil
+		})
+		if callErr != nil {
+			return nil, fmt.Errorf("prompt %q: %w", p.name, callErr)
 		}
 
 		return &mcpsdk.GetPromptResult{

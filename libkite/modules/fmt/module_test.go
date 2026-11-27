@@ -155,3 +155,36 @@ func TestTrySprintf(t *testing.T) {
 		t.Fatal("expected non-empty error string in Result")
 	}
 }
+
+func TestFmtRoutesThroughThreadPrint(t *testing.T) {
+	m := New()
+	_, err := m.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var captured []string
+	thread := &starlark.Thread{
+		Name: "fmt-capture",
+		Print: func(_ *starlark.Thread, msg string) {
+			captured = append(captured, msg)
+		},
+	}
+
+	if _, err := m.printf(thread, nil, starlark.Tuple{starlark.String("hello %s\n"), starlark.String("world")}, nil); err != nil {
+		t.Fatalf("printf failed: %v", err)
+	}
+	if _, err := m.println(thread, nil, starlark.Tuple{starlark.String("count"), starlark.MakeInt(3)}, nil); err != nil {
+		t.Fatalf("println failed: %v", err)
+	}
+
+	if len(captured) != 2 {
+		t.Fatalf("captured %d prints (%v), want 2", len(captured), captured)
+	}
+	if captured[0] != "hello world" {
+		t.Errorf("printf captured %q, want %q", captured[0], "hello world")
+	}
+	if captured[1] != "count 3" {
+		t.Errorf("println captured %q, want %q", captured[1], "count 3")
+	}
+}
