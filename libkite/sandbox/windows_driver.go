@@ -804,7 +804,7 @@ func createSuspendedWindowsProcess(
 			continue
 		}
 		if err := windows.SetHandleInformation(windows.Handle(f.Fd()), windows.HANDLE_FLAG_INHERIT, windows.HANDLE_FLAG_INHERIT); err != nil {
-			for j := 0; j < i; j++ {
+			for j := range i {
 				if childFiles[j] != nil {
 					_ = windows.SetHandleInformation(windows.Handle(childFiles[j].Fd()), windows.HANDLE_FLAG_INHERIT, 0)
 				}

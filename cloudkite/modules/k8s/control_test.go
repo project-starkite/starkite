@@ -1352,8 +1352,7 @@ func TestNewChildThreadAndHealthBindFailure(t *testing.T) {
 	}
 	libkite.SetPermissions(parent, checker)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctx := t.Context()
 	child, stop := newChildThread(parent, "child-plain", ctx)
 	defer stop()
 

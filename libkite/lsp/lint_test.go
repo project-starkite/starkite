@@ -38,8 +38,8 @@ func readRPCMessage(r *bufio.Reader) ([]byte, error) {
 		if line == "" {
 			break
 		}
-		if strings.HasPrefix(line, "Content-Length: ") {
-			l, err := strconv.Atoi(strings.TrimPrefix(line, "Content-Length: "))
+		if after, ok := strings.CutPrefix(line, "Content-Length: "); ok {
+			l, err := strconv.Atoi(after)
 			if err != nil {
 				return nil, err
 			}

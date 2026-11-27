@@ -205,10 +205,7 @@ func parseTolerant(path string, src []byte) (*syntax.File, bool) {
 		if !ok {
 			break
 		}
-		idx := int(synErr.Pos.Line) - 1
-		if idx < 0 {
-			idx = 0
-		}
+		idx := max(int(synErr.Pos.Line)-1, 0)
 		if idx >= len(lines) {
 			idx = len(lines) - 1
 		}

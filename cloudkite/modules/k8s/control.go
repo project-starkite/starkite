@@ -850,11 +850,9 @@ func (c *controller) AutoWatch(gvr schema.GroupVersionResource) {
 	c.watchedGVRs[gvr] = cancel
 
 	if c.client != nil && c.client.dynClient != nil {
-		c.watchWG.Add(1)
-		go func() {
-			defer c.watchWG.Done()
+		c.watchWG.Go(func() {
 			c.runDynamicChildWatch(watchCtx, gvr)
-		}()
+		})
 	}
 }
 

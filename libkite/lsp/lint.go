@@ -28,22 +28,10 @@ func (h *Host) conventionLints(doc *starlsp.Document, file *syntax.File) []starl
 
 	out := make([]starlsp.Diagnostic, len(findings))
 	for i, f := range findings {
-		startLine := f.Range.Start.Line - 1
-		if startLine < 0 {
-			startLine = 0
-		}
-		startChar := f.Range.Start.Column - 1
-		if startChar < 0 {
-			startChar = 0
-		}
-		endLine := f.Range.End.Line - 1
-		if endLine < 0 {
-			endLine = 0
-		}
-		endChar := f.Range.End.Column - 1
-		if endChar < 0 {
-			endChar = 0
-		}
+		startLine := max(f.Range.Start.Line-1, 0)
+		startChar := max(f.Range.Start.Column-1, 0)
+		endLine := max(f.Range.End.Line-1, 0)
+		endChar := max(f.Range.End.Column-1, 0)
 
 		out[i] = starlsp.Diagnostic{
 			Range: starlsp.Range{

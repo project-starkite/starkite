@@ -122,7 +122,7 @@ func resolveInstalledModule(callerDir, identity string) (string, bool) {
 func lockedRevision(startDir, identity string) (string, bool) {
 	dir := filepath.Clean(startDir)
 	home, _ := os.UserHomeDir()
-	for i := 0; i < 32; i++ {
+	for range 32 {
 		if lock, err := libkite.LoadLock(dir); err == nil && lock != nil {
 			if m, ok := lock.Modules[identity]; ok && m.Rev != "" {
 				return m.Rev, true
