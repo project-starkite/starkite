@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -927,5 +928,42 @@ func TestMiddlewareStepAndFrozenServer(t *testing.T) {
 	useFn, _ := srv.Attr("use")
 	if _, err := starlark.Call(thread, useFn, starlark.Tuple{mwLayer}, nil); err == nil || !strings.Contains(err.Error(), "frozen") {
 		t.Fatalf("expected frozen error from server.use, got %v", err)
+	}
+}
+
+func TestExecuteTestsWithInProcessHTTPServer(t *testing.T) {
+	reg := libkite.NewRegistry(&libkite.ModuleConfig{})
+	reg.Register(New())
+
+	rt, err := libkite.NewTrusted(nil, libkite.WithRegistry(reg))
+	if err != nil {
+		t.Fatalf("NewTrusted: %v", err)
+	}
+	defer rt.Close()
+
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+
+	script := `
+def test_http_loopback():
+    def handler(req):
+        return {"status": 200, "body": "ok"}
+
+    srv = http.server()
+    srv.handle("/ping", handler)
+    srv.start(port=0)
+    resp = http.url("http://127.0.0.1:%d/ping" % srv.port()).get()
+    if resp.status_code != 200:
+        fail("expected 200, got %d" % resp.status_code)
+    if resp.get_text() != "ok":
+        fail("expected ok, got %s" % resp.get_text())
+    srv.shutdown()
+`
+	results, err := rt.ExecuteTestsWithConfig(ctx, script, libkite.TestConfig{})
+	if err != nil {
+		t.Fatalf("ExecuteTestsWithConfig: %v", err)
+	}
+	if len(results) != 1 || !results[0].Passed || results[0].Error != nil {
+		t.Fatalf("expected 1 passed test without deadlock, got %+v", results)
 	}
 }

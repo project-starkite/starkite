@@ -949,7 +949,7 @@ func (rt *Runtime) runTest(ctx context.Context, name string, fn, setupFn, teardo
 		setupThread := rt.NewThread("setup:" + name)
 		SetThreadContext(setupThread, ctx)
 		stopSetup := watchCtx(ctx, setupThread)
-		_, setupErr := CallSafe(setupThread, setupFn, nil, nil)
+		_, setupErr := starlark.Call(setupThread, setupFn, nil, nil)
 		stopSetup()
 		if setupErr != nil {
 			return TestResult{
@@ -965,7 +965,7 @@ func (rt *Runtime) runTest(ctx context.Context, name string, fn, setupFn, teardo
 	testThread := rt.NewThread("test:" + name)
 	SetThreadContext(testThread, ctx)
 	stopWatch := watchCtx(ctx, testThread)
-	_, err := CallSafe(testThread, fn, nil, nil)
+	_, err := starlark.Call(testThread, fn, nil, nil)
 	stopWatch()
 
 	// Run teardown if defined (always runs, even if test failed or ctx timed out)
@@ -978,7 +978,7 @@ func (rt *Runtime) runTest(ctx context.Context, name string, fn, setupFn, teardo
 		tdThread := rt.NewThread("teardown:" + name)
 		SetThreadContext(tdThread, tdCtx)
 		stopTD := watchCtx(tdCtx, tdThread)
-		_, teardownErr := CallSafe(tdThread, teardownFn, nil, nil)
+		_, teardownErr := starlark.Call(tdThread, teardownFn, nil, nil)
 		stopTD()
 		tdCancel()
 		if teardownErr != nil {

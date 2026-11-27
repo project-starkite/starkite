@@ -144,7 +144,7 @@ func (rt *Runtime) runSignalHandler(sig os.Signal) {
 		args = starlark.Tuple{starlark.String(canonical)}
 	}
 
-	if _, err := CallSafe(sigThread, handler, args, nil); err != nil {
+	if _, err := starlark.Call(sigThread, handler, args, nil); err != nil {
 		fmt.Fprintf(os.Stderr, "signal handler (%s) error: %v\n", canonical, err)
 	}
 }
@@ -192,7 +192,7 @@ func (rt *Runtime) runDeferred() {
 		defer stopWatch()
 
 		for _, fn := range slices.Backward(fns) {
-			if _, err := CallSafe(deferThread, fn, nil, nil); err != nil {
+			if _, err := starlark.Call(deferThread, fn, nil, nil); err != nil {
 				fmt.Fprintf(os.Stderr, "deferred function error: %v\n", err)
 			}
 		}
