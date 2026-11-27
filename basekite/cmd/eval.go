@@ -81,15 +81,14 @@ func evalCode(cmd *cobra.Command, args []string) error {
 	registry := NewRegistry(moduleConfig)
 
 	cfg := &libkite.Config{
-		ScriptPath:   "<inline>",
-		OutputFormat: outputFormat,
-		Debug:        debugMode,
-		DryRun:       dryRun,
-		VarStore:     varStore,
-		Permissions:  perms,
-		Registry:     registry,
-		Env:          envMap,
-		EntryPoint:   "main",
+		ScriptPath:  "<inline>",
+		Debug:       debugMode,
+		DryRun:      dryRun,
+		VarStore:    varStore,
+		Permissions: perms,
+		Registry:    registry,
+		Env:         envMap,
+		EntryPoint:  "main",
 	}
 
 	rt, err := libkite.New(cfg)
@@ -99,7 +98,7 @@ func evalCode(cmd *cobra.Command, args []string) error {
 			ExitCode: libkite.ExitScriptError,
 		}
 	}
-	defer rt.Cleanup()
+	defer rt.Close()
 
 	ctx, cancel := execContext(timeout)
 	defer cancel()

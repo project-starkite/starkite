@@ -1,9 +1,11 @@
 package libkite
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"maps"
+	"slices"
 	"sync"
 
 	"go.starlark.net/starlark"
@@ -18,6 +20,7 @@ type Registry struct {
 	loadOnce   sync.Once
 	mu         sync.RWMutex
 	loadErrors []error
+	loadErr    error
 	strict     bool
 }
 
@@ -62,13 +65,18 @@ func (r *Registry) Register(m Module) {
 // This includes both namespaced exports (e.g., "strings") and global aliases (e.g., "printf").
 // The function is safe to call multiple times; modules are only loaded once.
 func (r *Registry) LoadAll() (starlark.StringDict, error) {
-	var loadErr error
-
 	r.loadOnce.Do(func() {
 		r.mu.Lock()
 		defer r.mu.Unlock()
 
-		for name, mod := range r.modules {
+		names := make([]ModuleName, 0, len(r.modules))
+		for name := range r.modules {
+			names = append(names, name)
+		}
+		slices.Sort(names)
+
+		for _, name := range names {
+			mod := r.modules[name]
 			exports, err := mod.Load(r.config)
 			if err != nil {
 				r.loadErrors = append(r.loadErrors, fmt.Errorf("failed to load module %s: %w", name, err))
@@ -76,7 +84,8 @@ func (r *Registry) LoadAll() (starlark.StringDict, error) {
 			}
 
 			// Add module exports to loaded map
-			for k, v := range exports {
+			for _, k := range slices.Sorted(maps.Keys(exports)) {
+				v := exports[k]
 				if r.strict {
 					if _, exists := r.loaded[k]; exists {
 						r.loadErrors = append(r.loadErrors,
@@ -89,7 +98,8 @@ func (r *Registry) LoadAll() (starlark.StringDict, error) {
 
 			// Collect global aliases
 			if aliases := mod.Aliases(); aliases != nil {
-				for k, v := range aliases {
+				for _, k := range slices.Sorted(maps.Keys(aliases)) {
+					v := aliases[k]
 					if r.strict {
 						if _, exists := r.aliases[k]; exists {
 							r.loadErrors = append(r.loadErrors,
@@ -103,11 +113,13 @@ func (r *Registry) LoadAll() (starlark.StringDict, error) {
 		}
 
 		if len(r.loadErrors) > 0 {
-			loadErr = fmt.Errorf("module loading errors: %v", r.loadErrors)
+			r.loadErr = errors.Join(r.loadErrors...)
 		}
 	})
 
-	return r.loaded, loadErr
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	return maps.Clone(r.loaded), r.loadErr
 }
 
 // GetAliases returns all global aliases from loaded modules.

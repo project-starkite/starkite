@@ -516,14 +516,17 @@ func TestRetryResultString(t *testing.T) {
 func TestRetryResultAttrNames(t *testing.T) {
 	rr := NewRetryResult(true, starlark.None, "", 1, 0, nil)
 	names := rr.AttrNames()
-	if len(names) != 6 {
-		t.Fatalf("AttrNames() len = %d, want 6", len(names))
+	expected := []string{"attempts", "elapsed", "err", "error", "errors", "ok", "value"}
+	if len(names) != len(expected) {
+		t.Fatalf("AttrNames() len = %d, want %d", len(names), len(expected))
 	}
-	expected := []string{"attempts", "elapsed", "error", "errors", "ok", "value"}
 	for i, name := range expected {
 		if names[i] != name {
 			t.Fatalf("AttrNames()[%d] = %q, want %q", i, names[i], name)
 		}
+	}
+	if errAttr, err := rr.Attr("err"); err != nil || errAttr != starlark.String("") {
+		t.Fatalf("Attr(\"err\") = %v, %v; want empty string", errAttr, err)
 	}
 }
 

@@ -2,6 +2,8 @@ package fleet
 
 import (
 	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
@@ -12,18 +14,50 @@ type Fleet struct {
 	resources []Resource
 }
 
-// New creates a new Fleet with the given resources.
-func New(resources []Resource) *Fleet {
-	copied := make([]Resource, len(resources))
-	copy(copied, resources)
-	return &Fleet{resources: copied}
+func cloneDataValue(v any) any {
+	switch tv := v.(type) {
+	case map[string]any:
+		return cloneDataMap(tv)
+	case []any:
+		out := make([]any, len(tv))
+		for i, item := range tv {
+			out[i] = cloneDataValue(item)
+		}
+		return out
+	default:
+		return v
+	}
 }
 
-// Resources returns a copy of the slice of resources.
-func (f *Fleet) Resources() []Resource {
-	copied := make([]Resource, len(f.resources))
-	copy(copied, f.resources)
+func cloneDataMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = cloneDataValue(v)
+	}
+	return out
+}
+
+func cloneResources(resources []Resource) []Resource {
+	copied := make([]Resource, len(resources))
+	for i, r := range resources {
+		r.Labels = maps.Clone(r.Labels)
+		r.Data = cloneDataMap(r.Data)
+		copied[i] = r
+	}
 	return copied
+}
+
+// New creates a new Fleet with the given resources.
+func New(resources []Resource) *Fleet {
+	return &Fleet{resources: cloneResources(resources)}
+}
+
+// Resources returns a defensive copy of the slice of resources.
+func (f *Fleet) Resources() []Resource {
+	return cloneResources(f.resources)
 }
 
 // String returns the string representation of the fleet.
@@ -47,7 +81,7 @@ func (f *Fleet) Attr(name string) (starlark.Value, error) {
 	case "count":
 		return starlark.MakeInt(len(f.resources)), nil
 	case "items":
-		return f.toStarlarkList(), nil
+		return f.toStarlarkList()
 	case "filter":
 		return starlark.NewBuiltin("fleet.filter", f.filterBuiltin), nil
 	case "group_by":
@@ -70,12 +104,16 @@ func (f *Fleet) AttrNames() []string {
 	return []string{"addresses", "count", "filter", "first", "group_by", "ids", "items", "names"}
 }
 
-func (f *Fleet) toStarlarkList() starlark.Value {
+func (f *Fleet) toStarlarkList() (starlark.Value, error) {
 	elems := make([]starlark.Value, len(f.resources))
 	for i, r := range f.resources {
-		elems[i] = r.ToStarlarkDict()
+		dict, err := r.ToStarlarkDict()
+		if err != nil {
+			return nil, err
+		}
+		elems[i] = dict
 	}
-	return starlark.NewList(elems)
+	return starlark.NewList(elems), nil
 }
 
 // filterBuiltin filters the fleet by exact keyword matches or predicate function.
@@ -120,7 +158,10 @@ func (f *Fleet) filterBuiltin(thread *starlark.Thread, fn *starlark.Builtin, arg
 		include := true
 
 		if predicateFn != nil {
-			dict := r.ToStarlarkDict()
+			dict, err := r.ToStarlarkDict()
+			if err != nil {
+				return nil, err
+			}
 			res, err := starlark.Call(thread, predicateFn, starlark.Tuple{dict}, nil)
 			if err != nil {
 				return nil, fmt.Errorf("fleet.filter: predicate execution failed: %w", err)
@@ -203,8 +244,10 @@ func (f *Fleet) groupByBuiltin(thread *starlark.Thread, fn *starlark.Builtin, ar
 	}
 
 	result := starlark.NewDict(len(groups))
-	for groupName, groupItems := range groups {
-		result.SetKey(starlark.String(groupName), New(groupItems))
+	for _, groupName := range slices.Sorted(maps.Keys(groups)) {
+		if err := result.SetKey(starlark.String(groupName), New(groups[groupName])); err != nil {
+			return nil, fmt.Errorf("fleet.group_by: %w", err)
+		}
 	}
 	return result, nil
 }
@@ -265,5 +308,5 @@ func (f *Fleet) firstBuiltin(thread *starlark.Thread, fn *starlark.Builtin, args
 	if len(f.resources) == 0 {
 		return starlark.None, nil
 	}
-	return f.resources[0].ToStarlarkDict(), nil
+	return f.resources[0].ToStarlarkDict()
 }

@@ -167,7 +167,7 @@ func runModuleInstall(cmd *cobra.Command, args []string) error {
 		Force: moduleInstallForce,
 	}
 
-	if !manager.GitAvailable() {
+	if !manager.IsLocalPath(source) && !manager.GitAvailable() {
 		return fmt.Errorf("git is required but not found in PATH")
 	}
 
@@ -221,6 +221,8 @@ func runModuleList(cmd *cobra.Command, args []string) error {
 		rev := m.Rev
 		if rev == "" {
 			rev = "-"
+		} else if len(rev) > 12 {
+			rev = rev[:12]
 		}
 		source := m.Repository
 		if source == "" {

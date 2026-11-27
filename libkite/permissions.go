@@ -773,7 +773,7 @@ func Check(thread *starlark.Thread, module, category, function, resource string)
 
 	err := checker.Check(module, category, function, resource)
 	// Attribute a denial to the loaded module whose code is running, if any.
-	if pe, ok := err.(*PermissionError); ok {
+	if pe, ok := errors.AsType[*PermissionError](err); ok {
 		pe.Origin = attributeModule(thread)
 	}
 	return err
@@ -912,21 +912,6 @@ func SandboxExecPermissions() *PermissionConfig {
 // SandboxNetPermissions returns the Level 3 sandbox-net profile.
 func SandboxNetPermissions() *PermissionConfig {
 	return &PermissionConfig{Allow: slices.Concat(sandboxPathRules, sandboxExecRules, sandboxNetRules), Default: DefaultDeny}
-}
-
-// AllowFSPermissions returns the sandbox-path profile.
-func AllowFSPermissions() *PermissionConfig {
-	return SandboxPathPermissions()
-}
-
-// AllowLocalPermissions returns the sandbox-exec profile.
-func AllowLocalPermissions() *PermissionConfig {
-	return SandboxExecPermissions()
-}
-
-// AllowNetPermissions returns the sandbox-net profile.
-func AllowNetPermissions() *PermissionConfig {
-	return SandboxNetPermissions()
 }
 
 func normalizeRulePath(p string) string {
@@ -1464,11 +1449,13 @@ func WrapOSPermissionError(module, category, resource string, err error) error {
 	}
 	isPerm := errors.Is(err, os.ErrPermission) ||
 		errors.Is(err, syscall.EACCES) ||
-		errors.Is(err, syscall.EPERM) ||
-		errors.Is(err, syscall.Errno(5)) || // ERROR_ACCESS_DENIED
-		errors.Is(err, syscall.Errno(1314)) || // ERROR_PRIVILEGE_NOT_HELD
-		errors.Is(err, syscall.Errno(1816)) || // ERROR_NOT_ENOUGH_QUOTA
-		errors.Is(err, syscall.Errno(10013)) // WSAEACCES
+		errors.Is(err, syscall.EPERM)
+	if !isPerm && runtime.GOOS == "windows" {
+		isPerm = errors.Is(err, syscall.Errno(5)) || // ERROR_ACCESS_DENIED
+			errors.Is(err, syscall.Errno(1314)) || // ERROR_PRIVILEGE_NOT_HELD
+			errors.Is(err, syscall.Errno(1816)) || // ERROR_NOT_ENOUGH_QUOTA
+			errors.Is(err, syscall.Errno(10013)) // WSAEACCES
+	}
 	if !isPerm {
 		lower := strings.ToLower(err.Error())
 		isPerm = strings.Contains(lower, "operation not permitted") ||

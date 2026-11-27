@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -96,7 +97,7 @@ func TestGitClone(t *testing.T) {
 
 		// Clone to destination
 		destDir := filepath.Join(t.TempDir(), "cloned")
-		if err := GitClone(srcDir, "", destDir); err != nil {
+		if err := GitClone(context.Background(), srcDir, "", destDir); err != nil {
 			t.Fatalf("GitClone failed: %v", err)
 		}
 
@@ -118,7 +119,7 @@ func TestGitIsRepo(t *testing.T) {
 			t.Fatalf("git init failed: %v", err)
 		}
 
-		if !GitIsRepo(tmpDir) {
+		if !GitIsRepo(context.Background(), tmpDir) {
 			t.Error("expected GitIsRepo to return true for git repo")
 		}
 	})
@@ -126,7 +127,7 @@ func TestGitIsRepo(t *testing.T) {
 	t.Run("not a repo", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
-		if GitIsRepo(tmpDir) {
+		if GitIsRepo(context.Background(), tmpDir) {
 			t.Error("expected GitIsRepo to return false for non-repo")
 		}
 	})
@@ -165,18 +166,13 @@ func TestGitGetCurrentCommit(t *testing.T) {
 		t.Fatalf("git commit failed: %v", err)
 	}
 
-	commit, err := GitGetCurrentCommit(tmpDir)
+	commit, err := GitGetCurrentCommit(context.Background(), tmpDir)
 	if err != nil {
 		t.Fatalf("GitGetCurrentCommit failed: %v", err)
 	}
 
-	if len(commit) == 0 {
-		t.Error("expected non-empty commit hash")
-	}
-
-	// Short hash should be 7-8 characters
-	if len(commit) > 12 {
-		t.Errorf("expected short commit hash, got %q", commit)
+	if len(commit) != 40 {
+		t.Errorf("expected 40-char commit SHA, got %d chars (%q)", len(commit), commit)
 	}
 }
 
@@ -213,7 +209,7 @@ func TestGitGetCurrentBranch(t *testing.T) {
 		t.Fatalf("git commit failed: %v", err)
 	}
 
-	branch, err := GitGetCurrentBranch(tmpDir)
+	branch, err := GitGetCurrentBranch(context.Background(), tmpDir)
 	if err != nil {
 		t.Fatalf("GitGetCurrentBranch failed: %v", err)
 	}

@@ -2,14 +2,32 @@ package manager
 
 import (
 	"bytes"
+	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
+
+const defaultGitTimeout = 2 * time.Minute
+
+func gitCommand(ctx context.Context, args ...string) (*exec.Cmd, context.CancelFunc) {
+	if ctx == nil {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(context.Background(), defaultGitTimeout)
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+		return cmd, cancel
+	}
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Env = append(os.Environ(), "GIT_TERMINAL_PROMPT=0")
+	return cmd, func() {}
+}
 
 // GitClone clones a repository to the destination path.
 // If version is specified, checks out that version (tag, branch, or commit).
-func GitClone(repo, version, destPath string) error {
+func GitClone(ctx context.Context, repo, version, destPath string) error {
 	if strings.HasPrefix(repo, "-") {
 		return fmt.Errorf("invalid repository reference %q: must not start with '-'", repo)
 	}
@@ -30,16 +48,19 @@ func GitClone(repo, version, destPath string) error {
 	}
 	args = append(args, "--", repoURL, destPath)
 
-	cmd := exec.Command("git", args...)
+	cmd, cancel := gitCommand(ctx, args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+	err := cmd.Run()
+	cancel()
 
-	if err := cmd.Run(); err != nil {
-		// If shallow clone with branch failed, try full clone
-		if version != "" && strings.Contains(stderr.String(), "not found") {
-			return gitCloneAndCheckout(repoURL, version, destPath)
+	if err != nil {
+		// Shallow clone with --branch rejects commit SHAs; fall back to a full clone and checkout.
+		if version != "" && (ctx == nil || ctx.Err() == nil) {
+			_ = os.RemoveAll(destPath)
+			return gitCloneAndCheckout(ctx, repoURL, version, destPath)
 		}
-		return fmt.Errorf("git clone failed: %s", stderr.String())
+		return fmt.Errorf("git clone failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
 	return nil
@@ -47,7 +68,7 @@ func GitClone(repo, version, destPath string) error {
 
 // gitCloneAndCheckout does a full clone and checks out a specific version.
 // This handles cases where the version is a commit hash.
-func gitCloneAndCheckout(repoURL, version, destPath string) error {
+func gitCloneAndCheckout(ctx context.Context, repoURL, version, destPath string) error {
 	if strings.HasPrefix(repoURL, "-") {
 		return fmt.Errorf("invalid repository URL %q: must not start with '-'", repoURL)
 	}
@@ -56,68 +77,76 @@ func gitCloneAndCheckout(repoURL, version, destPath string) error {
 	}
 
 	// Full clone
-	cloneCmd := exec.Command("git", "-c", "core.symlinks=false", "clone", "--", repoURL, destPath)
+	cloneCmd, cancelClone := gitCommand(ctx, "-c", "core.symlinks=false", "clone", "--", repoURL, destPath)
 	var stderr bytes.Buffer
 	cloneCmd.Stderr = &stderr
-
-	if err := cloneCmd.Run(); err != nil {
-		return fmt.Errorf("git clone failed: %s", stderr.String())
+	err := cloneCmd.Run()
+	cancelClone()
+	if err != nil {
+		return fmt.Errorf("git clone failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
 	// Checkout the version
-	checkoutCmd := exec.Command("git", "-C", destPath, "-c", "core.symlinks=false", "checkout", version, "--")
+	stderr.Reset()
+	checkoutCmd, cancelCheckout := gitCommand(ctx, "-C", destPath, "-c", "core.symlinks=false", "checkout", version, "--")
 	checkoutCmd.Stderr = &stderr
-
-	if err := checkoutCmd.Run(); err != nil {
-		return fmt.Errorf("git checkout %s failed: %s", version, stderr.String())
+	err = checkoutCmd.Run()
+	cancelCheckout()
+	if err != nil {
+		return fmt.Errorf("git checkout %s failed: %w: %s", version, err, strings.TrimSpace(stderr.String()))
 	}
 
 	return nil
 }
 
-// GitGetCurrentCommit returns the current commit hash.
-func GitGetCurrentCommit(repoPath string) (string, error) {
-	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--short", "HEAD")
+// GitGetCurrentCommit returns the full commit SHA.
+func GitGetCurrentCommit(ctx context.Context, repoPath string) (string, error) {
+	cmd, cancel := gitCommand(ctx, "-C", repoPath, "rev-parse", "HEAD")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git rev-parse failed: %s", stderr.String())
+	err := cmd.Run()
+	cancel()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
 }
 
 // GitGetCurrentBranch returns the current branch name.
-func GitGetCurrentBranch(repoPath string) (string, error) {
-	cmd := exec.Command("git", "-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+func GitGetCurrentBranch(ctx context.Context, repoPath string) (string, error) {
+	cmd, cancel := gitCommand(ctx, "-C", repoPath, "rev-parse", "--abbrev-ref", "HEAD")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git rev-parse failed: %s", stderr.String())
+	err := cmd.Run()
+	cancel()
+	if err != nil {
+		return "", fmt.Errorf("git rev-parse failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
 	return strings.TrimSpace(stdout.String()), nil
 }
 
 // GitIsRepo checks if a path is a git repository.
-func GitIsRepo(path string) bool {
-	cmd := exec.Command("git", "-C", path, "rev-parse", "--git-dir")
-	return cmd.Run() == nil
+func GitIsRepo(ctx context.Context, path string) bool {
+	cmd, cancel := gitCommand(ctx, "-C", path, "rev-parse", "--git-dir")
+	err := cmd.Run()
+	cancel()
+	return err == nil
 }
 
 // GitGetRemoteURL returns the origin remote URL.
-func GitGetRemoteURL(repoPath string) (string, error) {
-	cmd := exec.Command("git", "-C", repoPath, "remote", "get-url", "origin")
+func GitGetRemoteURL(ctx context.Context, repoPath string) (string, error) {
+	cmd, cancel := gitCommand(ctx, "-C", repoPath, "remote", "get-url", "origin")
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git remote get-url failed: %s", stderr.String())
+	err := cmd.Run()
+	cancel()
+	if err != nil {
+		return "", fmt.Errorf("git remote get-url failed: %w: %s", err, strings.TrimSpace(stderr.String()))
 	}
 
 	return strings.TrimSpace(stdout.String()), nil

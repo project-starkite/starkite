@@ -295,6 +295,26 @@ func TestFleetEqualityAndCloning(t *testing.T) {
 		t.Fatalf("Fleet.Resources() must return defensive copy")
 	}
 
+	// Deep clone check for Labels and Data maps
+	withMaps := []Resource{
+		{
+			Name:    "n2",
+			Address: "2.2.2.2",
+			Labels:  map[string]string{"env": "prod"},
+			Data:    map[string]any{"nested": map[string]any{"a": "b"}},
+		},
+	}
+	fMaps := New(withMaps)
+	withMaps[0].Labels["env"] = "hacked"
+	withMaps[0].Data["nested"].(map[string]any)["a"] = "hacked"
+	gotMaps := fMaps.Resources()
+	if gotMaps[0].Labels["env"] != "prod" {
+		t.Errorf("Fleet.New must defensively clone Labels map")
+	}
+	if gotMaps[0].Data["nested"].(map[string]any)["a"] != "b" {
+		t.Errorf("Fleet.New must defensively clone Data maps")
+	}
+
 	if !reflect.DeepEqual(f.Resources(), []Resource{{Name: "n1", Address: "1.1.1.1"}}) {
 		t.Fatalf("unexpected resources slice")
 	}
@@ -324,5 +344,18 @@ func TestFleetFromStructSource(t *testing.T) {
 	}
 	if f.resources[0].Labels["zone"] != "us-west1-b" {
 		t.Fatalf("expected zone label promoted, got %+v", f.resources[0].Labels)
+	}
+}
+
+func TestFleetFromSourceInvalidItems(t *testing.T) {
+	thread := &starlark.Thread{Name: "test-invalid-source"}
+	if _, err := FromSource(thread, starlark.NewList([]starlark.Value{starlark.MakeInt(42)})); err == nil {
+		t.Error("expected error for non-mapping list item in FromSource")
+	}
+
+	badDict := starlark.NewDict(1)
+	_ = badDict.SetKey(starlark.MakeInt(1), starlark.String("bad"))
+	if _, err := FromSource(thread, badDict); err == nil {
+		t.Error("expected error for non-string key dict in FromSource")
 	}
 }

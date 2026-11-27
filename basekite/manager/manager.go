@@ -2,6 +2,7 @@
 package manager
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -81,13 +82,13 @@ func (m *Manager) Install(source string, opts InstallOptions) (*ModuleInfo, erro
 		if isHostedRepo(repo) {
 			sourceNamespace, _ = InferNamespaceName(repo)
 		}
-		if err := GitClone(repo, version, staging); err != nil {
+		if err := GitClone(context.Background(), repo, version, staging); err != nil {
 			return nil, fmt.Errorf("failed to clone repository: %w", err)
 		}
 		// Capture the commit as the immutable revision (commit-not-tag), even
 		// when a tag or branch was requested.
 		var err error
-		commit, err = GitGetCurrentCommit(staging)
+		commit, err = GitGetCurrentCommit(context.Background(), staging)
 		if err != nil {
 			return nil, fmt.Errorf("failed to resolve commit for %s: %w", repo, err)
 		}
@@ -677,17 +678,15 @@ func (m *Manager) validateModule(modulePath, name string) error {
 // Supports formats:
 //   - github.com/user/repo
 //   - github.com/user/repo@v1.0.0
-//   - github.com/user/repo@main
+//   - https://user@github.com/user/repo@v1.0.0
+//   - ssh://git@github.com/user/repo@main
 //   - git@github.com:user/repo.git
 func ParseSource(source string) (repo, version string) {
-	// Check for @version suffix
-	if idx := strings.LastIndex(source, "@"); idx > 0 {
-		// Make sure @ is not part of git@ prefix
-		if !strings.HasPrefix(source, "git@") || strings.Count(source, "@") > 1 {
-			repo = source[:idx]
-			version = source[idx+1:]
-			return
-		}
+	// A version delimiter '@' always appears after the last path separator (and
+	// after ':' for SCP-style user@host:org/repo), never in URL/SSH userinfo.
+	lastSep := max(strings.LastIndex(source, "/"), strings.LastIndex(source, ":"))
+	if idx := strings.LastIndex(source, "@"); idx > 0 && idx > lastSep && idx < len(source)-1 {
+		return source[:idx], source[idx+1:]
 	}
 
 	return source, ""
@@ -759,6 +758,11 @@ func fileExists(path string) bool {
 		return false
 	}
 	return !info.IsDir()
+}
+
+// IsLocalPath reports whether source refers to a local filesystem path.
+func IsLocalPath(source string) bool {
+	return isLocalPath(source)
 }
 
 // isLocalPath returns true if source looks like a local filesystem path.

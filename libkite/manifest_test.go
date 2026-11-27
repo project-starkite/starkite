@@ -219,7 +219,7 @@ def deploy():
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	defer rt.Cleanup()
+	defer rt.Close()
 
 	err = rt.Execute(context.Background(), `load("./deployer", "deployer")`)
 	if err == nil {
@@ -245,7 +245,7 @@ def deploy():
 	if err != nil {
 		t.Fatalf("New granted: %v", err)
 	}
-	defer rtGranted.Cleanup()
+	defer rtGranted.Close()
 
 	err = rtGranted.Execute(context.Background(), `
 load("./deployer", "deployer")

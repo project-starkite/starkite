@@ -194,6 +194,7 @@ type RetryResult struct {
 	attempts int
 	elapsed  time.Duration
 	errors   []string
+	frozen   bool
 }
 
 var (
@@ -229,7 +230,10 @@ func (rr *RetryResult) String() string {
 
 func (rr *RetryResult) Type() string { return "RetryResult" }
 
-func (rr *RetryResult) Freeze() { rr.Result.Freeze() }
+func (rr *RetryResult) Freeze() {
+	rr.frozen = true
+	rr.Result.Freeze()
+}
 
 func (rr *RetryResult) Truth() starlark.Bool { return rr.Result.Truth() }
 
@@ -239,7 +243,7 @@ func (rr *RetryResult) Hash() (uint32, error) {
 
 func (rr *RetryResult) Attr(name string) (starlark.Value, error) {
 	switch name {
-	case "ok", "value", "error":
+	case "ok", "value", "error", "err":
 		return rr.Result.Attr(name)
 	case "attempts":
 		return starlark.MakeInt(rr.attempts), nil
@@ -250,12 +254,16 @@ func (rr *RetryResult) Attr(name string) (starlark.Value, error) {
 		for i, e := range rr.errors {
 			elems[i] = starlark.String(e)
 		}
-		return starlark.NewList(elems), nil
+		list := starlark.NewList(elems)
+		if rr.frozen {
+			list.Freeze()
+		}
+		return list, nil
 	default:
 		return nil, nil
 	}
 }
 
 func (rr *RetryResult) AttrNames() []string {
-	return []string{"attempts", "elapsed", "error", "errors", "ok", "value"}
+	return []string{"attempts", "elapsed", "err", "error", "errors", "ok", "value"}
 }

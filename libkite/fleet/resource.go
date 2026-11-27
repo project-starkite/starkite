@@ -3,6 +3,7 @@ package fleet
 import (
 	"fmt"
 	"maps"
+	"slices"
 	"strings"
 
 	"github.com/project-starkite/starkite/libkite"
@@ -22,37 +23,64 @@ type Resource struct {
 }
 
 // ToStarlarkDict converts the resource into a Starlark dictionary representation.
-func (r Resource) ToStarlarkDict() *starlark.Dict {
+func (r Resource) ToStarlarkDict() (*starlark.Dict, error) {
 	d := starlark.NewDict(6 + len(r.Labels) + len(r.Data))
 
-	// Data sub-dict and top-level typed values
+	// Data sub-dict and top-level typed values in deterministic key order.
 	dataDict := starlark.NewDict(len(r.Data))
-	for k, v := range r.Data {
+	for _, k := range slices.Sorted(maps.Keys(r.Data)) {
+		v := r.Data[k]
 		var starVal starlark.Value
-		if err := startype.Go(v).Starlark(&starVal); err == nil {
-			dataDict.SetKey(starlark.String(k), starVal)
-			d.SetKey(starlark.String(k), starVal)
+		if err := startype.Go(v).Starlark(&starVal); err != nil {
+			return nil, fmt.Errorf("fleet: resource data %q: %w", k, err)
+		}
+		if err := dataDict.SetKey(starlark.String(k), starVal); err != nil {
+			return nil, fmt.Errorf("fleet: set data key %q: %w", k, err)
+		}
+		if k == "data" || k == "labels" {
+			continue
+		}
+		if err := d.SetKey(starlark.String(k), starVal); err != nil {
+			return nil, fmt.Errorf("fleet: set key %q: %w", k, err)
 		}
 	}
-	d.SetKey(starlark.String("data"), dataDict)
+	if err := d.SetKey(starlark.String("data"), dataDict); err != nil {
+		return nil, fmt.Errorf("fleet: set data dict: %w", err)
+	}
 
 	// Labels sub-dict
 	labelDict := starlark.NewDict(len(r.Labels))
-	for k, v := range r.Labels {
-		labelDict.SetKey(starlark.String(k), starlark.String(v))
+	for _, k := range slices.Sorted(maps.Keys(r.Labels)) {
+		v := r.Labels[k]
+		if err := labelDict.SetKey(starlark.String(k), starlark.String(v)); err != nil {
+			return nil, fmt.Errorf("fleet: set label key %q: %w", k, err)
+		}
+		if k == "data" || k == "labels" {
+			continue
+		}
 		if _, found, _ := d.Get(starlark.String(k)); !found {
-			d.SetKey(starlark.String(k), starlark.String(v))
+			if err := d.SetKey(starlark.String(k), starlark.String(v)); err != nil {
+				return nil, fmt.Errorf("fleet: set label field %q: %w", k, err)
+			}
 		}
 	}
-	d.SetKey(starlark.String("labels"), labelDict)
+	if err := d.SetKey(starlark.String("labels"), labelDict); err != nil {
+		return nil, fmt.Errorf("fleet: set labels dict: %w", err)
+	}
 
 	// Core top-level fields
-	d.SetKey(starlark.String("id"), starlark.String(r.ID))
-	d.SetKey(starlark.String("name"), starlark.String(r.Name))
-	d.SetKey(starlark.String("kind"), starlark.String(r.Kind))
-	d.SetKey(starlark.String("address"), starlark.String(r.Address))
+	for _, kv := range [][2]string{
+		{"id", r.ID},
+		{"name", r.Name},
+		{"kind", r.Kind},
+		{"address", r.Address},
+	} {
+		if err := d.SetKey(starlark.String(kv[0]), starlark.String(kv[1])); err != nil {
+			return nil, fmt.Errorf("fleet: set %q: %w", kv[0], err)
+		}
+	}
 
-	return d
+	return d, nil
 }
 
 // NormalizeResource converts arbitrary map or string data into a normalized Resource.

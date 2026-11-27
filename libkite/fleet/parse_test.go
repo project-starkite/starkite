@@ -112,6 +112,14 @@ func TestFromFile(t *testing.T) {
 		t.Errorf("unexpected json file result: %+v", fj.resources)
 	}
 
+	badJSONPath := filepath.Join(tmpDir, "invalid.json")
+	if err := os.WriteFile(badJSONPath, []byte("name: not-json\naddress: 2.2.2.2\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := FromFile(badJSONPath); err == nil {
+		t.Error("expected error for invalid .json file instead of YAML fallback")
+	}
+
 	// 3. Hosts File (POSIX /etc/hosts format)
 	hostsPath := filepath.Join(tmpDir, "hosts")
 	hostsContent := `# Localhost
@@ -176,7 +184,7 @@ func FuzzFleetParse(f *testing.F) {
 		if err1 == nil {
 			// Invariant 2: Resulting fleet methods must never panic
 			_ = f1.Resources()
-			_ = f1.toStarlarkList()
+			_, _ = f1.toStarlarkList()
 			_ = f1.String()
 			_ = f1.Truth()
 		}

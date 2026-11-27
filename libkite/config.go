@@ -13,10 +13,6 @@ type Config struct {
 	// If nil, all operations are allowed (trusted mode for CLI tools).
 	Permissions *PermissionConfig
 
-	// Modules specifies which modules to enable.
-	// If nil, all registered modules are enabled.
-	Modules []string
-
 	// Globals are variables injected into every script.
 	Globals map[string]any
 
@@ -44,9 +40,6 @@ type Config struct {
 
 	// DryRun simulates operations without making changes.
 	DryRun bool
-
-	// OutputFormat specifies the output format: text, json, yaml, table.
-	OutputFormat string
 
 	// TestMode enables test mode (for test_* functions).
 	TestMode bool
@@ -138,13 +131,6 @@ func WithSandboxed() ConfigOption {
 	}
 }
 
-// WithModules sets which modules to enable.
-func WithModules(modules ...string) ConfigOption {
-	return func(c *Config) {
-		c.Modules = modules
-	}
-}
-
 // WithGlobals sets global variables.
 func WithGlobals(globals map[string]any) ConfigOption {
 	return func(c *Config) {
@@ -194,13 +180,6 @@ func WithDryRun(dryRun bool) ConfigOption {
 	}
 }
 
-// WithOutputFormat sets the output format.
-func WithOutputFormat(format string) ConfigOption {
-	return func(c *Config) {
-		c.OutputFormat = format
-	}
-}
-
 // WithTestMode enables test mode.
 func WithTestMode(testMode bool) ConfigOption {
 	return func(c *Config) {
@@ -231,9 +210,7 @@ func WithLogger(l *slog.Logger) ConfigOption {
 
 // NewConfig creates a new Config with the given options.
 func NewConfig(opts ...ConfigOption) *Config {
-	cfg := &Config{
-		OutputFormat: "text",
-	}
+	cfg := &Config{}
 	for _, opt := range opts {
 		opt(cfg)
 	}

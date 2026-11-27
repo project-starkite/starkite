@@ -1,6 +1,8 @@
 package varstore
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
@@ -315,5 +317,82 @@ func TestLoadFromCLI_JSONDetection(t *testing.T) {
 	}
 	if name != "myapp" {
 		t.Fatalf("expected 'myapp', got %v", name)
+	}
+}
+
+func TestVars_MergeSandboxProfilesAndCloneIsolation(t *testing.T) {
+	homeDir := t.TempDir()
+	workDir := t.TempDir()
+	t.Setenv("HOME", homeDir)
+	t.Setenv("USERPROFILE", homeDir)
+
+	userCfgDir := filepath.Join(homeDir, ".starkite")
+	if err := os.MkdirAll(userCfgDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	userYAML := `
+config:
+  labels:
+    owner: user
+sandbox:
+  enabled: false
+  profiles:
+    user-only:
+      network: host
+    shared:
+      network: none
+`
+	if err := os.WriteFile(filepath.Join(userCfgDir, "config.yaml"), []byte(userYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	localYAML := `
+config:
+  labels:
+    env: dev
+sandbox:
+  profiles:
+    shared:
+      network: loopback
+`
+	if err := os.WriteFile(filepath.Join(workDir, "config.yaml"), []byte(localYAML), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	origWD, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(workDir); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWD) })
+
+	v := New()
+	if err := v.LoadDefaults(); err != nil {
+		t.Fatalf("LoadDefaults: %v", err)
+	}
+	if v.Sandbox == nil {
+		t.Fatal("expected merged Sandbox config")
+	}
+	if v.Sandbox.Enabled {
+		t.Errorf("local config without explicit enabled key should preserve user enabled=false")
+	}
+	if _, ok := v.Sandbox.Profiles["user-only"]; !ok {
+		t.Errorf("expected user-only sandbox profile to be preserved across local config merge")
+	}
+	if got := v.Sandbox.Profiles["shared"].Network.Mode; got != "loopback" {
+		t.Errorf("expected local profile override network=loopback, got %q", got)
+	}
+
+	// Verify Get returns isolated clones of nested maps.
+	gotRaw, ok := v.Get("labels")
+	if !ok {
+		t.Fatal("expected labels map")
+	}
+	gotMap := gotRaw.(map[string]any)
+	gotMap["env"] = "mutated"
+	againRaw, _ := v.Get("labels")
+	if againRaw.(map[string]any)["env"] != "dev" {
+		t.Errorf("Vars.Get leaked mutable internal map")
 	}
 }

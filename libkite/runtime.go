@@ -26,6 +26,9 @@ const runtimeKey = "libkite.runtime"
 // threadCtxKey is the thread.Local key for a per-thread context override.
 const threadCtxKey = "libkite.ctx"
 
+// callLockHeldKey tracks whether the current Starlark thread already holds the runtime call lock.
+const callLockHeldKey = "libkite.call_lock_held"
+
 // Runtime executes Starlark code with configured modules and permissions.
 type Runtime struct {
 	config      *Config
@@ -46,6 +49,8 @@ type Runtime struct {
 	// Signal handling
 	signalHandlers map[string]starlark.Callable
 	signalChan     chan os.Signal
+	signalWG       sync.WaitGroup
+	receivedSignal os.Signal
 	signalMu       sync.RWMutex
 
 	// Deferred functions
@@ -116,11 +121,6 @@ func New(config *Config) (*Runtime, error) {
 		config = &Config{}
 	}
 
-	// Set defaults
-	if config.OutputFormat == "" {
-		config.OutputFormat = "text"
-	}
-
 	ctx, cancel := context.WithCancel(context.Background())
 
 	rt := &Runtime{
@@ -185,6 +185,7 @@ func New(config *Config) (*Runtime, error) {
 		sv, err := toStarlarkValue(v)
 		if err != nil {
 			cancel()
+			rt.registry.Close()
 			return nil, fmt.Errorf("invalid global %q: %w", k, err)
 		}
 		rt.globals[k] = sv
@@ -217,9 +218,6 @@ func New(config *Config) (*Runtime, error) {
 		RawArgs:    config.ScriptArgs,
 		ScriptPath: config.ScriptPath,
 	})
-
-	// Set up signal handling
-	rt.setupSignalHandling()
 
 	return rt, nil
 }
@@ -308,6 +306,15 @@ func (rt *Runtime) NewThread(name string) *starlark.Thread {
 	})
 
 	return thread
+}
+
+// snapshotPredecl returns a shallow clone of rt.predecl under a read lock.
+func (rt *Runtime) snapshotPredecl() starlark.StringDict {
+	rt.mu.RLock()
+	defer rt.mu.RUnlock()
+	out := make(starlark.StringDict, len(rt.predecl))
+	maps.Copy(out, rt.predecl)
+	return out
 }
 
 // Thread returns the primary Starlark thread of the runtime.
@@ -434,20 +441,45 @@ func WatchContext(ctx context.Context, thread *starlark.Thread) func() {
 
 var fallbackCallMu sync.Mutex
 
+// WithCallLock executes fn while holding the runtime call lock for thread
+// (reentrantly on the same thread so nested middleware or callback invocations
+// never self-deadlock).
+func WithCallLock(thread *starlark.Thread, fn func() error) error {
+	if thread != nil {
+		if held, _ := thread.Local(callLockHeldKey).(bool); held {
+			return fn()
+		}
+	}
+
+	mu := &fallbackCallMu
+	if rt := GetRuntime(thread); rt != nil {
+		mu = &rt.callMu
+	}
+	mu.Lock()
+	defer mu.Unlock()
+
+	if thread != nil {
+		prevHeld := thread.Local(callLockHeldKey)
+		thread.SetLocal(callLockHeldKey, true)
+		defer thread.SetLocal(callLockHeldKey, prevHeld)
+	}
+	return fn()
+}
+
 // CallSafe invokes a Starlark callable on thread, serializing non-Builtin
 // callables via the runtime's callMu so concurrent callbacks (such as HTTP,
 // webhook, controller, or MCP handlers) cannot race on shared Starlark state.
 func CallSafe(thread *starlark.Thread, fn starlark.Callable, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if _, isBuiltin := fn.(*starlark.Builtin); !isBuiltin {
-		if rt := GetRuntime(thread); rt != nil {
-			rt.callMu.Lock()
-			defer rt.callMu.Unlock()
-		} else {
-			fallbackCallMu.Lock()
-			defer fallbackCallMu.Unlock()
-		}
+	if _, isBuiltin := fn.(*starlark.Builtin); isBuiltin {
+		return starlark.Call(thread, fn, args, kwargs)
 	}
-	return starlark.Call(thread, fn, args, kwargs)
+	var res starlark.Value
+	var err error
+	_ = WithCallLock(thread, func() error {
+		res, err = starlark.Call(thread, fn, args, kwargs)
+		return err
+	})
+	return res, err
 }
 
 // Execute runs a script. The ctx parameter cancels a running script: when
@@ -491,16 +523,17 @@ func (rt *Runtime) Execute(ctx context.Context, code string) error {
 	thread := rt.thread
 	rt.mu.Unlock()
 
-	stop := watchCtx(execCtx, thread)
-	defer stop()
+	predecl := rt.snapshotPredecl()
 
-	prog, err := starlark.FileProgram(file, rt.predecl.Has)
+	stop := watchCtx(execCtx, thread)
+	prog, err := starlark.FileProgram(file, predecl.Has)
 	if err != nil {
+		stop()
 		return err
 	}
 
 	// Init runs the top-level code and returns the (unfrozen) globals.
-	globals, err := prog.Init(thread, rt.predecl)
+	globals, err := prog.Init(thread, predecl)
 
 	// Auto-invoke the entry point before the globals freeze, so it observes the
 	// same mutable top-level state an explicit call would. Skipped when the
@@ -516,8 +549,16 @@ func (rt *Runtime) Execute(ctx context.Context, code string) error {
 			}
 		}
 	}
+	stop()
 
 	globals.Freeze()
+
+	// Drain signal listener deterministically before invoking Starlark signal and defer hooks.
+	rt.stopSignalHandling()
+	receivedSig := rt.takeReceivedSignal()
+	if receivedSig != nil {
+		rt.runSignalHandler(receivedSig)
+	}
 
 	// Run deferred functions in LIFO order
 	rt.runDeferred()
@@ -529,10 +570,16 @@ func (rt *Runtime) Execute(ctx context.Context, code string) error {
 			}
 			return nil
 		}
-		if evalErr, ok := err.(*starlark.EvalError); ok {
+		if sigCode := signalExitCode(receivedSig); sigCode != 0 {
+			return &ExitError{Code: sigCode}
+		}
+		if evalErr, ok := errors.AsType[*starlark.EvalError](err); ok {
 			return NewScriptError("script error", ExitScriptError, evalErr)
 		}
 		return err
+	}
+	if sigCode := signalExitCode(receivedSig); sigCode != 0 {
+		return &ExitError{Code: sigCode}
 	}
 
 	return nil
@@ -591,6 +638,8 @@ func (rt *Runtime) ExecuteRepl(ctx context.Context, code string) error {
 	thread := rt.thread
 	rt.mu.Unlock()
 
+	predecl := rt.snapshotPredecl()
+
 	stop := watchCtx(execCtx, thread)
 	defer stop()
 
@@ -599,7 +648,7 @@ func (rt *Runtime) ExecuteRepl(ctx context.Context, code string) error {
 		thread,
 		"<repl>",
 		code,
-		rt.predecl,
+		predecl,
 	)
 
 	if err != nil {
@@ -677,10 +726,7 @@ func (rt *Runtime) Eval(ctx context.Context, src string) (starlark.Value, error)
 			return nil, err
 		}
 	}
-	rt.mu.RLock()
-	env := make(starlark.StringDict, len(rt.predecl))
-	maps.Copy(env, rt.predecl)
-	rt.mu.RUnlock()
+	env := rt.snapshotPredecl()
 	thread := rt.NewThread("eval")
 	if ctx != nil {
 		SetThreadContext(thread, ctx)
@@ -735,13 +781,19 @@ func watchCtx(ctx context.Context, thread *starlark.Thread) func() {
 	if ctx == nil || thread == nil || ctx.Done() == nil {
 		return func() {}
 	}
-	if err := ctx.Err(); err != nil {
-		thread.Cancel(err.Error())
-		if rt := GetRuntime(thread); rt != nil {
+	rt := GetRuntime(thread)
+	markPrimaryCancelled := func() {
+		if rt != nil {
 			rt.mu.Lock()
-			rt.threadCancelled = true
+			if rt.thread == thread {
+				rt.threadCancelled = true
+			}
 			rt.mu.Unlock()
 		}
+	}
+	if err := ctx.Err(); err != nil {
+		thread.Cancel(err.Error())
+		markPrimaryCancelled()
 		return func() {}
 	}
 	done := make(chan struct{})
@@ -757,11 +809,7 @@ func watchCtx(ctx context.Context, thread *starlark.Thread) func() {
 				return
 			default:
 				thread.Cancel(ctx.Err().Error())
-				if rt := GetRuntime(thread); rt != nil {
-					rt.mu.Lock()
-					rt.threadCancelled = true
-					rt.mu.Unlock()
-				}
+				markPrimaryCancelled()
 			}
 		}
 	}()
@@ -833,13 +881,15 @@ func (rt *Runtime) ExecuteTestsWithConfig(ctx context.Context, code string, cfg 
 	thread := rt.thread
 	rt.mu.Unlock()
 
+	predecl := rt.snapshotPredecl()
+
 	stop := watchCtx(execCtx, thread)
 	globals, err := starlark.ExecFileOptions(
 		&syntax.FileOptions{},
 		thread,
 		scriptPath,
 		code,
-		rt.predecl,
+		predecl,
 	)
 	stop()
 
@@ -896,12 +946,17 @@ func (rt *Runtime) runTest(ctx context.Context, name string, fn, setupFn, teardo
 
 	// Run setup if defined
 	if setupFn != nil {
-		if _, err := starlark.Call(rt.thread, setupFn, nil, nil); err != nil {
+		setupThread := rt.NewThread("setup:" + name)
+		SetThreadContext(setupThread, ctx)
+		stopSetup := watchCtx(ctx, setupThread)
+		_, setupErr := CallSafe(setupThread, setupFn, nil, nil)
+		stopSetup()
+		if setupErr != nil {
 			return TestResult{
 				Name:     name,
 				Passed:   false,
 				Duration: time.Since(start),
-				Error:    fmt.Errorf("setup failed: %w", err),
+				Error:    fmt.Errorf("setup failed: %w", setupErr),
 			}
 		}
 	}
@@ -910,12 +965,23 @@ func (rt *Runtime) runTest(ctx context.Context, name string, fn, setupFn, teardo
 	testThread := rt.NewThread("test:" + name)
 	SetThreadContext(testThread, ctx)
 	stopWatch := watchCtx(ctx, testThread)
-	_, err := starlark.Call(testThread, fn, nil, nil)
+	_, err := CallSafe(testThread, fn, nil, nil)
 	stopWatch()
 
-	// Run teardown if defined (always runs, even if test failed)
+	// Run teardown if defined (always runs, even if test failed or ctx timed out)
 	if teardownFn != nil {
-		if _, teardownErr := starlark.Call(rt.thread, teardownFn, nil, nil); teardownErr != nil {
+		baseCtx := ctx
+		if baseCtx == nil {
+			baseCtx = context.Background()
+		}
+		tdCtx, tdCancel := context.WithTimeout(context.WithoutCancel(baseCtx), 30*time.Second)
+		tdThread := rt.NewThread("teardown:" + name)
+		SetThreadContext(tdThread, tdCtx)
+		stopTD := watchCtx(tdCtx, tdThread)
+		_, teardownErr := CallSafe(tdThread, teardownFn, nil, nil)
+		stopTD()
+		tdCancel()
+		if teardownErr != nil {
 			// If test passed but teardown failed, report teardown error
 			if err == nil {
 				err = fmt.Errorf("teardown failed: %w", teardownErr)
@@ -933,7 +999,7 @@ func (rt *Runtime) runTest(ctx context.Context, name string, fn, setupFn, teardo
 				Error:    fmt.Errorf("test called exit(%d): %w", exitCode, &ExitError{Code: exitCode}),
 			}
 		}
-		if skipErr, ok := err.(*SkipError); ok {
+		if skipErr, ok := errors.AsType[*SkipError](err); ok {
 			return TestResult{
 				Name:     name,
 				Passed:   true,
@@ -996,11 +1062,6 @@ func (rt *Runtime) Close() {
 	rt.stopSignalHandling()
 	rt.runGoCleanups()
 	rt.registry.Close()
-}
-
-// Cleanup is an alias for Close (for backward compatibility).
-func (rt *Runtime) Cleanup() {
-	rt.Close()
 }
 
 // toStarlarkValue converts a Go value to a Starlark value.

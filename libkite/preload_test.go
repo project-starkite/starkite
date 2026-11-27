@@ -129,7 +129,7 @@ def main():
 	if err != nil {
 		t.Fatalf("New(cfg): %v", err)
 	}
-	defer rt.Cleanup()
+	defer rt.Close()
 
 	mainContent, err := os.ReadFile(mainPath)
 	if err != nil {
@@ -154,7 +154,7 @@ def main():
 	if err != nil {
 		t.Fatalf("New(cfgNoPreload): %v", err)
 	}
-	defer rtNoPreload.Cleanup()
+	defer rtNoPreload.Close()
 
 	if err := rtNoPreload.Execute(context.Background(), string(mainContent)); err == nil {
 		t.Errorf("expected execution without preloaded closure to fail since helper.star was deleted")

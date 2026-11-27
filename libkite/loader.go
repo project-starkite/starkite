@@ -1,6 +1,7 @@
 package libkite
 
 import (
+	"context"
 	"fmt"
 	"maps"
 	"os"
@@ -11,6 +12,14 @@ import (
 	"go.starlark.net/starlarkstruct"
 	"go.starlark.net/syntax"
 )
+
+const loadingModulesKey = "libkite.loadingModules"
+
+func cloneLoadingSet(m map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(m)+1)
+	maps.Copy(out, m)
+	return out
+}
 
 // loadModule handles load() statements in scripts.
 // When loading external modules, the module's public exports are wrapped in a
@@ -26,67 +35,83 @@ func (rt *Runtime) loadModule(thread *starlark.Thread, module string) (starlark.
 		return starlark.StringDict{module: val}, nil
 	}
 
-	// Get the caller's path from the thread for relative path resolution
-	callerPath := thread.Name
+	callerPath := ""
+	var ctx context.Context
+	var parentLoading map[string]bool
+	if thread != nil {
+		callerPath = thread.Name
+		ctx = ThreadContext(thread)
+		parentLoading, _ = thread.Local(loadingModulesKey).(map[string]bool)
+	}
+	if ctx == nil {
+		ctx = rt.Context()
+	}
 
-	// Try to resolve and load as an external module
-	return rt.loadExternalModuleFrom(module, nil, callerPath)
-}
-
-// loadExternalModule loads an external .star module with optional configuration.
-// Returns exports wrapped in a module struct under the module name.
-func (rt *Runtime) loadExternalModule(module string, config *starlark.Dict) (starlark.StringDict, error) {
-	return rt.loadExternalModuleFrom(module, config, "")
+	return rt.loadExternalModuleFrom(module, nil, callerPath, ctx, parentLoading)
 }
 
 // loadExternalModuleFrom loads an external module with a caller path for relative resolution.
-func (rt *Runtime) loadExternalModuleFrom(module string, config *starlark.Dict, callerPath string) (starlark.StringDict, error) {
+func (rt *Runtime) loadExternalModuleFrom(
+	module string,
+	config *starlark.Dict,
+	callerPath string,
+	ctx context.Context,
+	parentLoading map[string]bool,
+) (starlark.StringDict, error) {
+	if ctx == nil {
+		ctx = rt.Context()
+	}
+
 	// Resolve the module path
 	modulePath, err := rt.resolveModulePathFrom(module, callerPath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot load module %s: %w", module, err)
 	}
 
-	// Check cache first
-	if cached, ok := rt.moduleCache.Get(modulePath); ok {
-		return cached, nil
-	}
-
-	// Check for circular dependencies
-	if !rt.moduleCache.StartLoading(modulePath) {
+	// Check per-thread load stack before joining cache to prevent self-deadlock on cycles.
+	if parentLoading[modulePath] {
 		return nil, fmt.Errorf("circular dependency detected loading module %s", module)
 	}
 
-	// Load the module (may be single file or multi-file). The origin labels the
-	// module thread so a denial inside it is attributed to this module.
-	exports, err := rt.loadModuleFromPath(modulePath, config, deriveModuleName(module, modulePath))
+	cached, owner, finish, err := rt.moduleCache.loadOrJoin(ctx, modulePath)
 	if err != nil {
-		rt.moduleCache.StopLoading(modulePath)
 		return nil, err
 	}
+	if !owner {
+		return cached, nil
+	}
 
-	// Filter out private symbols (those starting with _)
-	publicExports := filterPrivateSymbols(exports)
+	var result starlark.StringDict
+	var loadErr error
+	defer func() {
+		if r := recover(); r != nil {
+			loadErr = fmt.Errorf("panic loading module %s: %v", module, r)
+			finish(nil, loadErr)
+			panic(r)
+		}
+		finish(result, loadErr)
+	}()
 
-	// Determine the module name from the path
+	// Load the module (may be single file or multi-file). The origin labels the
+	// module thread so a denial inside it is attributed to this module.
 	moduleName := deriveModuleName(module, modulePath)
+	var exports starlark.StringDict
+	exports, loadErr = rt.loadModuleFromPath(modulePath, config, moduleName, ctx, parentLoading)
+	if loadErr != nil {
+		return nil, loadErr
+	}
 
-	// Wrap all exports in a module struct so they can be accessed as module.function()
-	// This allows: load("./path.star", "alias") -> alias.func()
+	// Filter out private symbols (those starting with _) and freeze exports before sharing.
+	publicExports := filterPrivateSymbols(exports)
 	moduleStruct := &starlarkstruct.Module{
 		Name:    moduleName,
 		Members: publicExports,
 	}
 
-	// Return the module struct under its name - this is what gets bound to the
-	// identifier in the load() statement
-	result := starlark.StringDict{
+	result = starlark.StringDict{
 		moduleName: moduleStruct,
 	}
-
-	// Cache the wrapped module
-	rt.moduleCache.Set(modulePath, result)
-
+	result.Freeze()
 	return result, nil
 }
 
@@ -113,11 +138,6 @@ func deriveModuleName(module, modulePath string) string {
 	}
 	// Single file: remove .star extension
 	return strings.TrimSuffix(base, ".star")
-}
-
-// resolveModulePath resolves a module name to an absolute path.
-func (rt *Runtime) resolveModulePath(module string) (string, error) {
-	return rt.resolveModulePathFrom(module, "")
 }
 
 // resolveModulePathFrom resolves a module reference to its directory or file.
@@ -231,12 +251,6 @@ func (rt *Runtime) resolveInstalledModule(module string) (string, error) {
 	}
 }
 
-// resolvePath resolves an explicit path relative to the current script or working directory.
-// If callerPath is provided, relative paths are resolved relative to it first.
-func (rt *Runtime) resolvePath(path string) (string, error) {
-	return rt.resolvePathFrom(path, "")
-}
-
 // resolvePathFrom resolves a path relative to a given caller path.
 func (rt *Runtime) resolvePathFrom(path, callerPath string) (string, error) {
 	if filepath.IsAbs(path) {
@@ -281,46 +295,62 @@ func (rt *Runtime) resolvePathFrom(path, callerPath string) (string, error) {
 
 // loadModuleFromPath loads a module from a resolved path. A directory is a
 // module (manifest + .star files); a .star file is an intra-module file load.
-func (rt *Runtime) loadModuleFromPath(modulePath string, config *starlark.Dict, origin string) (starlark.StringDict, error) {
+func (rt *Runtime) loadModuleFromPath(
+	modulePath string,
+	config *starlark.Dict,
+	origin string,
+	ctx context.Context,
+	loading map[string]bool,
+) (starlark.StringDict, error) {
 	if rt.isSourceModuleDir(modulePath) {
-		return rt.loadModuleDir(modulePath, config, origin)
+		return rt.loadModuleDir(modulePath, config, origin, ctx, loading)
 	}
 
 	info, err := os.Stat(modulePath)
 	if err == nil && info.IsDir() {
-		return rt.loadModuleDir(modulePath, config, origin)
+		return rt.loadModuleDir(modulePath, config, origin, ctx, loading)
 	}
 
 	// A bare .star file reached here only via an intra-module relative load
 	// (a module's own files loading each other); load it as a single file.
-	return rt.loadSingleFileModule(modulePath, config, origin)
+	return rt.loadSingleFileModule(modulePath, config, origin, ctx, loading)
 }
 
 // loadSingleFileModule loads a single .star file. origin labels the module
 // thread for denial attribution.
-func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict, origin string) (starlark.StringDict, error) {
+func (rt *Runtime) loadSingleFileModule(
+	filePath string,
+	config *starlark.Dict,
+	origin string,
+	ctx context.Context,
+	loading map[string]bool,
+) (starlark.StringDict, error) {
+	if loading[filePath] {
+		return nil, fmt.Errorf("circular dependency detected loading module %s", filePath)
+	}
+	fileLoading := cloneLoadingSet(loading)
+	fileLoading[filePath] = true
+
 	data, err := rt.readSourceFile(filePath)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read module file: %w", err)
 	}
 
+	if ctx == nil {
+		ctx = rt.Context()
+	}
+
 	// Build predeclared symbols for the module
 	predecl := rt.buildModulePredeclared(config)
 
-	// Create a new thread for the module
-	moduleThread := &starlark.Thread{
-		Name: filePath,
-		Load: rt.loadModule,
-		Print: func(thread *starlark.Thread, msg string) {
-			fmt.Println(msg)
-		},
-	}
-
-	// Propagate permissions to module thread; label it for denial attribution.
-	if rt.permissions != nil {
-		SetPermissions(moduleThread, rt.permissions)
-	}
+	// Inherit runtime print, cleanup registration, permissions, script args, and context.
+	moduleThread := rt.NewThread(filePath)
+	SetThreadContext(moduleThread, ctx)
 	SetModuleOrigin(moduleThread, origin)
+	moduleThread.SetLocal(loadingModulesKey, fileLoading)
+
+	stop := watchCtx(ctx, moduleThread)
+	defer stop()
 
 	globals, err := starlark.ExecFileOptions(
 		&syntax.FileOptions{},
@@ -339,7 +369,13 @@ func (rt *Runtime) loadSingleFileModule(filePath string, config *starlark.Dict, 
 // loadModuleDir loads a module directory: a required mod.yaml manifest plus
 // one or more .star files. The manifest's entry file loads first; the public
 // symbols of every other .star file in the directory merge into the module.
-func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict, origin string) (starlark.StringDict, error) {
+func (rt *Runtime) loadModuleDir(
+	dirPath string,
+	config *starlark.Dict,
+	origin string,
+	ctx context.Context,
+	loading map[string]bool,
+) (starlark.StringDict, error) {
 	manifestPath := filepath.Join(dirPath, ManifestFile)
 	manifestData, err := rt.readSourceFile(manifestPath)
 	if err != nil {
@@ -368,7 +404,10 @@ func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict, origin s
 		return nil, fmt.Errorf("module %q is missing its %s entry file", m.Name, EntryFile)
 	}
 
-	globals, err := rt.loadSingleFileModule(entryPath, config, origin)
+	dirLoading := cloneLoadingSet(loading)
+	dirLoading[dirPath] = true
+
+	globals, err := rt.loadSingleFileModule(entryPath, config, origin, ctx, dirLoading)
 	if err != nil {
 		return nil, err
 	}
@@ -383,7 +422,7 @@ func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict, origin s
 			continue
 		}
 
-		additionalGlobals, err := rt.loadSingleFileModule(fullPath, config, origin)
+		additionalGlobals, err := rt.loadSingleFileModule(fullPath, config, origin, ctx, dirLoading)
 		if err != nil {
 			return nil, fmt.Errorf("error loading %s: %w", fullPath, err)
 		}
@@ -399,10 +438,7 @@ func (rt *Runtime) loadModuleDir(dirPath string, config *starlark.Dict, origin s
 
 // buildModulePredeclared builds predeclared symbols for a module.
 func (rt *Runtime) buildModulePredeclared(config *starlark.Dict) starlark.StringDict {
-	predecl := make(starlark.StringDict, len(rt.predecl)+1)
-
-	// Copy all predeclared symbols
-	maps.Copy(predecl, rt.predecl)
+	predecl := rt.snapshotPredecl()
 
 	// Add _config if provided
 	if config != nil {

@@ -111,3 +111,64 @@ func TestAttrDictSetKeyAndFreeze(t *testing.T) {
 		t.Fatalf("expected error mentioning frozen, got %v", err)
 	}
 }
+
+func TestAttrDict_ChildFreezeToMapIsolationAndToDict(t *testing.T) {
+	orig := map[string]any{
+		"nested": map[string]any{"k": "v"},
+		"tags":   []any{"a", "b"},
+		"get":    "collide",
+	}
+	ad := NewAttrDict(orig)
+
+	// Grab child AttrDict view before freezing parent.
+	subVal, err := ad.Attr("nested")
+	if err != nil {
+		t.Fatalf("Attr(nested): %v", err)
+	}
+	sub := subVal.(*AttrDict)
+
+	// Mutating ToMap() clone must not leak into ad.
+	cloned := ad.ToMap()
+	cloned["nested"].(map[string]any)["k"] = "mutated"
+	if got, _ := sub.GetField("k"); got != "v" {
+		t.Fatalf("ToMap leaked internal mutable map: got %v, want v", got)
+	}
+
+	// Freezing parent must prevent mutating pre-existing child AttrDict view.
+	ad.Freeze()
+	if err := sub.SetKey(starlark.String("k"), starlark.String("hacked")); err == nil {
+		t.Fatalf("expected child AttrDict view to reject mutation after parent Freeze")
+	}
+
+	// Returned list on frozen AttrDict must also be frozen.
+	listVal, err := ad.Attr("tags")
+	if err != nil {
+		t.Fatalf("Attr(tags): %v", err)
+	}
+	if err := listVal.(*starlark.List).Append(starlark.String("c")); err == nil {
+		t.Fatalf("expected list inside frozen AttrDict to be frozen")
+	}
+
+	// ToDict must always return a non-nil *starlark.Dict.
+	dict := ad.ToDict()
+	if dict == nil || dict.Len() != 3 {
+		t.Fatalf("unexpected ToDict(): %v", dict)
+	}
+
+	// AttrNames must deduplicate method names colliding with data keys.
+	var getCount int
+	for _, n := range ad.AttrNames() {
+		if n == "get" {
+			getCount++
+		}
+	}
+	if getCount != 1 {
+		t.Fatalf("expected deduplicated AttrNames for 'get', got count=%d", getCount)
+	}
+
+	// Methods reject unexpected args.
+	keysFn, _ := ad.Attr("keys")
+	if _, callErr := starlark.Call(&starlark.Thread{}, keysFn, starlark.Tuple{starlark.MakeInt(1)}, nil); callErr == nil {
+		t.Fatalf("expected keys(1) to error on unexpected positional arg")
+	}
+}

@@ -76,14 +76,13 @@ func startRepl(cmd *cobra.Command, args []string) error {
 
 	// Create runtime configuration
 	cfg := &libkite.Config{
-		ScriptPath:   "<repl>",
-		OutputFormat: outputFormat,
-		Debug:        debugMode,
-		DryRun:       dryRun,
-		VarStore:     varStore,
-		Permissions:  perms,
-		Registry:     registry,
-		Env:          envMap,
+		ScriptPath:  "<repl>",
+		Debug:       debugMode,
+		DryRun:      dryRun,
+		VarStore:    varStore,
+		Permissions: perms,
+		Registry:    registry,
+		Env:         envMap,
 	}
 
 	// Create runtime
@@ -91,7 +90,7 @@ func startRepl(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to create runtime: %w", err)
 	}
-	defer rt.Cleanup()
+	defer rt.Close()
 
 	// Print welcome message
 	fmt.Printf("starkite %s - Starlark Controller\n", version.Version)

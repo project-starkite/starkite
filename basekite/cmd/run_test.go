@@ -196,7 +196,7 @@ func TestScriptArgsIntegrationWithRuntime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create runtime: %v", err)
 	}
-	defer rt.Cleanup()
+	defer rt.Close()
 
 	script := `check_args()`
 	if err := rt.Execute(context.Background(), script); err != nil {
@@ -232,7 +232,7 @@ func TestScriptArgsEndToEndWithArgsModule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("libkite.New error: %v", err)
 	}
-	defer rt.Cleanup()
+	defer rt.Close()
 
 	script := `
 args.string("action", default="install")
@@ -261,7 +261,7 @@ func TestUnhandledArgumentsStrictCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to create runtime: %v", err)
 	}
-	defer rt.Cleanup()
+	defer rt.Close()
 
 	script := `print("doing simple task without args.parse")`
 	if err := rt.Execute(context.Background(), script); err != nil {

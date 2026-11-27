@@ -656,11 +656,6 @@ def append_item(items, x):
 }
 
 func TestRuntime_Execute_PropagatesContextToRuntimeContext(t *testing.T) {
-	rt := newTrustedRT(t)
-	ctx, cancel := context.WithCancel(context.Background())
-
-	sawCanceled := make(chan bool, 1)
-	rt.thread.SetLocal("test_check_ctx", nil)
 	reg := NewRegistry(&ModuleConfig{})
 	rt, err := NewTrusted(nil, WithRegistry(reg))
 	if err != nil {
@@ -668,10 +663,21 @@ func TestRuntime_Execute_PropagatesContextToRuntimeContext(t *testing.T) {
 	}
 	defer rt.Close()
 
+	rt.predecl["get_ctx_cancelled"] = starlark.NewBuiltin("get_ctx_cancelled", func(thread *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
+		c := ThreadContext(thread)
+		if c == nil {
+			t.Fatal("expected non-nil ThreadContext inside Execute")
+		}
+		return starlark.Bool(c.Err() != nil), nil
+	})
+
+	if err := rt.Execute(context.Background(), `assert_not_cancelled = get_ctx_cancelled()`); err != nil {
+		t.Fatalf("Execute with active ctx failed: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := rt.Execute(ctx, `x = 1`); err == nil {
 		t.Fatal("expected canceled context error from Execute")
 	}
-	close(sawCanceled)
-	<-sawCanceled
 }

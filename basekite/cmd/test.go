@@ -286,7 +286,6 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 	// Create runtime configuration
 	cfg := &libkite.Config{
 		ScriptPath:    testFile,
-		OutputFormat:  "text",
 		Debug:         debugMode,
 		DryRun:        dryRun,
 		VarStore:      varStore,
@@ -308,7 +307,7 @@ func runTestFile(testFile string, perms *libkite.PermissionConfig, varStore *var
 			Error:  fmt.Sprintf("failed to create runtime: %v", err),
 		}}
 	}
-	defer rt.Cleanup()
+	defer rt.Close()
 
 	ctx, cancel := execContext(timeout)
 	defer cancel()

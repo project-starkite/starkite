@@ -202,7 +202,6 @@ func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.Per
 	// Create runtime configuration
 	cfg := &libkite.Config{
 		ScriptPath:        scriptPath,
-		OutputFormat:      outputFormat,
 		Debug:             debugMode,
 		DryRun:            dryRun,
 		VarStore:          varStore,
@@ -222,7 +221,6 @@ func runWatchedScript(ctx context.Context, scriptPath string, perms *libkite.Per
 		return
 	}
 	defer rt.Close()
-	defer rt.Cleanup()
 
 	execCtx, cancel := execContext(timeout)
 	defer cancel()

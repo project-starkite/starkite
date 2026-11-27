@@ -2,9 +2,11 @@ package libkite
 
 import (
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/vladimirvivien/startype"
 	"go.starlark.net/starlark"
@@ -17,7 +19,7 @@ import (
 type AttrDict struct {
 	data   map[string]any
 	mu     *sync.RWMutex
-	frozen bool
+	frozen *atomic.Bool
 }
 
 var (
@@ -36,7 +38,11 @@ func NewAttrDict(data map[string]any) *AttrDict {
 	if data == nil {
 		data = make(map[string]any)
 	}
-	return &AttrDict{data: data, mu: &sync.RWMutex{}}
+	return &AttrDict{
+		data:   data,
+		mu:     &sync.RWMutex{},
+		frozen: &atomic.Bool{},
+	}
 }
 
 func (d *AttrDict) String() string {
@@ -60,10 +66,63 @@ func (d *AttrDict) String() string {
 
 func (d *AttrDict) Type() string { return "AttrDict" }
 
+func (d *AttrDict) isFrozen() bool {
+	return d.frozen != nil && d.frozen.Load()
+}
+
 func (d *AttrDict) Freeze() {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	d.frozen = true
+	if d.frozen == nil {
+		d.frozen = &atomic.Bool{}
+	}
+	d.frozen.Store(true)
+	freezeNestedValues(d.data)
+}
+
+func freezeNestedValues(m map[string]any) {
+	for _, v := range m {
+		switch tv := v.(type) {
+		case map[string]any:
+			freezeNestedValues(tv)
+		case []any:
+			for _, item := range tv {
+				if sub, ok := item.(map[string]any); ok {
+					freezeNestedValues(sub)
+				} else if sv, ok := item.(starlark.Value); ok {
+					sv.Freeze()
+				}
+			}
+		case starlark.Value:
+			tv.Freeze()
+		}
+	}
+}
+
+func cloneAnyValue(v any) any {
+	switch tv := v.(type) {
+	case map[string]any:
+		return cloneAnyMap(tv)
+	case []any:
+		out := make([]any, len(tv))
+		for i, item := range tv {
+			out[i] = cloneAnyValue(item)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func cloneAnyMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = cloneAnyValue(v)
+	}
+	return out
 }
 
 func (d *AttrDict) Hash() (uint32, error) {
@@ -79,14 +138,61 @@ func (d *AttrDict) Truth() starlark.Bool {
 func (d *AttrDict) ToMap() map[string]any {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	return d.data
+	return cloneAnyMap(d.data)
 }
 
 func (d *AttrDict) ToDict() *starlark.Dict {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
-	dict, _ := startype.Map(d.data).ToDict()
+	return mapToPureStarlarkDict(d.data, d.isFrozen())
+}
+
+func mapToPureStarlarkDict(data map[string]any, frozen bool) *starlark.Dict {
+	dict := starlark.NewDict(len(data))
+	keys := slices.Sorted(maps.Keys(data))
+	for _, k := range keys {
+		_ = dict.SetKey(starlark.String(k), goToPureStarlarkValue(data[k], frozen))
+	}
+	if frozen {
+		dict.Freeze()
+	}
 	return dict
+}
+
+func goToPureStarlarkValue(val any, frozen bool) starlark.Value {
+	if val == nil {
+		return starlark.None
+	}
+	switch v := val.(type) {
+	case map[string]any:
+		return mapToPureStarlarkDict(v, frozen)
+	case *AttrDict:
+		return v.ToDict()
+	case []any:
+		elems := make([]starlark.Value, len(v))
+		for i, item := range v {
+			elems[i] = goToPureStarlarkValue(item, frozen)
+		}
+		list := starlark.NewList(elems)
+		if frozen {
+			list.Freeze()
+		}
+		return list
+	case starlark.Value:
+		if frozen {
+			v.Freeze()
+		}
+		return v
+	default:
+		sv, err := startype.Go(val).ToStarlarkValue()
+		if err != nil {
+			return starlark.String(fmt.Sprintf("%v", val))
+		}
+		if frozen {
+			sv.Freeze()
+		}
+		return sv
+	}
 }
 
 func (d *AttrDict) Len() int {
@@ -116,9 +222,6 @@ func (d *AttrDict) Items() []starlark.Tuple {
 }
 
 func (d *AttrDict) Attr(name string) (starlark.Value, error) {
-	d.mu.RLock()
-	defer d.mu.RUnlock()
-
 	switch name {
 	case "get":
 		return starlark.NewBuiltin("AttrDict.get", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -140,6 +243,9 @@ func (d *AttrDict) Attr(name string) (starlark.Value, error) {
 		}), nil
 	case "keys":
 		return starlark.NewBuiltin("AttrDict.keys", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			if err := starlark.UnpackPositionalArgs("keys", args, kwargs, 0); err != nil {
+				return nil, err
+			}
 			d.mu.RLock()
 			defer d.mu.RUnlock()
 			keys := make([]starlark.Value, 0, len(d.data))
@@ -150,6 +256,9 @@ func (d *AttrDict) Attr(name string) (starlark.Value, error) {
 		}), nil
 	case "values":
 		return starlark.NewBuiltin("AttrDict.values", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			if err := starlark.UnpackPositionalArgs("values", args, kwargs, 0); err != nil {
+				return nil, err
+			}
 			d.mu.RLock()
 			defer d.mu.RUnlock()
 			vals := make([]starlark.Value, 0, len(d.data))
@@ -160,6 +269,9 @@ func (d *AttrDict) Attr(name string) (starlark.Value, error) {
 		}), nil
 	case "items":
 		return starlark.NewBuiltin("AttrDict.items", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			if err := starlark.UnpackPositionalArgs("items", args, kwargs, 0); err != nil {
+				return nil, err
+			}
 			d.mu.RLock()
 			defer d.mu.RUnlock()
 			items := make([]starlark.Value, 0, len(d.data))
@@ -170,10 +282,15 @@ func (d *AttrDict) Attr(name string) (starlark.Value, error) {
 		}), nil
 	case "to_dict":
 		return starlark.NewBuiltin("AttrDict.to_dict", func(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+			if err := starlark.UnpackPositionalArgs("to_dict", args, kwargs, 0); err != nil {
+				return nil, err
+			}
 			return d.ToDict(), nil
 		}), nil
 	}
 
+	d.mu.RLock()
+	defer d.mu.RUnlock()
 	val, ok := lookupCaseFold(d.data, name)
 	if !ok {
 		return starlark.None, nil
@@ -184,12 +301,22 @@ func (d *AttrDict) Attr(name string) (starlark.Value, error) {
 func (d *AttrDict) AttrNames() []string {
 	d.mu.RLock()
 	defer d.mu.RUnlock()
+	seen := map[string]bool{
+		"get":     true,
+		"keys":    true,
+		"values":  true,
+		"items":   true,
+		"to_dict": true,
+	}
 	names := make([]string, 0, len(d.data)+5)
 	names = append(names, "get", "keys", "values", "items", "to_dict")
 	for k := range d.data {
-		names = append(names, k)
+		if !seen[k] {
+			seen[k] = true
+			names = append(names, k)
+		}
 	}
-	sort.Strings(names)
+	slices.Sort(names)
 	return names
 }
 
@@ -224,7 +351,7 @@ func (d *AttrDict) SetKey(k, v starlark.Value) error {
 func (d *AttrDict) Set(key string, val any) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if d.frozen {
+	if d.isFrozen() {
 		return fmt.Errorf("cannot modify frozen AttrDict")
 	}
 	d.data[key] = val
@@ -254,10 +381,11 @@ func lookupCaseFold(data map[string]any, name string) (any, bool) {
 	return nil, false
 }
 
-func goToStarlarkValue(val any, mu *sync.RWMutex, frozen bool) starlark.Value {
+func goToStarlarkValue(val any, mu *sync.RWMutex, frozen *atomic.Bool) starlark.Value {
 	if val == nil {
 		return starlark.None
 	}
+	isFrozen := frozen != nil && frozen.Load()
 	switch v := val.(type) {
 	case map[string]any:
 		return &AttrDict{data: v, mu: mu, frozen: frozen}
@@ -266,11 +394,23 @@ func goToStarlarkValue(val any, mu *sync.RWMutex, frozen bool) starlark.Value {
 		for i, item := range v {
 			elems[i] = goToStarlarkValue(item, mu, frozen)
 		}
-		return starlark.NewList(elems)
+		list := starlark.NewList(elems)
+		if isFrozen {
+			list.Freeze()
+		}
+		return list
+	case starlark.Value:
+		if isFrozen {
+			v.Freeze()
+		}
+		return v
 	default:
 		sv, err := startype.Go(val).ToStarlarkValue()
 		if err != nil {
 			return starlark.String(fmt.Sprintf("%v", val))
+		}
+		if isFrozen {
+			sv.Freeze()
 		}
 		return sv
 	}

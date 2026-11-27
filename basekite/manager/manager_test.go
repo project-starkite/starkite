@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -43,6 +44,21 @@ func TestParseSource(t *testing.T) {
 			source:      "git@github.com:user/repo.git@v2.0.0",
 			wantRepo:    "git@github.com:user/repo.git",
 			wantVersion: "v2.0.0",
+		},
+		{
+			source:      "ssh://git@github.com/user/repo.git",
+			wantRepo:    "ssh://git@github.com/user/repo.git",
+			wantVersion: "",
+		},
+		{
+			source:      "ssh://git@github.com/user/repo.git@v1.2.3",
+			wantRepo:    "ssh://git@github.com/user/repo.git",
+			wantVersion: "v1.2.3",
+		},
+		{
+			source:      "https://user@github.com/org/repo",
+			wantRepo:    "https://user@github.com/org/repo",
+			wantVersion: "",
 		},
 	}
 
@@ -407,7 +423,7 @@ func initGitRepo(t *testing.T, ns, name, body string) (repoDir, commit string) {
 	git("init")
 	git("add", "-A")
 	git("-c", "commit.gpgsign=false", "commit", "-m", "init")
-	commit, err := GitGetCurrentCommit(repoDir)
+	commit, err := GitGetCurrentCommit(context.Background(), repoDir)
 	if err != nil {
 		t.Fatalf("get commit: %v", err)
 	}

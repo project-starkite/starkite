@@ -5,17 +5,46 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
+	"maps"
 	"net"
 	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 
 	"go.starlark.net/starlark"
 	"gopkg.in/yaml.v3"
 )
 
+const (
+	maxFleetFileBytes     = 64 << 20
+	maxDiscoveryCallDepth = 8
+)
+
+var fleetWrapperKeys = []string{"hosts", "nodes", "servers", "resources", "items"}
+
+func readBoundedFile(path string, maxBytes int64) ([]byte, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() {
+		_ = f.Close()
+	}()
+	data, err := io.ReadAll(io.LimitReader(f, maxBytes+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("file %q exceeds maximum size of %d bytes", path, maxBytes)
+	}
+	return data, nil
+}
+
 // FromFile loads a Fleet from a YAML or JSON file.
 func FromFile(path string) (*Fleet, error) {
-	data, err := os.ReadFile(path)
+	data, err := readBoundedFile(path, maxFleetFileBytes)
 	if err != nil {
 		return nil, fmt.Errorf("fleet.file: failed to read file %q: %w", path, err)
 	}
@@ -25,14 +54,16 @@ func FromFile(path string) (*Fleet, error) {
 		return New(nil), nil
 	}
 
-	// If path or content looks like JSON, attempt JSON parse first
-	if strings.HasSuffix(path, ".json") || strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
-		if fleet, err := FromJSON(data); err == nil {
-			return fleet, nil
+	if strings.EqualFold(filepath.Ext(path), ".json") {
+		return FromJSON(data)
+	}
+
+	if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+		if f, jsonErr := FromJSON(data); jsonErr == nil {
+			return f, nil
 		}
 	}
 
-	// Default to YAML parse (which is a superset of JSON)
 	return FromYAML(data)
 }
 
@@ -42,7 +73,7 @@ func FromHostsFile(path string, includeLoopback bool) (*Fleet, error) {
 	if path == "" {
 		path = "/etc/hosts"
 	}
-	data, err := os.ReadFile(path)
+	data, err := readBoundedFile(path, maxFleetFileBytes)
 	if err != nil {
 		return nil, fmt.Errorf("fleet.hosts_file: failed to read %q: %w", path, err)
 	}
@@ -134,8 +165,12 @@ func FromHosts(data []byte, includeLoopback bool) (*Fleet, error) {
 	return New(resources), nil
 }
 
-// FromSource parses a Fleet from a Starlark runtime value (list, callable, string JSON, or dict).
+// FromSource parses a Fleet from a Starlark runtime value (list, callable, string YAML/JSON, or dict).
 func FromSource(thread *starlark.Thread, source starlark.Value) (*Fleet, error) {
+	return fromSourceDepth(thread, source, 0)
+}
+
+func fromSourceDepth(thread *starlark.Thread, source starlark.Value, depth int) (*Fleet, error) {
 	if source == nil || source == starlark.None {
 		return New(nil), nil
 	}
@@ -151,55 +186,101 @@ func FromSource(thread *starlark.Thread, source starlark.Value) (*Fleet, error) 
 		return fromStarlarkSequence(v)
 
 	case starlark.Callable:
+		if depth >= maxDiscoveryCallDepth {
+			return nil, fmt.Errorf("fleet.new: discovery callable exceeded maximum nesting depth (%d)", maxDiscoveryCallDepth)
+		}
 		res, err := starlark.Call(thread, v, nil, nil)
 		if err != nil {
 			return nil, fmt.Errorf("fleet.new: discovery function failed: %w", err)
 		}
-		return FromSource(thread, res)
+		return fromSourceDepth(thread, res, depth+1)
 
 	case starlark.String:
 		data := []byte(string(v))
 		trimmed := strings.TrimSpace(string(v))
 		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
-			return FromJSON(data)
+			if f, err := FromJSON(data); err == nil {
+				return f, nil
+			}
 		}
 		return FromYAML(data)
 
 	case *starlark.Dict:
-		var items []Resource
-		for _, item := range v.Items() {
-			groupKey, ok := starlark.AsString(item[0])
-			if !ok {
-				continue
-			}
-			switch val := item[1].(type) {
-			case *starlark.List:
-				for i := 0; i < val.Len(); i++ {
-					r, err := NormalizeStarlarkValue(val.Index(i))
-					if err == nil {
-						if r.Labels == nil {
-							r.Labels = make(map[string]string)
-						}
-						r.Labels["_group"] = groupKey
-						if r.Data == nil {
-							r.Data = make(map[string]any)
-						}
-						r.Data["_group"] = groupKey
-						items = append(items, r)
-					}
-				}
-			default:
-				r, err := NormalizeStarlarkValue(item[1])
-				if err == nil {
-					items = append(items, r)
-				}
-			}
-		}
-		return New(items), nil
+		return fromStarlarkDict(v)
 
 	default:
 		return nil, fmt.Errorf("fleet.new: unsupported source type %s (expected list, callable, dict, or JSON string)", source.Type())
 	}
+}
+
+func attachGroup(r *Resource, groupName string) {
+	if r.Labels == nil {
+		r.Labels = make(map[string]string)
+	}
+	r.Labels["_group"] = groupName
+	if r.Data == nil {
+		r.Data = make(map[string]any)
+	}
+	r.Data["_group"] = groupName
+}
+
+func fromStarlarkDict(d *starlark.Dict) (*Fleet, error) {
+	for _, wk := range fleetWrapperKeys {
+		val, found, err := d.Get(starlark.String(wk))
+		if err != nil {
+			return nil, fmt.Errorf("fleet.new: lookup %q: %w", wk, err)
+		}
+		if found {
+			seq, ok := val.(starlark.Sequence)
+			if !ok || val.Type() == "string" || val.Type() == "bytes" {
+				return nil, fmt.Errorf("fleet.new: wrapper key %q must map to a list or tuple, got %s", wk, val.Type())
+			}
+			return fromStarlarkSequence(seq)
+		}
+	}
+
+	groupEntries := make(map[string]starlark.Value, d.Len())
+	groupNames := make([]string, 0, d.Len())
+	for _, item := range d.Items() {
+		groupKey, ok := starlark.AsString(item[0])
+		if !ok {
+			return nil, fmt.Errorf("fleet.new: group key must be string, got %s", item[0].Type())
+		}
+		groupNames = append(groupNames, groupKey)
+		groupEntries[groupKey] = item[1]
+	}
+	slices.Sort(groupNames)
+
+	var items []Resource
+	for _, groupKey := range groupNames {
+		rawVal := groupEntries[groupKey]
+		switch val := rawVal.(type) {
+		case *starlark.List, starlark.Tuple:
+			seq := val.(starlark.Sequence)
+			iter := seq.Iterate()
+			var elem starlark.Value
+			idx := 0
+			for iter.Next(&elem) {
+				r, err := NormalizeStarlarkValue(elem)
+				if err != nil {
+					iter.Done()
+					return nil, fmt.Errorf("group %q item %d: %w", groupKey, idx, err)
+				}
+				attachGroup(&r, groupKey)
+				items = append(items, r)
+				idx++
+			}
+			iter.Done()
+		default:
+			r, err := NormalizeStarlarkValue(rawVal)
+			if err != nil {
+				return nil, fmt.Errorf("group %q: %w", groupKey, err)
+			}
+			attachGroup(&r, groupKey)
+			items = append(items, r)
+		}
+	}
+	return New(items), nil
 }
 
 // FromJSON parses a Fleet from JSON bytes.
@@ -240,8 +321,12 @@ func parseRawData(raw any) (*Fleet, error) {
 
 	case map[string]any:
 		// Check for wrapper keys like "hosts", "nodes", "servers", "resources"
-		for _, wrapperKey := range []string{"hosts", "nodes", "servers", "resources", "items"} {
-			if subList, ok := v[wrapperKey].([]any); ok {
+		for _, wrapperKey := range fleetWrapperKeys {
+			if rawList, exists := v[wrapperKey]; exists {
+				subList, ok := rawList.([]any)
+				if !ok {
+					return nil, fmt.Errorf("wrapper key %q must be a list, got %T", wrapperKey, rawList)
+				}
 				for i, item := range subList {
 					r, err := NormalizeResource(item)
 					if err != nil {
@@ -253,23 +338,27 @@ func parseRawData(raw any) (*Fleet, error) {
 			}
 		}
 
-		// Otherwise check for grouped map: groupName -> []items
-		for groupName, groupVal := range v {
-			if subList, ok := groupVal.([]any); ok {
-				for _, item := range subList {
+		// Grouped map: groupName -> []items or single resource
+		groupNames := slices.Sorted(maps.Keys(v))
+		for _, groupName := range groupNames {
+			groupVal := v[groupName]
+			switch g := groupVal.(type) {
+			case []any:
+				for i, item := range g {
 					r, err := NormalizeResource(item)
-					if err == nil {
-						if r.Labels == nil {
-							r.Labels = make(map[string]string)
-						}
-						r.Labels["_group"] = groupName
-						if r.Data == nil {
-							r.Data = make(map[string]any)
-						}
-						r.Data["_group"] = groupName
-						resources = append(resources, r)
+					if err != nil {
+						return nil, fmt.Errorf("group %q item %d: %w", groupName, i, err)
 					}
+					attachGroup(&r, groupName)
+					resources = append(resources, r)
 				}
+			default:
+				r, err := NormalizeResource(groupVal)
+				if err != nil {
+					return nil, fmt.Errorf("group %q: %w", groupName, err)
+				}
+				attachGroup(&r, groupName)
+				resources = append(resources, r)
 			}
 		}
 		return New(resources), nil
@@ -289,10 +378,11 @@ func fromStarlarkSequence(seq starlark.Sequence) (*Fleet, error) {
 	for iter.Next(&val) {
 		r, err := NormalizeStarlarkValue(val)
 		if err != nil {
-			return nil, fmt.Errorf("item at index %d: %w", idx, err)
+			return nil, fmt.Errorf("item %d: %w", idx, err)
 		}
 		resources = append(resources, r)
 		idx++
 	}
+
 	return New(resources), nil
 }

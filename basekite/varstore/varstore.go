@@ -4,11 +4,12 @@ package varstore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"maps"
 	"os"
 	"path/filepath"
-	"sort"
+	"slices"
 	"strings"
 	"sync"
 
@@ -74,23 +75,58 @@ func (v *Vars) LoadDefaults() error {
 
 	// Try user config first
 	homeDir, err := os.UserHomeDir()
-	if err == nil {
+	if err == nil && homeDir != "" {
 		userConfig := filepath.Join(homeDir, ".starkite", "config.yaml")
-		if data, err := os.ReadFile(userConfig); err == nil {
-			if err := v.parseConfigFile(data); err != nil {
-				return fmt.Errorf("failed to parse %s: %w", userConfig, err)
+		data, readErr := os.ReadFile(userConfig)
+		if readErr != nil {
+			if !errors.Is(readErr, os.ErrNotExist) {
+				return fmt.Errorf("failed to read %s: %w", userConfig, readErr)
 			}
+		} else if err := v.parseConfigFile(data); err != nil {
+			return fmt.Errorf("failed to parse %s: %w", userConfig, err)
 		}
 	}
 
 	// Try local config (overrides user config)
-	if data, err := os.ReadFile("config.yaml"); err == nil {
-		if err := v.parseConfigFile(data); err != nil {
-			return fmt.Errorf("failed to parse config.yaml: %w", err)
+	data, readErr := os.ReadFile("config.yaml")
+	if readErr != nil {
+		if !errors.Is(readErr, os.ErrNotExist) {
+			return fmt.Errorf("failed to read config.yaml: %w", readErr)
 		}
+	} else if err := v.parseConfigFile(data); err != nil {
+		return fmt.Errorf("failed to parse config.yaml: %w", err)
 	}
 
 	return nil
+}
+
+func hasMappingKey(node *yaml.Node, key string) bool {
+	if node == nil || node.Kind != yaml.MappingNode {
+		return false
+	}
+	for i := 0; i+1 < len(node.Content); i += 2 {
+		if node.Content[i].Value == key {
+			return true
+		}
+	}
+	return false
+}
+
+func (v *Vars) mergeSandboxConfig(sCfg *sandbox.SandboxConfig, hasExplicitEnabled bool) {
+	if sCfg == nil {
+		return
+	}
+	if v.Sandbox == nil {
+		v.Sandbox = sCfg
+		return
+	}
+	if hasExplicitEnabled {
+		v.Sandbox.Enabled = sCfg.Enabled
+	}
+	if v.Sandbox.Profiles == nil {
+		v.Sandbox.Profiles = make(map[string]sandbox.ProfileBody, len(sCfg.Profiles))
+	}
+	maps.Copy(v.Sandbox.Profiles, sCfg.Profiles)
 }
 
 // parseConfigFile parses a YAML config file.
@@ -124,7 +160,7 @@ func (v *Vars) parseConfigFile(data []byte) error {
 			if err != nil {
 				return fmt.Errorf("config sandbox: %w", err)
 			}
-			v.Sandbox = sCfg
+			v.mergeSandboxConfig(sCfg, hasMappingKey(valNode, "enabled"))
 		default:
 			return fmt.Errorf("unknown top-level key %q: the config file has two sections — config: (variables and runtime settings) and sandbox:", keyNode.Value)
 		}
@@ -138,17 +174,26 @@ func (v *Vars) parseConfigSection(m map[string]any) {
 		switch k {
 		case "project":
 			if pm, ok := val.(map[string]any); ok {
-				v.ProjectConfig = pm
+				if v.ProjectConfig == nil {
+					v.ProjectConfig = make(map[string]any, len(pm))
+				}
+				maps.Copy(v.ProjectConfig, pm)
 			}
 		case "defaults":
 			if dm, ok := val.(map[string]any); ok {
-				v.RuntimeDefaults = dm
+				if v.RuntimeDefaults == nil {
+					v.RuntimeDefaults = make(map[string]any, len(dm))
+				}
+				maps.Copy(v.RuntimeDefaults, dm)
 			}
 		case "providers":
 			if provMap, ok := val.(map[string]any); ok {
 				for pName, pVal := range provMap {
 					if pm, ok := pVal.(map[string]any); ok {
-						v.ProviderDefaults[pName] = pm
+						if v.ProviderDefaults[pName] == nil {
+							v.ProviderDefaults[pName] = make(map[string]any, len(pm))
+						}
+						maps.Copy(v.ProviderDefaults[pName], pm)
 					}
 				}
 			}
@@ -242,6 +287,32 @@ func (v *Vars) LoadFromEnv() {
 	}
 }
 
+func cloneVarValue(v any) any {
+	switch tv := v.(type) {
+	case map[string]any:
+		return cloneVarMap(tv)
+	case []any:
+		out := make([]any, len(tv))
+		for i, item := range tv {
+			out[i] = cloneVarValue(item)
+		}
+		return out
+	default:
+		return v
+	}
+}
+
+func cloneVarMap(m map[string]any) map[string]any {
+	if m == nil {
+		return nil
+	}
+	out := make(map[string]any, len(m))
+	for k, v := range m {
+		out[k] = cloneVarValue(v)
+	}
+	return out
+}
+
 // Get retrieves a variable value by key with priority resolution.
 func (v *Vars) Get(key string) (any, bool) {
 	v.mu.RLock()
@@ -249,16 +320,16 @@ func (v *Vars) Get(key string) (any, bool) {
 
 	// Priority order (highest to lowest)
 	if val, ok := v.cliVars[key]; ok {
-		return val, true
+		return cloneVarValue(val), true
 	}
 	if val, ok := v.fileVars[key]; ok {
-		return val, true
+		return cloneVarValue(val), true
 	}
 	if val, ok := v.defaultVars[key]; ok {
-		return val, true
+		return cloneVarValue(val), true
 	}
 	if val, ok := v.envVars[key]; ok {
-		return val, true
+		return cloneVarValue(val), true
 	}
 
 	return nil, false
@@ -303,10 +374,11 @@ func (v *Vars) All() map[string]any {
 	result := make(map[string]any)
 
 	// Add in reverse priority order (lowest first, so higher priority overwrites)
-	maps.Copy(result, v.envVars)
-	maps.Copy(result, v.defaultVars)
-	maps.Copy(result, v.fileVars)
-	maps.Copy(result, v.cliVars)
+	for _, tier := range []map[string]any{v.envVars, v.defaultVars, v.fileVars, v.cliVars} {
+		for k, val := range tier {
+			result[k] = cloneVarValue(val)
+		}
+	}
 
 	return result
 }
@@ -314,11 +386,7 @@ func (v *Vars) All() map[string]any {
 // Keys returns sorted, deduplicated variable names across all priority tiers.
 func (v *Vars) Keys() []string {
 	all := v.All()
-	keys := make([]string, 0, len(all))
-	for k := range all {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
+	keys := slices.Sorted(maps.Keys(all))
 	return keys
 }
 
@@ -344,9 +412,7 @@ func (v *Vars) GetProviderDefaults(provider string) map[string]any {
 	defer v.mu.RUnlock()
 
 	if defaults, ok := v.ProviderDefaults[provider]; ok {
-		result := make(map[string]any, len(defaults))
-		maps.Copy(result, defaults)
-		return result
+		return cloneVarMap(defaults)
 	}
 	return nil
 }

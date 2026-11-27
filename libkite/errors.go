@@ -3,6 +3,7 @@
 package libkite
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -60,9 +61,9 @@ func (e *PermissionError) Error() string {
 	return b.String()
 }
 
-// IsPermissionError returns true if err is a PermissionError.
+// IsPermissionError returns true if err (or any wrapped error in its chain) is a PermissionError.
 func IsPermissionError(err error) bool {
-	_, ok := err.(*PermissionError)
+	_, ok := errors.AsType[*PermissionError](err)
 	return ok
 }
 
@@ -134,20 +135,20 @@ func (e *SkipError) Error() string {
 	return "test skipped"
 }
 
-// IsScriptError returns true if err is a ScriptError.
+// IsScriptError returns true if err (or any wrapped error in its chain) is a ScriptError.
 func IsScriptError(err error) bool {
-	_, ok := err.(*ScriptError)
+	_, ok := errors.AsType[*ScriptError](err)
 	return ok
 }
 
-// IsExitError returns true if err is an ExitError.
+// IsExitError returns true if err (or any wrapped error in its chain) is an ExitError.
 func IsExitError(err error) bool {
-	_, ok := err.(*ExitError)
+	_, ok := errors.AsType[*ExitError](err)
 	return ok
 }
 
-// IsSkipError returns true if err is a SkipError.
+// IsSkipError returns true if err (or any wrapped error in its chain) is a SkipError.
 func IsSkipError(err error) bool {
-	_, ok := err.(*SkipError)
+	_, ok := errors.AsType[*SkipError](err)
 	return ok
 }

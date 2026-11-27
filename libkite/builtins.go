@@ -49,9 +49,7 @@ func (rt *Runtime) builtinOnSignal(thread *starlark.Thread, fn *starlark.Builtin
 		return nil, err
 	}
 
-	rt.signalMu.Lock()
-	rt.signalHandlers[signalName] = handler
-	rt.signalMu.Unlock()
+	rt.RegisterSignalHandler(signalName, handler)
 
 	return starlark.None, nil
 }

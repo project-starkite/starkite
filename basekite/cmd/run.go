@@ -217,7 +217,6 @@ func runScript(cmd *cobra.Command, args []string) error {
 	cfg := &libkite.Config{
 		ScriptPath:        scriptPath,
 		ScriptArgs:        scriptArgs,
-		OutputFormat:      outputFormat,
 		Debug:             debugMode,
 		DryRun:            dryRun,
 		VarStore:          varStore,
@@ -238,7 +237,7 @@ func runScript(cmd *cobra.Command, args []string) error {
 			ExitCode: libkite.ExitScriptError,
 		}
 	}
-	defer rt.Cleanup()
+	defer rt.Close()
 
 	ctx, cancel := execContext(timeout)
 	defer cancel()
