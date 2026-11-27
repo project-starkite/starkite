@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"io"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,18 @@ import (
 	"github.com/project-starkite/starkite/libkite/loader"
 	"github.com/project-starkite/starkite/libkite/lsp"
 )
+
+func fileURI(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		abs = path
+	}
+	slashed := filepath.ToSlash(abs)
+	if !strings.HasPrefix(slashed, "/") {
+		slashed = "/" + slashed
+	}
+	return (&url.URL{Scheme: "file", Path: slashed}).String()
+}
 
 func lspHost(t *testing.T) *lsp.Host {
 	t.Helper()
@@ -116,11 +129,12 @@ p = cfg.config_file
 	})
 
 	ch := startRPCReader(clientReader)
-	rpcInitAndOpen(t, clientWriter, ch, "file://"+mainPath, src)
+	mainURI := fileURI(mainPath)
+	rpcInitAndOpen(t, clientWriter, ch, mainURI, src)
 
 	// Trigger completion on `cfg.` by editing with incomplete line `cfg.`.
 	updated := src + "cfg."
-	items := rpcCompleteAfterChange(t, clientWriter, ch, "file://"+mainPath, 2, updated, len(strings.Split(updated, "\n"))-1, len("cfg."))
+	items := rpcCompleteAfterChange(t, clientWriter, ch, mainURI, 2, updated, len(strings.Split(updated, "\n"))-1, len("cfg."))
 	labels := completionLabels(items)
 	for _, want := range []string{"project", "config_file", "db"} {
 		if !labels[want] {
@@ -130,7 +144,7 @@ p = cfg.config_file
 
 	// Trigger completion on deep chain `cfg.db.primary.` (incomplete expression still parses surrounding defs).
 	deepSrc := src + "cfg.db.primary."
-	deepItems := rpcCompleteAfterChange(t, clientWriter, ch, "file://"+mainPath, 3, deepSrc, len(strings.Split(deepSrc, "\n"))-1, len("cfg.db.primary."))
+	deepItems := rpcCompleteAfterChange(t, clientWriter, ch, mainURI, 3, deepSrc, len(strings.Split(deepSrc, "\n"))-1, len("cfg.db.primary."))
 	deepLabels := completionLabels(deepItems)
 	if !deepLabels["host"] || !deepLabels["port"] {
 		t.Errorf("cfg.db.primary. completion missing host/port; got=%v", deepLabels)
@@ -138,7 +152,7 @@ p = cfg.config_file
 
 	// Verify catalog factory stored inside a struct field (`cfg.config_file.`) exposes fs.path methods.
 	pathSrc := src + "cfg.config_file."
-	pathItems := rpcCompleteAfterChange(t, clientWriter, ch, "file://"+mainPath, 4, pathSrc, len(strings.Split(pathSrc, "\n"))-1, len("cfg.config_file."))
+	pathItems := rpcCompleteAfterChange(t, clientWriter, ch, mainURI, 4, pathSrc, len(strings.Split(pathSrc, "\n"))-1, len("cfg.config_file."))
 	pathLabels := completionLabels(pathItems)
 	if !pathLabels["read_text"] || !pathLabels["exists"] {
 		t.Errorf("cfg.config_file. completion missing fs.path members; got=%v", pathLabels)
@@ -214,7 +228,7 @@ def main():
 	})
 
 	ch := startRPCReader(clientReader)
-	uri := "file://" + mainPath
+	uri := fileURI(mainPath)
 	rpcInitAndOpen(t, clientWriter, ch, uri, mainSrc)
 
 	// 1. Hover on `g.config` should surface signature & docstring from gcp/main.star `_config`.
@@ -276,7 +290,7 @@ def g():
 	})
 
 	ch := startRPCReader(clientReader)
-	uri := "file://" + cPath
+	uri := fileURI(cPath)
 	rpcInitAndOpen(t, clientWriter, ch, uri, cSrc)
 
 	for i, expr := range []string{"a.", "y.", "f()."} {

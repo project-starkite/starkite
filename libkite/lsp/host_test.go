@@ -2,6 +2,7 @@ package lsp_test
 
 import (
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -144,18 +145,18 @@ func TestLoadResolverRejectsABarePathlessReference(t *testing.T) {
 
 func TestLoadResolverFindsARelativeModule(t *testing.T) {
 	dir := t.TempDir()
-	moduleDir := dir + "/modules/greeter"
+	moduleDir := filepath.Join(dir, "modules", "greeter")
 	if err := mkdirAll(moduleDir); err != nil {
 		t.Fatal(err)
 	}
-	entry := moduleDir + "/main.star"
+	entry := filepath.Join(moduleDir, "main.star")
 	if err := writeFile(entry, "def greet():\n    pass\n"); err != nil {
 		t.Fatal(err)
 	}
 
 	got, ok := host(t).(starlsp.LoadResolver).ResolveLoad(starlsp.LoadRequest{
 		Target: "./modules/greeter",
-		From:   dir + "/main.star",
+		From:   filepath.Join(dir, "main.star"),
 	})
 	if !ok {
 		t.Fatal("a relative module directory did not resolve")
