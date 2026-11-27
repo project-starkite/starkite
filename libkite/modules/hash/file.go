@@ -15,7 +15,6 @@ import (
 // Methods read the file and compute the hash.
 type HashFile struct {
 	path   string
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -80,11 +79,11 @@ func (f *HashFile) isDryRun() bool {
 }
 
 func (f *HashFile) hashMethod(algo string) func(*starlark.Thread, *starlark.Builtin, starlark.Tuple, []starlark.Tuple) (starlark.Value, error) {
-	return func(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	return func(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 		if len(args) > 0 || len(kwargs) > 0 {
 			return nil, fmt.Errorf("hash.file.%s: takes no arguments", algo)
 		}
-		if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
+		if err := libkite.Check(thread, "fs", "read", "read_file", f.path); err != nil {
 			return nil, err
 		}
 		if f.isDryRun() {

@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"os"
@@ -55,9 +56,9 @@ func (c *SSHClient) upload(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	if c.execPolicy == "concurrent" {
-		return c.transferConcurrent("upload", p.Src, p.Dst, p.Mode)
+		return c.transferConcurrentContext(libkite.ThreadContext(thread), thread, "upload", p.Src, p.Dst, p.Mode)
 	}
-	return c.transferLinear("upload", p.Src, p.Dst, p.Mode)
+	return c.transferLinearContext(libkite.ThreadContext(thread), thread, "upload", p.Src, p.Dst, p.Mode)
 }
 
 // download downloads a file from remote hosts via SCP.
@@ -94,9 +95,9 @@ func (c *SSHClient) download(thread *starlark.Thread, fn *starlark.Builtin, args
 	}
 
 	if c.execPolicy == "concurrent" {
-		return c.transferConcurrent("download", p.Src, p.Dst, "")
+		return c.transferConcurrentContext(libkite.ThreadContext(thread), thread, "download", p.Src, p.Dst, "")
 	}
-	return c.transferLinear("download", p.Src, p.Dst, "")
+	return c.transferLinearContext(libkite.ThreadContext(thread), thread, "download", p.Src, p.Dst, "")
 }
 
 func (c *SSHClient) dryRunTransferResults(op, src, dst string) starlark.Value {
@@ -114,7 +115,10 @@ func (c *SSHClient) dryRunTransferResults(op, src, dst string) starlark.Value {
 	return starlark.NewList(results)
 }
 
-func (c *SSHClient) transferConcurrent(op, src, dst, mode string) (starlark.Value, error) {
+func (c *SSHClient) transferConcurrentContext(ctx context.Context, thread *starlark.Thread, op, src, dst, mode string) (starlark.Value, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	results := make([]starlark.Value, len(c.hosts))
 	errors := make([]error, len(c.hosts))
 	var wg sync.WaitGroup
@@ -125,16 +129,24 @@ func (c *SSHClient) transferConcurrent(op, src, dst, mode string) (starlark.Valu
 	}
 
 	for i, host := range c.hosts {
-		wg.Add(1)
 		if sem != nil {
-			sem <- struct{}{}
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				wg.Wait()
+				return nil, ctx.Err()
+			}
+		} else if err := ctx.Err(); err != nil {
+			wg.Wait()
+			return nil, err
 		}
+		wg.Add(1)
 		go func(idx int, h string) {
 			defer wg.Done()
 			if sem != nil {
 				defer func() { <-sem }()
 			}
-			result, err := c.transferOnHost(op, h, src, dst, mode)
+			result, err := c.transferOnHostContext(ctx, thread, op, h, src, dst, mode)
 			if err != nil {
 				errors[idx] = err
 				return
@@ -154,11 +166,17 @@ func (c *SSHClient) transferConcurrent(op, src, dst, mode string) (starlark.Valu
 	return starlark.NewList(results), nil
 }
 
-func (c *SSHClient) transferLinear(op, src, dst, mode string) (starlark.Value, error) {
+func (c *SSHClient) transferLinearContext(ctx context.Context, thread *starlark.Thread, op, src, dst, mode string) (starlark.Value, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	results := make([]starlark.Value, 0, len(c.hosts))
 
 	for _, host := range c.hosts {
-		result, err := c.transferOnHost(op, host, src, dst, mode)
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		result, err := c.transferOnHostContext(ctx, thread, op, host, src, dst, mode)
 		if err != nil {
 			return nil, fmt.Errorf("host %s: %w", host, err)
 		}
@@ -168,20 +186,20 @@ func (c *SSHClient) transferLinear(op, src, dst, mode string) (starlark.Value, e
 	return starlark.NewList(results), nil
 }
 
-func (c *SSHClient) transferOnHost(op, host, src, dst, mode string) (starlark.Value, error) {
+func (c *SSHClient) transferOnHostContext(ctx context.Context, thread *starlark.Thread, op, host, src, dst, mode string) (starlark.Value, error) {
 	var n int64
 	var err error
 
 	switch op {
 	case "upload":
-		n, err = c.scpUploadToHost(host, src, dst, mode)
+		n, err = c.scpUploadToHostContext(ctx, thread, host, src, dst, mode)
 	case "download":
 		// For multi-host downloads, append host suffix to avoid collisions
 		localDst := dst
 		if len(c.hosts) > 1 {
 			localDst = fmt.Sprintf("%s.%s", dst, host)
 		}
-		n, err = c.scpDownloadFromHost(host, src, localDst)
+		n, err = c.scpDownloadFromHostContext(ctx, thread, host, src, localDst)
 		dst = localDst
 	}
 
@@ -203,8 +221,12 @@ func scpShellQuote(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
-// scpUploadToHost uploads a local file to a remote host using the SCP sink protocol.
 func (c *SSHClient) scpUploadToHost(host, localPath, remotePath, mode string) (int64, error) {
+	return c.scpUploadToHostContext(libkite.ThreadContext(c.thread), c.thread, host, localPath, remotePath, mode)
+}
+
+// scpUploadToHostContext uploads a local file to a remote host using the SCP sink protocol.
+func (c *SSHClient) scpUploadToHostContext(ctx context.Context, thread *starlark.Thread, host, localPath, remotePath, mode string) (int64, error) {
 	f, err := os.Open(localPath)
 	if err != nil {
 		return 0, fmt.Errorf("failed to read local file: %w", err)
@@ -217,7 +239,7 @@ func (c *SSHClient) scpUploadToHost(host, localPath, remotePath, mode string) (i
 	}
 	size := info.Size()
 
-	client, err := c.dialHostWithRetry(host)
+	client, err := c.dialHostWithRetryContext(ctx, thread, host, "")
 	if err != nil {
 		return 0, err
 	}
@@ -239,7 +261,13 @@ func (c *SSHClient) scpUploadToHost(host, localPath, remotePath, mode string) (i
 		return 0, fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
 
+	stopWatch := watchSessionContext(ctx, session, client)
+	defer stopWatch()
+
 	if err := session.Start(fmt.Sprintf("scp -t -- %s", scpShellQuote(remotePath))); err != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
 		return 0, fmt.Errorf("failed to start scp: %w", err)
 	}
 
@@ -277,6 +305,9 @@ func (c *SSHClient) scpUploadToHost(host, localPath, remotePath, mode string) (i
 	w.Close()
 
 	if err := session.Wait(); err != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
 		if exitErr, ok := err.(*ssh.ExitError); ok {
 			return 0, fmt.Errorf("scp error (code %d)", exitErr.ExitStatus())
 		}
@@ -286,9 +317,13 @@ func (c *SSHClient) scpUploadToHost(host, localPath, remotePath, mode string) (i
 	return n, nil
 }
 
-// scpDownloadFromHost downloads a remote file to a local path using the SCP source protocol.
 func (c *SSHClient) scpDownloadFromHost(host, remotePath, localPath string) (int64, error) {
-	client, err := c.dialHostWithRetry(host)
+	return c.scpDownloadFromHostContext(libkite.ThreadContext(c.thread), c.thread, host, remotePath, localPath)
+}
+
+// scpDownloadFromHostContext downloads a remote file to a local path using the SCP source protocol.
+func (c *SSHClient) scpDownloadFromHostContext(ctx context.Context, thread *starlark.Thread, host, remotePath, localPath string) (int64, error) {
+	client, err := c.dialHostWithRetryContext(ctx, thread, host, "")
 	if err != nil {
 		return 0, err
 	}
@@ -310,7 +345,13 @@ func (c *SSHClient) scpDownloadFromHost(host, remotePath, localPath string) (int
 		return 0, fmt.Errorf("failed to get stdout pipe: %w", err)
 	}
 
+	stopWatch := watchSessionContext(ctx, session, client)
+	defer stopWatch()
+
 	if err := session.Start(fmt.Sprintf("scp -f -- %s", scpShellQuote(remotePath))); err != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
 		return 0, fmt.Errorf("failed to start scp: %w", err)
 	}
 
@@ -368,7 +409,12 @@ func (c *SSHClient) scpDownloadFromHost(host, remotePath, localPath string) (int
 	if err != nil {
 		return 0, fmt.Errorf("failed to create local file: %w", err)
 	}
-	defer outFile.Close()
+	outClosed := false
+	defer func() {
+		if !outClosed {
+			_ = outFile.Close()
+		}
+	}()
 
 	n, err := io.CopyN(outFile, r, size)
 	if err != nil {
@@ -388,10 +434,18 @@ func (c *SSHClient) scpDownloadFromHost(host, remotePath, localPath string) (int
 	w.Close()
 
 	if err := session.Wait(); err != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
 		if exitErr, ok := err.(*ssh.ExitError); ok {
 			return 0, fmt.Errorf("scp error (code %d)", exitErr.ExitStatus())
 		}
 		return 0, fmt.Errorf("scp session error: %w", err)
+	}
+
+	outClosed = true
+	if err := outFile.Close(); err != nil {
+		return 0, fmt.Errorf("failed to close local file: %w", err)
 	}
 
 	return n, nil

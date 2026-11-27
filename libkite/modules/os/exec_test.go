@@ -1,6 +1,7 @@
 package osmod
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -323,5 +324,28 @@ func TestOSExec_IsolatedEnvResolvesWithoutCmdErrAndDeduplicatesEnv(t *testing.T)
 
 	if got := resolveExecTarget("scripts/run.sh arg1", binDir, nil); !strings.Contains(got, filepath.Join("scripts", "run.sh")) {
 		t.Errorf("resolveExecTarget should treat forward-slash path as relative path, got %q", got)
+	}
+}
+
+func TestOSExitReturnsExitError(t *testing.T) {
+	reg := libkite.NewRegistry(&libkite.ModuleConfig{})
+	reg.Register(New())
+	rt, err := libkite.NewTrusted(nil, libkite.WithRegistry(reg))
+	if err != nil {
+		t.Fatalf("NewTrusted: %v", err)
+	}
+	defer rt.Close()
+
+	err = rt.Execute(t.Context(), "os.exit(7)")
+	exitErr, ok := errors.AsType[*libkite.ExitError](err)
+	if !ok {
+		t.Fatalf("expected *libkite.ExitError, got %T (%v)", err, err)
+	}
+	if exitErr.Code != 7 {
+		t.Fatalf("ExitError.Code = %d, want 7", exitErr.Code)
+	}
+
+	if err := rt.Execute(t.Context(), "os.exit(0)"); err != nil {
+		t.Fatalf("expected nil for os.exit(0), got %v", err)
 	}
 }

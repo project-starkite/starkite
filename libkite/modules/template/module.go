@@ -63,7 +63,7 @@ func (m *Module) textFactory(thread *starlark.Thread, fn *starlark.Builtin, args
 	if err != nil {
 		return nil, fmt.Errorf("template.text: %w", err)
 	}
-	return parseTemplate(s, left, right, thread, m.config)
+	return parseTemplate(s, left, right, m.config)
 }
 
 // fileFactory creates a Template by reading a file.
@@ -87,7 +87,7 @@ func (m *Module) fileFactory(thread *starlark.Thread, fn *starlark.Builtin, args
 	if err != nil {
 		return nil, fmt.Errorf("template.file: %w", err)
 	}
-	return parseTemplate(string(data), left, right, thread, m.config)
+	return parseTemplate(string(data), left, right, m.config)
 }
 
 // bytesFactory creates a Template from bytes.
@@ -109,7 +109,7 @@ func (m *Module) bytesFactory(thread *starlark.Thread, fn *starlark.Builtin, arg
 	if err != nil {
 		return nil, fmt.Errorf("template.bytes: %w", err)
 	}
-	return parseTemplate(s, left, right, thread, m.config)
+	return parseTemplate(s, left, right, m.config)
 }
 
 // render is the legacy convenience function for backwards compatibility.

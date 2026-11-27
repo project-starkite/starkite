@@ -131,8 +131,16 @@ func resolvePublicKey(thread *starlark.Thread, keyArg string, useAgent bool) (st
 
 // promptPasswordIfNeeded prompts the operator in the terminal if password is required.
 func promptPasswordIfNeeded(c *SSHClient, prompt bool) (string, error) {
-	if c.password != "" && !prompt {
-		return c.password, nil
+	return promptPasswordForHosts(c, c.hosts, prompt)
+}
+
+func promptPasswordForHosts(c *SSHClient, hosts []string, prompt bool) (string, error) {
+	c.mu.RLock()
+	pw := c.password
+	c.mu.RUnlock()
+
+	if pw != "" && !prompt {
+		return pw, nil
 	}
 
 	if (c.keyFile != "" || (c.useAgent && os.Getenv("SSH_AUTH_SOCK") != "")) && !prompt {
@@ -141,9 +149,9 @@ func promptPasswordIfNeeded(c *SSHClient, prompt bool) (string, error) {
 
 	stdinFd := int(os.Stdin.Fd())
 	if term.IsTerminal(stdinFd) {
-		hostSummary := strings.Join(c.hosts, ", ")
-		if len(c.hosts) > 3 {
-			hostSummary = fmt.Sprintf("%s (+%d more)", strings.Join(c.hosts[:3], ", "), len(c.hosts)-3)
+		hostSummary := strings.Join(hosts, ", ")
+		if len(hosts) > 3 {
+			hostSummary = fmt.Sprintf("%s (+%d more)", strings.Join(hosts[:3], ", "), len(hosts)-3)
 		}
 		fmt.Fprintf(os.Stderr, "[ssh.copy_id] Enter password for %s@%s: ", c.user, hostSummary)
 		passBytes, err := term.ReadPassword(stdinFd)
@@ -158,8 +166,8 @@ func promptPasswordIfNeeded(c *SSHClient, prompt bool) (string, error) {
 		return "", fmt.Errorf("ssh.copy_id: prompt=True specified but standard input is not a terminal")
 	}
 
-	if c.password == "" && c.keyFile == "" && !c.useAgent {
-		return "", fmt.Errorf("ssh.copy_id: remote host password required for %s (pass password or set prompt=True)", c.hosts)
+	if pw == "" && c.keyFile == "" && !c.useAgent {
+		return "", fmt.Errorf("ssh.copy_id: remote host password required for %s (pass password or set prompt=True)", hosts)
 	}
 
 	return "", nil
@@ -322,17 +330,10 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	// 3. Handle interactive password prompt if necessary (only for pending hosts)
-	origHosts := c.hosts
-	c.hosts = pendingHosts
-	defer func() { c.hosts = origHosts }()
-
 	prompt := p.Prompt || c.prompt
-	promptedPassword, err := promptPasswordIfNeeded(c, prompt)
+	promptedPassword, err := promptPasswordForHosts(c, pendingHosts, prompt)
 	if err != nil {
 		return nil, err
-	}
-	if promptedPassword != "" {
-		c.password = promptedPassword
 	}
 
 	// 4. Generate idempotent remote shell command
@@ -342,11 +343,12 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 	}
 
 	// 5. Dispatch across pending hosts using configured execution strategy
+	ctx := libkite.ThreadContext(thread)
 	var installResults starlark.Value
 	if c.execPolicy == "concurrent" {
-		installResults, err = c.execConcurrent(installCmd, c.execMaxWorkers)
+		installResults, err = c.execHostsConcurrent(ctx, thread, pendingHosts, installCmd, promptedPassword, c.execMaxWorkers)
 	} else {
-		installResults, err = c.execLinear(installCmd)
+		installResults, err = c.execHostsLinear(ctx, thread, pendingHosts, installCmd, promptedPassword)
 	}
 	if err != nil {
 		return nil, err
@@ -368,8 +370,8 @@ func (c *SSHClient) copyId(thread *starlark.Thread, fn *starlark.Builtin, args s
 				}
 			}
 
-			merged := make([]starlark.Value, len(origHosts))
-			for i, host := range origHosts {
+			merged := make([]starlark.Value, len(c.hosts))
+			for i, host := range c.hosts {
 				if alreadyAccepted[host] {
 					merged[i] = newSSHResult(host, "copy_id", "[ALREADY INSTALLED] Public key already accepted by remote host", "", 0, true, false)
 				} else if r, ok := installedMap[host]; ok {

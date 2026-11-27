@@ -14,12 +14,14 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 )
 
+var testThread = &starlark.Thread{Name: "test"}
+
 func newTestSource(data []byte) *Source {
-	return &Source{data: data, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &Source{data: data, config: &libkite.ModuleConfig{}}
 }
 
 func newTestGzipFile(path string) *GzipFile {
-	return &GzipFile{path: path, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &GzipFile{path: path, config: &libkite.ModuleConfig{}}
 }
 
 func newTestModule() *Module {
@@ -385,7 +387,7 @@ func TestSourceTryCompress(t *testing.T) {
 		t.Fatal("try_compress should return a builtin")
 	}
 
-	result, err := starlark.Call(s.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -406,7 +408,7 @@ func TestSourceTryDecompressFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	result, err := starlark.Call(s.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -430,7 +432,7 @@ func TestSourceTryDecompressSuccess(t *testing.T) {
 
 	s := newTestSource(buf.Bytes())
 	v, _ := s.Attr("try_decompress")
-	result, err := starlark.Call(s.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -691,7 +693,6 @@ func TestGzipFileCompressDryRun(t *testing.T) {
 
 	f := &GzipFile{
 		path:   gz,
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 	_, err := callGzipFileMethod(f, "compress", starlark.String(src))
@@ -715,7 +716,7 @@ func TestGzipFileTryCompressSuccess(t *testing.T) {
 
 	f := newTestGzipFile(gz)
 	v, _ := f.Attr("try_compress")
-	result, err := starlark.Call(f.thread, v, starlark.Tuple{starlark.String(src)}, nil)
+	result, err := starlark.Call(testThread, v, starlark.Tuple{starlark.String(src)}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -733,7 +734,7 @@ func TestGzipFileTryDecompressFailure(t *testing.T) {
 
 	f := newTestGzipFile(gz)
 	v, _ := f.Attr("try_decompress")
-	result, err := starlark.Call(f.thread, v, starlark.Tuple{starlark.String(filepath.Join(dir, "out.txt"))}, nil)
+	result, err := starlark.Call(testThread, v, starlark.Tuple{starlark.String(filepath.Join(dir, "out.txt"))}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -908,7 +909,7 @@ func callMethod(s *Source, name string, args ...starlark.Value) (starlark.Value,
 	if method == nil {
 		return nil, fmt.Errorf("gzip.source has no attribute %q", name)
 	}
-	return starlark.Call(s.thread, method, args, nil)
+	return starlark.Call(testThread, method, args, nil)
 }
 
 func callMethodKw(s *Source, name string, args starlark.Tuple, kwargs ...starlark.Tuple) (starlark.Value, error) {
@@ -919,7 +920,7 @@ func callMethodKw(s *Source, name string, args starlark.Tuple, kwargs ...starlar
 	if method == nil {
 		return nil, fmt.Errorf("gzip.source has no attribute %q", name)
 	}
-	return starlark.Call(s.thread, method, args, kwargs)
+	return starlark.Call(testThread, method, args, kwargs)
 }
 
 func callGzipFileMethod(f *GzipFile, name string, args ...starlark.Value) (starlark.Value, error) {
@@ -930,7 +931,7 @@ func callGzipFileMethod(f *GzipFile, name string, args ...starlark.Value) (starl
 	if method == nil {
 		return nil, fmt.Errorf("gzip.file has no attribute %q", name)
 	}
-	return starlark.Call(f.thread, method, args, nil)
+	return starlark.Call(testThread, method, args, nil)
 }
 
 func callGzipFileMethodKw(f *GzipFile, name string, args starlark.Tuple, kwargs ...starlark.Tuple) (starlark.Value, error) {
@@ -941,7 +942,7 @@ func callGzipFileMethodKw(f *GzipFile, name string, args starlark.Tuple, kwargs 
 	if method == nil {
 		return nil, fmt.Errorf("gzip.file has no attribute %q", name)
 	}
-	return starlark.Call(f.thread, method, args, kwargs)
+	return starlark.Call(testThread, method, args, kwargs)
 }
 
 func kw(name string, val starlark.Value) starlark.Tuple {

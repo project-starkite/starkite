@@ -884,3 +884,48 @@ func TestWriteResponseStructVariants(t *testing.T) {
 		t.Fatalf("unexpected explicit struct response: code=%d header=%q body=%q", rec3.Code, rec3.Header().Get("X-Struct-Header"), rec3.Body.String())
 	}
 }
+
+func TestMiddlewareStepAndFrozenServer(t *testing.T) {
+	step := &middlewareStep{
+		name: "mw",
+		call: func(_ *starlark.Thread, _ starlark.Tuple) (starlark.Value, error) {
+			return starlark.None, nil
+		},
+	}
+	if _, err := step.Hash(); err == nil || !strings.Contains(err.Error(), "unhashable") {
+		t.Fatalf("expected unhashable error from middlewareStep.Hash(), got %v", err)
+	}
+
+	thread := &starlark.Thread{Name: "test"}
+	noop := starlark.NewBuiltin("noop", func(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
+		return starlark.String("ok"), nil
+	})
+	badMW := starlark.NewBuiltin("badmw", func(th *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
+		return starlark.Call(th, args[1], nil, nil) // omit req arg to next()
+	})
+	mwLayer := starlark.NewBuiltin("mw", func(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
+		return args[0], nil
+	})
+	req := &Request{method: "GET", path: "/x", params: starlark.NewDict(0), query: starlark.NewDict(0), headers: starlark.NewDict(0)}
+	if _, err := callChain(thread, []starlark.Callable{badMW, mwLayer}, noop, req); err == nil || !strings.Contains(err.Error(), "requires request argument") {
+		t.Fatalf("expected 0-arg middleware next() error, got %v", err)
+	}
+
+	checker, err := libkite.NewPermissionChecker(libkite.AllowAllPermissions())
+	if err != nil {
+		t.Fatal(err)
+	}
+	libkite.SetPermissions(thread, checker)
+
+	srv := testServer(t)
+	srv.Freeze()
+
+	handleFn, _ := srv.Attr("handle")
+	if _, err := starlark.Call(thread, handleFn, starlark.Tuple{starlark.String("/a"), noop}, nil); err == nil || !strings.Contains(err.Error(), "frozen") {
+		t.Fatalf("expected frozen error from server.handle, got %v", err)
+	}
+	useFn, _ := srv.Attr("use")
+	if _, err := starlark.Call(thread, useFn, starlark.Tuple{mwLayer}, nil); err == nil || !strings.Contains(err.Error(), "frozen") {
+		t.Fatalf("expected frozen error from server.use, got %v", err)
+	}
+}

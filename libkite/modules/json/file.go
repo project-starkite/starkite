@@ -16,7 +16,6 @@ import (
 // JsonFile is a Starlark value representing a file path for JSON reading.
 type JsonFile struct {
 	path   string
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -69,12 +68,12 @@ func (f *JsonFile) isDryRun() bool {
 
 // decodeMethod reads and decodes a JSON file.
 // Usage: json.file(path).decode()
-func (f *JsonFile) decodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (f *JsonFile) decodeMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 || len(kwargs) > 0 {
 		return nil, fmt.Errorf("json.file.decode: takes no arguments")
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
 

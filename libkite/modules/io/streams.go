@@ -2,8 +2,10 @@ package iomod
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"runtime"
 	"sync"
 
@@ -14,11 +16,12 @@ import (
 
 // starlarkReader wraps a Go io.Reader as a Starlark value.
 type starlarkReader struct {
-	reader io.Reader
-	closer io.Closer
-	closed bool
-	mu     sync.Mutex
-	name   string
+	reader    io.Reader
+	closer    io.Closer
+	closed    bool
+	streaming bool
+	mu        sync.Mutex
+	name      string
 }
 
 var (
@@ -192,23 +195,34 @@ func (r *starlarkReader) linesCmd(thread *starlark.Thread, fn *starlark.Builtin,
 	if r.closed {
 		return nil, fmt.Errorf("io.reader.lines: reader is closed")
 	}
+	if r.streaming {
+		return nil, fmt.Errorf("io.reader.lines: line iterator already started")
+	}
+	r.streaming = true
 
 	bufReader := bufio.NewReader(r.reader)
 	it := &starlarkLineIterator{
-		reader: bufReader,
-		closer: r.closer,
+		reader:  bufReader,
+		closeFn: r.Close,
 	}
-	r.closed = true
 
 	return it, nil
 }
 
 // starlarkLineIterator implements starlark.Iterator for streaming lines.
 type starlarkLineIterator struct {
-	reader *bufio.Reader
-	closer io.Closer
-	mu     sync.Mutex
-	done   bool
+	reader  *bufio.Reader
+	closeFn func() error
+	mu      sync.Mutex
+	done    bool
+	err     error
+}
+
+// Err returns the non-EOF read error encountered during iteration, if any.
+func (it *starlarkLineIterator) Err() error {
+	it.mu.Lock()
+	defer it.mu.Unlock()
+	return it.err
 }
 
 var (
@@ -243,13 +257,15 @@ func (it *starlarkLineIterator) Next(p *starlark.Value) bool {
 				*p = starlark.String(line)
 				return true
 			}
-			if it.closer != nil {
-				it.closer.Close()
+			if it.closeFn != nil {
+				_ = it.closeFn()
 			}
 			return false
 		}
-		if it.closer != nil {
-			it.closer.Close()
+		it.err = err
+		fmt.Fprintf(os.Stderr, "io.reader.lines: read error: %v\n", err)
+		if it.closeFn != nil {
+			_ = it.closeFn()
 		}
 		return false
 	}
@@ -261,8 +277,8 @@ func (it *starlarkLineIterator) Done() {
 	it.mu.Lock()
 	defer it.mu.Unlock()
 	it.done = true
-	if it.closer != nil {
-		it.closer.Close()
+	if it.closeFn != nil {
+		_ = it.closeFn()
 	}
 }
 
@@ -331,15 +347,20 @@ func (w *starlarkWriter) Close() error {
 	}
 	w.closed = true
 
+	var errs []error
 	// Flush if supported
 	if flusher, ok := w.writer.(interface{ Flush() error }); ok {
-		flusher.Flush()
+		if err := flusher.Flush(); err != nil {
+			errs = append(errs, err)
+		}
 	}
 
 	if w.closer != nil {
-		return w.closer.Close()
+		if err := w.closer.Close(); err != nil {
+			errs = append(errs, err)
+		}
 	}
-	return nil
+	return errors.Join(errs...)
 }
 
 func (w *starlarkWriter) Attr(name string) (starlark.Value, error) {

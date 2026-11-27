@@ -19,7 +19,6 @@ import (
 // URL is a Starlark value representing an HTTP URL with method calls.
 type URL struct {
 	rawURL string
-	thread *starlark.Thread
 	module *Module
 }
 
@@ -96,9 +95,6 @@ func (u *URL) deleteMethod(thread *starlark.Thread, fn *starlark.Builtin, args s
 }
 
 func (u *URL) doRequest(thread *starlark.Thread, method string, hasBody bool, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
-	if thread == nil {
-		thread = u.thread
-	}
 	var body starlark.Value = starlark.None
 	var headers *starlark.Dict
 	var timeoutStr string

@@ -166,6 +166,9 @@ func saveHostKeys(filePath string, keys []*HostKey, hash bool) error {
 		return err
 	}
 
+	knownHostsMu.Lock()
+	defer knownHostsMu.Unlock()
+
 	if err := os.MkdirAll(filepath.Dir(expandedPath), 0700); err != nil {
 		return fmt.Errorf("failed to create directory for known_hosts: %w", err)
 	}
@@ -276,10 +279,17 @@ func runKeyscan(thread *starlark.Thread, hosts []string, defaultPort int, timeou
 					dialDone <- dialResult{tunnel: t, err: err}
 				}()
 
+				timer := time.NewTimer(timeout)
 				select {
-				case <-time.After(timeout):
+				case <-timer.C:
+					go func() {
+						if res := <-dialDone; res.tunnel != nil {
+							_ = res.tunnel.Close()
+						}
+					}()
 					return nil, fmt.Errorf("connection to %s via jump host timed out after %v", targetAddr, timeout)
 				case res := <-dialDone:
+					timer.Stop()
 					if res.err != nil {
 						return nil, fmt.Errorf("failed to tunnel through jump host to %s: %w", targetAddr, res.err)
 					}

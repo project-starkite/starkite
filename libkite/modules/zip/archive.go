@@ -20,7 +20,6 @@ import (
 // Methods open the archive, perform the operation, and close it.
 type Archive struct {
 	path   string
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -81,7 +80,7 @@ func (a *Archive) isDryRun() bool {
 
 // namelistMethod returns the list of entry names in the archive.
 // Usage: zip.file("archive.zip").namelist(match="")
-func (a *Archive) namelistMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (a *Archive) namelistMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Match string `name:"match"`
 	}
@@ -89,7 +88,7 @@ func (a *Archive) namelistMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		return nil, err
 	}
 
-	if err := libkite.Check(a.thread, "fs", "read", "read_file", libkite.CanonicalizePath(a.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(a.path)); err != nil {
 		return nil, err
 	}
 
@@ -134,7 +133,7 @@ func readBoundedZipEntry(rc io.Reader, limit int64, label string) ([]byte, error
 
 // readMethod reads a single entry from the archive.
 // Usage: zip.file("archive.zip").read("entry.txt")
-func (a *Archive) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (a *Archive) readMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Name string `name:"name" position:"0" required:"true"`
 	}
@@ -142,7 +141,7 @@ func (a *Archive) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starl
 		return nil, err
 	}
 
-	if err := libkite.Check(a.thread, "fs", "read", "read_file", libkite.CanonicalizePath(a.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(a.path)); err != nil {
 		return nil, err
 	}
 
@@ -171,7 +170,7 @@ func (a *Archive) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starl
 
 // readAllMethod reads all entries from the archive.
 // Usage: zip.file("archive.zip").read_all(match="", files=[])
-func (a *Archive) readAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (a *Archive) readAllMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Match string   `name:"match"`
 		Files []string `name:"files"`
@@ -184,7 +183,7 @@ func (a *Archive) readAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 		return nil, fmt.Errorf("zip.read_all: match and files are mutually exclusive")
 	}
 
-	if err := libkite.Check(a.thread, "fs", "read", "read_file", libkite.CanonicalizePath(a.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(a.path)); err != nil {
 		return nil, err
 	}
 
@@ -244,7 +243,7 @@ func (a *Archive) readAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 
 // writeMethod writes a single file into a new zip archive.
 // Usage: zip.file("output.zip").write("/path/to/file.txt", name="custom.txt")
-func (a *Archive) writeMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (a *Archive) writeMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Source string `name:"source" position:"0" required:"true"`
 		Name   string `name:"name"`
@@ -259,10 +258,10 @@ func (a *Archive) writeMethod(_ *starlark.Thread, _ *starlark.Builtin, args star
 		entryName = filepath.Base(sourcePath)
 	}
 
-	if err := libkite.Check(a.thread, "fs", "write", "write", libkite.CanonicalizePath(a.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", libkite.CanonicalizePath(a.path)); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(a.thread, "fs", "read", "read_file", libkite.CanonicalizePath(sourcePath)); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(sourcePath)); err != nil {
 		return nil, err
 	}
 
@@ -308,7 +307,7 @@ func (a *Archive) writeMethod(_ *starlark.Thread, _ *starlark.Builtin, args star
 
 // writeAllMethod writes multiple files into a new zip archive.
 // Usage: zip.file("output.zip").write_all(match="src/**/*.go", files=[], base_dir="", level=-1)
-func (a *Archive) writeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (a *Archive) writeAllMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Match   string   `name:"match"`
 		Files   []string `name:"files"`
@@ -327,14 +326,14 @@ func (a *Archive) writeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		return nil, fmt.Errorf("zip.write_all: must specify match or files")
 	}
 
-	if err := libkite.Check(a.thread, "fs", "write", "write", libkite.CanonicalizePath(a.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", libkite.CanonicalizePath(a.path)); err != nil {
 		return nil, err
 	}
 
 	// Resolve source files
 	var sourcePaths []string
 	if p.Match != "" {
-		if err := libkite.Check(a.thread, "fs", "read", "read_file", libkite.CanonicalizePath(p.Match)); err != nil {
+		if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(p.Match)); err != nil {
 			return nil, err
 		}
 		resolved, err := resolveGlob(p.Match)
@@ -348,7 +347,7 @@ func (a *Archive) writeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 
 	// Check read permissions for all source files
 	for _, sp := range sourcePaths {
-		if err := libkite.Check(a.thread, "fs", "read", "read_file", libkite.CanonicalizePath(sp)); err != nil {
+		if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(sp)); err != nil {
 			return nil, err
 		}
 	}

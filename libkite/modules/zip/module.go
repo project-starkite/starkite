@@ -49,5 +49,5 @@ func (m *Module) fileFactory(thread *starlark.Thread, fn *starlark.Builtin, args
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	return &Archive{path: p.Path, thread: thread, config: m.config}, nil
+	return &Archive{path: p.Path, config: m.config}, nil
 }

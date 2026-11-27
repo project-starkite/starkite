@@ -11,12 +11,14 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 )
 
+var testThread = &starlark.Thread{Name: "test"}
+
 func newTestSource(data []byte) *Source {
-	return &Source{data: data, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &Source{data: data, config: &libkite.ModuleConfig{}}
 }
 
 func newTestBase64File(path string) *Base64File {
-	return &Base64File{path: path, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &Base64File{path: path, config: &libkite.ModuleConfig{}}
 }
 
 func newTestModule() *Module {
@@ -245,7 +247,7 @@ func TestSourceTryEncode(t *testing.T) {
 		t.Fatal("try_encode should return a builtin")
 	}
 
-	result, err := starlark.Call(s.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -266,7 +268,7 @@ func TestSourceTryEncode(t *testing.T) {
 func TestSourceTryDecodeSuccess(t *testing.T) {
 	s := newTestSource([]byte("aGVsbG8="))
 	v, _ := s.Attr("try_decode")
-	result, err := starlark.Call(s.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -284,7 +286,7 @@ func TestSourceTryDecodeSuccess(t *testing.T) {
 func TestSourceTryDecodeFailure(t *testing.T) {
 	s := newTestSource([]byte("!!!invalid!!!"))
 	v, _ := s.Attr("try_decode")
-	result, err := starlark.Call(s.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -511,7 +513,6 @@ func TestBase64FileMethodNoArgs(t *testing.T) {
 func TestBase64FileDryRunEncode(t *testing.T) {
 	f := &Base64File{
 		path:   "/tmp/nonexistent_file.txt",
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 	v, err := callFileMethod(f, "encode")
@@ -527,7 +528,6 @@ func TestBase64FileDryRunEncode(t *testing.T) {
 func TestBase64FileDryRunDecode(t *testing.T) {
 	f := &Base64File{
 		path:   "/tmp/nonexistent_file.txt",
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 	v, err := callFileMethod(f, "decode")
@@ -554,7 +554,7 @@ func TestBase64FileTryEncodeSuccess(t *testing.T) {
 
 	f := newTestBase64File(path)
 	v, _ := f.Attr("try_encode")
-	result, err := starlark.Call(f.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -568,7 +568,7 @@ func TestBase64FileTryEncodeSuccess(t *testing.T) {
 func TestBase64FileTryEncodeFailure(t *testing.T) {
 	f := newTestBase64File("/tmp/nonexistent_base64_test_file.txt")
 	v, _ := f.Attr("try_encode")
-	result, err := starlark.Call(f.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -748,7 +748,7 @@ func callSourceMethod(s *Source, name string, args ...starlark.Value) (starlark.
 	if method == nil {
 		return nil, fmt.Errorf("base64.source has no attribute %q", name)
 	}
-	return starlark.Call(s.thread, method, args, nil)
+	return starlark.Call(testThread, method, args, nil)
 }
 
 func callSourceMethodArgs(s *Source, name string, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -759,7 +759,7 @@ func callSourceMethodArgs(s *Source, name string, args starlark.Tuple, kwargs []
 	if method == nil {
 		return nil, fmt.Errorf("base64.source has no attribute %q", name)
 	}
-	return starlark.Call(s.thread, method, args, kwargs)
+	return starlark.Call(testThread, method, args, kwargs)
 }
 
 func callFileMethod(f *Base64File, name string, args ...starlark.Value) (starlark.Value, error) {
@@ -770,7 +770,7 @@ func callFileMethod(f *Base64File, name string, args ...starlark.Value) (starlar
 	if method == nil {
 		return nil, fmt.Errorf("base64.file has no attribute %q", name)
 	}
-	return starlark.Call(f.thread, method, args, nil)
+	return starlark.Call(testThread, method, args, nil)
 }
 
 func callFileMethodArgs(f *Base64File, name string, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -781,5 +781,5 @@ func callFileMethodArgs(f *Base64File, name string, args starlark.Tuple, kwargs 
 	if method == nil {
 		return nil, fmt.Errorf("base64.file has no attribute %q", name)
 	}
-	return starlark.Call(f.thread, method, args, kwargs)
+	return starlark.Call(testThread, method, args, kwargs)
 }

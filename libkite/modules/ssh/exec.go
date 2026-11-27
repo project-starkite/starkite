@@ -2,6 +2,7 @@ package ssh
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"maps"
 	"slices"
@@ -226,10 +227,11 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 			return starlark.NewList(nil), nil
 		}
 
+		ctx := libkite.ThreadContext(thread)
 		if c.execPolicy == "concurrent" {
-			return c.execBatchConcurrent(commands, sudo, asUser, cwd, env, execOnError, maxWorkers)
+			return c.execBatchHostsConcurrent(ctx, thread, c.hosts, commands, sudo, asUser, cwd, env, execOnError, maxWorkers)
 		}
-		return c.execBatchLinear(commands, sudo, asUser, cwd, env, execOnError)
+		return c.execBatchHostsLinear(ctx, thread, c.hosts, commands, sudo, asUser, cwd, env, execOnError)
 	}
 
 	// 2. Single Command Execution
@@ -338,10 +340,27 @@ func (c *SSHClient) exec(thread *starlark.Thread, fn *starlark.Builtin, args sta
 	}
 
 	// Execute on all hosts
+	ctx := libkite.ThreadContext(thread)
 	if c.execPolicy == "concurrent" {
-		return c.execConcurrent(finalCmd, maxWorkers)
+		return c.execHostsConcurrent(ctx, thread, c.hosts, finalCmd, "", maxWorkers)
 	}
-	return c.execLinear(finalCmd)
+	return c.execHostsLinear(ctx, thread, c.hosts, finalCmd, "")
+}
+
+func watchSessionContext(ctx context.Context, session *ssh.Session, client *ssh.Client) func() {
+	if ctx == nil || ctx.Done() == nil {
+		return func() {}
+	}
+	stop := context.AfterFunc(ctx, func() {
+		if session != nil {
+			_ = session.Signal(ssh.SIGTERM)
+			_ = session.Close()
+		}
+		if client != nil {
+			_ = client.Close()
+		}
+	})
+	return func() { _ = stop() }
 }
 
 func (c *SSHClient) dryRunExecResults(cmd string) starlark.Value {
@@ -366,13 +385,20 @@ func (c *SSHClient) dryRunExecBatchResults(commands []string, sudo bool, asUser,
 }
 
 func (c *SSHClient) execConcurrent(cmd string, maxWorkers ...int) (starlark.Value, error) {
+	return c.execHostsConcurrent(libkite.ThreadContext(c.thread), c.thread, c.hosts, cmd, "", maxWorkers...)
+}
+
+func (c *SSHClient) execHostsConcurrent(ctx context.Context, thread *starlark.Thread, hosts []string, cmd, passwordOverride string, maxWorkers ...int) (starlark.Value, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	workers := c.execMaxWorkers
 	if len(maxWorkers) > 0 && maxWorkers[0] > 0 {
 		workers = maxWorkers[0]
 	}
 
-	results := make([]starlark.Value, len(c.hosts))
-	errors := make([]error, len(c.hosts))
+	results := make([]starlark.Value, len(hosts))
+	errors := make([]error, len(hosts))
 	var wg sync.WaitGroup
 
 	var sem chan struct{}
@@ -380,17 +406,25 @@ func (c *SSHClient) execConcurrent(cmd string, maxWorkers ...int) (starlark.Valu
 		sem = make(chan struct{}, workers)
 	}
 
-	for i, host := range c.hosts {
-		wg.Add(1)
+	for i, host := range hosts {
 		if sem != nil {
-			sem <- struct{}{}
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				wg.Wait()
+				return nil, ctx.Err()
+			}
+		} else if err := ctx.Err(); err != nil {
+			wg.Wait()
+			return nil, err
 		}
+		wg.Add(1)
 		go func(idx int, h string) {
 			defer wg.Done()
 			if sem != nil {
 				defer func() { <-sem }()
 			}
-			result, err := c.execOnHost(h, cmd)
+			result, err := c.execOnHostContext(ctx, thread, h, cmd, passwordOverride)
 			if err != nil {
 				errors[idx] = err
 				return
@@ -403,7 +437,7 @@ func (c *SSHClient) execConcurrent(cmd string, maxWorkers ...int) (starlark.Valu
 
 	for i, err := range errors {
 		if err != nil {
-			return nil, fmt.Errorf("host %s: %w", c.hosts[i], err)
+			return nil, fmt.Errorf("host %s: %w", hosts[i], err)
 		}
 	}
 
@@ -411,10 +445,20 @@ func (c *SSHClient) execConcurrent(cmd string, maxWorkers ...int) (starlark.Valu
 }
 
 func (c *SSHClient) execLinear(cmd string) (starlark.Value, error) {
-	results := make([]starlark.Value, 0, len(c.hosts))
+	return c.execHostsLinear(libkite.ThreadContext(c.thread), c.thread, c.hosts, cmd, "")
+}
 
-	for _, host := range c.hosts {
-		result, err := c.execOnHost(host, cmd)
+func (c *SSHClient) execHostsLinear(ctx context.Context, thread *starlark.Thread, hosts []string, cmd, passwordOverride string) (starlark.Value, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	results := make([]starlark.Value, 0, len(hosts))
+
+	for _, host := range hosts {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		result, err := c.execOnHostContext(ctx, thread, host, cmd, passwordOverride)
 		if err != nil {
 			return nil, fmt.Errorf("host %s: %w", host, err)
 		}
@@ -425,7 +469,11 @@ func (c *SSHClient) execLinear(cmd string) (starlark.Value, error) {
 }
 
 func (c *SSHClient) execOnHost(host, cmd string) (starlark.Value, error) {
-	client, err := c.dialHostWithRetry(host)
+	return c.execOnHostContext(libkite.ThreadContext(c.thread), c.thread, host, cmd, "")
+}
+
+func (c *SSHClient) execOnHostContext(ctx context.Context, thread *starlark.Thread, host, cmd, passwordOverride string) (starlark.Value, error) {
+	client, err := c.dialHostWithRetryContext(ctx, thread, host, passwordOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -441,9 +489,14 @@ func (c *SSHClient) execOnHost(host, cmd string) (starlark.Value, error) {
 	session.Stdout = &stdout
 	session.Stderr = &stderr
 
+	stopWatch := watchSessionContext(ctx, session, client)
 	err = session.Run(cmd)
+	stopWatch()
 	exitCode := 0
 	if err != nil {
+		if ctx != nil && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if exitErr, ok := err.(*ssh.ExitError); ok {
 			exitCode = exitErr.ExitStatus()
 		} else {
@@ -454,9 +507,12 @@ func (c *SSHClient) execOnHost(host, cmd string) (starlark.Value, error) {
 	return newSSHResult(host, cmd, stdout.String(), stderr.String(), exitCode, exitCode == 0, false), nil
 }
 
-func (c *SSHClient) execBatchConcurrent(commands []string, sudo bool, asUser, cwd string, env map[string]string, execOnError string, maxWorkers int) (starlark.Value, error) {
-	results := make([]starlark.Value, len(c.hosts))
-	errors := make([]error, len(c.hosts))
+func (c *SSHClient) execBatchHostsConcurrent(ctx context.Context, thread *starlark.Thread, hosts, commands []string, sudo bool, asUser, cwd string, env map[string]string, execOnError string, maxWorkers int) (starlark.Value, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	results := make([]starlark.Value, len(hosts))
+	errors := make([]error, len(hosts))
 	var wg sync.WaitGroup
 
 	var sem chan struct{}
@@ -464,17 +520,25 @@ func (c *SSHClient) execBatchConcurrent(commands []string, sudo bool, asUser, cw
 		sem = make(chan struct{}, maxWorkers)
 	}
 
-	for i, host := range c.hosts {
-		wg.Add(1)
+	for i, host := range hosts {
 		if sem != nil {
-			sem <- struct{}{}
+			select {
+			case sem <- struct{}{}:
+			case <-ctx.Done():
+				wg.Wait()
+				return nil, ctx.Err()
+			}
+		} else if err := ctx.Err(); err != nil {
+			wg.Wait()
+			return nil, err
 		}
+		wg.Add(1)
 		go func(idx int, h string) {
 			defer wg.Done()
 			if sem != nil {
 				defer func() { <-sem }()
 			}
-			result, err := c.execBatchOnHost(h, commands, sudo, asUser, cwd, env, execOnError)
+			result, err := c.execBatchOnHostContext(ctx, thread, h, commands, sudo, asUser, cwd, env, execOnError)
 			if err != nil {
 				errors[idx] = err
 				return
@@ -487,18 +551,24 @@ func (c *SSHClient) execBatchConcurrent(commands []string, sudo bool, asUser, cw
 
 	for i, err := range errors {
 		if err != nil {
-			return nil, fmt.Errorf("host %s: %w", c.hosts[i], err)
+			return nil, fmt.Errorf("host %s: %w", hosts[i], err)
 		}
 	}
 
 	return starlark.NewList(results), nil
 }
 
-func (c *SSHClient) execBatchLinear(commands []string, sudo bool, asUser, cwd string, env map[string]string, execOnError string) (starlark.Value, error) {
-	results := make([]starlark.Value, 0, len(c.hosts))
+func (c *SSHClient) execBatchHostsLinear(ctx context.Context, thread *starlark.Thread, hosts, commands []string, sudo bool, asUser, cwd string, env map[string]string, execOnError string) (starlark.Value, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	results := make([]starlark.Value, 0, len(hosts))
 
-	for _, host := range c.hosts {
-		result, err := c.execBatchOnHost(host, commands, sudo, asUser, cwd, env, execOnError)
+	for _, host := range hosts {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
+		result, err := c.execBatchOnHostContext(ctx, thread, host, commands, sudo, asUser, cwd, env, execOnError)
 		if err != nil {
 			return nil, fmt.Errorf("host %s: %w", host, err)
 		}
@@ -508,18 +578,21 @@ func (c *SSHClient) execBatchLinear(commands []string, sudo bool, asUser, cwd st
 	return starlark.NewList(results), nil
 }
 
-func (c *SSHClient) execBatchOnHost(host string, commands []string, sudo bool, asUser, cwd string, env map[string]string, execOnError string) (starlark.Value, error) {
+func (c *SSHClient) execBatchOnHostContext(ctx context.Context, thread *starlark.Thread, host string, commands []string, sudo bool, asUser, cwd string, env map[string]string, execOnError string) (starlark.Value, error) {
 	steps := make([]starlark.Value, 0, len(commands))
 	allOK := true
 	stoppedEarly := false
 
-	client, err := c.dialHostWithRetry(host)
+	client, err := c.dialHostWithRetryContext(ctx, thread, host, "")
 	if err != nil {
 		return nil, err
 	}
 	defer client.Close()
 
 	for _, cmd := range commands {
+		if ctx != nil && ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		finalCmd := buildSSHCommand(cmd, cwd, env, sudo, asUser)
 
 		session, err := client.NewSession()
@@ -531,11 +604,16 @@ func (c *SSHClient) execBatchOnHost(host string, commands []string, sudo bool, a
 		session.Stdout = &stdout
 		session.Stderr = &stderr
 
+		stopWatch := watchSessionContext(ctx, session, client)
 		runErr := session.Run(finalCmd)
+		stopWatch()
 		session.Close()
 
 		exitCode := 0
 		if runErr != nil {
+			if ctx != nil && ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
 			if exitErr, ok := runErr.(*ssh.ExitError); ok {
 				exitCode = exitErr.ExitStatus()
 			} else {

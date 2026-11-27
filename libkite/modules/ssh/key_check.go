@@ -208,8 +208,14 @@ func runKeyCheck(thread *starlark.Thread, hosts []string, defaultPort int, user 
 				dialDone <- dialResult{tunnel: t, err: err}
 			}()
 
+			timer := time.NewTimer(timeout)
 			select {
-			case <-time.After(timeout):
+			case <-timer.C:
+				go func() {
+					if res := <-dialDone; res.tunnel != nil {
+						_ = res.tunnel.Close()
+					}
+				}()
 				results = append(results, &KeyCheckResult{
 					Host:        h,
 					User:        user,
@@ -221,6 +227,7 @@ func runKeyCheck(thread *starlark.Thread, hosts []string, defaultPort int, user 
 				})
 				continue
 			case res := <-dialDone:
+				timer.Stop()
 				if res.err != nil {
 					results = append(results, &KeyCheckResult{
 						Host:        h,

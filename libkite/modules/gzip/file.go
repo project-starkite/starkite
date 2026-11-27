@@ -19,7 +19,6 @@ import (
 // Methods perform file-to-file compression/decompression.
 type GzipFile struct {
 	path   string
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -74,7 +73,7 @@ func (f *GzipFile) isDryRun() bool {
 
 // compressMethod streams source file and writes compressed data to f.path.
 // Usage: gzip.file("data.gz").compress("source.txt", level=-1)
-func (f *GzipFile) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (f *GzipFile) compressMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Source string `name:"source" position:"0" required:"true"`
 		Level  int    `name:"level"`
@@ -88,10 +87,10 @@ func (f *GzipFile) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 		return nil, fmt.Errorf("gzip.file.compress: invalid compression level %d (must be -2 to 9)", p.Level)
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read", "read_file", libkite.CanonicalizePath(p.Source)); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(p.Source)); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(f.thread, "fs", "write", "write", libkite.CanonicalizePath(f.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", libkite.CanonicalizePath(f.path)); err != nil {
 		return nil, err
 	}
 
@@ -136,7 +135,7 @@ func (f *GzipFile) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 
 // decompressMethod streams f.path and writes decompressed data to dest.
 // Usage: gzip.file("data.gz").decompress("output.txt") or gzip.file("data.gz").decompress()
-func (f *GzipFile) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (f *GzipFile) decompressMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Dest string `name:"dest" position:"0"`
 	}
@@ -154,10 +153,10 @@ func (f *GzipFile) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, arg
 		dest = strings.TrimSuffix(f.path, ".gz")
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read", "read_file", libkite.CanonicalizePath(f.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", libkite.CanonicalizePath(f.path)); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(f.thread, "fs", "write", "write", libkite.CanonicalizePath(dest)); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", libkite.CanonicalizePath(dest)); err != nil {
 		return nil, err
 	}
 

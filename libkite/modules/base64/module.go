@@ -52,7 +52,7 @@ func (m *Module) fileFactory(thread *starlark.Thread, fn *starlark.Builtin, args
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	return &Base64File{path: p.Path, thread: thread, config: m.config}, nil
+	return &Base64File{path: p.Path, config: m.config}, nil
 }
 
 // textFactory creates a Source from a string.
@@ -64,7 +64,7 @@ func (m *Module) textFactory(thread *starlark.Thread, fn *starlark.Builtin, args
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	return &Source{data: []byte(p.S), thread: thread, config: m.config}, nil
+	return &Source{data: []byte(p.S), config: m.config}, nil
 }
 
 // bytesFactory creates a Source from bytes or string.
@@ -85,5 +85,5 @@ func (m *Module) bytesFactory(thread *starlark.Thread, fn *starlark.Builtin, arg
 	default:
 		return nil, fmt.Errorf("base64.bytes: argument must be bytes or string, got %s", p.Data.Type())
 	}
-	return &Source{data: data, thread: thread, config: m.config}, nil
+	return &Source{data: data, config: m.config}, nil
 }

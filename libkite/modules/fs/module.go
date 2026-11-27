@@ -90,7 +90,7 @@ func (m *Module) pathFactory(thread *starlark.Thread, fn *starlark.Builtin, args
 	if !ok {
 		return nil, fmt.Errorf("%s: argument must be a string, got %s", fn.Name(), args[0].Type())
 	}
-	return &Path{path: p, thread: thread, config: m.config}, nil
+	return &Path{path: p, config: m.config}, nil
 }
 
 // ============================================================================

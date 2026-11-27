@@ -60,7 +60,7 @@ func (m *Module) fileFactory(thread *starlark.Thread, fn *starlark.Builtin, args
 	if !ok {
 		return nil, fmt.Errorf("yaml.file: path must be a string, got %s", args[0].Type())
 	}
-	return &YamlFile{path: path, thread: thread, config: m.config}, nil
+	return &YamlFile{path: path, config: m.config}, nil
 }
 
 // sourceFactory creates a Writer from any Starlark value.
@@ -69,7 +69,7 @@ func (m *Module) sourceFactory(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if len(args) != 1 {
 		return nil, fmt.Errorf("yaml.source: expected 1 argument (data), got %d", len(args))
 	}
-	return &Writer{data: args[0], thread: thread, config: m.config}, nil
+	return &Writer{data: args[0], config: m.config}, nil
 }
 
 // encode encodes a Starlark value to a YAML string.

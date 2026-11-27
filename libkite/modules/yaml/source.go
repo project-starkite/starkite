@@ -17,7 +17,6 @@ import (
 // Writer is a Starlark value wrapping data for YAML file writing.
 type Writer struct {
 	data   starlark.Value
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -30,7 +29,11 @@ func (w *Writer) String() string {
 	return fmt.Sprintf("yaml.writer(%s)", w.data.Type())
 }
 func (w *Writer) Type() string { return "yaml.writer" }
-func (w *Writer) Freeze()      {}
+func (w *Writer) Freeze() {
+	if w.data != nil {
+		w.data.Freeze()
+	}
+}
 func (w *Writer) Truth() starlark.Bool {
 	return starlark.Bool(w.data != nil && w.data != starlark.None)
 }
@@ -76,7 +79,7 @@ func (w *Writer) isDryRun() bool {
 // If data is a list, writes multi-doc with --- separators.
 // Otherwise writes a single document.
 // Usage: yaml.from(data).write_file(path)
-func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (w *Writer) writeFileMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) != 1 {
 		return nil, fmt.Errorf("yaml.writer.write_file: expected 1 argument (path), got %d", len(args))
 	}
@@ -85,7 +88,7 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		return nil, fmt.Errorf("yaml.writer.write_file: path must be a string, got %s", args[0].Type())
 	}
 
-	if err := libkite.Check(w.thread, "fs", "write", "write", path); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", path); err != nil {
 		return nil, err
 	}
 

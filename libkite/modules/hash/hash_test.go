@@ -11,12 +11,14 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 )
 
+var testThread = &starlark.Thread{Name: "test"}
+
 func newTestSource(data []byte) *Source {
-	return &Source{data: data, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &Source{data: data, config: &libkite.ModuleConfig{}}
 }
 
 func newTestHashFile(path string) *HashFile {
-	return &HashFile{path: path, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &HashFile{path: path, config: &libkite.ModuleConfig{}}
 }
 
 func newTestModule() *Module {
@@ -180,7 +182,7 @@ func TestSourceTryMD5(t *testing.T) {
 		t.Fatal("try_md5 should return a builtin")
 	}
 
-	result, err := starlark.Call(s.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -351,7 +353,6 @@ func TestHashFileMethodNoArgs(t *testing.T) {
 func TestHashFileDryRun(t *testing.T) {
 	f := &HashFile{
 		path:   "/tmp/nonexistent_file.txt",
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 	v, err := callFileMethod(f, "sha256")
@@ -379,7 +380,7 @@ func TestHashFileTrySHA256Success(t *testing.T) {
 
 	f := newTestHashFile(path)
 	v, _ := f.Attr("try_sha256")
-	result, err := starlark.Call(f.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -393,7 +394,7 @@ func TestHashFileTrySHA256Success(t *testing.T) {
 func TestHashFileTrySHA256Failure(t *testing.T) {
 	f := newTestHashFile("/tmp/nonexistent_hash_test_file.txt")
 	v, _ := f.Attr("try_sha256")
-	result, err := starlark.Call(f.thread, v, nil, nil)
+	result, err := starlark.Call(testThread, v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -573,7 +574,7 @@ func callSourceMethod(s *Source, name string, args ...starlark.Value) (starlark.
 	if method == nil {
 		return nil, fmt.Errorf("hash.source has no attribute %q", name)
 	}
-	return starlark.Call(s.thread, method, args, nil)
+	return starlark.Call(testThread, method, args, nil)
 }
 
 func callSourceMethodArgs(s *Source, name string, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -584,7 +585,7 @@ func callSourceMethodArgs(s *Source, name string, args starlark.Tuple, kwargs []
 	if method == nil {
 		return nil, fmt.Errorf("hash.source has no attribute %q", name)
 	}
-	return starlark.Call(s.thread, method, args, kwargs)
+	return starlark.Call(testThread, method, args, kwargs)
 }
 
 func callFileMethod(f *HashFile, name string, args ...starlark.Value) (starlark.Value, error) {
@@ -595,7 +596,7 @@ func callFileMethod(f *HashFile, name string, args ...starlark.Value) (starlark.
 	if method == nil {
 		return nil, fmt.Errorf("hash.file has no attribute %q", name)
 	}
-	return starlark.Call(f.thread, method, args, nil)
+	return starlark.Call(testThread, method, args, nil)
 }
 
 func callFileMethodArgs(f *HashFile, name string, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -606,7 +607,7 @@ func callFileMethodArgs(f *HashFile, name string, args starlark.Tuple, kwargs []
 	if method == nil {
 		return nil, fmt.Errorf("hash.file has no attribute %q", name)
 	}
-	return starlark.Call(f.thread, method, args, kwargs)
+	return starlark.Call(testThread, method, args, kwargs)
 }
 
 func kw(name string, val starlark.Value) starlark.Tuple {

@@ -65,7 +65,6 @@ func getOrParseTemplate(source, leftDelim, rightDelim string) (*template.Templat
 type Template struct {
 	source string
 	tmpl   *template.Template
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -177,7 +176,7 @@ func (t *Template) renderMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 }
 
 // parseTemplate creates a Template from source text with optional delimiters.
-func parseTemplate(source, leftDelim, rightDelim string, thread *starlark.Thread, config *libkite.ModuleConfig) (*Template, error) {
+func parseTemplate(source, leftDelim, rightDelim string, config *libkite.ModuleConfig) (*Template, error) {
 	parsed, err := getOrParseTemplate(source, leftDelim, rightDelim)
 	if err != nil {
 		return nil, err
@@ -185,7 +184,6 @@ func parseTemplate(source, leftDelim, rightDelim string, thread *starlark.Thread
 	return &Template{
 		source: source,
 		tmpl:   parsed,
-		thread: thread,
 		config: config,
 	}, nil
 }

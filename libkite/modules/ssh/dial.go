@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net"
@@ -11,6 +12,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"go.starlark.net/starlark"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/agent"
 	"golang.org/x/term"
@@ -172,6 +174,13 @@ func parsePrivateKeyWithPrompt(keyPath string, keyBytes []byte, passphrase strin
 
 // buildSSHConfig creates an *ssh.ClientConfig from the SSHClient's settings.
 func (c *SSHClient) buildSSHConfig() (*ssh.ClientConfig, error) {
+	return c.buildSSHConfigWith(c.thread, "")
+}
+
+func (c *SSHClient) buildSSHConfigWith(thread *starlark.Thread, passwordOverride string) (*ssh.ClientConfig, error) {
+	if thread == nil {
+		thread = c.thread
+	}
 	config := &ssh.ClientConfig{
 		User:    c.user,
 		Timeout: c.timeout,
@@ -206,8 +215,8 @@ func (c *SSHClient) buildSSHConfig() (*ssh.ClientConfig, error) {
 		if err != nil {
 			return nil, err
 		}
-		if c.thread != nil {
-			if err := libkite.Check(c.thread, "fs", "read", "ssh_key", libkite.CanonicalizePath(keyPath)); err != nil {
+		if thread != nil {
+			if err := libkite.Check(thread, "fs", "read", "ssh_key", libkite.CanonicalizePath(keyPath)); err != nil {
 				return nil, err
 			}
 		}
@@ -232,8 +241,14 @@ func (c *SSHClient) buildSSHConfig() (*ssh.ClientConfig, error) {
 	}
 
 	// Password auth
-	if c.password != "" {
-		authMethods = append(authMethods, ssh.Password(c.password))
+	pw := passwordOverride
+	if pw == "" {
+		c.mu.RLock()
+		pw = c.password
+		c.mu.RUnlock()
+	}
+	if pw != "" {
+		authMethods = append(authMethods, ssh.Password(pw))
 	}
 
 	if len(authMethods) == 0 {
@@ -251,7 +266,14 @@ func (c *SSHClient) hostKeyCallback() (ssh.HostKeyCallback, error) {
 
 // dialHost connects to a host, routing through a jump host if configured.
 func (c *SSHClient) dialHost(host string) (*ssh.Client, error) {
-	config, err := c.buildSSHConfig()
+	return c.dialHostContext(libkite.ThreadContext(c.thread), c.thread, host, "")
+}
+
+func (c *SSHClient) dialHostContext(ctx context.Context, thread *starlark.Thread, host, passwordOverride string) (*ssh.Client, error) {
+	if ctx == nil {
+		ctx = libkite.ThreadContext(c.thread)
+	}
+	config, err := c.buildSSHConfigWith(thread, passwordOverride)
 	if err != nil {
 		return nil, err
 	}
@@ -259,15 +281,19 @@ func (c *SSHClient) dialHost(host string) (*ssh.Client, error) {
 	addr := fmt.Sprintf("%s:%d", host, c.port)
 
 	if c.jumpHost != "" {
-		return c.dialViaJump(addr, config)
+		return c.dialViaJumpContext(ctx, thread, addr, config)
 	}
 
-	ctx := libkite.ThreadContext(c.thread)
 	dialer := net.Dialer{Timeout: c.timeout}
 	rawConn, err := dialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to %s: %w", addr, err)
 	}
+
+	stopCancel := context.AfterFunc(ctx, func() {
+		_ = rawConn.Close()
+	})
+	defer stopCancel()
 
 	var timedOut atomic.Bool
 	if c.timeout > 0 {
@@ -281,6 +307,9 @@ func (c *SSHClient) dialHost(host string) (*ssh.Client, error) {
 	conn, chans, reqs, err := ssh.NewClientConn(rawConn, addr, config)
 	if err != nil {
 		_ = rawConn.Close()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if timedOut.Load() {
 			return nil, fmt.Errorf("connection to %s timed out after %v", addr, c.timeout)
 		}
@@ -350,15 +379,20 @@ func (c *SSHClient) buildJumpSSHConfig() (*ssh.ClientConfig, error) {
 	return BuildJumpSSHConfigWithThread(c.thread, c.toJumpConfig(), c.timeout)
 }
 
-// dialViaJump connects to a target host through a jump/bastion host.
-func (c *SSHClient) dialViaJump(targetAddr string, targetConfig *ssh.ClientConfig) (*ssh.Client, error) {
-	ctx := libkite.ThreadContext(c.thread)
+// dialViaJumpContext connects to a target host through a jump/bastion host.
+func (c *SSHClient) dialViaJumpContext(ctx context.Context, thread *starlark.Thread, targetAddr string, targetConfig *ssh.ClientConfig) (*ssh.Client, error) {
+	if ctx == nil {
+		ctx = libkite.ThreadContext(c.thread)
+	}
+	if thread == nil {
+		thread = c.thread
+	}
 	jumpCfg := c.toJumpConfig()
 	jumpAddr := jumpCfg.Host
 	if _, _, err := net.SplitHostPort(jumpAddr); err != nil {
 		jumpAddr = fmt.Sprintf("%s:%d", jumpAddr, jumpCfg.Port)
 	}
-	jumpClient, err := DialBastionWithThread(ctx, c.thread, &jumpCfg, c.timeout)
+	jumpClient, err := DialBastionWithThread(ctx, thread, &jumpCfg, c.timeout)
 	if err != nil {
 		return nil, err
 	}
@@ -394,6 +428,12 @@ func (c *SSHClient) dialViaJump(targetAddr string, targetConfig *ssh.ClientConfi
 	}
 
 	// Create an SSH connection over the tunnel
+	stopCancel := context.AfterFunc(ctx, func() {
+		_ = tunnel.Close()
+		_ = jumpClient.Close()
+	})
+	defer stopCancel()
+
 	var timedOut atomic.Bool
 	if c.timeout > 0 {
 		hsTimer := time.AfterFunc(c.timeout, func() {
@@ -407,6 +447,9 @@ func (c *SSHClient) dialViaJump(targetAddr string, targetConfig *ssh.ClientConfi
 	if err != nil {
 		_ = tunnel.Close()
 		_ = jumpClient.Close()
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
 		if timedOut.Load() {
 			return nil, fmt.Errorf("connection to %s via %s timed out after %v", targetAddr, jumpAddr, c.timeout)
 		}
@@ -423,15 +466,21 @@ func (c *SSHClient) dialViaJump(targetAddr string, targetConfig *ssh.ClientConfi
 
 // dialHostWithRetry wraps dialHost with exponential backoff retries.
 func (c *SSHClient) dialHostWithRetry(host string) (*ssh.Client, error) {
+	return c.dialHostWithRetryContext(libkite.ThreadContext(c.thread), c.thread, host, "")
+}
+
+func (c *SSHClient) dialHostWithRetryContext(ctx context.Context, thread *starlark.Thread, host, passwordOverride string) (*ssh.Client, error) {
+	if ctx == nil {
+		ctx = libkite.ThreadContext(c.thread)
+	}
 	var lastErr error
 	delay := time.Second
-	ctx := libkite.ThreadContext(c.thread)
 
 	for attempt := 0; attempt <= c.maxRetries; attempt++ {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
-		client, err := c.dialHost(host)
+		client, err := c.dialHostContext(ctx, thread, host, passwordOverride)
 		if err == nil {
 			c.startKeepalive(client)
 			return client, nil

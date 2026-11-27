@@ -184,3 +184,77 @@ def test(w, r):
 		})
 	}
 }
+
+type failingReaderCloser struct {
+	err    error
+	closed bool
+}
+
+func (f *failingReaderCloser) Read([]byte) (int, error) { return 0, f.err }
+func (f *failingReaderCloser) Close() error             { f.closed = true; return nil }
+
+type flushCloseErrorWriter struct {
+	flushErr error
+	closeErr error
+}
+
+func (w *flushCloseErrorWriter) Write(p []byte) (int, error) { return len(p), nil }
+func (w *flushCloseErrorWriter) Flush() error                { return w.flushErr }
+func (w *flushCloseErrorWriter) Close() error                { return w.closeErr }
+
+func TestReaderLinesCloseAndIteratorErrAndWriterFlushErr(t *testing.T) {
+	// 1. lines() must allow explicit reader.close() afterward and close the underlying closer.
+	tr := &trackingReader{Reader: strings.NewReader("alpha\nbeta\n")}
+	r := NewReader(tr, "lines").(*starlarkReader)
+	thread := &starlark.Thread{Name: "test"}
+	linesFn, err := r.Attr("lines")
+	if err != nil {
+		t.Fatal(err)
+	}
+	itVal, err := starlark.Call(thread, linesFn, nil, nil)
+	if err != nil {
+		t.Fatalf("lines() failed: %v", err)
+	}
+	it := itVal.(starlark.Iterable).Iterate()
+	var item starlark.Value
+	if !it.Next(&item) || string(item.(starlark.String)) != "alpha\n" {
+		t.Fatalf("unexpected first line: %v", item)
+	}
+	it.Done()
+	closeFn, err := r.Attr("close")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := starlark.Call(thread, closeFn, nil, nil); err != nil {
+		t.Fatalf("reader.close() after lines() failed: %v", err)
+	}
+	if !tr.closed {
+		t.Fatal("expected underlying reader to be closed")
+	}
+
+	// 2. Non-EOF read errors must be recorded on starlarkLineIterator.Err().
+	fr := &failingReaderCloser{err: io.ErrUnexpectedEOF}
+	rErr := NewReader(fr, "err").(*starlarkReader)
+	linesErrFn, _ := rErr.Attr("lines")
+	itErrVal, err := starlark.Call(thread, linesErrFn, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lineIter := itErrVal.(*starlarkLineIterator)
+	if lineIter.Next(&item) {
+		t.Fatal("expected Next() to return false on read error")
+	}
+	if lineIter.Err() != io.ErrUnexpectedEOF {
+		t.Fatalf("lineIter.Err() = %v, want %v", lineIter.Err(), io.ErrUnexpectedEOF)
+	}
+	if !fr.closed {
+		t.Fatal("expected failing reader to be closed on error")
+	}
+
+	// 3. writer.Close() must propagate Flush() errors alongside Close() errors.
+	fw := &flushCloseErrorWriter{flushErr: io.ErrShortWrite, closeErr: io.ErrClosedPipe}
+	sw := NewWriter(fw, "flusherr").(*starlarkWriter)
+	if err := sw.Close(); err == nil || !strings.Contains(err.Error(), io.ErrShortWrite.Error()) || !strings.Contains(err.Error(), io.ErrClosedPipe.Error()) {
+		t.Fatalf("expected joined flush + close error, got %v", err)
+	}
+}

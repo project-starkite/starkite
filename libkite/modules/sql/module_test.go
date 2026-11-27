@@ -509,3 +509,40 @@ func TestInsertWithStructs(t *testing.T) {
 		t.Fatalf("count = %v, want 2", cnt)
 	}
 }
+
+func TestBlobReturnsBytesAndTextReturnsString(t *testing.T) {
+	th := threadWith(t, libkite.AllowAllPermissions())
+	c := openMem(t, th)
+	defer c.db.Close()
+
+	callMethod(t, th, c, "exec", starlark.String("CREATE TABLE payloads (id INTEGER, raw BLOB, label TEXT)"))
+	wantBytes := "\x00\x01\xfe\xff"
+	callMethod(t, th, c, "exec",
+		starlark.String("INSERT INTO payloads (id, raw, label) VALUES (?, ?, ?)"),
+		starlark.MakeInt(1),
+		starlark.Bytes(wantBytes),
+		starlark.String("hello"),
+	)
+
+	gotBlob := callMethod(t, th, c, "query_value", starlark.String("SELECT raw FROM payloads WHERE id = 1"))
+	b, ok := gotBlob.(starlark.Bytes)
+	if !ok {
+		t.Fatalf("SELECT BLOB returned %T (%s), want starlark.Bytes", gotBlob, gotBlob.Type())
+	}
+	if string(b) != wantBytes {
+		t.Fatalf("BLOB bytes = %x, want %x", []byte(b), []byte(wantBytes))
+	}
+
+	gotText := callMethod(t, th, c, "query_value", starlark.String("SELECT label FROM payloads WHERE id = 1"))
+	s, ok := gotText.(starlark.String)
+	if !ok || string(s) != "hello" {
+		t.Fatalf("SELECT TEXT returned %T (%v), want starlark.String(\"hello\")", gotText, gotText)
+	}
+
+	if !isBinaryColumnType(nil) {
+		t.Fatal("isBinaryColumnType(nil) = false, want true")
+	}
+	if raw := goToStarlark([]byte("raw"), nil); raw != starlark.Bytes("raw") {
+		t.Fatalf("goToStarlark([]byte, nil) = %T (%v), want starlark.Bytes", raw, raw)
+	}
+}

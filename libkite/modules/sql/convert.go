@@ -3,6 +3,7 @@ package sql
 import (
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"go.starlark.net/starlark"
@@ -55,8 +56,23 @@ func starlarkToGo(v starlark.Value) (any, error) {
 	}
 }
 
-// goToStarlark converts a scanned database value to a Starlark value.
-func goToStarlark(val any) starlark.Value {
+func isBinaryColumnType(ct *sql.ColumnType) bool {
+	if ct == nil {
+		return true
+	}
+	dbType := strings.ToUpper(ct.DatabaseTypeName())
+	if dbType == "" {
+		return true
+	}
+	return strings.Contains(dbType, "BLOB") ||
+		strings.Contains(dbType, "BYTEA") ||
+		strings.Contains(dbType, "BINARY") ||
+		strings.Contains(dbType, "RAW") ||
+		strings.Contains(dbType, "IMAGE")
+}
+
+// goToStarlark converts a scanned database value to a Starlark value using optional column type metadata.
+func goToStarlark(val any, ct *sql.ColumnType) starlark.Value {
 	switch v := val.(type) {
 	case nil:
 		return starlark.None
@@ -69,6 +85,9 @@ func goToStarlark(val any) starlark.Value {
 	case string:
 		return starlark.String(v)
 	case []byte:
+		if isBinaryColumnType(ct) {
+			return starlark.Bytes(v)
+		}
 		return starlark.String(string(v))
 	case time.Time:
 		return starlark.String(v.Format(time.RFC3339))
@@ -78,7 +97,7 @@ func goToStarlark(val any) starlark.Value {
 }
 
 // rowToDict scans the current row into a dict keyed by column name.
-func rowToDict(rows *sql.Rows, columns []string) (*starlark.Dict, error) {
+func rowToDict(rows *sql.Rows, columns []string, colTypes []*sql.ColumnType) (*starlark.Dict, error) {
 	values := make([]any, len(columns))
 	ptrs := make([]any, len(columns))
 	for i := range values {
@@ -89,7 +108,11 @@ func rowToDict(rows *sql.Rows, columns []string) (*starlark.Dict, error) {
 	}
 	dict := starlark.NewDict(len(columns))
 	for i, col := range columns {
-		if err := dict.SetKey(starlark.String(col), goToStarlark(values[i])); err != nil {
+		var ct *sql.ColumnType
+		if i < len(colTypes) {
+			ct = colTypes[i]
+		}
+		if err := dict.SetKey(starlark.String(col), goToStarlark(values[i], ct)); err != nil {
 			return nil, err
 		}
 	}
@@ -102,9 +125,10 @@ func rowsToList(rows *sql.Rows) (*starlark.List, error) {
 	if err != nil {
 		return nil, err
 	}
+	colTypes, _ := rows.ColumnTypes()
 	var out []starlark.Value
 	for rows.Next() {
-		dict, err := rowToDict(rows, columns)
+		dict, err := rowToDict(rows, columns, colTypes)
 		if err != nil {
 			return nil, err
 		}
@@ -122,6 +146,7 @@ func scanFirstValue(rows *sql.Rows) (starlark.Value, error) {
 	if err != nil {
 		return nil, err
 	}
+	colTypes, _ := rows.ColumnTypes()
 	if !rows.Next() {
 		return starlark.None, rows.Err()
 	}
@@ -133,7 +158,11 @@ func scanFirstValue(rows *sql.Rows) (starlark.Value, error) {
 	if err := rows.Scan(ptrs...); err != nil {
 		return nil, err
 	}
-	return goToStarlark(values[0]), nil
+	var ct *sql.ColumnType
+	if len(colTypes) > 0 {
+		ct = colTypes[0]
+	}
+	return goToStarlark(values[0], ct), nil
 }
 
 // scanColumn returns the first column of every row as a flat list.
@@ -141,6 +170,11 @@ func scanColumn(rows *sql.Rows) (*starlark.List, error) {
 	cols, err := rows.Columns()
 	if err != nil {
 		return nil, err
+	}
+	colTypes, _ := rows.ColumnTypes()
+	var ct *sql.ColumnType
+	if len(colTypes) > 0 {
+		ct = colTypes[0]
 	}
 	var out []starlark.Value
 	for rows.Next() {
@@ -152,7 +186,7 @@ func scanColumn(rows *sql.Rows) (*starlark.List, error) {
 		if err := rows.Scan(ptrs...); err != nil {
 			return nil, err
 		}
-		out = append(out, goToStarlark(values[0]))
+		out = append(out, goToStarlark(values[0], ct))
 	}
 	return starlark.NewList(out), rows.Err()
 }
@@ -163,13 +197,14 @@ func rowsFirst(rows *sql.Rows) (starlark.Value, error) {
 	if err != nil {
 		return nil, err
 	}
+	colTypes, _ := rows.ColumnTypes()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return nil, err
 		}
 		return starlark.None, nil
 	}
-	dict, err := rowToDict(rows, columns)
+	dict, err := rowToDict(rows, columns, colTypes)
 	if err != nil {
 		return nil, err
 	}

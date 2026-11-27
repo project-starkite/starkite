@@ -16,9 +16,12 @@ import (
 func newTestArchive(path string) *Archive {
 	return &Archive{
 		path:   path,
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{},
 	}
+}
+
+func newTestThread() *starlark.Thread {
+	return &starlark.Thread{Name: "test"}
 }
 
 func newTestModule() *Module {
@@ -447,7 +450,7 @@ func TestTryReadSuccess(t *testing.T) {
 		t.Fatal("try_read should return a builtin")
 	}
 
-	result, err := starlark.Call(a.thread, v, starlark.Tuple{starlark.String("a.txt")}, nil)
+	result, err := starlark.Call(newTestThread(), v, starlark.Tuple{starlark.String("a.txt")}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -465,7 +468,7 @@ func TestTryReadFailure(t *testing.T) {
 
 	a := newTestArchive(zipPath)
 	v, _ := a.Attr("try_read")
-	result, err := starlark.Call(a.thread, v, starlark.Tuple{starlark.String("missing.txt")}, nil)
+	result, err := starlark.Call(newTestThread(), v, starlark.Tuple{starlark.String("missing.txt")}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,7 +502,6 @@ func TestWriteDryRun(t *testing.T) {
 	zipPath := filepath.Join(dir, "output.zip")
 	a := &Archive{
 		path:   zipPath,
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 
@@ -620,7 +622,7 @@ func callArchiveMethod(a *Archive, name string, args ...starlark.Value) (starlar
 	if method == nil {
 		return nil, fmt.Errorf("zip.archive has no attribute %q", name)
 	}
-	return starlark.Call(a.thread, method, args, nil)
+	return starlark.Call(newTestThread(), method, args, nil)
 }
 
 func callArchiveMethodKw(a *Archive, name string, args starlark.Tuple, kwargs ...starlark.Tuple) (starlark.Value, error) {
@@ -631,7 +633,7 @@ func callArchiveMethodKw(a *Archive, name string, args starlark.Tuple, kwargs ..
 	if method == nil {
 		return nil, fmt.Errorf("zip.archive has no attribute %q", name)
 	}
-	return starlark.Call(a.thread, method, args, kwargs)
+	return starlark.Call(newTestThread(), method, args, kwargs)
 }
 
 func kw(name string, val starlark.Value) starlark.Tuple {

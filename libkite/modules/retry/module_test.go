@@ -603,3 +603,34 @@ func TestRetryTryWrappers(t *testing.T) {
 		}
 	}
 }
+
+func TestRetryCallbackErrorsPropagate(t *testing.T) {
+	thread := testThread()
+	mod := New()
+	if _, err := mod.Load(&libkite.ModuleConfig{}); err != nil {
+		t.Fatal(err)
+	}
+
+	okFn := makeFunc(libkite.ResultOK(starlark.String("ok")))
+	errFn := starlark.NewBuiltin("boom", func(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
+		return nil, fmt.Errorf("callback boom")
+	})
+
+	_, err := starlark.Call(thread, starlark.NewBuiltin("retry.do", mod.retryDo), starlark.Tuple{okFn}, []starlark.Tuple{
+		{starlark.String("max_attempts"), starlark.MakeInt(2)},
+		{starlark.String("retry_on"), errFn},
+	})
+	if err == nil || err.Error() == "" {
+		t.Fatalf("expected retry_on callback error to propagate, got %v", err)
+	}
+
+	failFn := makeFunc(libkite.ResultErr("fail"))
+	_, err = starlark.Call(thread, starlark.NewBuiltin("retry.do", mod.retryDo), starlark.Tuple{failFn}, []starlark.Tuple{
+		{starlark.String("max_attempts"), starlark.MakeInt(2)},
+		{starlark.String("delay"), starlark.String("1ms")},
+		{starlark.String("on_retry"), errFn},
+	})
+	if err == nil || err.Error() == "" {
+		t.Fatalf("expected on_retry callback error to propagate, got %v", err)
+	}
+}

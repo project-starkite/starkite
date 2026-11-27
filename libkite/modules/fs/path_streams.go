@@ -16,7 +16,7 @@ func (p *Path) getReaderMethod(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if err := starlark.UnpackArgs("get_reader", args, kwargs); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "read", "read_file", checkPath(p.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", checkPath(p.path)); err != nil {
 		return nil, err
 	}
 
@@ -34,7 +34,7 @@ func (p *Path) getWriterMethod(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if err := starlark.UnpackArgs("get_writer", args, kwargs); err != nil {
 		return nil, err
 	}
-	if err := libkite.Check(p.thread, "fs", "write", "write", checkPath(p.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", checkPath(p.path)); err != nil {
 		return nil, err
 	}
 
@@ -63,7 +63,7 @@ func (p *Path) writeToMethod(thread *starlark.Thread, fn *starlark.Builtin, args
 		return nil, fmt.Errorf("fs.path.write_to: expected io.writer, got %s", writerVal.Type())
 	}
 
-	if err := libkite.Check(p.thread, "fs", "read", "read_file", checkPath(p.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", checkPath(p.path)); err != nil {
 		return nil, err
 	}
 
@@ -93,7 +93,7 @@ func (p *Path) readFromMethod(thread *starlark.Thread, fn *starlark.Builtin, arg
 		return nil, fmt.Errorf("fs.path.read_from: expected io.reader, got %s", readerVal.Type())
 	}
 
-	if err := libkite.Check(p.thread, "fs", "write", "write", checkPath(p.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", checkPath(p.path)); err != nil {
 		return nil, err
 	}
 
@@ -136,7 +136,7 @@ func (p *Path) appendFromMethod(thread *starlark.Thread, fn *starlark.Builtin, a
 		return nil, fmt.Errorf("fs.path.append_from: expected io.reader, got %s", readerVal.Type())
 	}
 
-	if err := libkite.Check(p.thread, "fs", "write", "write", checkPath(p.path)); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", checkPath(p.path)); err != nil {
 		return nil, err
 	}
 

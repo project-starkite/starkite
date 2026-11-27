@@ -17,7 +17,6 @@ import (
 // CsvFile is a Starlark value representing a file path for CSV reading.
 type CsvFile struct {
 	path   string
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -70,7 +69,7 @@ func (f *CsvFile) isDryRun() bool {
 
 // readMethod streams and parses the CSV file.
 // Usage: csv.file(path).read(sep=",", comment="", skip=0, header=false)
-func (f *CsvFile) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (f *CsvFile) readMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Sep     string `name:"sep"`
 		Comment string `name:"comment"`
@@ -82,7 +81,7 @@ func (f *CsvFile) readMethod(_ *starlark.Thread, _ *starlark.Builtin, args starl
 		return nil, err
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
 

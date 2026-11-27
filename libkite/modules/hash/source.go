@@ -13,7 +13,6 @@ import (
 // Source is a Starlark value wrapping data for hashing.
 type Source struct {
 	data   []byte
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 

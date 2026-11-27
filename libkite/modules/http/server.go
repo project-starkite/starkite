@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"go.starlark.net/starlark"
@@ -48,9 +49,9 @@ type Server struct {
 	config      *libkite.ModuleConfig
 
 	// Synchronization
-	mu        sync.Mutex
-	handlerMu sync.Mutex
-	done      chan struct{}
+	mu     sync.Mutex
+	frozen atomic.Bool
+	done   chan struct{}
 }
 
 // newServer creates a Server with default config.
@@ -66,9 +67,25 @@ func newServer(runtime *libkite.Runtime, config *libkite.ModuleConfig) *Server {
 
 // --- starlark.Value ---
 
-func (s *Server) String() string        { return "<http.server>" }
-func (s *Server) Type() string          { return "http.server" }
-func (s *Server) Freeze()               {}
+func (s *Server) String() string { return "<http.server>" }
+func (s *Server) Type() string   { return "http.server" }
+func (s *Server) Freeze() {
+	if !s.frozen.CompareAndSwap(false, true) {
+		return
+	}
+	s.mu.Lock()
+	for _, h := range s.handlers {
+		if h.handler != nil {
+			h.handler.Freeze()
+		}
+	}
+	for _, mw := range s.middlewares {
+		if mw != nil {
+			mw.Freeze()
+		}
+	}
+	s.mu.Unlock()
+}
 func (s *Server) Truth() starlark.Bool  { return starlark.True }
 func (s *Server) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable: http.server") }
 
@@ -128,6 +145,9 @@ func (s *Server) handleMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.frozen.Load() {
+		return nil, fmt.Errorf("http.server: cannot add handlers to frozen server")
+	}
 	if s.running {
 		return nil, fmt.Errorf("http.server: cannot add handlers while server is running")
 	}
@@ -164,6 +184,9 @@ func (s *Server) useMethod(thread *starlark.Thread, fn *starlark.Builtin,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	if s.frozen.Load() {
+		return nil, fmt.Errorf("http.server: cannot add middleware to frozen server")
+	}
 	if s.running {
 		return nil, fmt.Errorf("http.server: cannot add middleware while server is running")
 	}
@@ -467,14 +490,18 @@ func (s *Server) makeGoHandler(pattern string, handler starlark.Callable,
 		stopWatch := libkite.WatchContext(r.Context(), thread)
 		defer stopWatch()
 
+		var result starlark.Value
+		var callErr error
 		if hasStarlarkFn {
-			s.handlerMu.Lock()
-			defer s.handlerMu.Unlock()
+			_ = libkite.WithCallLock(thread, func() error {
+				result, callErr = callChain(thread, middlewares, handler, reqObj)
+				return callErr
+			})
+		} else {
+			result, callErr = callChain(thread, middlewares, handler, reqObj)
 		}
-
-		result, err := callChain(thread, middlewares, handler, reqObj)
-		if err != nil {
-			gohttp.Error(w, fmt.Sprintf("handler error: %v", err), 500)
+		if callErr != nil {
+			gohttp.Error(w, fmt.Sprintf("handler error: %v", callErr), 500)
 			return
 		}
 

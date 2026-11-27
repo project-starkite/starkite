@@ -51,7 +51,7 @@ func (m *Module) fileFactory(thread *starlark.Thread, fn *starlark.Builtin, args
 	if err := startype.Args(args, kwargs).Go(&p); err != nil {
 		return nil, err
 	}
-	return &CsvFile{path: p.Path, thread: thread, config: m.config}, nil
+	return &CsvFile{path: p.Path, config: m.config}, nil
 }
 
 // sourceFactory creates a Writer from a list of data.
@@ -67,7 +67,7 @@ func (m *Module) sourceFactory(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if !ok {
 		return nil, fmt.Errorf("csv.source: data must be a list, got %s", args[0].Type())
 	}
-	return &Writer{data: list, thread: thread, config: m.config}, nil
+	return &Writer{data: list, config: m.config}, nil
 }
 
 // stringValue converts a Starlark value to string.

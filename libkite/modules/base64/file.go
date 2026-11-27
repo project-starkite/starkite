@@ -16,7 +16,6 @@ import (
 // Methods read the file and then encode or decode.
 type Base64File struct {
 	path   string
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -80,35 +79,35 @@ func (f *Base64File) isDryRun() bool {
 	return f.config != nil && f.config.DryRun
 }
 
-func (f *Base64File) readFile() ([]byte, error) {
-	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
+func (f *Base64File) readFile(thread *starlark.Thread) ([]byte, error) {
+	if err := libkite.Check(thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
 	return os.ReadFile(f.path)
 }
 
-func (f *Base64File) encodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (f *Base64File) encodeMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 || len(kwargs) > 0 {
 		return nil, fmt.Errorf("base64.file.encode: takes no arguments")
 	}
 	if f.isDryRun() {
 		return starlark.String(""), nil
 	}
-	data, err := f.readFile()
+	data, err := f.readFile(thread)
 	if err != nil {
 		return nil, fmt.Errorf("base64.file.encode: %w", err)
 	}
 	return starlark.String(base64.StdEncoding.EncodeToString(data)), nil
 }
 
-func (f *Base64File) decodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (f *Base64File) decodeMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 || len(kwargs) > 0 {
 		return nil, fmt.Errorf("base64.file.decode: takes no arguments")
 	}
 	if f.isDryRun() {
 		return starlark.Bytes(""), nil
 	}
-	data, err := f.readFile()
+	data, err := f.readFile(thread)
 	if err != nil {
 		return nil, fmt.Errorf("base64.file.decode: %w", err)
 	}
@@ -119,28 +118,28 @@ func (f *Base64File) decodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 	return starlark.Bytes(decoded), nil
 }
 
-func (f *Base64File) encodeURLMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (f *Base64File) encodeURLMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 || len(kwargs) > 0 {
 		return nil, fmt.Errorf("base64.file.encode_url: takes no arguments")
 	}
 	if f.isDryRun() {
 		return starlark.String(""), nil
 	}
-	data, err := f.readFile()
+	data, err := f.readFile(thread)
 	if err != nil {
 		return nil, fmt.Errorf("base64.file.encode_url: %w", err)
 	}
 	return starlark.String(base64.URLEncoding.EncodeToString(data)), nil
 }
 
-func (f *Base64File) decodeURLMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (f *Base64File) decodeURLMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 || len(kwargs) > 0 {
 		return nil, fmt.Errorf("base64.file.decode_url: takes no arguments")
 	}
 	if f.isDryRun() {
 		return starlark.Bytes(""), nil
 	}
-	data, err := f.readFile()
+	data, err := f.readFile(thread)
 	if err != nil {
 		return nil, fmt.Errorf("base64.file.decode_url: %w", err)
 	}

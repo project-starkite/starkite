@@ -713,6 +713,9 @@ func (c *Client) logsFn(thread *starlark.Thread, fn *starlark.Builtin, args star
 		return nil, err
 	}
 
+	libkite.RegisterCleanup(thread, func() {
+		_ = rc.Close()
+	})
 	return iomods.NewReaderWithCloser(rc, rc, fmt.Sprintf("%s.logs", name)), nil
 }
 

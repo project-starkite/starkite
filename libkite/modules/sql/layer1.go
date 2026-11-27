@@ -240,8 +240,9 @@ func (c *Connection) queryEach(thread *starlark.Thread, fn *starlark.Builtin, ar
 	if err != nil {
 		return nil, err
 	}
+	colTypes, _ := rows.ColumnTypes()
 	for rows.Next() {
-		dict, err := rowToDict(rows, cols)
+		dict, err := rowToDict(rows, cols, colTypes)
 		if err != nil {
 			return nil, err
 		}

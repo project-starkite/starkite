@@ -147,7 +147,7 @@ func (r *Response) getBytesMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 	return starlark.Bytes(data), nil
 }
 
-func (r *Response) getReaderMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (r *Response) getReaderMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 || len(kwargs) > 0 {
 		return nil, fmt.Errorf("http.response.get_reader: takes no arguments")
 	}
@@ -166,7 +166,11 @@ func (r *Response) getReaderMethod(_ *starlark.Thread, _ *starlark.Builtin, args
 	}
 
 	r.readerOpened = true
-	return iomod.NewReader(r.rawResp.Body, "http-response"), nil
+	body := r.rawResp.Body
+	libkite.RegisterCleanup(thread, func() {
+		_ = body.Close()
+	})
+	return iomod.NewReader(body, "http-response"), nil
 }
 
 func (r *Response) closeBody() {

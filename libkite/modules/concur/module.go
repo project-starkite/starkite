@@ -375,7 +375,10 @@ func (m *Module) concurExec(thread *starlark.Thread, fn *starlark.Builtin, args 
 	var onError string
 	for _, kv := range kwargs {
 		key := string(kv[0].(starlark.String))
-		val := string(kv[1].(starlark.String))
+		val, ok := starlark.AsString(kv[1])
+		if !ok {
+			return nil, fmt.Errorf("concur.exec: keyword argument %q must be a string, got %s", key, kv[1].Type())
+		}
 		switch key {
 		case "timeout":
 			timeout = val

@@ -52,11 +52,15 @@ func newTestModule(t *testing.T) *Module {
 }
 
 func newTestYamlFile(path string) *YamlFile {
-	return &YamlFile{path: path, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &YamlFile{path: path, config: &libkite.ModuleConfig{}}
 }
 
 func newTestWriter(data starlark.Value) *Writer {
-	return &Writer{data: data, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &Writer{data: data, config: &libkite.ModuleConfig{}}
+}
+
+func newTestThread() *starlark.Thread {
+	return &starlark.Thread{Name: "test"}
 }
 
 // ============================================================================
@@ -175,7 +179,6 @@ func TestYamlFileDecodeMissing(t *testing.T) {
 func TestYamlFileDryRun(t *testing.T) {
 	f := &YamlFile{
 		path:   "/tmp/nonexistent.yaml",
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 	v, err := callFileMethod(f, "decode")
@@ -207,7 +210,7 @@ func TestYamlFileTryDecodeSuccess(t *testing.T) {
 
 	f := newTestYamlFile(path)
 	v, _ := f.Attr("try_decode")
-	result, err := starlark.Call(f.thread, v, nil, nil)
+	result, err := starlark.Call(newTestThread(), v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -221,7 +224,7 @@ func TestYamlFileTryDecodeSuccess(t *testing.T) {
 func TestYamlFileTryDecodeFailure(t *testing.T) {
 	f := newTestYamlFile("/tmp/nonexistent_yaml_test_file.yaml")
 	v, _ := f.Attr("try_decode")
-	result, err := starlark.Call(f.thread, v, nil, nil)
+	result, err := starlark.Call(newTestThread(), v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -364,7 +367,6 @@ func TestWriterWriteFileDictConvertible(t *testing.T) {
 func TestWriterDryRun(t *testing.T) {
 	w := &Writer{
 		data:   starlark.String("hello"),
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 	v, err := callWriterMethod(w, "write_file", starlark.String("/tmp/nonexistent.yaml"))
@@ -492,7 +494,7 @@ func callFileMethod(f *YamlFile, name string, args ...starlark.Value) (starlark.
 	if method == nil {
 		return nil, nil
 	}
-	return starlark.Call(f.thread, method, args, nil)
+	return starlark.Call(newTestThread(), method, args, nil)
 }
 
 func callWriterMethod(w *Writer, name string, args ...starlark.Value) (starlark.Value, error) {
@@ -503,5 +505,5 @@ func callWriterMethod(w *Writer, name string, args ...starlark.Value) (starlark.
 	if method == nil {
 		return nil, nil
 	}
-	return starlark.Call(w.thread, method, args, nil)
+	return starlark.Call(newTestThread(), method, args, nil)
 }

@@ -382,8 +382,7 @@ func (m *Module) exit(thread *starlark.Thread, fn *starlark.Builtin, args starla
 		return nil, err
 	}
 
-	os.Exit(p.Code)
-	return starlark.None, nil // Never reached
+	return nil, libkite.NewExitError(p.Code)
 }
 
 // execCmd executes a command.

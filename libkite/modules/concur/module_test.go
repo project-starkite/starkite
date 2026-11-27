@@ -757,3 +757,16 @@ check()
 		t.Fatalf("unexpected error in pure concur.map: %v", err)
 	}
 }
+
+func TestConcurExecInvalidKwargType(t *testing.T) {
+	thread := testThread()
+	fn := makeBuiltin("ok", func(_ *starlark.Thread, _ starlark.Tuple) (starlark.Value, error) {
+		return starlark.None, nil
+	})
+	_, err := callBuiltin(thread, "exec", starlark.Tuple{fn}, []starlark.Tuple{
+		{starlark.String("timeout"), starlark.MakeInt(42)},
+	})
+	if err == nil || !strings.Contains(err.Error(), "must be a string") {
+		t.Fatalf("expected non-string kwarg error, got %v", err)
+	}
+}

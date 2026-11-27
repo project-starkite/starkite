@@ -80,7 +80,7 @@ func (m *Module) urlFactory(thread *starlark.Thread, fn *starlark.Builtin, args 
 	if !ok {
 		return nil, fmt.Errorf("http.url: url must be a string, got %s", args[0].Type())
 	}
-	return &URL{rawURL: url, thread: thread, module: m}, nil
+	return &URL{rawURL: url, module: m}, nil
 }
 
 // configFn configures the HTTP client.
@@ -298,7 +298,7 @@ func (m *Module) requestHelper(method string, hasBody bool, thread *starlark.Thr
 		}
 	}
 
-	u := &URL{rawURL: urlStr, thread: thread, module: m}
+	u := &URL{rawURL: urlStr, module: m}
 	return u.doRequest(thread, method, hasBody, args[1:], kwargs)
 }
 

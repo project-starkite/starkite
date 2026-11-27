@@ -18,7 +18,6 @@ import (
 // Source is a Starlark value wrapping data for gzip compression/decompression.
 type Source struct {
 	data   []byte
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -86,7 +85,7 @@ func (s *Source) isDryRun() bool {
 // Usage: source.compress(dest="", level=-1)
 // If dest is given, writes to file and returns None; otherwise returns bytes.
 // Note: level is kwarg-only (no position tag).
-func (s *Source) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (s *Source) compressMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Dest  string `name:"dest" position:"0"`
 		Level int    `name:"level"`
@@ -102,7 +101,7 @@ func (s *Source) compressMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 	}
 
 	if p.Dest != "" {
-		if err := libkite.Check(s.thread, "fs", "write", "write", libkite.CanonicalizePath(p.Dest)); err != nil {
+		if err := libkite.Check(thread, "fs", "write", "write", libkite.CanonicalizePath(p.Dest)); err != nil {
 			return nil, err
 		}
 		if s.isDryRun() {
@@ -156,7 +155,7 @@ const maxGzipDecompressBytes int64 = 256 << 20
 // decompressMethod decompresses the source data.
 // Usage: source.decompress(dest="")
 // If dest is given, writes to file and returns None; otherwise returns bytes.
-func (s *Source) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (s *Source) decompressMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Dest string `name:"dest" position:"0"`
 	}
@@ -171,7 +170,7 @@ func (s *Source) decompressMethod(_ *starlark.Thread, _ *starlark.Builtin, args 
 	defer r.Close()
 
 	if p.Dest != "" {
-		if err := libkite.Check(s.thread, "fs", "write", "write", libkite.CanonicalizePath(p.Dest)); err != nil {
+		if err := libkite.Check(thread, "fs", "write", "write", libkite.CanonicalizePath(p.Dest)); err != nil {
 			return nil, err
 		}
 		if s.isDryRun() {

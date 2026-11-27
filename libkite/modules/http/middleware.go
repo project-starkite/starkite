@@ -1,6 +1,7 @@
 package http
 
 import (
+	"fmt"
 	"slices"
 
 	"go.starlark.net/starlark"
@@ -21,6 +22,9 @@ func callChain(thread *starlark.Thread, middlewares []starlark.Callable,
 	var next starlark.Callable = &middlewareStep{
 		name: "handler",
 		call: func(thread *starlark.Thread, args starlark.Tuple) (starlark.Value, error) {
+			if len(args) == 0 {
+				return nil, fmt.Errorf("middleware next() requires request argument")
+			}
 			return starlark.Call(thread, handler, args, nil)
 		},
 	}
@@ -31,6 +35,9 @@ func callChain(thread *starlark.Thread, middlewares []starlark.Callable,
 		next = &middlewareStep{
 			name: "middleware",
 			call: func(thread *starlark.Thread, args starlark.Tuple) (starlark.Value, error) {
+				if len(args) == 0 {
+					return nil, fmt.Errorf("middleware next() requires request argument")
+				}
 				// mw(req, next) — pass request and the next step
 				return starlark.Call(thread, mw, starlark.Tuple{args[0], captured}, nil)
 			},
@@ -51,10 +58,12 @@ func (m *middlewareStep) Name() string { return m.name }
 func (m *middlewareStep) String() string {
 	return "<" + m.name + ">"
 }
-func (m *middlewareStep) Type() string          { return "middleware_step" }
-func (m *middlewareStep) Freeze()               {}
-func (m *middlewareStep) Truth() starlark.Bool  { return starlark.True }
-func (m *middlewareStep) Hash() (uint32, error) { return 0, nil }
+func (m *middlewareStep) Type() string         { return "middleware_step" }
+func (m *middlewareStep) Freeze()              {}
+func (m *middlewareStep) Truth() starlark.Bool { return starlark.True }
+func (m *middlewareStep) Hash() (uint32, error) {
+	return 0, fmt.Errorf("unhashable type: %s", m.Type())
+}
 
 func (m *middlewareStep) CallInternal(thread *starlark.Thread, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	return m.call(thread, args)

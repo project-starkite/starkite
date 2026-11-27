@@ -138,3 +138,31 @@ func TestTableAddRowAndRender(t *testing.T) {
 		t.Fatal("expected try_render ok=True")
 	}
 }
+
+func TestTableFrozenRejectsAddRow(t *testing.T) {
+	mod := New()
+	dict, err := mod.Load(&libkite.ModuleConfig{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	newFn, err := dict["table"].(starlark.HasAttrs).Attr("new")
+	if err != nil {
+		t.Fatal(err)
+	}
+	thread := &starlark.Thread{Name: "test"}
+	cols := starlark.NewList([]starlark.Value{starlark.String("Name")})
+	tbl, err := starlark.Call(thread, newFn, starlark.Tuple{cols}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tbl.Freeze()
+
+	addRowFn, err := tbl.(starlark.HasAttrs).Attr("add_row")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = starlark.Call(thread, addRowFn, starlark.Tuple{starlark.String("pod-1")}, nil)
+	if err == nil || !strings.Contains(err.Error(), "frozen") {
+		t.Fatalf("expected frozen error from add_row, got %v", err)
+	}
+}

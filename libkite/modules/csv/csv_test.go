@@ -13,11 +13,15 @@ import (
 )
 
 func newTestCsvFile(path string) *CsvFile {
-	return &CsvFile{path: path, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &CsvFile{path: path, config: &libkite.ModuleConfig{}}
 }
 
 func newTestWriter(data *starlark.List) *Writer {
-	return &Writer{data: data, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &Writer{data: data, config: &libkite.ModuleConfig{}}
+}
+
+func newTestThread() *starlark.Thread {
+	return &starlark.Thread{Name: "test"}
 }
 
 func newTestModule() *Module {
@@ -138,7 +142,6 @@ func TestCsvFileReadMissing(t *testing.T) {
 func TestCsvFileDryRun(t *testing.T) {
 	f := &CsvFile{
 		path:   "/tmp/nonexistent.csv",
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 	v, err := callFileMethod(f, "read")
@@ -162,7 +165,7 @@ func TestCsvFileTryReadSuccess(t *testing.T) {
 
 	f := newTestCsvFile(path)
 	v, _ := f.Attr("try_read")
-	result, err := starlark.Call(f.thread, v, nil, nil)
+	result, err := starlark.Call(newTestThread(), v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +179,7 @@ func TestCsvFileTryReadSuccess(t *testing.T) {
 func TestCsvFileTryReadFailure(t *testing.T) {
 	f := newTestCsvFile("/tmp/nonexistent_csv_test_file.csv")
 	v, _ := f.Attr("try_read")
-	result, err := starlark.Call(f.thread, v, nil, nil)
+	result, err := starlark.Call(newTestThread(), v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -288,7 +291,6 @@ func TestWriterWriteFileListOfDicts(t *testing.T) {
 func TestWriterDryRun(t *testing.T) {
 	w := &Writer{
 		data:   starlark.NewList([]starlark.Value{starlark.NewList([]starlark.Value{starlark.String("a")})}),
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 	v, err := callWriterMethod(w, "write_file", starlark.String("/tmp/nonexistent.csv"))
@@ -428,7 +430,7 @@ func callFileMethod(f *CsvFile, name string, args ...starlark.Value) (starlark.V
 	if method == nil {
 		return nil, fmt.Errorf("csv.file has no attribute %q", name)
 	}
-	return starlark.Call(f.thread, method, args, nil)
+	return starlark.Call(newTestThread(), method, args, nil)
 }
 
 func callFileMethodKwargs(f *CsvFile, name string, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -439,7 +441,7 @@ func callFileMethodKwargs(f *CsvFile, name string, args starlark.Tuple, kwargs [
 	if method == nil {
 		return nil, fmt.Errorf("csv.file has no attribute %q", name)
 	}
-	return starlark.Call(f.thread, method, args, kwargs)
+	return starlark.Call(newTestThread(), method, args, kwargs)
 }
 
 func callWriterMethod(w *Writer, name string, args ...starlark.Value) (starlark.Value, error) {
@@ -450,7 +452,7 @@ func callWriterMethod(w *Writer, name string, args ...starlark.Value) (starlark.
 	if method == nil {
 		return nil, fmt.Errorf("csv.writer has no attribute %q", name)
 	}
-	return starlark.Call(w.thread, method, args, nil)
+	return starlark.Call(newTestThread(), method, args, nil)
 }
 
 func kw(name string, val starlark.Value) starlark.Tuple {

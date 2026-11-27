@@ -216,3 +216,16 @@ def test_migrate_applies_then_skips():
     assert_equal(len(r2.applied), 0)
     assert_equal(len(r2.skipped), 2)
     db.close()
+
+def test_blob_returns_bytes():
+    db = sql.open("sqlite", ":memory:")
+    db.exec("CREATE TABLE payloads (id INTEGER PRIMARY KEY, raw BLOB, note TEXT)")
+    raw = bytes("abc")
+    db.exec("INSERT INTO payloads (id, raw, note) VALUES (?, ?, ?)", 1, raw, "hello")
+    rows = db.query("SELECT raw, note FROM payloads WHERE id = 1")
+    assert_equal(len(rows), 1)
+    assert_equal(type(rows[0]["raw"]), "bytes")
+    assert_equal(rows[0]["raw"], raw)
+    assert_equal(type(rows[0]["note"]), "string")
+    assert_equal(rows[0]["note"], "hello")
+    db.close()

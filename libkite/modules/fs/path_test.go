@@ -17,7 +17,11 @@ import (
 )
 
 func newTestPath(path string) *Path {
-	return &Path{path: path, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &Path{path: path, config: &libkite.ModuleConfig{}}
+}
+
+func newTestThread() *starlark.Thread {
+	return &starlark.Thread{Name: "test"}
 }
 
 // ============================================================================
@@ -671,7 +675,7 @@ func TestPathTryDispatch(t *testing.T) {
 	}
 
 	// Call it
-	result, err := starlark.Call(p.thread, v, nil, nil)
+	result, err := starlark.Call(newTestThread(), v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -691,7 +695,7 @@ func TestPathTryReadTextSuccess(t *testing.T) {
 	p := newTestPath(tmp)
 
 	v, _ := p.Attr("try_read_text")
-	result, err := starlark.Call(p.thread, v, nil, nil)
+	result, err := starlark.Call(newTestThread(), v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -817,7 +821,6 @@ func TestPathAttrNames(t *testing.T) {
 func TestPathDryRunWrite(t *testing.T) {
 	p := &Path{
 		path:   "/tmp/dryrun_test.txt",
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 
@@ -1066,7 +1069,7 @@ func callMethod(p *Path, name string, args ...starlark.Value) (starlark.Value, e
 	if method == nil {
 		return nil, starlark.NoSuchAttrError(fmt.Sprintf("%s has no attribute %q", p.Type(), name))
 	}
-	return starlark.Call(p.thread, method, args, nil)
+	return starlark.Call(newTestThread(), method, args, nil)
 }
 
 func callMethodKw(p *Path, name string, args starlark.Tuple, kwargs ...starlark.Tuple) (starlark.Value, error) {
@@ -1077,7 +1080,7 @@ func callMethodKw(p *Path, name string, args starlark.Tuple, kwargs ...starlark.
 	if method == nil {
 		return nil, starlark.NoSuchAttrError(fmt.Sprintf("%s has no attribute %q", p.Type(), name))
 	}
-	return starlark.Call(p.thread, method, args, kwargs)
+	return starlark.Call(newTestThread(), method, args, kwargs)
 }
 
 func kw(name string, val starlark.Value) starlark.Tuple {
@@ -1105,6 +1108,7 @@ func TestPathStreams(t *testing.T) {
 
 	// 1. Test get_writer and get_reader
 	p := newTestPath(filePath)
+	thread := newTestThread()
 	wVal, err := callMethod(p, "get_writer")
 	if err != nil {
 		t.Fatal(err)
@@ -1117,11 +1121,11 @@ func TestPathStreams(t *testing.T) {
 	}
 
 	// Write some data via the writer method
-	_, err = callValMethod(p.thread, wVal, "write", starlark.String("hello stream"))
+	_, err = callValMethod(thread, wVal, "write", starlark.String("hello stream"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = callValMethod(p.thread, wVal, "close")
+	_, err = callValMethod(thread, wVal, "close")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1146,7 +1150,7 @@ func TestPathStreams(t *testing.T) {
 	}
 
 	// Read from reader using "read" method
-	readVal, err := callValMethod(p.thread, rVal, "read", starlark.MakeInt(12))
+	readVal, err := callValMethod(thread, rVal, "read", starlark.MakeInt(12))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1158,7 +1162,7 @@ func TestPathStreams(t *testing.T) {
 		t.Errorf("expected %q, got %q", "hello stream", string(readBytes))
 	}
 
-	_, err = callValMethod(p.thread, rVal, "close")
+	_, err = callValMethod(thread, rVal, "close")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1181,7 +1185,7 @@ func TestPathStreams(t *testing.T) {
 	}
 
 	// Close the writer so the data is flushed/written
-	_, err = callValMethod(p.thread, wOutVal, "close")
+	_, err = callValMethod(thread, wOutVal, "close")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1249,9 +1253,9 @@ func TestPathStreams(t *testing.T) {
 func TestPathStreamsDryRun(t *testing.T) {
 	dir := t.TempDir()
 	filePath := filepath.Join(dir, "dryrun.txt")
+	thread := newTestThread()
 	p := &Path{
 		path:   filePath,
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 
@@ -1261,11 +1265,11 @@ func TestPathStreamsDryRun(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Write should succeed but not write to disk
-	_, err = callValMethod(p.thread, wVal, "write", starlark.String("dry run data"))
+	_, err = callValMethod(thread, wVal, "write", starlark.String("dry run data"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, err = callValMethod(p.thread, wVal, "close")
+	_, err = callValMethod(thread, wVal, "close")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1305,7 +1309,7 @@ func TestPathStreamsTryVariants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	result, err := starlark.Call(p.thread, v, nil, nil)
+	result, err := starlark.Call(newTestThread(), v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1339,23 +1343,32 @@ func TestPathPermissions_RenameCopySymlinkGlobTargets(t *testing.T) {
 	thread := &starlark.Thread{Name: "perm-test"}
 	libkite.SetPermissions(thread, checker)
 
-	pSrc := &Path{path: srcFile, thread: thread, config: &libkite.ModuleConfig{}}
+	callWithPerm := func(p *Path, name string, args ...starlark.Value) error {
+		method, err := p.Attr(name)
+		if err != nil {
+			return err
+		}
+		_, err = starlark.Call(thread, method, args, nil)
+		return err
+	}
+
+	pSrc := &Path{path: srcFile, config: &libkite.ModuleConfig{}}
 	forbiddenTarget := filepath.Join(forbiddenDir, "dst.txt")
 
-	if _, err := callMethod(pSrc, "rename", starlark.String(forbiddenTarget)); err == nil {
+	if err := callWithPerm(pSrc, "rename", starlark.String(forbiddenTarget)); err == nil {
 		t.Error("expected rename to forbidden target to fail permission check")
 	}
-	if _, err := callMethod(pSrc, "copy_to", starlark.String(forbiddenTarget)); err == nil {
+	if err := callWithPerm(pSrc, "copy_to", starlark.String(forbiddenTarget)); err == nil {
 		t.Error("expected copy_to to forbidden target to fail permission check")
 	}
 
-	pLink := &Path{path: filepath.Join(allowedDir, "link.txt"), thread: thread, config: &libkite.ModuleConfig{}}
-	if _, err := callMethod(pLink, "symlink_to", starlark.String(forbiddenTarget)); err == nil {
+	pLink := &Path{path: filepath.Join(allowedDir, "link.txt"), config: &libkite.ModuleConfig{}}
+	if err := callWithPerm(pLink, "symlink_to", starlark.String(forbiddenTarget)); err == nil {
 		t.Error("expected symlink_to pointing to forbidden target to fail permission check")
 	}
 
-	pDir := &Path{path: allowedDir, thread: thread, config: &libkite.ModuleConfig{}}
-	if _, err := callMethod(pDir, "glob", starlark.String("../*")); err == nil {
+	pDir := &Path{path: allowedDir, config: &libkite.ModuleConfig{}}
+	if err := callWithPerm(pDir, "glob", starlark.String("../*")); err == nil {
 		t.Error("expected glob escaping allowedDir to fail permission check")
 	}
 }
@@ -1403,8 +1416,12 @@ func TestFSWalkAndGlob_FilterDeniedPathsAndRenameChecksDelete(t *testing.T) {
 		t.Errorf("expected fs.glob to exclude symlink to outside file, got %v", globList)
 	}
 
-	pDir := &Path{path: allowedDir, thread: thread, config: &libkite.ModuleConfig{}}
-	walkVal, err := callMethod(pDir, "walk")
+	pDir := &Path{path: allowedDir, config: &libkite.ModuleConfig{}}
+	walkMethod, err := pDir.Attr("walk")
+	if err != nil {
+		t.Fatal(err)
+	}
+	walkVal, err := starlark.Call(thread, walkMethod, nil, nil)
 	if err != nil {
 		t.Fatalf("walk failed: %v", err)
 	}
@@ -1419,11 +1436,13 @@ func TestFSWalkAndGlob_FilterDeniedPathsAndRenameChecksDelete(t *testing.T) {
 	}
 
 	// rename and move_to must require fs.delete on source even when fs.write is granted
-	pPublic := &Path{path: filepath.Join(allowedDir, "public.txt"), thread: thread, config: &libkite.ModuleConfig{}}
-	if _, err := callMethod(pPublic, "rename", starlark.String(filepath.Join(allowedDir, "renamed.txt"))); err == nil || !strings.Contains(err.Error(), "permission denied") || !strings.Contains(err.Error(), "fs.delete") {
+	pPublic := &Path{path: filepath.Join(allowedDir, "public.txt"), config: &libkite.ModuleConfig{}}
+	renameMethod, _ := pPublic.Attr("rename")
+	if _, err := starlark.Call(thread, renameMethod, starlark.Tuple{starlark.String(filepath.Join(allowedDir, "renamed.txt"))}, nil); err == nil || !strings.Contains(err.Error(), "permission denied") || !strings.Contains(err.Error(), "fs.delete") {
 		t.Errorf("expected rename without fs.delete to fail with PermissionError, got %v", err)
 	}
-	if _, err := callMethod(pPublic, "move_to", starlark.String(filepath.Join(allowedDir, "moved.txt"))); err == nil || !strings.Contains(err.Error(), "permission denied") || !strings.Contains(err.Error(), "fs.delete") {
+	moveMethod, _ := pPublic.Attr("move_to")
+	if _, err := starlark.Call(thread, moveMethod, starlark.Tuple{starlark.String(filepath.Join(allowedDir, "moved.txt"))}, nil); err == nil || !strings.Contains(err.Error(), "permission denied") || !strings.Contains(err.Error(), "fs.delete") {
 		t.Errorf("expected move_to without fs.delete to fail with PermissionError, got %v", err)
 	}
 }

@@ -16,7 +16,6 @@ import (
 // Writer is a Starlark value wrapping list data for CSV file writing.
 type Writer struct {
 	data   *starlark.List
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -29,7 +28,7 @@ func (w *Writer) String() string {
 	return fmt.Sprintf("csv.writer(%d rows)", w.data.Len())
 }
 func (w *Writer) Type() string          { return "csv.writer" }
-func (w *Writer) Freeze()               {}
+func (w *Writer) Freeze()               { w.data.Freeze() }
 func (w *Writer) Truth() starlark.Bool  { return starlark.Bool(w.data.Len() > 0) }
 func (w *Writer) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: csv.writer") }
 
@@ -71,7 +70,7 @@ func (w *Writer) isDryRun() bool {
 
 // writeFileMethod writes CSV data to a file.
 // Usage: csv.from(data).write_file(path, sep=",", headers=None)
-func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (w *Writer) writeFileMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	var p struct {
 		Path string `name:"path" position:"0" required:"true"`
 		Sep  string `name:"sep"`
@@ -96,7 +95,7 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		return nil, err
 	}
 
-	if err := libkite.Check(w.thread, "fs", "write", "write", p.Path); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", p.Path); err != nil {
 		return nil, err
 	}
 

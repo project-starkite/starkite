@@ -17,6 +17,7 @@ import (
 
 	gossh "golang.org/x/crypto/ssh"
 
+	"github.com/project-starkite/starkite/libkite"
 	"go.starlark.net/starlark"
 	"go.starlark.net/starlarkstruct"
 )
@@ -507,6 +508,7 @@ type StarlarkTestServer struct {
 	server   *TestServer
 	thread   *starlark.Thread
 	tempDirs []string // track temp dirs
+	execMu   sync.Mutex
 }
 
 var (
@@ -690,11 +692,32 @@ func (s *StarlarkTestServer) handleExecMethod(thread *starlark.Thread, fn *starl
 		return nil, fmt.Errorf("ssh.test_server.handle_exec: argument must be callable")
 	}
 
+	parentRuntime := libkite.GetRuntime(thread)
+	parentPrint := thread.Print
+	parentPerms := libkite.GetPermissions(thread)
+
 	s.server.HandleExec(func(cmd string) (string, string, int) {
-		childThread := &starlark.Thread{Name: fmt.Sprintf("%s-exec-handler", thread.Name)}
-		result, err := starlark.Call(childThread, callable, starlark.Tuple{starlark.String(cmd)}, nil)
-		if err != nil {
-			return "", fmt.Sprintf("handler error: %v", err), 1
+		var childThread *starlark.Thread
+		if parentRuntime != nil {
+			childThread = parentRuntime.NewThread("ssh-test-server-exec-handler")
+		} else {
+			childThread = &starlark.Thread{Name: "ssh-test-server-exec-handler", Print: parentPrint}
+			if parentPerms != nil {
+				libkite.SetPermissions(childThread, parentPerms)
+			}
+		}
+
+		var result starlark.Value
+		var callErr error
+		if parentRuntime != nil {
+			result, callErr = libkite.CallSafe(childThread, callable, starlark.Tuple{starlark.String(cmd)}, nil)
+		} else {
+			s.execMu.Lock()
+			result, callErr = starlark.Call(childThread, callable, starlark.Tuple{starlark.String(cmd)}, nil)
+			s.execMu.Unlock()
+		}
+		if callErr != nil {
+			return "", fmt.Sprintf("handler error: %v", callErr), 1
 		}
 
 		// Accept tuple (stdout, stderr, exit_code)

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"go.starlark.net/starlark"
 
@@ -50,13 +51,14 @@ type TableValue struct {
 	headers []string
 	rows    [][]string
 	widths  []int
+	frozen  atomic.Bool
 }
 
 func (t *TableValue) String() string {
 	return fmt.Sprintf("<table %d cols, %d rows>", len(t.headers), len(t.rows))
 }
 func (t *TableValue) Type() string          { return "table" }
-func (t *TableValue) Freeze()               {}
+func (t *TableValue) Freeze()               { t.frozen.Store(true) }
 func (t *TableValue) Truth() starlark.Bool  { return starlark.Bool(len(t.rows) > 0) }
 func (t *TableValue) Hash() (uint32, error) { return 0, fmt.Errorf("unhashable type: table") }
 
@@ -82,6 +84,9 @@ func (t *TableValue) AttrNames() []string {
 }
 
 func (t *TableValue) addRow(thread *starlark.Thread, fn *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+	if t.frozen.Load() {
+		return nil, fmt.Errorf("table.add_row: cannot modify frozen table")
+	}
 	if len(args) > len(t.headers) {
 		return nil, fmt.Errorf("table.add_row: too many values (%d) for table with %d columns", len(args), len(t.headers))
 	}

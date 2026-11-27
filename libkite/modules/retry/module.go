@@ -243,7 +243,11 @@ func (m *Module) executeRetry(
 			// Go-level error (Starlark evaluation error)
 			errors = append(errors, callErr.Error())
 			if attempt < maxAttempts {
-				currentDelay = m.waitNextAttempt(ctx, thread, onRetryFn, attempt, callErr.Error(), currentDelay, maxDelay, backoffFactor, jitter)
+				var hookErr error
+				currentDelay, hookErr = m.waitNextAttempt(ctx, thread, onRetryFn, attempt, callErr.Error(), currentDelay, maxDelay, backoffFactor, jitter)
+				if hookErr != nil {
+					return nil, hookErr
+				}
 			}
 			continue
 		}
@@ -258,10 +262,17 @@ func (m *Module) executeRetry(
 			// Check retry_on predicate if set
 			if retryOnFn != nil {
 				predResult, predErr := starlark.Call(thread, retryOnFn, starlark.Tuple{val}, nil)
-				if predErr == nil && predResult == starlark.True {
+				if predErr != nil {
+					return nil, fmt.Errorf("retry.do: retry_on callback failed: %w", predErr)
+				}
+				if predResult == starlark.True {
 					errors = append(errors, "retry_on predicate triggered")
 					if attempt < maxAttempts {
-						currentDelay = m.waitNextAttempt(ctx, thread, onRetryFn, attempt, "retry_on predicate triggered", currentDelay, maxDelay, backoffFactor, jitter)
+						var hookErr error
+						currentDelay, hookErr = m.waitNextAttempt(ctx, thread, onRetryFn, attempt, "retry_on predicate triggered", currentDelay, maxDelay, backoffFactor, jitter)
+						if hookErr != nil {
+							return nil, hookErr
+						}
 					}
 					continue
 				}
@@ -273,7 +284,11 @@ func (m *Module) executeRetry(
 		// Failure
 		errors = append(errors, errMsg)
 		if attempt < maxAttempts {
-			currentDelay = m.waitNextAttempt(ctx, thread, onRetryFn, attempt, errMsg, currentDelay, maxDelay, backoffFactor, jitter)
+			var hookErr error
+			currentDelay, hookErr = m.waitNextAttempt(ctx, thread, onRetryFn, attempt, errMsg, currentDelay, maxDelay, backoffFactor, jitter)
+			if hookErr != nil {
+				return nil, hookErr
+			}
 		}
 	}
 
@@ -295,15 +310,17 @@ func (m *Module) waitNextAttempt(
 	currentDelay, maxDelay time.Duration,
 	backoffFactor float64,
 	jitter bool,
-) time.Duration {
+) (time.Duration, error) {
 	if onRetryFn != nil {
-		starlark.Call(thread, onRetryFn, starlark.Tuple{starlark.MakeInt(attempt), starlark.String(errMsg)}, nil)
+		if _, err := starlark.Call(thread, onRetryFn, starlark.Tuple{starlark.MakeInt(attempt), starlark.String(errMsg)}, nil); err != nil {
+			return 0, fmt.Errorf("retry.do: on_retry callback failed: %w", err)
+		}
 	}
 	m.sleepWithJitter(ctx, currentDelay, jitter)
 	if maxDelay > 0 {
 		currentDelay = min(time.Duration(float64(currentDelay)*backoffFactor), maxDelay)
 	}
-	return currentDelay
+	return currentDelay, nil
 }
 
 // sleepWithJitter sleeps for the given duration, optionally applying ±25% jitter.

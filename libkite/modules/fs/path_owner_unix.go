@@ -14,8 +14,8 @@ import (
 	"github.com/project-starkite/starkite/libkite"
 )
 
-func (p *Path) ownerMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "read", "owner", checkPath(p.path)); err != nil {
+func (p *Path) ownerMethod(thread *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "fs", "read", "owner", checkPath(p.path)); err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(p.path)
@@ -33,8 +33,8 @@ func (p *Path) ownerMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.T
 	return starlark.String(u.Username), nil
 }
 
-func (p *Path) groupMethod(_ *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
-	if err := libkite.Check(p.thread, "fs", "read", "group", checkPath(p.path)); err != nil {
+func (p *Path) groupMethod(thread *starlark.Thread, _ *starlark.Builtin, _ starlark.Tuple, _ []starlark.Tuple) (starlark.Value, error) {
+	if err := libkite.Check(thread, "fs", "read", "group", checkPath(p.path)); err != nil {
 		return nil, err
 	}
 	info, err := os.Stat(p.path)

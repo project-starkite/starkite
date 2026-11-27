@@ -14,11 +14,15 @@ import (
 )
 
 func newTestJsonFile(path string) *JsonFile {
-	return &JsonFile{path: path, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &JsonFile{path: path, config: &libkite.ModuleConfig{}}
 }
 
 func newTestWriter(data starlark.Value) *Writer {
-	return &Writer{data: data, thread: &starlark.Thread{Name: "test"}, config: &libkite.ModuleConfig{}}
+	return &Writer{data: data, config: &libkite.ModuleConfig{}}
+}
+
+func newTestThread() *starlark.Thread {
+	return &starlark.Thread{Name: "test"}
 }
 
 func newTestModule() *Module {
@@ -122,7 +126,6 @@ func TestJsonFileDecodeMissing(t *testing.T) {
 func TestJsonFileDryRun(t *testing.T) {
 	f := &JsonFile{
 		path:   "/tmp/nonexistent.json",
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 	v, err := callFileMethod(f, "decode")
@@ -145,7 +148,7 @@ func TestJsonFileTryDecodeSuccess(t *testing.T) {
 
 	f := newTestJsonFile(path)
 	v, _ := f.Attr("try_decode")
-	result, err := starlark.Call(f.thread, v, nil, nil)
+	result, err := starlark.Call(newTestThread(), v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -159,7 +162,7 @@ func TestJsonFileTryDecodeSuccess(t *testing.T) {
 func TestJsonFileTryDecodeFailure(t *testing.T) {
 	f := newTestJsonFile("/tmp/nonexistent_json_test_file.json")
 	v, _ := f.Attr("try_decode")
-	result, err := starlark.Call(f.thread, v, nil, nil)
+	result, err := starlark.Call(newTestThread(), v, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +276,6 @@ func TestWriterWriteFileIndent(t *testing.T) {
 func TestWriterDryRun(t *testing.T) {
 	w := &Writer{
 		data:   starlark.String("hello"),
-		thread: &starlark.Thread{Name: "test"},
 		config: &libkite.ModuleConfig{DryRun: true},
 	}
 	v, err := callWriterMethod(w, "write_file", starlark.String("/tmp/nonexistent.json"))
@@ -403,7 +405,7 @@ func callFileMethod(f *JsonFile, name string, args ...starlark.Value) (starlark.
 	if method == nil {
 		return nil, fmt.Errorf("json.file has no attribute %q", name)
 	}
-	return starlark.Call(f.thread, method, args, nil)
+	return starlark.Call(newTestThread(), method, args, nil)
 }
 
 func callWriterMethod(w *Writer, name string, args ...starlark.Value) (starlark.Value, error) {
@@ -414,7 +416,7 @@ func callWriterMethod(w *Writer, name string, args ...starlark.Value) (starlark.
 	if method == nil {
 		return nil, fmt.Errorf("json.writer has no attribute %q", name)
 	}
-	return starlark.Call(w.thread, method, args, nil)
+	return starlark.Call(newTestThread(), method, args, nil)
 }
 
 func callWriterMethodKwargs(w *Writer, name string, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
@@ -425,7 +427,7 @@ func callWriterMethodKwargs(w *Writer, name string, args starlark.Tuple, kwargs 
 	if method == nil {
 		return nil, fmt.Errorf("json.writer has no attribute %q", name)
 	}
-	return starlark.Call(w.thread, method, args, kwargs)
+	return starlark.Call(newTestThread(), method, args, kwargs)
 }
 
 func kw(name string, val starlark.Value) starlark.Tuple {

@@ -16,7 +16,6 @@ import (
 // Writer is a Starlark value wrapping data for JSON file writing.
 type Writer struct {
 	data   starlark.Value
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -29,7 +28,11 @@ func (w *Writer) String() string {
 	return fmt.Sprintf("json.writer(%s)", w.data.Type())
 }
 func (w *Writer) Type() string { return "json.writer" }
-func (w *Writer) Freeze()      {}
+func (w *Writer) Freeze() {
+	if w.data != nil {
+		w.data.Freeze()
+	}
+}
 func (w *Writer) Truth() starlark.Bool {
 	return starlark.Bool(w.data != nil && w.data != starlark.None)
 }
@@ -118,7 +121,7 @@ func (w *Writer) encodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args star
 
 // writeFileMethod writes JSON data to a file.
 // Usage: json.from(data).write_file(path, indent="", prefix="")
-func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (w *Writer) writeFileMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) < 1 {
 		return nil, fmt.Errorf("json.writer.write_file: missing required argument: path")
 	}
@@ -147,7 +150,7 @@ func (w *Writer) writeFileMethod(_ *starlark.Thread, _ *starlark.Builtin, args s
 		}
 	}
 
-	if err := libkite.Check(w.thread, "fs", "write", "write", path); err != nil {
+	if err := libkite.Check(thread, "fs", "write", "write", path); err != nil {
 		return nil, err
 	}
 

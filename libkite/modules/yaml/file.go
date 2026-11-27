@@ -18,7 +18,6 @@ import (
 // YamlFile is a Starlark value representing a file path for YAML reading.
 type YamlFile struct {
 	path   string
-	thread *starlark.Thread
 	config *libkite.ModuleConfig
 }
 
@@ -73,12 +72,12 @@ func (f *YamlFile) isDryRun() bool {
 
 // decodeMethod reads and decodes a single YAML document.
 // Usage: yaml.file(path).decode()
-func (f *YamlFile) decodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (f *YamlFile) decodeMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 || len(kwargs) > 0 {
 		return nil, fmt.Errorf("yaml.file.decode: takes no arguments")
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
 
@@ -105,12 +104,12 @@ func (f *YamlFile) decodeMethod(_ *starlark.Thread, _ *starlark.Builtin, args st
 
 // decodeAllMethod reads and decodes a multi-document YAML file.
 // Usage: yaml.file(path).decode_all()
-func (f *YamlFile) decodeAllMethod(_ *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
+func (f *YamlFile) decodeAllMethod(thread *starlark.Thread, _ *starlark.Builtin, args starlark.Tuple, kwargs []starlark.Tuple) (starlark.Value, error) {
 	if len(args) > 0 || len(kwargs) > 0 {
 		return nil, fmt.Errorf("yaml.file.decode_all: takes no arguments")
 	}
 
-	if err := libkite.Check(f.thread, "fs", "read", "read_file", f.path); err != nil {
+	if err := libkite.Check(thread, "fs", "read", "read_file", f.path); err != nil {
 		return nil, err
 	}
 
