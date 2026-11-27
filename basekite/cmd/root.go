@@ -704,12 +704,12 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string, pre
 	res, execErr := driver.Exec(ctx, spec)
 	if execErr != nil {
 		if res != nil && res.ExitCode != 0 {
-			return true, libkite.NewExitError(res.ExitCode)
+			return true, &libkite.ExitError{Code: res.ExitCode}
 		}
 		return true, execErr
 	}
 	if res != nil && res.ExitCode != 0 {
-		return true, libkite.NewExitError(res.ExitCode)
+		return true, &libkite.ExitError{Code: res.ExitCode}
 	}
 	return true, nil
 }
