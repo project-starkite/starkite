@@ -512,7 +512,12 @@ assert(in_txt.strip() == "hello-input", "unexpected input: %s" % in_txt)
 
 fs.write_text("./output.txt", "output-ok")
 
-res = os.exec("echo composable-ok")
+def run_exec():
+    if runtime.platform() == "windows":
+        return os.exec("cmd.exe", ["/c", "echo composable-ok"])
+    return os.exec("echo composable-ok")
+
+res = run_exec()
 assert("composable-ok" in res, "unexpected exec stdout: %s" % res)
 
 fwd = os.env("FORWARDED_VAR")
@@ -531,9 +536,14 @@ assert(ambient == "", "expected ambient host var to be scrubbed, got: %s" % ambi
 	ctx, cancel := context.WithTimeout(context.Background(), perTestTimeout)
 	defer cancel()
 
+	allowExecArg := "--sandbox-exec-allow=echo"
+	if runtime.GOOS == "windows" {
+		allowExecArg = "--sandbox-exec-allow=cmd.exe"
+	}
+
 	cmd := exec.CommandContext(ctx, kite, "run", "./work.star",
 		"--sandbox-path-write=.",
-		"--sandbox-exec-allow=echo",
+		allowExecArg,
 		"--env", "FORWARDED_VAR",
 		"--env", "INJECTED_VAR=custom42",
 	)
