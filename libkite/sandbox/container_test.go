@@ -388,8 +388,10 @@ func TestContainerDriver_BuildArgs_EntrypointWorkdirScriptAndPodman(t *testing.T
 	if strings.Contains(joinedExec, "--workdir") {
 		t.Errorf("expected --workdir omitted when Cwd is unmounted and uncovered, got: %s", joinedExec)
 	}
-	if !strings.Contains(joinedExec, "-v /var/tmp/kite-exec/run.sh:/var/tmp/kite-exec/run.sh:ro") {
-		t.Errorf("expected non-system ScriptFile to be mounted read-only, got: %s", joinedExec)
+	wantRunSh := filepath.Clean("/var/tmp/kite-exec/run.sh")
+	wantMountRunSh := fmt.Sprintf("-v %s:%s:ro", wantRunSh, wantRunSh)
+	if !strings.Contains(joinedExec, wantMountRunSh) {
+		t.Errorf("expected non-system ScriptFile to be mounted read-only (%s), got: %s", wantMountRunSh, joinedExec)
 	}
 
 	// Self-handoff kite command strips kite binary and omits --entrypoint=.
@@ -403,8 +405,10 @@ func TestContainerDriver_BuildArgs_EntrypointWorkdirScriptAndPodman(t *testing.T
 	if strings.Contains(joinedKite, "--entrypoint=") {
 		t.Errorf("expected no --entrypoint= for kite self-handoff command, got: %s", joinedKite)
 	}
-	if !strings.Contains(joinedKite, "-v /var/tmp/work-case/app.star:/var/tmp/work-case/app.star:ro") {
-		t.Errorf("expected relative ScriptFile under Cwd to be mounted read-only, got: %s", joinedKite)
+	wantAppStar := filepath.Clean(filepath.Join("/var/tmp/work-case", "app.star"))
+	wantMountAppStar := fmt.Sprintf("-v %s:%s:ro", wantAppStar, wantAppStar)
+	if !strings.Contains(joinedKite, wantMountAppStar) {
+		t.Errorf("expected relative ScriptFile under Cwd to be mounted read-only (%s), got: %s", wantMountAppStar, joinedKite)
 	}
 	if !strings.Contains(joinedKite, "--workdir /var/tmp/work-case") {
 		t.Errorf("expected --workdir when mounted ScriptFile establishes Cwd parent, got: %s", joinedKite)

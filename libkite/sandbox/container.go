@@ -237,7 +237,7 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 
 	if spec.ScriptFile != "" {
 		scriptPath := spec.ScriptFile
-		if !filepath.IsAbs(scriptPath) && spec.Cwd != "" {
+		if !isHostAbs(scriptPath) && spec.Cwd != "" {
 			scriptPath = filepath.Join(spec.Cwd, scriptPath)
 		}
 		cleanScript := filepath.Clean(scriptPath)
