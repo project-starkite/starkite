@@ -80,7 +80,7 @@ func NewPermissionChecker(config *PermissionConfig) (*PermissionChecker, error) 
 		if err != nil {
 			return nil, fmt.Errorf("invalid allow rule %q: %w", pattern, err)
 		}
-		rule.setResource(canonicalizePattern(expandPathVariables(rule.Resource, cwd, home)))
+		rule.setResource(canonicalizePatternWith(expandPathVariables(rule.Resource, cwd, home), isExecPermission(rule.Module, rule.Category)))
 		checker.allow = append(checker.allow, *rule)
 	}
 
@@ -89,7 +89,7 @@ func NewPermissionChecker(config *PermissionConfig) (*PermissionChecker, error) 
 		if err != nil {
 			return nil, fmt.Errorf("invalid deny rule %q: %w", pattern, err)
 		}
-		rule.setResource(canonicalizePattern(expandPathVariables(rule.Resource, cwd, home)))
+		rule.setResource(canonicalizePatternWith(expandPathVariables(rule.Resource, cwd, home), isExecPermission(rule.Module, rule.Category)))
 		checker.deny = append(checker.deny, *rule)
 	}
 
@@ -110,11 +110,14 @@ func canonicalizeSQLitePath(raw string) (string, bool) {
 	return CanonicalizePath(filePart), true
 }
 
-func canonicalizeCheckResource(module, function, resource string) string {
+func canonicalizeCheckResource(module, category, function, resource string) string {
 	if resource == "" {
 		return ""
 	}
 	if filepath.IsAbs(resource) {
+		if isExecPermission(module, category) {
+			return CanonicalizeExecPath(resource)
+		}
 		return CanonicalizePath(resource)
 	}
 	if module == "fs" {
@@ -176,9 +179,13 @@ func windowsRootRelativeCanon(canonRes string) string {
 func (c *PermissionChecker) matchCheck(module, category, function, resource string) (denied bool, denyRaw string, allowed bool) {
 	res := resource
 	if res != "" && filepath.IsAbs(res) {
-		res = CanonicalizePath(res)
+		if isExecPermission(module, category) {
+			res = CanonicalizeExecPath(res)
+		} else {
+			res = CanonicalizePath(res)
+		}
 	}
-	canonRes := canonicalizeCheckResource(module, function, resource)
+	canonRes := canonicalizeCheckResource(module, category, function, resource)
 	winRootRel := windowsRootRelativeCanon(canonRes)
 
 	for _, rule := range c.deny {
@@ -300,7 +307,7 @@ func (r *Rule) setResource(res string) {
 	p := filepath.ToSlash(res)
 	isAbs := filepath.IsAbs(p) || isWindowsDriveAbs(p)
 	if isAbs {
-		p = canonicalizePattern(p)
+		p = canonicalizePatternWith(p, isExecPermission(r.Module, r.Category))
 	}
 	hasDS := strings.Contains(p, "**")
 	var segs []string
@@ -450,7 +457,7 @@ func (r *Rule) Matches(module, category, function, resource string) bool {
 			pattern = filepath.ToSlash(r.Resource)
 			isAbs = filepath.IsAbs(pattern)
 			if isAbs {
-				pattern = canonicalizePattern(pattern)
+				pattern = canonicalizePatternWith(pattern, isExecPermission(r.Module, r.Category))
 			}
 			hasDS = strings.Contains(pattern, "**")
 		}
@@ -639,6 +646,30 @@ func CanonicalizePath(path string) string {
 	return evalSymlinksLongestPrefix(abs)
 }
 
+func isExecPermission(module, category string) bool {
+	return (module == "os" || module == "*") && (category == "exec" || category == "shell")
+}
+
+// CanonicalizeExecPath resolves a binary path to its canonical physical path
+// while preserving the invoked applet name for multi-call binaries (busybox,
+// toybox, coreutils) so exec rules match the applet rather than the dispatcher.
+func CanonicalizeExecPath(path string) string {
+	canonical := CanonicalizePath(path)
+	if canonical == "" {
+		return canonical
+	}
+	canonBase := strings.ToLower(strings.TrimSuffix(filepath.Base(canonical), ".exe"))
+	origBase := filepath.Base(filepath.Clean(path))
+	switch canonBase {
+	case "busybox", "toybox", "coreutils":
+		if !strings.EqualFold(strings.TrimSuffix(origBase, ".exe"), canonBase) {
+			parent := CanonicalizePath(filepath.Dir(path))
+			return filepath.Join(parent, origBase)
+		}
+	}
+	return canonical
+}
+
 func evalSymlinksLongestPrefix(absPath string) string {
 	curr := filepath.Clean(absPath)
 	var tail []string
@@ -663,6 +694,10 @@ func isWindowsDriveAbs(p string) bool {
 }
 
 func canonicalizePattern(pattern string) string {
+	return canonicalizePatternWith(pattern, false)
+}
+
+func canonicalizePatternWith(pattern string, isExec bool) string {
 	slashed := filepath.ToSlash(pattern)
 	if !filepath.IsAbs(pattern) {
 		if isWindowsDriveAbs(slashed) {
@@ -672,6 +707,9 @@ func canonicalizePattern(pattern string) string {
 	}
 	idx := strings.IndexAny(slashed, "*?[")
 	if idx == -1 {
+		if isExec {
+			return filepath.ToSlash(CanonicalizeExecPath(pattern))
+		}
 		return filepath.ToSlash(CanonicalizePath(pattern))
 	}
 	slashIdx := strings.LastIndex(slashed[:idx], "/")

@@ -87,6 +87,9 @@ func TestSandboxDriver_env(t *testing.T) {
 }
 
 func TestSandboxModule_star(t *testing.T) {
+	if strings.EqualFold(strings.TrimSpace(os.Getenv("STARKITE_SANDBOX_DRIVER")), "gvisor") {
+		t.Skip("nested sandbox drivers are unavailable inside gVisor sentry container")
+	}
 	runStarTest(t, "sandbox_module_test.star", "sandbox-net", viaProfileFlag)
 }
 
@@ -322,9 +325,29 @@ func sandboxUnavailable(output string) bool {
 
 func envWithFakeHome(fakeHome string) []string {
 	var env []string
+	var hasXDGData, hasXDGConfig, hasXDGCache bool
 	for _, e := range os.Environ() {
-		if !strings.HasPrefix(e, "HOME=") && !strings.HasPrefix(e, "USERPROFILE=") {
-			env = append(env, e)
+		switch {
+		case strings.HasPrefix(e, "HOME="), strings.HasPrefix(e, "USERPROFILE="):
+			continue
+		case strings.HasPrefix(e, "XDG_DATA_HOME="):
+			hasXDGData = true
+		case strings.HasPrefix(e, "XDG_CONFIG_HOME="):
+			hasXDGConfig = true
+		case strings.HasPrefix(e, "XDG_CACHE_HOME="):
+			hasXDGCache = true
+		}
+		env = append(env, e)
+	}
+	if realHome, err := os.UserHomeDir(); err == nil && realHome != "" {
+		if !hasXDGData {
+			env = append(env, "XDG_DATA_HOME="+filepath.Join(realHome, ".local", "share"))
+		}
+		if !hasXDGConfig {
+			env = append(env, "XDG_CONFIG_HOME="+filepath.Join(realHome, ".config"))
+		}
+		if !hasXDGCache {
+			env = append(env, "XDG_CACHE_HOME="+filepath.Join(realHome, ".cache"))
 		}
 	}
 	return append(env, "HOME="+fakeHome, "USERPROFILE="+fakeHome)

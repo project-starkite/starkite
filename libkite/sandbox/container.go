@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -108,7 +109,13 @@ func (d *ContainerDriver) ValidateSpec(spec *ExecutionSpec) error {
 
 // BuildArgs translates an ExecutionSpec into standard OCI container CLI arguments.
 func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
-	args := []string{"run", "--rm", "-i"}
+	var args []string
+	// Rootless Podman delegates runsc cgroups via systemd by default, which fails in
+	// non-interactive sessions unless cgroupfs is selected.
+	if d.isRootlessPodman() && spec.Runtime == BinRunsc {
+		args = append(args, "--cgroup-manager=cgroupfs")
+	}
+	args = append(args, "run", "--rm", "-i")
 
 	// 7-Point Container Hardening: drop ambient capabilities, prevent privilege escalation,
 	// enforce private IPC namespace, and lock container rootfs to read-only.
@@ -122,20 +129,24 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 	// User mapping: on Linux hosts, run as the invoking user/group to prevent root execution
 	// and avoid file ownership corruption on host mounts.
 	if runtime.GOOS == "linux" {
+		if d.isRootlessPodman() {
+			args = append(args, "--userns=keep-id")
+		}
 		args = append(args, fmt.Sprintf("--user=%d:%d", os.Getuid(), os.Getgid()))
 	}
 
 	// Network configuration
 	switch spec.Network {
 	case NetworkHost:
-		args = append(args, "--network=host")
+		// Under rootless Podman with gVisor (runsc), --network=host leaves runsc's
+		// userspace netstack with zero interfaces (not even lo / 127.0.0.1). Omitting
+		// --network=host uses Podman's rootless pasta/slirp4netns namespace, giving
+		// runsc both a working loopback interface and outbound network connectivity.
+		if !(d.isRootlessPodman() && spec.Runtime == BinRunsc) {
+			args = append(args, "--network=host")
+		}
 	case NetworkNone, NetworkLoopback, "":
 		args = append(args, "--network=none")
-	}
-
-	// Working directory
-	if spec.Cwd != "" {
-		args = append(args, "--workdir", spec.Cwd)
 	}
 
 	// Environment variables
@@ -166,7 +177,7 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 	}
 
 	hasTmp := false
-	hasScriptMounted := false
+	var mountedDsts []string
 
 	// Mount bindings
 	for _, m := range spec.Mounts {
@@ -184,6 +195,7 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 
 		if m.Type == MountTmpfs {
 			args = append(args, fmt.Sprintf("--tmpfs=%s:rw,noexec,nosuid,nodev", m.Destination))
+			mountedDsts = append(mountedDsts, cleanDst)
 			continue
 		}
 
@@ -203,17 +215,10 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 			continue
 		}
 
-		// On non-Linux hosts (macOS/Windows), skip host OS system directories (/etc, /usr, /bin, /lib, /lib64, /sbin)
-		// so the Linux container retains its native ELF runtime, libraries, TLS CA certs, and network resolver.
-		if runtime.GOOS != "linux" {
-			if cleanDst == "/etc" || strings.HasPrefix(cleanDst, "/etc/") ||
-				cleanDst == "/usr" || strings.HasPrefix(cleanDst, "/usr/") ||
-				cleanDst == "/bin" || strings.HasPrefix(cleanDst, "/bin/") ||
-				cleanDst == "/lib" || strings.HasPrefix(cleanDst, "/lib/") ||
-				cleanDst == "/lib64" || strings.HasPrefix(cleanDst, "/lib64/") ||
-				cleanDst == "/sbin" || strings.HasPrefix(cleanDst, "/sbin/") {
-				continue
-			}
+		// Skip host system directories on all OSes so the Alpine/musl container retains
+		// its native runtime, entrypoint, libraries, TLS CA certs, and network resolver.
+		if isContainerSystemPath(cleanDst) {
+			continue
 		}
 
 		mode := "ro"
@@ -221,25 +226,30 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 			mode = "rw"
 		}
 		args = append(args, "-v", fmt.Sprintf("%s:%s:%s", src, m.Destination, mode))
-
-		if spec.ScriptFile != "" && cleanSrc == filepath.Clean(spec.ScriptFile) {
-			hasScriptMounted = true
-		}
+		mountedDsts = append(mountedDsts, cleanDst)
 	}
 
 	// Always ensure an isolated, ephemeral /tmp tmpfs is mounted for scratch space
 	if !hasTmp {
 		args = append(args, "--tmpfs=/tmp:rw,noexec,nosuid,nodev")
+		mountedDsts = append(mountedDsts, "/tmp")
 	}
 
-	// Under container parity, if Cwd is $HOME or /, ensure the script file is mounted read-only
-	if isMatch && spec.ScriptFile != "" && !hasScriptMounted {
+	if spec.ScriptFile != "" {
 		scriptPath := spec.ScriptFile
 		if !filepath.IsAbs(scriptPath) && spec.Cwd != "" {
 			scriptPath = filepath.Join(spec.Cwd, scriptPath)
 		}
 		cleanScript := filepath.Clean(scriptPath)
-		args = append(args, "-v", fmt.Sprintf("%s:%s:ro", cleanScript, cleanScript))
+		slashScript := filepath.ToSlash(cleanScript)
+		if !isContainerSystemPath(slashScript) && !isCoveredByMount(slashScript, mountedDsts) {
+			args = append(args, "-v", fmt.Sprintf("%s:%s:ro", cleanScript, cleanScript))
+			mountedDsts = append(mountedDsts, slashScript)
+		}
+	}
+
+	if spec.Cwd != "" && containerPathExists(spec.Cwd, mountedDsts) {
+		args = append(args, "--workdir", spec.Cwd)
 	}
 
 	// Container Image
@@ -255,11 +265,13 @@ func (d *ContainerDriver) BuildArgs(spec *ExecutionSpec) []string {
 		isKiteBin := binName == "kite" || binName == "kitecmd" || binName == "kitecloud" || binName == "kiteai"
 
 		// If the container image is the official Starkite image (built with ko or OCI entrypoint "kite"),
-		// the image already defines the entrypoint as the kite executable (/ko-app/kite).
-		// Forward only subcommands and arguments directly to avoid unknown-command errors.
+		// the image already defines the entrypoint as /usr/local/bin/kite (/ko-app/kite).
+		// Strip kite binary name for self-handoff, or clear entrypoint for direct native commands.
 		if isKiteImage(image) {
 			if isKiteBin {
 				command = command[1:]
+			} else {
+				args = append(args, "--entrypoint=")
 			}
 		} else if runtime.GOOS == "linux" && (image == "docker.io/library/alpine:latest" || image == "alpine:latest" || image == "alpine") {
 			// If host is Linux and a minimal base image (alpine) is used, bind-mount the host Linux binary
@@ -433,8 +445,10 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 		return nil, err
 	}
 
-	if policyErr := checkContainerExecPolicy(spec); policyErr != nil {
-		return policyDeniedResult(spec, policyErr), nil
+	if !spec.SelfHandoff {
+		if policyErr := checkContainerExecPolicy(spec); policyErr != nil {
+			return policyDeniedResult(spec, policyErr), nil
+		}
 	}
 
 	binPath := d.resolveBinary()
@@ -445,8 +459,8 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 	start := time.Now()
 	cliArgs := d.BuildArgs(spec)
 	containerName := newEphemeralContainerName()
-	if len(cliArgs) > 0 && cliArgs[0] == "run" {
-		cliArgs = append([]string{"run", "--name", containerName}, cliArgs[1:]...)
+	if runIdx := slices.Index(cliArgs, "run"); runIdx >= 0 {
+		cliArgs = slices.Insert(cliArgs, runIdx+1, "--name", containerName)
 	}
 
 	execCtx := ctx
@@ -497,7 +511,11 @@ func (d *ContainerDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecR
 		// Killing the local container CLI does not guarantee the daemon stops
 		// the container, so force-remove it by its ephemeral name.
 		rmCtx, rmCancel := context.WithTimeout(context.Background(), 5*time.Second)
-		_ = exec.CommandContext(rmCtx, binPath, "rm", "-f", containerName).Run()
+		rmArgs := []string{"rm", "-f", containerName}
+		if d.isRootlessPodman() && spec.Runtime == BinRunsc {
+			rmArgs = append([]string{"--cgroup-manager=cgroupfs"}, rmArgs...)
+		}
+		_ = exec.CommandContext(rmCtx, binPath, rmArgs...).Run()
 		rmCancel()
 	}
 
@@ -566,4 +584,39 @@ func isHomeOrRoot(cwd string) (bool, bool) {
 func isRootPath(p string) bool {
 	clean := filepath.ToSlash(filepath.Clean(p))
 	return clean == "/" || clean == `\` || (len(clean) == 3 && clean[1] == ':' && clean[2] == '/')
+}
+
+func (d *ContainerDriver) isRootlessPodman() bool {
+	return d.engine == EnginePodman && runtime.GOOS == "linux" && os.Geteuid() != 0
+}
+
+func isContainerSystemPath(cleanSlashPath string) bool {
+	for _, sysDir := range []string{"/etc", "/usr", "/bin", "/lib", "/lib64", "/sbin"} {
+		if cleanSlashPath == sysDir || strings.HasPrefix(cleanSlashPath, sysDir+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func isCoveredByMount(cleanSlashPath string, mountedDsts []string) bool {
+	for _, dst := range mountedDsts {
+		if cleanSlashPath == dst || strings.HasPrefix(cleanSlashPath, dst+"/") {
+			return true
+		}
+	}
+	return false
+}
+
+func containerPathExists(cwd string, mountedDsts []string) bool {
+	cleanCwd := filepath.ToSlash(filepath.Clean(cwd))
+	if cleanCwd == "/" || cleanCwd == "/tmp" || strings.HasPrefix(cleanCwd, "/tmp/") {
+		return true
+	}
+	for _, dst := range mountedDsts {
+		if cleanCwd == dst || strings.HasPrefix(cleanCwd, dst+"/") || strings.HasPrefix(dst, cleanCwd+"/") {
+			return true
+		}
+	}
+	return false
 }

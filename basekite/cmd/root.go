@@ -689,6 +689,7 @@ func MaybeHandoffToSandboxWithScript(ctx context.Context, scriptPath string, pre
 	// Case 2: Out-of-process container / external provider (podman, docker, nerdctl, gvisor)
 	// Execute the command wrapped inside the sandbox container.
 	os.Setenv(sandbox.InsideEnvVar, "1")
+	spec.SelfHandoff = true
 	spec.Env = append(spec.Env, fmt.Sprintf("%s=1", sandbox.InsideEnvVar))
 
 	var hostNames []string

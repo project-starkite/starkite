@@ -55,4 +55,36 @@ func TestResolveExecTarget(t *testing.T) {
 			t.Errorf("got %q, want empty", got)
 		}
 	})
+
+	t.Run("multicall busybox symlink preserves applet name", func(t *testing.T) {
+		dir := t.TempDir()
+		canonDir := libkite.CanonicalizePath(dir)
+		busybox := filepath.Join(dir, "busybox")
+		if err := os.WriteFile(busybox, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		echoLink := filepath.Join(dir, "echo")
+		if err := os.Symlink(busybox, echoLink); err != nil {
+			t.Fatal(err)
+		}
+		realTool := filepath.Join(dir, "realtool")
+		if err := os.WriteFile(realTool, []byte("#!/bin/sh\n"), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		aliasLink := filepath.Join(dir, "alias")
+		if err := os.Symlink(realTool, aliasLink); err != nil {
+			t.Fatal(err)
+		}
+
+		env := map[string]string{"PATH": dir}
+		if got := resolveExecTarget("echo hi", "", env); got != filepath.Join(canonDir, "echo") {
+			t.Errorf("symlinked applet got %q, want %q", got, filepath.Join(canonDir, "echo"))
+		}
+		if got := resolveExecTarget("busybox echo hi", "", env); got != filepath.Join(canonDir, "busybox") {
+			t.Errorf("direct busybox got %q, want %q", got, filepath.Join(canonDir, "busybox"))
+		}
+		if got := resolveExecTarget("alias arg", "", env); got != filepath.Join(canonDir, "realtool") {
+			t.Errorf("normal symlink got %q, want %q", got, filepath.Join(canonDir, "realtool"))
+		}
+	})
 }

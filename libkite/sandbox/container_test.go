@@ -356,15 +356,146 @@ func TestContainerDriver_BinaryAndImageMatchingAndEtcBoundary(t *testing.T) {
 		Command: []string{"/usr/local/bin/kitedev", "run"},
 		Mounts: []Mount{
 			{Source: "/tmp/etcetera", Destination: "/etcetera", Type: MountBind, Mode: MountRW},
+			{Source: "/usr", Destination: "/usr", Type: MountBind, Mode: MountRO},
 		},
 	}
 	args := d.BuildArgs(spec)
 	joined := strings.Join(args, " ")
-	if runtime.GOOS != "linux" && !strings.Contains(joined, "/tmp/etcetera:/etcetera:rw") {
+	if !strings.Contains(joined, "/tmp/etcetera:/etcetera:rw") {
 		t.Errorf("expected /etcetera non-/etc prefix mount to be preserved, got: %s", joined)
+	}
+	if strings.Contains(joined, "/usr:/usr:ro") {
+		t.Errorf("expected host /usr mount to be omitted on all OSes, got: %s", joined)
 	}
 	if !strings.Contains(joined, "/usr/local/bin/kitedev run") {
 		t.Errorf("expected non-kite binary prefix kitedev to remain preserved, got: %s", joined)
+	}
+}
+
+func TestContainerDriver_BuildArgs_EntrypointWorkdirScriptAndPodman(t *testing.T) {
+	dDocker := NewContainerDriver("docker", "/usr/bin/docker")
+
+	// Non-kite command on Starkite image clears OCI entrypoint.
+	argsExec := dDocker.BuildArgs(&ExecutionSpec{
+		Command:    []string{"echo", "hello"},
+		Cwd:        "/unmounted/workdir",
+		ScriptFile: "/var/tmp/kite-exec/run.sh",
+	})
+	joinedExec := strings.Join(argsExec, " ")
+	if !strings.Contains(joinedExec, "--entrypoint=") {
+		t.Errorf("expected --entrypoint= for non-kite command on default image, got: %s", joinedExec)
+	}
+	if strings.Contains(joinedExec, "--workdir") {
+		t.Errorf("expected --workdir omitted when Cwd is unmounted and uncovered, got: %s", joinedExec)
+	}
+	if !strings.Contains(joinedExec, "-v /var/tmp/kite-exec/run.sh:/var/tmp/kite-exec/run.sh:ro") {
+		t.Errorf("expected non-system ScriptFile to be mounted read-only, got: %s", joinedExec)
+	}
+
+	// Self-handoff kite command strips kite binary and omits --entrypoint=.
+	argsKite := dDocker.BuildArgs(&ExecutionSpec{
+		Command:     []string{"/home/alice/bin/kite", "run", "app.star"},
+		Cwd:         "/var/tmp/work-case",
+		ScriptFile:  "app.star",
+		SelfHandoff: true,
+	})
+	joinedKite := strings.Join(argsKite, " ")
+	if strings.Contains(joinedKite, "--entrypoint=") {
+		t.Errorf("expected no --entrypoint= for kite self-handoff command, got: %s", joinedKite)
+	}
+	if !strings.Contains(joinedKite, "-v /var/tmp/work-case/app.star:/var/tmp/work-case/app.star:ro") {
+		t.Errorf("expected relative ScriptFile under Cwd to be mounted read-only, got: %s", joinedKite)
+	}
+	if !strings.Contains(joinedKite, "--workdir /var/tmp/work-case") {
+		t.Errorf("expected --workdir when mounted ScriptFile establishes Cwd parent, got: %s", joinedKite)
+	}
+
+	// Docker never injects rootless Podman flags and keeps --network=host, even with runsc runtime on Linux.
+	argsDockerRunsc := dDocker.BuildArgs(&ExecutionSpec{
+		Command: []string{"echo", "hi"},
+		Network: NetworkHost,
+		Runtime: BinRunsc,
+	})
+	joinedDockerRunsc := strings.Join(argsDockerRunsc, " ")
+	if strings.Contains(joinedDockerRunsc, "--cgroup-manager=") || strings.Contains(joinedDockerRunsc, "--userns=keep-id") {
+		t.Errorf("expected no Podman-specific flags for Docker driver, got: %s", joinedDockerRunsc)
+	}
+	if !strings.Contains(joinedDockerRunsc, "--network=host") {
+		t.Errorf("expected --network=host for Docker+runsc, got: %s", joinedDockerRunsc)
+	}
+
+	// Linux rootless Podman adds --userns=keep-id and --cgroup-manager=cgroupfs before run when using runsc,
+	// and omits --network=host under NetworkHost so runsc keeps a working loopback/outbound netstack.
+	dPodman := NewContainerDriver("podman", "/usr/bin/podman")
+	argsPodmanRunsc := dPodman.BuildArgs(&ExecutionSpec{
+		Command: []string{"echo", "hi"},
+		Network: NetworkHost,
+		Runtime: BinRunsc,
+	})
+	joinedPodmanRunsc := strings.Join(argsPodmanRunsc, " ")
+	if runtime.GOOS == "linux" && os.Geteuid() != 0 {
+		if len(argsPodmanRunsc) < 2 || argsPodmanRunsc[0] != "--cgroup-manager=cgroupfs" || argsPodmanRunsc[1] != "run" {
+			t.Errorf("expected --cgroup-manager=cgroupfs before run for rootless podman+runsc, got: %v", argsPodmanRunsc)
+		}
+		if !strings.Contains(joinedPodmanRunsc, "--userns=keep-id") {
+			t.Errorf("expected --userns=keep-id for rootless podman, got: %v", argsPodmanRunsc)
+		}
+		if strings.Contains(joinedPodmanRunsc, "--network=host") {
+			t.Errorf("expected --network=host omitted for rootless podman+runsc, got: %v", argsPodmanRunsc)
+		}
+	} else if len(argsPodmanRunsc) == 0 || argsPodmanRunsc[0] != "run" {
+		t.Errorf("expected first arg 'run' outside rootless Linux podman, got: %v", argsPodmanRunsc)
+	}
+
+	argsPodmanRunscNone := dPodman.BuildArgs(&ExecutionSpec{
+		Command: []string{"echo", "hi"},
+		Network: NetworkNone,
+		Runtime: BinRunsc,
+	})
+	if !strings.Contains(strings.Join(argsPodmanRunscNone, " "), "--network=none") {
+		t.Errorf("expected --network=none when NetworkNone is set on podman+runsc, got: %v", argsPodmanRunscNone)
+	}
+}
+
+func TestContainerDriver_Exec_SelfHandoffBypassesPolicyAndStderrEnrich(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses POSIX shell script mock container CLI")
+	}
+
+	tmpDir := t.TempDir()
+	argsLog := filepath.Join(tmpDir, "args.log")
+	mockCLI := filepath.Join(tmpDir, "mock-podman")
+	script := `#!/bin/sh
+echo "$@" >> "` + argsLog + `"
+echo "script inner error: permission denied" >&2
+exit 1
+`
+	if err := os.WriteFile(mockCLI, []byte(script), 0o755); err != nil {
+		t.Fatalf("write mock CLI: %v", err)
+	}
+
+	d := NewContainerDriver("podman", mockCLI)
+	res, err := d.Exec(context.Background(), &ExecutionSpec{
+		Command:     []string{"/home/alice/bin/kite", "run", "./app.star"},
+		NoExec:      true,
+		SelfHandoff: true,
+		Runtime:     BinRunsc,
+	})
+	if err != nil {
+		t.Fatalf("Exec returned unexpected error: %v", err)
+	}
+	if res.ExitCode != 1 {
+		t.Fatalf("ExitCode = %d, want 1 (self-handoff must bypass host no_exec gate); stderr=%q", res.ExitCode, res.Stderr)
+	}
+	if strings.Contains(res.Stderr, "sandbox:") {
+		t.Errorf("expected self-handoff stderr not to be re-attributed to kite binary, got: %q", res.Stderr)
+	}
+	loggedArgs, readErr := os.ReadFile(argsLog)
+	if readErr != nil {
+		t.Fatalf("read args log: %v", readErr)
+	}
+	if !strings.Contains(string(loggedArgs), "--name starkite-sbx-") {
+		t.Errorf("expected --name starkite-sbx-* inserted after run, got: %s", loggedArgs)
 	}
 }
 

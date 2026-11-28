@@ -792,17 +792,17 @@ func resolveExecTarget(cmdStr, workDir string, env map[string]string) string {
 		if !filepath.IsAbs(bin) && baseDir != "" {
 			bin = filepath.Join(baseDir, bin)
 		}
-		return libkite.CanonicalizePath(bin)
+		return libkite.CanonicalizeExecPath(bin)
 	}
 
 	// Bare name: resolve on PATH (prefer an explicit PATH override in env).
 	if pathEnv, ok := getPathEnv(env); ok && pathEnv != "" {
 		if resolved, err := lookPathIn(bin, pathEnv); err == nil {
-			return libkite.CanonicalizePath(resolved)
+			return libkite.CanonicalizeExecPath(resolved)
 		}
 	}
 	if resolved, err := exec.LookPath(bin); err == nil {
-		return libkite.CanonicalizePath(resolved)
+		return libkite.CanonicalizeExecPath(resolved)
 	}
 	return bin
 }

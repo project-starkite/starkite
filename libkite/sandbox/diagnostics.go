@@ -300,7 +300,7 @@ func extractCommandTarget(cmd []string) string {
 // FormatPermissionError or FormatNetworkError when a sandboxed process fails
 // with a permission error.
 func enrichPermissionStderr(stderr string, spec *ExecutionSpec) string {
-	if spec == nil {
+	if spec == nil || spec.SelfHandoff {
 		return stderr
 	}
 	lower := strings.ToLower(stderr)

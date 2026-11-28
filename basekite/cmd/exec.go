@@ -66,14 +66,6 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		}
 	}
 
-	resolvedTarget, err := resolveExecTarget(targetCmd)
-	if err != nil {
-		return &libkite.ScriptError{
-			Message:  err.Error(),
-			ExitCode: libkite.ExitFileError,
-		}
-	}
-
 	profile, err := ResolveActiveProfile()
 	if err != nil {
 		return &libkite.ScriptError{
@@ -108,6 +100,20 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	var resolvedTarget, scriptFile string
+	if isContainerSandboxDriverName(driver.Name()) && !strings.ContainsAny(targetCmd, `/\`) {
+		resolvedTarget = targetCmd
+	} else {
+		resolvedTarget, err = resolveExecTarget(targetCmd)
+		if err != nil {
+			return &libkite.ScriptError{
+				Message:  err.Error(),
+				ExitCode: libkite.ExitFileError,
+			}
+		}
+		scriptFile = resolvedTarget
+	}
+
 	cwd, _ := os.Getwd()
 	envSlice, err := profile.SynthesizeEnv(os.Environ(), envFlags, envInherit)
 	if err != nil {
@@ -138,7 +144,7 @@ func runExecProcess(cmd *cobra.Command, args []string) error {
 		MaxMemoryMB:      profile.MaxMemoryMB,
 		Timeout:          execTimeout,
 		Image:            profile.Image,
-		ScriptFile:       resolvedTarget,
+		ScriptFile:       scriptFile,
 		NoExec:           false,
 		AllowedExecPaths: profile.AllowedExecPaths,
 		Stdin:            os.Stdin,
@@ -257,6 +263,15 @@ func parseExecCommandLine(flagSet *pflag.FlagSet, rawArgs []string) (target stri
 func warnIfStarlarkPermissionFlagsPassed(profileName string) {
 	if len(sandboxCallAllow) > 0 || len(sandboxCallDeny) > 0 {
 		fmt.Fprintf(os.Stderr, "notice: target is a native process; Starlark permissions ignored. Applying kernel sandbox profile [%s].\n", profileName)
+	}
+}
+
+func isContainerSandboxDriverName(name string) bool {
+	switch name {
+	case sandbox.DriverPodman, sandbox.DriverDocker, sandbox.DriverNerdctl, sandbox.DriverGVisor:
+		return true
+	default:
+		return false
 	}
 }
 

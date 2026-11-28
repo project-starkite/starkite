@@ -70,6 +70,7 @@ func TestGVisorDriver_Exec(t *testing.T) {
 }
 
 func TestGVisorDriver_StandaloneRunscFailClosed(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
 	d := &GVisorDriver{runscPath: "/nonexistent/runsc"}
 	if d.Available() {
 		t.Fatalf("expected Available()=false when runsc does not exist on disk")

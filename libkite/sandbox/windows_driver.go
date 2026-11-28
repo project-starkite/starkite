@@ -101,7 +101,7 @@ func (d *WindowsDriver) Exec(ctx context.Context, spec *ExecutionSpec) (*ExecRes
 	}
 	exePath = resolveCanonicalWindowsPath(exePath)
 
-	isSelfHandoff := isCurrentExecutablePath(exePath) && os.Getenv(InsideEnvVar) == "1"
+	isSelfHandoff := spec.SelfHandoff || (isCurrentExecutablePath(exePath) && os.Getenv(InsideEnvVar) == "1")
 	if !isSelfHandoff {
 		policySpec := *spec
 		policySpec.Command = append([]string{exePath}, spec.Command[1:]...)

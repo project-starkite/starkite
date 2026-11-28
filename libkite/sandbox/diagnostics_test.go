@@ -416,3 +416,20 @@ func TestDiagnostics_EnrichExecDiagnostics(t *testing.T) {
 		t.Errorf("expected idempotent stderr, got second pass:\n%s\nfirst pass:\n%s", resIdempotent.Stderr, firstPass)
 	}
 }
+
+func TestDiagnostics_EnrichPermissionStderr_SelfHandoff(t *testing.T) {
+	raw := "Error: failed to read data.txt: permission denied\n"
+	spec := &ExecutionSpec{
+		Command:     []string{"/home/alice/bin/kite", "run", "app.star"},
+		NoExec:      true,
+		SelfHandoff: true,
+	}
+	if got := enrichPermissionStderr(raw, spec); got != raw {
+		t.Errorf("expected self-handoff stderr unchanged, got: %q", got)
+	}
+
+	spec.SelfHandoff = false
+	if got := enrichPermissionStderr(raw, spec); !strings.Contains(got, "sandbox:") {
+		t.Errorf("expected non-self-handoff stderr to receive sandbox attribution, got: %q", got)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -1137,5 +1138,60 @@ func TestPermissionChecker_RelativePathAndDoublestarBoundary(t *testing.T) {
 	}
 	if rule.Matches("fs", "read", "read_text", "/work-secret/file.txt") {
 		t.Errorf("/work** must not match /work-secret/file.txt")
+	}
+}
+
+func TestPermissionChecker_MultiCallBusyBoxExec(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink multi-call binary layout differs on windows")
+	}
+
+	dir := t.TempDir()
+	busybox := filepath.Join(dir, "busybox")
+	if err := os.WriteFile(busybox, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	echoLink := filepath.Join(dir, "echo")
+	if err := os.Symlink(busybox, echoLink); err != nil {
+		t.Fatal(err)
+	}
+	realTool := filepath.Join(dir, "realtool")
+	if err := os.WriteFile(realTool, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	aliasLink := filepath.Join(dir, "alias")
+	if err := os.Symlink(realTool, aliasLink); err != nil {
+		t.Fatal(err)
+	}
+
+	checkerByName, err := NewPermissionChecker(&PermissionConfig{
+		Allow:   ExecAllowRules([]string{"echo"}),
+		Default: DefaultDeny,
+	})
+	if err != nil {
+		t.Fatalf("NewPermissionChecker(name): %v", err)
+	}
+	if err := checkerByName.Check("os", "exec", "exec", echoLink); err != nil {
+		t.Errorf("expected echo symlink to be allowed by echo rule: %v", err)
+	}
+	if err := checkerByName.Check("os", "exec", "exec", busybox); err == nil {
+		t.Errorf("expected direct busybox binary to remain denied under echo-only rule")
+	}
+	if err := checkerByName.Check("os", "exec", "exec", aliasLink); err == nil {
+		t.Errorf("expected normal symlink realtool alias to remain denied under echo-only rule")
+	}
+
+	checkerByPath, err := NewPermissionChecker(&PermissionConfig{
+		Allow:   []string{"os.exec(" + echoLink + ")"},
+		Default: DefaultDeny,
+	})
+	if err != nil {
+		t.Fatalf("NewPermissionChecker(path): %v", err)
+	}
+	if err := checkerByPath.Check("os", "exec", "exec", echoLink); err != nil {
+		t.Errorf("expected explicit os.exec(%s) rule to allow echo symlink: %v", echoLink, err)
+	}
+	if err := checkerByPath.Check("os", "exec", "exec", busybox); err == nil {
+		t.Errorf("expected explicit os.exec(%s) rule to deny direct busybox binary", echoLink)
 	}
 }

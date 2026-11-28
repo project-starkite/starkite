@@ -11,6 +11,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/project-starkite/starkite/libkite/sandbox"
 	"github.com/spf13/pflag"
 )
 
@@ -333,4 +334,17 @@ func TestExec_SandboxMountAndPathReadFlags(t *testing.T) {
 			t.Errorf("error %q does not contain 'does not exist on the host'", err.Error())
 		}
 	})
+}
+
+func TestIsContainerSandboxDriverName(t *testing.T) {
+	for _, drv := range []string{sandbox.DriverPodman, sandbox.DriverDocker, sandbox.DriverNerdctl, sandbox.DriverGVisor} {
+		if !isContainerSandboxDriverName(drv) {
+			t.Errorf("expected isContainerSandboxDriverName(%q) = true", drv)
+		}
+	}
+	for _, drv := range []string{"", sandbox.DriverLandlock, sandbox.DriverSeatbelt, sandbox.DriverWindows, sandbox.DriverAuto} {
+		if isContainerSandboxDriverName(drv) {
+			t.Errorf("expected isContainerSandboxDriverName(%q) = false", drv)
+		}
+	}
 }

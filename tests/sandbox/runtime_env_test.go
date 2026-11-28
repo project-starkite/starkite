@@ -40,12 +40,24 @@ func findNode(t *testing.T) string {
 	return nodeBin
 }
 
+func isContainerSandboxDriver() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("STARKITE_SANDBOX_DRIVER"))) {
+	case "podman", "docker", "nerdctl", "gvisor":
+		return true
+	default:
+		return false
+	}
+}
+
 func TestRuntimeEnv_PythonVirtualEnv(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Python virtual environment testing under Windows AppContainers requires host-wide toolcache ACL inheritance")
 	}
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+	if isContainerSandboxDriver() {
+		t.Skip("host language runtime tests require host python3/node toolchains absent from minimal starkite container image")
 	}
 	pyBin := findPython(t)
 
@@ -87,6 +99,9 @@ func TestRuntimeEnv_PythonVirtualEnv(t *testing.T) {
 func TestRuntimeEnv_HomeCredentialProtection(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+	if isContainerSandboxDriver() {
+		t.Skip("host language runtime tests require host python3/node toolchains absent from minimal starkite container image")
 	}
 	pyBin := findPython(t)
 
@@ -147,6 +162,9 @@ func TestRuntimeEnv_ActionableDiagnostics(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
 	}
+	if isContainerSandboxDriver() {
+		t.Skip("host language runtime tests require host python3/node toolchains absent from minimal starkite container image")
+	}
 	pyBin := findPython(t)
 
 	kiteBin := buildKite(t)
@@ -170,6 +188,9 @@ func TestRuntimeEnv_ActionableDiagnostics(t *testing.T) {
 func TestRuntimeEnv_ActionableDiagnostics_Node(t *testing.T) {
 	if os.Getenv("STARKITE_SANDBOX_INTEGRATION") != "1" {
 		t.Skip("set STARKITE_SANDBOX_INTEGRATION=1 to run sandbox integration tests")
+	}
+	if isContainerSandboxDriver() {
+		t.Skip("host language runtime tests require host python3/node toolchains absent from minimal starkite container image")
 	}
 	nodeBin := findNode(t)
 

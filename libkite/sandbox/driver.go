@@ -26,6 +26,7 @@ type ExecutionSpec struct {
 	Image            string        // Container image (for container/podman/docker drivers)
 	Runtime          string        // Optional runtime override (e.g. "runsc")
 	ScriptFile       string        // Target script file being executed (for baseline protection)
+	SelfHandoff      bool          // True for out-of-process self-reinvocation of the host kite binary
 	NoExec           bool          // Block subprocess execution (execve/execveat) inside the sandbox
 	AllowedExecPaths []string      // Explicit allowlist of executable paths when restricting execution
 	AuditLog         bool          // Log blocked syscalls via SECCOMP_RET_LOG instead of EPERM during audit testing
